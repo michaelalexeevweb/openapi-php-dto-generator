@@ -247,6 +247,23 @@ final class ResponseService
         $disposition = $asAttachment ? 'attachment' : 'inline';
         $response->setContentDisposition($disposition, $downloadName);
 
+        // Set proper charset for non-ASCII filenames
+        $response->headers->set('Content-Type', $fileObject->getMimeType() ?? 'application/octet-stream');
+        $response->headers->set('Content-Transfer-Encoding', 'binary');
+        $response->headers->set('Accept-Ranges', 'bytes');
+
+        // Ensure proper UTF-8 encoding for filename in Content-Disposition
+        if (preg_match('/[^\x20-\x7E]/', $downloadName)) {
+            $encodedName = rawurlencode($downloadName);
+            $dispositionHeader = sprintf(
+                '%s; filename="%s"; filename*=UTF-8\'\'%s',
+                $disposition,
+                $downloadName,
+                $encodedName
+            );
+            $response->headers->set('Content-Disposition', $dispositionHeader);
+        }
+
         return $response;
     }
 
