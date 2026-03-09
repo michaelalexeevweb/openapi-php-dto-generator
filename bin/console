@@ -9,7 +9,26 @@ use OpenapiPhpDtoGenerator\Service\OpenApiDtoGeneratorService;
 use OpenapiPhpDtoGenerator\Service\YamlPhpArrayFormatter;
 use Symfony\Component\Console\Application;
 
-require_once __DIR__ . '/../vendor/autoload.php';
+// Walk up directories until vendor/autoload.php is found.
+$dir = __DIR__;
+$autoloadLoaded = false;
+
+while ($dir !== dirname($dir)) {
+    $autoload = $dir . '/vendor/autoload.php';
+
+    if (file_exists($autoload)) {
+        require_once $autoload;
+        $autoloadLoaded = true;
+        break;
+    }
+
+    $dir = dirname($dir);
+}
+
+if (!$autoloadLoaded) {
+    fwrite(STDERR, "Error: Unable to find Composer autoload file.\n");
+    exit(1);
+}
 
 $application = new Application('OpenAPI PHP DTO Generator');
 $application->add(new EchoYamlPropertiesCommand(new YamlPhpArrayFormatter()));

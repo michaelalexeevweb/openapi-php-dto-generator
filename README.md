@@ -18,20 +18,29 @@ composer require michaelalexeevweb/openapi-php-dto-generator
 
 ## Usage
 
+### Add script in your project `composer.json`
+
+```json
+{
+  "scripts": {
+    "openapi:generate-dto": "php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:generate-dto"
+  }
+}
+```
+
 ### Generate DTO classes
 
-Generate DTO classes from an OpenAPI YAML file:
+Run command with flags:
 
 ```bash
-php vendor/bin/console openapi:generate-dto --file=OpenApiExamples/test.yaml --directory=generated/test
+composer openapi:generate-dto -- --file=OpenApiExamples/test.yaml --directory=generated/test
 ```
 
-Or use positional argument (default file is `OpenApiExamples/test.yaml`):
+Or with positional file argument:
 
 ```bash
-php vendor/bin/console openapi:generate-dto OpenApiExamples/test.yaml --directory=generated/test
+composer openapi:generate-dto -- OpenApiExamples/test.yaml --directory=generated/test
 ```
-
 
 ### Using generated DTOs in your code
 
