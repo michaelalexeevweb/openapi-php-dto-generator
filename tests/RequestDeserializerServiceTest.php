@@ -1,0 +1,331 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OpenapiPhpDtoGenerator\Tests;
+
+use DateTimeImmutable;
+use PHPUnit\Framework\TestCase;
+use OpenapiPhpDtoGenerator\Service\RequestDeserializerService;
+use Symfony\Component\HttpFoundation\Request;
+
+final class RequestDeserializerServiceTest extends TestCase
+{
+    private RequestDeserializerService $deserializer;
+
+    protected function setUp(): void
+    {
+        $this->deserializer = new RequestDeserializerService();
+    }
+
+    public function testDeserializeSimpleDto(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 123,
+            'name' => 'Test User',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, SimpleTestDto::class);
+
+        $this->assertInstanceOf(SimpleTestDto::class, $dto);
+        $this->assertSame(123, $dto->id);
+        $this->assertSame('Test User', $dto->name);
+    }
+
+    public function testDeserializeWithQueryParameters(): void
+    {
+        $request = new Request(['page' => '5', 'limit' => '20'], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryParamsDto::class);
+
+        $this->assertInstanceOf(QueryParamsDto::class, $dto);
+        $this->assertSame(5, $dto->page);
+        $this->assertSame(20, $dto->limit);
+    }
+
+    public function testDeserializeWithPathParameters(): void
+    {
+        $request = new Request([], [], ['userId' => '42', 'postId' => '7'], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, PathParamsDto::class);
+
+        $this->assertInstanceOf(PathParamsDto::class, $dto);
+        $this->assertSame(42, $dto->userId);
+        $this->assertSame(7, $dto->postId);
+    }
+
+    public function testDeserializeWithDateTimeImmutable(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'createdAt' => '2024-01-15T10:30:00+00:00',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DateTimeDto::class);
+
+        $this->assertInstanceOf(DateTimeDto::class, $dto);
+        $this->assertSame(1, $dto->id);
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->createdAt);
+        $this->assertSame('2024-01-15', $dto->createdAt->format('Y-m-d'));
+    }
+
+    public function testDeserializeWithNullableField(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'Test',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, NullableFieldDto::class);
+
+        $this->assertInstanceOf(NullableFieldDto::class, $dto);
+        $this->assertSame(1, $dto->id);
+        $this->assertSame('Test', $dto->name);
+        $this->assertNull($dto->description);
+    }
+
+    public function testDeserializeWithBoolean(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'enabled' => true,
+            'verified' => 'false',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, BooleanDto::class);
+
+        $this->assertInstanceOf(BooleanDto::class, $dto);
+        $this->assertTrue($dto->enabled);
+        $this->assertFalse($dto->verified);
+    }
+
+    public function testDeserializeThrowsExceptionForMissingRequiredParameter(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'name' => 'Test',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "id" not found in request');
+
+        $this->deserializer->deserialize($request, SimpleTestDto::class);
+    }
+
+    public function testDeserializeTracksProvidedFields(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'Test',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, TrackableFieldsDto::class);
+
+        $this->assertInstanceOf(TrackableFieldsDto::class, $dto);
+        $this->assertTrue($dto->isIdInRequest());
+        $this->assertTrue($dto->isNameInRequest());
+        $this->assertFalse($dto->isDescriptionInRequest());
+    }
+
+    public function testDeserializeTracksQueryAndPathParameters(): void
+    {
+        $request = new Request(['page' => '5'], [], ['userId' => '10'], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, TrackableMixedDto::class);
+
+        $this->assertInstanceOf(TrackableMixedDto::class, $dto);
+        $this->assertTrue($dto->isUserIdInRequest());
+        $this->assertTrue($dto->isPageInRequest());
+        $this->assertFalse($dto->isLimitInRequest());
+    }
+}
+
+// Test DTOs
+final class SimpleTestDto
+{
+    public function __construct(
+        public int $id,
+        public string $name,
+    ) {
+    }
+}
+
+final class QueryParamsDto
+{
+    public function __construct(
+        public int $page,
+        public int $limit,
+    ) {
+    }
+}
+
+final class PathParamsDto
+{
+    public function __construct(
+        public int $userId,
+        public int $postId,
+    ) {
+    }
+}
+
+final class DateTimeDto
+{
+    public function __construct(
+        public int $id,
+        public DateTimeImmutable $createdAt,
+    ) {
+    }
+}
+
+final class NullableFieldDto
+{
+    public function __construct(
+        public int $id,
+        public string $name,
+        public ?string $description,
+    ) {
+    }
+}
+
+final class BooleanDto
+{
+    public function __construct(
+        public bool $enabled,
+        public bool $verified,
+    ) {
+    }
+}
+
+final class TrackableFieldsDto
+{
+    private int $id;
+    private bool $idWasProvidedInRequest = false;
+    private string $name;
+    private bool $nameWasProvidedInRequest = false;
+    private ?string $description;
+    private bool $descriptionWasProvidedInRequest = false;
+
+    public function __construct(
+        int $id,
+        string $name,
+        ?string $description,
+    ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->description = $description;
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function isIdInRequest(): bool
+    {
+        return $this->idWasProvidedInRequest;
+    }
+
+    public function markAsIdProvidedInRequest(): void
+    {
+        $this->idWasProvidedInRequest = true;
+    }
+
+    public function isNameInRequest(): bool
+    {
+        return $this->nameWasProvidedInRequest;
+    }
+
+    public function markAsNameProvidedInRequest(): void
+    {
+        $this->nameWasProvidedInRequest = true;
+    }
+
+    public function isDescriptionInRequest(): bool
+    {
+        return $this->descriptionWasProvidedInRequest;
+    }
+
+    public function markAsDescriptionProvidedInRequest(): void
+    {
+        $this->descriptionWasProvidedInRequest = true;
+    }
+}
+
+final class TrackableMixedDto
+{
+    private int $userId;
+    private bool $userIdWasProvidedInRequest = false;
+    private int $page;
+    private bool $pageWasProvidedInRequest = false;
+    private ?int $limit;
+    private bool $limitWasProvidedInRequest = false;
+
+    public function __construct(
+        int $userId,
+        int $page,
+        ?int $limit,
+    ) {
+        $this->userId = $userId;
+        $this->page = $page;
+        $this->limit = $limit;
+    }
+
+    public function getUserId(): int
+    {
+        return $this->userId;
+    }
+
+    public function getPage(): int
+    {
+        return $this->page;
+    }
+
+    public function getLimit(): ?int
+    {
+        return $this->limit;
+    }
+
+    public function isUserIdInRequest(): bool
+    {
+        return $this->userIdWasProvidedInRequest;
+    }
+
+    public function markAsUserIdProvidedInRequest(): void
+    {
+        $this->userIdWasProvidedInRequest = true;
+    }
+
+    public function isPageInRequest(): bool
+    {
+        return $this->pageWasProvidedInRequest;
+    }
+
+    public function markAsPageProvidedInRequest(): void
+    {
+        $this->pageWasProvidedInRequest = true;
+    }
+
+    public function isLimitInRequest(): bool
+    {
+        return $this->limitWasProvidedInRequest;
+    }
+
+    public function markAsLimitProvidedInRequest(): void
+    {
+        $this->limitWasProvidedInRequest = true;
+    }
+}

@@ -1,0 +1,55 @@
+{
+    "name": "michaelalexeevweb/openapi-php-dto-generator",
+    "description": "Generate immutable PHP DTO classes from OpenAPI schemas with request and response validation.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "openapi",
+        "php",
+        "dto",
+        "generator"
+    ],
+    "authors": [
+        {
+            "name": "Michael Alexeev",
+            "email": "michael.alexeev.web@gmail.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "OpenapiPhpDtoGenerator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OpenapiPhpDtoGenerator\\Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": "^8.3",
+        "symfony/console": "^6.0 || ^7.0",
+        "symfony/http-foundation": "^6.0 || ^7.0",
+        "symfony/mime": "^6.0 || ^7.0",
+        "symfony/yaml": "^6.0 || ^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "bin": [
+        "bin/console"
+    ],
+    "archive": {
+        "exclude": [
+            "/.idea",
+            "/.phpunit.cache",
+            "/tests",
+            "/OpenApiExamples",
+            "/vendor"
+        ]
+    },
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        }
+    }
+}
