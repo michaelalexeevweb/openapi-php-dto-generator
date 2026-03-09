@@ -1,0 +1,32 @@
+openapi: 3.0.0
+info:
+  title: Required Params Coercion
+  version: 1.0.0
+paths:
+  /api/test/cats/{id}/actions/{actionId}:
+    get:
+      parameters:
+        - in: path
+          name: id
+          required: 'true'
+          schema:
+            type: string
+        - in: path
+          name: actionId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          required: '1'
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: ok
+

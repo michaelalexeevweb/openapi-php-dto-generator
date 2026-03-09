@@ -1,0 +1,77 @@
+openapi: 3.0.0
+info:
+  title: Nullable allOf Test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    # Test 1: Single $ref in nullable allOf
+    UserWithSingleRef:
+      type: object
+      required:
+        - id
+        - pet
+      properties:
+        id:
+          type: integer
+        pet:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Cat'
+
+    # Test 2: Multiple $refs and inline objects in nullable allOf
+    UserWithMultipleRefs:
+      type: object
+      required:
+        - id
+        - pet
+      properties:
+        id:
+          type: integer
+        pet:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Cat'
+            - $ref: '#/components/schemas/Dog'
+            - type: object
+              required:
+                - extraProperty
+              properties:
+                extraProperty:
+                  type: string
+            - type: object
+              required:
+                - extraProperty
+              properties:
+                extraProperty:
+                  type: string
+                  description: This should win (last definition)
+
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          required:
+            - meow
+          properties:
+            meow:
+              type: string
+
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          required:
+            - bark
+          properties:
+            bark:
+              type: string
+
+    Pet:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+

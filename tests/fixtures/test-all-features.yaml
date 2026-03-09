@@ -1,0 +1,306 @@
+openapi: 3.0.0
+info:
+  title: Test API for All Features
+  version: 1.0.0
+
+paths:
+  # Test 1: Path and Query Parameters
+  /users/{userId}/posts/{postId}:
+    get:
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+
+  # Test 2: Request Body (POST)
+  /articles:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+      responses:
+        201:
+          description: Created
+
+  # Test 3: Request Body (PATCH)
+  /articles/{id}:
+    patch:
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                published:
+                  type: boolean
+      responses:
+        200:
+          description: Updated
+
+  # Test 4: Inline Response without Schema
+  /status:
+    get:
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: integer
+
+components:
+  schemas:
+    # Test 5: Schema with Description
+    Post:
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the post
+        title:
+          type: string
+          description: Title of the post
+        authorId:
+          type: integer
+          description: ID of the author who created the post
+
+    # Test 6: Schema with Default Values
+    PostSettings:
+      type: object
+      properties:
+        commentsEnabled:
+          type: boolean
+          default: true
+          description: Whether comments are enabled
+        visibility:
+          type: string
+          default: 'public'
+          enum:
+            - public
+            - private
+            - unlisted
+        maxComments:
+          type: integer
+          default: 100
+
+    # Test 7: Enum Files
+    PostStatus:
+      type: string
+      enum:
+        - draft
+        - published
+        - archived
+
+    ArticleType:
+      type: integer
+      enum:
+        - 1
+        - 2
+        - 3
+
+    # Test 8: Nested Schema without its own schema definition
+    Article:
+      type: object
+      required:
+        - id
+        - metadata
+      properties:
+        id:
+          type: integer
+        metadata:
+          type: object
+          properties:
+            createdAt:
+              type: string
+            updatedAt:
+              type: string
+        tags:
+          type: array
+          items:
+            type: string
+            enum:
+              - tech
+              - news
+              - blog
+
+    # Test 9: Nested Enum in Property
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum:
+            - pending
+            - approved
+            - rejected
+
+    # Test 10: allOf with Parent Override
+    BaseEntity:
+      type: object
+      required:
+        - id
+        - createdAt
+      properties:
+        id:
+          type: integer
+        createdAt:
+          type: string
+        name:
+          type: string
+
+    ExtendedEntity:
+      allOf:
+        - $ref: '#/components/schemas/BaseEntity'
+        - type: object
+          required:
+            - updatedAt
+            - name
+          properties:
+            updatedAt:
+              type: string
+            name:
+              type: string
+              description: Overridden name property with description
+
+    # Test 11: oneOf
+    Pet:
+      oneOf:
+        - $ref: '#/components/schemas/Dog'
+        - $ref: '#/components/schemas/Cat'
+        - type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+            sound:
+              type: string
+
+    # Test 12: anyOf
+    Notification:
+      anyOf:
+        - $ref: '#/components/schemas/EmailNotification'
+        - $ref: '#/components/schemas/SmsNotification'
+        - type: object
+          properties:
+            pushEnabled:
+              type: boolean
+
+    # Test 13: Discriminator
+    Animal:
+      type: object
+      required:
+        - animalType
+      properties:
+        animalType:
+          type: string
+          enum:
+            - dog
+            - cat
+      discriminator:
+        propertyName: animalType
+        mapping:
+          dog: '#/components/schemas/Dog'
+          cat: '#/components/schemas/Cat'
+
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/Animal'
+        - type: object
+          required:
+            - bark
+          properties:
+            bark:
+              type: string
+            breed:
+              type: string
+
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/Animal'
+        - type: object
+          required:
+            - meow
+          properties:
+            meow:
+              type: string
+            color:
+              type: string
+
+    # Test 14: Email and SMS Notifications for anyOf test
+    EmailNotification:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+        subject:
+          type: string
+
+    SmsNotification:
+      type: object
+      required:
+        - phoneNumber
+      properties:
+        phoneNumber:
+          type: string
+        message:
+          type: string
+

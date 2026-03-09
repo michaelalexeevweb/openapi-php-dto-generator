@@ -1,0 +1,564 @@
+openapi: 3.0.0
+info:
+  title: Title
+  description: Title
+  version: 1.0.0
+servers:
+  - url: 'https'
+paths:
+  /api/test:
+    get:
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    default: 'Access Denied.'
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestPostRequest'
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestPatchRequest'
+    patch:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestPatchRequest'
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  /api/test2:
+    get:
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test2'
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    default: 'Access Denied.'
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - idPostTest2
+                - namePostTest2
+                - surnamePostTest2
+              properties:
+                idPostTest2:
+                  type: integer
+                namePostTest2:
+                  type: string
+                surnamePostTest2:
+                  type: string
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+    patch:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - idPatchTest2
+                - namePatchTest2
+              properties:
+                idPatchTest2:
+                  type: integer
+                namePatchTest2:
+                  type: string
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  /api/test/dogs/{id}/tags/{tagId}:
+    get:
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: 'uuid'
+            example: '00000000-1111-2222-3333-444455556666'
+          required: true
+        - in: path
+          name: tagId
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+    patch:
+      parameters:
+        - $ref: '#/components/parameters/DogId'
+        - $ref: '#/components/parameters/DogTagId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  /api/test/cats/{id}/actions/{actionId}:
+    get:
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: 'uuid'
+            example: '00000000-1111-2222-3333-444455556666'
+          required: true
+        - in: path
+          name: actionId
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+    post:
+      parameters:
+        - $ref: '#/components/parameters/CatId'
+        - $ref: '#/components/parameters/CatActionId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  /api/test/file:
+    post:
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  /api/test/file/{id}:
+    patch:
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: 'uuid'
+            example: '00000000-1111-2222-3333-444455556666'
+          required: true
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FileRequest'
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+    delete:
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: 'uuid'
+            example: '00000000-1111-2222-3333-444455556666'
+          required: true
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+components:
+  parameters:
+    DogId:
+      in: path
+      name: id
+      schema:
+        type: string
+        format: 'uuid'
+        example: '00000000-1111-2222-3333-444455556666'
+      required: true
+    DogTagId:
+      in: path
+      name: tagId
+      schema:
+        type: integer
+      required: true
+    CatId:
+      in: path
+      name: id
+      schema:
+        type: string
+        format: 'uuid'
+        example: '00000000-1111-2222-3333-444455556666'
+      required: true
+    CatActionId:
+      in: path
+      name: actionId
+      schema:
+        type: integer
+      required: true
+    Page:
+      in: query
+      name: page
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+    Limit:
+      in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+  schemas:
+    Test:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+    FileRequest:
+      type: object
+      required:
+        - file
+        - name
+        - surname
+      properties:
+        file:
+          $ref: '#/components/schemas/File'
+        name:
+          type: string
+        surname:
+          type: string
+    File:
+      type: string
+      format: binary
+    TestPostRequest:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    TestPatchRequest:
+      type: object
+      required:
+        - id
+        - name
+        - surname
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        surname:
+          type: string
+    Test2:
+      type: object
+      required:
+        - id
+        - name
+        - tags
+        - types
+      properties:
+        id:
+          description: this is id
+          type: integer
+          default: 1
+        name:
+          description: >
+            this 
+            is 
+            name
+          type: string
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        user:
+          $ref: '#/components/schemas/User'
+        userType:
+          type: object
+          properties:
+            region:
+              type: string
+        types:
+          type: string
+          enum:
+            - cat
+            - dog
+    Tag:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    TypeEnum:
+      type: string
+      enum:
+        - catType
+        - dogType
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - pet
+        - createdAt
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        pet:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Animal2'
+        createdAt:
+          type: string
+          format: date-time
+    User2:
+      type: object
+      required:
+        - id
+        - name
+        - pet
+        - createdAt
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        pet:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Cat'
+            - $ref: '#/components/schemas/Dog'
+            - type: object
+              required:
+                - test
+              properties:
+                test:
+                  type: string
+            - type: object
+              required:
+                - test
+              properties:
+                test:
+                  type: string
+        createdAt:
+          type: string
+          format: date
+    Animal:
+      oneOf:
+        - $ref: '#/components/schemas/Cat'
+        - $ref: '#/components/schemas/Dog'
+        - type: object
+          required:
+            - test
+          properties:
+            test:
+              type: string
+    Animal2:
+      anyOf:
+        - $ref: '#/components/schemas/Cat'
+        - $ref: '#/components/schemas/Dog'
+        - $ref: '#/components/schemas/Dog2'
+        - type: object
+          required:
+            - test2
+          properties:
+            test2:
+              type: string
+    Cat:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          required:
+            - meow
+          properties:
+            meow:
+              type: string
+    Dog:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          required:
+            - bark
+          properties:
+            bark:
+              type: string
+    Dog2:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          required:
+            - bark
+          properties:
+            bark:
+              type: string
+    Pet:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+    Discriminator:
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          type: string
+          enum:
+            - discriminator1
+            - discriminator2
+        name:
+          type: string
+          nullable: true
+      discriminator:
+        propertyName: type
+        mapping:
+          discriminator1: '#/components/schemas/Discriminator1'
+          discriminator2: '#/components/schemas/Discriminator2'
+    Discriminator1:
+      allOf:
+        - $ref: '#/components/schemas/Discriminator'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: integer
+    Discriminator2:
+      allOf:
+        - $ref: '#/components/schemas/Discriminator'
+        - type: object
+          required:
+            - id
+            - name
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
