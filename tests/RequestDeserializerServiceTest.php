@@ -91,7 +91,7 @@ final class RequestDeserializerServiceTest extends TestCase
     {
         $request = new Request([], [], [], [], [], [], json_encode([
             'enabled' => true,
-            'verified' => 'false',
+            'verified' => false,
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
@@ -100,6 +100,20 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertInstanceOf(BooleanDto::class, $dto);
         $this->assertTrue($dto->enabled);
         $this->assertFalse($dto->verified);
+    }
+
+    public function testDeserializeThrowsExceptionForInvalidJsonScalarTypes(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 'test',
+            'name' => 1,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "id" expects int, got string');
+
+        $this->deserializer->deserialize($request, SimpleTestDto::class);
     }
 
     public function testDeserializeThrowsExceptionForMissingRequiredParameter(): void
@@ -141,6 +155,40 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertTrue($dto->isUserIdInRequest());
         $this->assertTrue($dto->isPageInRequest());
         $this->assertFalse($dto->isLimitInRequest());
+    }
+
+    public function testDeserializeThrowsExceptionWhenObjectPassedInsteadOfArray(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'name',
+            'tags' => ['id' => 1, 'name' => 'tag1'], // JSON object, not array
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "tags" expects array, got object');
+
+        $this->deserializer->deserialize($request, NestedArrayDto::class);
+    }
+
+    public function testDeserializeThrowsExceptionForInvalidNestedArrayItems(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'name',
+            'tags' => [
+                ['id' => 1, 'name' => 'tag1'],
+                ['id' => 'two', 'name' => 'tag2'],
+                ['id' => 3, 'name' => 3],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage("param \"tags.1.id\" expects int, got string\nparam \"tags.2.name\" expects string, got int");
+
+        $this->deserializer->deserialize($request, NestedArrayDto::class);
     }
 }
 
@@ -329,3 +377,54 @@ final class TrackableMixedDto
         $this->limitWasProvidedInRequest = true;
     }
 }
+
+final class NestedArrayDto
+{
+    /** @var array<NestedArrayItemDto> */
+    private array $tags;
+
+    /** @param array<NestedArrayItemDto> $tags */
+    public function __construct(
+        private int $id,
+        private string $name,
+        array $tags,
+    ) {
+        $this->tags = $tags;
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    /** @return array<NestedArrayItemDto> */
+    public function getTags(): array
+    {
+        return $this->tags;
+    }
+}
+
+final class NestedArrayItemDto
+{
+    public function __construct(
+        private int $id,
+        private string $name,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+}
+

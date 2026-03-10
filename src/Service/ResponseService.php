@@ -73,6 +73,12 @@ final class ResponseService
                 if ($error !== null) {
                     $errors[] = $error;
                 }
+            } catch (\LogicException $e) {
+                // Field wasn't provided in request - skip, it's not a validation error
+                if (str_contains($e->getMessage(), "wasn't provided in request")) {
+                    continue;
+                }
+                $errors[] = "Failed to call {$methodName}(): {$e->getMessage()}";
             } catch (\Throwable $e) {
                 $errors[] = "Failed to call {$methodName}(): {$e->getMessage()}";
             }

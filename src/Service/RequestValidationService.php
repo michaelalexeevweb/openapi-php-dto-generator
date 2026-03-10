@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
-use OpenapiPhpDtoGenerator\Exception\RequestValidationException;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use Symfony\Component\HttpFoundation\Request;
 
 final class RequestValidationService
@@ -27,7 +27,7 @@ final class RequestValidationService
         try {
             $dto = $this->validator->validate($request, $dtoClass);
             return RequestValidationResult::success($dto);
-        } catch (RequestValidationException $e) {
+        } catch (BadRequestException $e) {
             $errors = explode("\n", $e->getMessage());
             return RequestValidationResult::failure(array_filter($errors));
         }
@@ -39,7 +39,7 @@ final class RequestValidationService
      * @template T
      * @param class-string<T> $dtoClass
      * @return T
-     * @throws RequestValidationException
+     * @throws BadRequestException
      */
     public function validateOrThrow(Request $request, string $dtoClass): object
     {

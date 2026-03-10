@@ -944,6 +944,11 @@ final class OpenApiDtoGeneratorService
             $lines[] = '     */';
             $lines[] = '    public function ' . $methodName . '(): ' . $returnType;
             $lines[] = '    {';
+            if (!$property['required']) {
+                $lines[] = '        if (!$this->' . $property['name'] . 'WasProvidedInRequest) {';
+                $lines[] = '            throw new \LogicException(\'Field "' . $property['name'] . '" wasn\\\'t provided in request\');';
+                $lines[] = '        }';
+            }
             if ($property['nullable']) {
                 $lines[] = '        return $this->' . $property['name'] . '?->format(' . "'" . $phpDateFormat . "'" . ') ?? "";';
             } else {
@@ -972,6 +977,11 @@ final class OpenApiDtoGeneratorService
 
         $lines[] = '    public function ' . $methodName . '(): ' . $type;
         $lines[] = '    {';
+        if (!$property['required']) {
+            $lines[] = '        if (!$this->' . $property['name'] . 'WasProvidedInRequest) {';
+            $lines[] = '            throw new \LogicException(\'Field "' . $property['name'] . '" wasn\\\'t provided in request\');';
+            $lines[] = '        }';
+        }
         $lines[] = '        return $this->' . $property['name'] . ';';
         $lines[] = '    }';
     }

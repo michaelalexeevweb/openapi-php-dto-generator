@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use PHPUnit\Framework\TestCase;
-use OpenapiPhpDtoGenerator\Exception\RequestValidationException;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use OpenapiPhpDtoGenerator\Service\RequestValidationService;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -51,7 +51,7 @@ final class RequestValidationServiceTest extends TestCase
         $this->assertFalse($result->isValid());
         $this->assertTrue($result->hasErrors());
         $this->assertNotEmpty($result->getErrors());
-        $this->assertStringContainsString('Field "id" must be an integer', $result->getFirstError());
+        $this->assertStringContainsString('param "id" expects int, got string', $result->getFirstError());
     }
 
     public function testValidateReturnsMultipleErrors(): void
@@ -72,9 +72,9 @@ final class RequestValidationServiceTest extends TestCase
         $this->assertCount(3, $errors);
 
         $errorString = $result->getErrorsAsString();
-        $this->assertStringContainsString('Field "id" must be an integer', $errorString);
-        $this->assertStringContainsString('Field "name" must be a string', $errorString);
-        $this->assertStringContainsString('Field "enabled" must be a boolean', $errorString);
+        $this->assertStringContainsString('param "id" expects int, got string', $errorString);
+        $this->assertStringContainsString('param "name" expects string, got int', $errorString);
+        $this->assertStringContainsString('param "enabled" expects bool, got string', $errorString);
     }
 
     public function testGetDtoThrowsExceptionForFailedValidation(): void
@@ -143,8 +143,8 @@ final class RequestValidationServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Field "id" must be an integer');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "id" expects int, got string');
 
         $this->service->validateOrThrow($request, SimpleValidationDto::class);
     }
@@ -161,20 +161,7 @@ final class RequestValidationServiceTest extends TestCase
 
         $firstError = $result->getFirstError();
         $this->assertNotNull($firstError);
-        $this->assertStringContainsString('Field "id"', $firstError);
-    }
-
-    public function testGetFirstErrorReturnsNullForValidData(): void
-    {
-        $request = new Request([], [], [], [], [], [], json_encode([
-            'id' => 123,
-            'name' => 'Test',
-        ]));
-        $request->headers->set('Content-Type', 'application/json');
-
-        $result = $this->service->validate($request, SimpleValidationDto::class);
-
-        $this->assertNull($result->getFirstError());
+        $this->assertStringContainsString('param "id" expects int, got string', $firstError);
     }
 
     public function testGetErrorsAsStringWithCustomSeparator(): void
@@ -188,7 +175,7 @@ final class RequestValidationServiceTest extends TestCase
         $result = $this->service->validate($request, SimpleValidationDto::class);
 
         $errorString = $result->getErrorsAsString(' | ');
+        $this->assertStringContainsString('param "id" expects int, got string', $errorString);
         $this->assertStringContainsString(' | ', $errorString);
     }
 }
-

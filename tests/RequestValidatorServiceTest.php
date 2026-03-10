@@ -6,7 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
-use OpenapiPhpDtoGenerator\Exception\RequestValidationException;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use OpenapiPhpDtoGenerator\Service\RequestValidatorService;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -42,8 +42,8 @@ final class RequestValidatorServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Field "id" must be an integer');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "id" expects int, got string');
 
         $this->validator->validate($request, SimpleValidationDto::class);
     }
@@ -56,8 +56,8 @@ final class RequestValidatorServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Field "name" must be a string');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "name" expects string, got int');
 
         $this->validator->validate($request, SimpleValidationDto::class);
     }
@@ -70,8 +70,8 @@ final class RequestValidatorServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Field "id" cannot be null');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "id" expects int, got null');
 
         $this->validator->validate($request, SimpleValidationDto::class);
     }
@@ -91,6 +91,23 @@ final class RequestValidatorServiceTest extends TestCase
         $this->assertNull($dto->getDescription());
     }
 
+    public function testValidateThrowsExceptionForOptionalFieldSentAsExplicitNull(): void
+    {
+        // description is optional (not required) but not schema-nullable,
+        // so sending null explicitly should fail.
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'Test',
+            'optional' => null,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "optional" expects string, got null');
+
+        $this->validator->validate($request, OptionalNotNullableDto::class);
+    }
+
     public function testValidateThrowsExceptionForInvalidBooleanType(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
@@ -98,8 +115,8 @@ final class RequestValidatorServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Field "enabled" must be a boolean');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "enabled" expects bool, got string');
 
         $this->validator->validate($request, BooleanValidationDto::class);
     }
@@ -111,8 +128,8 @@ final class RequestValidatorServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Field "tags" must be an array');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "tags" expects array, got string');
 
         $this->validator->validate($request, ArrayValidationDto::class);
     }
@@ -124,10 +141,49 @@ final class RequestValidatorServiceTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RequestValidationException::class);
-        $this->expectExceptionMessage('Failed to deserialize request');
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "createdAt" expects a valid date-time');
 
         $this->validator->validate($request, DateTimeValidationDto::class);
+    }
+
+    public function testValidateThrowsExceptionForEmptyStringDateTime(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'createdAt' => '',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "createdAt" expects a valid date-time, got empty string');
+
+        $this->validator->validate($request, DateTimeValidationDto::class);
+    }
+
+    public function testValidateThrowsExceptionForEmptyStringDate(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'date' => '',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "date" expects a valid date in Y-m-d format, got empty string');
+
+        $this->validator->validate($request, DateOnlyValidationDto::class);
+    }
+
+    public function testValidateThrowsExceptionForWrongDateFormat(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'date' => '10-03-2026',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "date" expects a date in Y-m-d format');
+
+        $this->validator->validate($request, DateOnlyValidationDto::class);
     }
 
     public function testValidateWithMultipleErrors(): void
@@ -141,13 +197,10 @@ final class RequestValidatorServiceTest extends TestCase
 
         try {
             $this->validator->validate($request, MultiFieldValidationDto::class);
-            $this->fail('Expected RequestValidationException was not thrown');
-        } catch (RequestValidationException $e) {
+            $this->fail('Expected BadRequestException was not thrown');
+        } catch (BadRequestException $e) {
             $message = $e->getMessage();
-            $this->assertStringContainsString('Field "id" must be an integer', $message);
-            $this->assertStringContainsString('Field "name" must be a string', $message);
-            $this->assertStringContainsString('Field "enabled" must be a boolean', $message);
-            $this->assertStringContainsString("\n", $message); // Check errors are separated by newline
+            $this->assertStringContainsString('param "id" expects int, got string', $message);
         }
     }
 
@@ -213,6 +266,70 @@ final class NullableValidationDto
     {
         return $this->description;
     }
+
+    // description is required + nullable in schema → schema-level nullable
+    public function isDescriptionRequired(): bool
+    {
+        return true;
+    }
+}
+
+final class OptionalNotNullableDto
+{
+    private int $id;
+    private string $name;
+    private ?string $optional;
+
+    public function __construct(int $id, string $name, ?string $optional)
+    {
+        $this->id = $id;
+        $this->name = $name;
+        $this->optional = $optional;
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getOptional(): ?string
+    {
+        return $this->optional;
+    }
+
+    // optional is not required and not schema-nullable → explicit null should fail
+    public function isOptionalRequired(): bool
+    {
+        return false;
+    }
+}
+
+final class DateOnlyValidationDto
+{
+    private DateTimeImmutable $date;
+
+    public function __construct(DateTimeImmutable $date)
+    {
+        $this->date = $date;
+    }
+
+    /**
+     * Expected format: Y-m-d
+     */
+    public function getDate(): string
+    {
+        return $this->date->format('Y-m-d');
+    }
+
+    public function isDateRequired(): bool
+    {
+        return true;
+    }
 }
 
 final class BooleanValidationDto
@@ -255,9 +372,17 @@ final class DateTimeValidationDto
         $this->createdAt = $createdAt;
     }
 
-    public function getCreatedAt(): DateTimeImmutable
+    /**
+     * Expected format: yyyy-MM-dd HH:mm:ss
+     */
+    public function getCreatedAt(): string
     {
-        return $this->createdAt;
+        return $this->createdAt->format('c');
+    }
+
+    public function isCreatedAtRequired(): bool
+    {
+        return true;
     }
 }
 
