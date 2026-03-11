@@ -209,6 +209,42 @@ final class ResponseServiceTest extends TestCase
             }
         }
     }
+
+    public function testCreateResponseSkipsStaticDiscriminatorMetadata(): void
+    {
+        $dto = new DiscriminatorLikeResponseDto(123, 'discriminator1');
+
+        $response = $this->service->createResponse($dto);
+
+        $content = json_decode((string) $response->getContent(), true);
+        $this->assertSame(123, $content['id']);
+        $this->assertSame('discriminator1', $content['type']);
+        $this->assertArrayNotHasKey('discriminatorPropertyName', $content);
+        $this->assertArrayNotHasKey('discriminatorMapping', $content);
+    }
+
+    public function testCreateResponseValidatesOpenApiConstraints(): void
+    {
+        $dto = new ConstrainedResponseDto(1, 'not-an-email');
+
+        try {
+            $this->service->createResponse($dto);
+            $this->fail('Expected RuntimeException was not thrown.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('field "amount" must be greater than 1', $e->getMessage());
+            $this->assertStringContainsString('field "email" must match format email', $e->getMessage());
+        }
+    }
+
+    public function testCreateResponseSupportsUnionGetterReturnType(): void
+    {
+        $dto = new UnionGetterResponseDto(42);
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string) $response->getContent(), true);
+
+        $this->assertSame(42, $content['id']);
+    }
 }
 
 // Test DTOs
@@ -323,3 +359,68 @@ final class FileWithExtraDataResponseDto
     public function getId(): int { return $this->id; }
     public function getFile(): UploadedFile { return $this->file; }
 }
+
+final class DiscriminatorLikeResponseDto
+{
+    public function __construct(
+        private int $id,
+        private string $type,
+    ) {
+    }
+
+    public function getId(): int { return $this->id; }
+    public function getType(): string { return $this->type; }
+
+    public static function getDiscriminatorPropertyName(): string
+    {
+        return 'type';
+    }
+
+    /** @return array<string, class-string> */
+    public static function getDiscriminatorMapping(): array
+    {
+        return [
+            'discriminator1' => self::class,
+        ];
+    }
+}
+
+final class ConstrainedResponseDto
+{
+    public function __construct(
+        private float $amount,
+        private string $email,
+    ) {
+    }
+
+    public function getAmount(): float { return $this->amount; }
+    public function getEmail(): string { return $this->email; }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getOpenApiConstraints(): array
+    {
+        return [
+            'amount' => [
+                'minimum' => 1,
+                'exclusiveMinimum' => true,
+            ],
+            'email' => [
+                'format' => 'email',
+            ],
+        ];
+    }
+}
+
+final class UnionGetterResponseDto
+{
+    public function __construct(
+        private string|int $id,
+    ) {
+    }
+
+    public function getId(): string|int
+    {
+        return $this->id;
+    }
+}
+

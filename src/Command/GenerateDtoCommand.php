@@ -13,8 +13,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\Yaml\Exception\ParseException;
-use Symfony\Component\Yaml\Yaml;
 
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
 final class GenerateDtoCommand extends Command
@@ -52,23 +50,11 @@ final class GenerateDtoCommand extends Command
             return Command::FAILURE;
         }
 
-        try {
-            $data = Yaml::parseFile($file);
-        } catch (ParseException $exception) {
-            $io->error(sprintf('YAML parse error: %s', $exception->getMessage()));
-            return Command::FAILURE;
-        }
-
-        if (!is_array($data)) {
-            $io->error('OpenAPI root must be an object/array.');
-            return Command::FAILURE;
-        }
-
         $outputDirectory = $this->resolveOutputDirectory($directory);
         $namespace = $this->directoryToNamespace($directory);
 
         try {
-            $count = $this->dtoGenerator->generateFromArray($data, $outputDirectory, $namespace);
+            $count = $this->dtoGenerator->generateFromFile($file, $outputDirectory, $namespace);
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
             return Command::FAILURE;

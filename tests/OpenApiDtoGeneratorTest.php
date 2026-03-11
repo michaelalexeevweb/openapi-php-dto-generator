@@ -292,6 +292,17 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $animalContent = file_get_contents($animalFile);
         $this->assertStringContainsString('class Animal', $animalContent);
         $this->assertStringNotContainsString('final class', $animalContent);
+        $this->assertStringContainsString('private AnimalAnimalType $animalType', $animalContent);
+        $this->assertStringContainsString('public static function getDiscriminatorPropertyName(): string', $animalContent);
+        $this->assertStringContainsString("return 'animalType';", $animalContent);
+        $this->assertStringContainsString("'dog' => Dog::class", $animalContent);
+        $this->assertStringContainsString("'cat' => Cat::class", $animalContent);
+
+        $animalTypeEnum = $this->outputDirectory . '/AnimalAnimalType.php';
+        $this->assertFileExists($animalTypeEnum);
+        $animalTypeEnumContent = file_get_contents($animalTypeEnum);
+        $this->assertStringContainsString("case DOG = 'dog';", $animalTypeEnumContent);
+        $this->assertStringContainsString("case CAT = 'cat';", $animalTypeEnumContent);
 
         // Check Dog extends Animal
         $dogFile = $this->outputDirectory . '/Dog.php';
@@ -306,6 +317,194 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $catContent = file_get_contents($catFile);
         $this->assertStringContainsString('extends Animal', $catContent);
         $this->assertStringContainsString('private string $meow', $catContent);
+    }
+
+    public function testDiscriminatorDuplicateMappingTargetThrowsException(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'test', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'BaseAnimal' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'kind' => ['type' => 'string'],
+                        ],
+                        'discriminator' => [
+                            'propertyName' => 'kind',
+                            'mapping' => [
+                                'dog' => '#/components/schemas/DogAnimal',
+                                'dogAlias' => '#/components/schemas/DogAnimal',
+                            ],
+                        ],
+                    ],
+                    'DogAnimal' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/BaseAnimal'],
+                            [
+                                'type' => 'object',
+                                'properties' => [
+                                    'bark' => ['type' => 'string'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('duplicate target "DogAnimal"');
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+    }
+
+    public function testGeneratesOpenApiConstraintsMetadata(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'test', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'ConstraintSample' => [
+                        'type' => 'object',
+                        'required' => ['email', 'amount', 'tags'],
+                        'properties' => [
+                            'email' => [
+                                'type' => 'string',
+                                'format' => 'email',
+                                'minLength' => 3,
+                            ],
+                            'amount' => [
+                                'type' => 'number',
+                                'minimum' => 1,
+                                'exclusiveMinimum' => true,
+                                'multipleOf' => 2.5,
+                            ],
+                            'tags' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string'],
+                                'minItems' => 1,
+                                'maxItems' => 10,
+                                'uniqueItems' => true,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/ConstraintSample.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('public static function getOpenApiConstraints(): array', $content);
+        $this->assertStringContainsString('Constraints: minLength=3, format=email', $content);
+        $this->assertStringContainsString("'format' => 'email'", $content);
+        $this->assertStringContainsString("'minimum' => 1", $content);
+        $this->assertStringContainsString("'exclusiveMinimum' => true", $content);
+        $this->assertStringContainsString("'multipleOf' => 2.5", $content);
+        $this->assertStringContainsString("'uniqueItems' => true", $content);
+    }
+
+    public function testGeneratesUnionTypeForPropertyOneOf(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'test', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'UnionSample' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => [
+                                'oneOf' => [
+                                    ['type' => 'string', 'format' => 'uuid'],
+                                    ['type' => 'integer', 'minimum' => 10, 'maximum' => 100],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/UnionSample.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string|int $id', $content);
+        $this->assertStringContainsString('Constraints: oneOf=(type=string, format=uuid) | (type=integer, minimum=10, maximum=100)', $content);
+        $this->assertStringContainsString('public function __construct(', $content);
+        $this->assertStringContainsString('string|int $id,', $content);
+        $this->assertStringContainsString('public function getId(): string|int', $content);
+    }
+
+    public function testGeneratesExternalRefSchemasIntoSubdirectoryAndImportsThem(): void
+    {
+        $count = $this->generator->generateFromFile(
+            __DIR__ . '/fixtures/external-ref/root.yaml',
+            $this->outputDirectory,
+            'TestNamespace'
+        );
+
+        $this->assertGreaterThanOrEqual(2, $count);
+
+        $externalFile = $this->outputDirectory . '/common/Test.php';
+        $this->assertFileExists($externalFile);
+        $externalContent = file_get_contents($externalFile);
+        $this->assertStringContainsString('namespace TestNamespace\\Common;', $externalContent);
+        $this->assertStringContainsString('class Test', $externalContent);
+
+        $localFile = $this->outputDirectory . '/LocalResponse.php';
+        $this->assertFileExists($localFile);
+        $localContent = file_get_contents($localFile);
+        $this->assertStringContainsString('namespace TestNamespace;', $localContent);
+        $this->assertStringContainsString('use TestNamespace\\Common\\Test;', $localContent);
+        $this->assertStringContainsString('private Test $test', $localContent);
+    }
+
+    public function testAllOfLastTypeWinsForProperty(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'test', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'AllOfSample' => [
+                        'type' => 'object',
+                        'required' => ['value'],
+                        'properties' => [
+                            'value' => [
+                                'allOf' => [
+                                    ['type' => 'integer'],
+                                    ['type' => 'string'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/AllOfSample.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string $value', $content);
+        $this->assertStringNotContainsString('private int $value', $content);
     }
 
     public function testQueryParametersWithDefaults(): void

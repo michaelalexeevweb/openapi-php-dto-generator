@@ -7,12 +7,20 @@ namespace OpenapiPhpDtoGenerator\Service;
 use DateTimeImmutable;
 use ReflectionClass;
 use ReflectionNamedType;
+use ReflectionUnionType;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
 final class RequestDeserializerService
 {
+    private OpenApiConstraintValidator $constraintValidator;
+
+    public function __construct(?OpenApiConstraintValidator $constraintValidator = null)
+    {
+        $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator();
+    }
+
     /**
      * @template T
      * @param class-string<T> $dtoClass
@@ -31,43 +39,70 @@ final class RequestDeserializerService
         $args = [];
         $providedParams = [];
         $errors = [];
+        $constraintsByField = $this->resolveOpenApiConstraints($reflection);
 
         foreach ($params as $param) {
             $paramName = $param->getName();
             $paramType = $param->getType();
 
-            if (!$paramType instanceof ReflectionNamedType) {
+            $allowsNull = $paramType?->allowsNull() ?? false;
+            $schemaAllowsNull = $this->resolveSchemaAllowsNull($reflection, $paramName, $allowsNull);
+
+            $typeNames = [];
+            if ($paramType instanceof ReflectionNamedType) {
+                $typeNames[] = $paramType->getName();
+            } elseif ($paramType instanceof ReflectionUnionType) {
+                foreach ($paramType->getTypes() as $unionType) {
+                    if (!$unionType instanceof ReflectionNamedType) {
+                        continue;
+                    }
+                    if ($unionType->getName() === 'null') {
+                        continue;
+                    }
+                    $typeNames[] = $unionType->getName();
+                }
+            } else {
                 throw new RuntimeException(sprintf('Parameter $%s in %s has unsupported type.', $paramName, $dtoClass));
             }
 
-            $typeName = $paramType->getName();
-            $allowsNull = $paramType->allowsNull();
-            $arrayItemType = $typeName === 'array' ? $this->resolveArrayItemType($reflection, $paramName) : null;
+            if ($typeNames === []) {
+                $typeNames[] = 'mixed';
+            }
 
-            // Determine if the schema itself declares this field as nullable.
-            // Optional (non-required) fields get ?Type in PHP, but that doesn't mean
-            // an explicit JSON null is valid — only truly schema-nullable fields allow it.
-            $schemaAllowsNull = $this->resolveSchemaAllowsNull($reflection, $paramName, $allowsNull);
-
-            // Read temporal format if the field is a date/time type
-            $temporalFormat = $typeName === DateTimeImmutable::class
-                ? $this->resolveTemporalFormat($reflection, $paramName)
-                : null;
+            $arrayItemType = in_array('array', $typeNames, true) ? $this->resolveArrayItemType($reflection, $paramName) : null;
 
             // Try to get value from request (body, query, path, files)
             $wasProvided = false;
             try {
-                $value = $this->extractValueFromRequest(
-                    $request,
-                    $paramName,
-                    $typeName,
-                    $allowsNull,
-                    $wasProvided,
-                    $arrayItemType,
-                    $paramName,
-                    $schemaAllowsNull,
-                    $temporalFormat,
-                );
+                if (count($typeNames) === 1) {
+                    $singleType = $typeNames[0];
+                    $temporalFormat = $singleType === DateTimeImmutable::class
+                        ? $this->resolveTemporalFormat($reflection, $paramName)
+                        : null;
+
+                    $value = $this->extractValueFromRequest(
+                        $request,
+                        $paramName,
+                        $singleType,
+                        $allowsNull,
+                        $wasProvided,
+                        $arrayItemType,
+                        $paramName,
+                        $schemaAllowsNull,
+                        $temporalFormat,
+                    );
+                } else {
+                    $value = $this->extractUnionValueFromRequest(
+                        $request,
+                        $paramName,
+                        $typeNames,
+                        $allowsNull,
+                        $wasProvided,
+                        $arrayItemType,
+                        $schemaAllowsNull,
+                        $reflection,
+                    );
+                }
             } catch (RuntimeException $e) {
                 // Collect errors and use null as placeholder so we can continue validating other params
                 foreach (explode("\n", $e->getMessage()) as $msg) {
@@ -78,6 +113,14 @@ final class RequestDeserializerService
             }
 
             $args[] = $value;
+
+            $constraints = $constraintsByField[$paramName] ?? null;
+            if ($wasProvided && is_array($constraints) && $constraints !== []) {
+                foreach ($this->constraintValidator->validate(sprintf('param "%s"', $paramName), $value, $constraints) as $constraintError) {
+                    $errors[] = $constraintError;
+                }
+            }
+
             if ($wasProvided) {
                 $providedParams[] = $paramName;
             }
@@ -151,6 +194,94 @@ final class RequestDeserializerService
         }
 
         throw new RuntimeException(sprintf('Required parameter "%s" not found in request.', $paramName));
+    }
+
+    /**
+     * @param array<int, string> $typeNames
+     */
+    private function extractUnionValueFromRequest(
+        Request $request,
+        string $paramName,
+        array $typeNames,
+        bool $allowsNull,
+        bool &$wasProvided,
+        ?string $arrayItemType,
+        bool $schemaAllowsNull,
+        ReflectionClass $dtoReflection,
+    ): mixed {
+        $source = '';
+        $rawValue = $this->extractRawValueFromRequest($request, $paramName, $wasProvided, $source);
+
+        if (!$wasProvided) {
+            if ($allowsNull) {
+                return null;
+            }
+
+            throw new RuntimeException(sprintf('Required parameter "%s" not found in request.', $paramName));
+        }
+
+        $errors = [];
+        foreach ($typeNames as $typeName) {
+            $temporalFormat = $typeName === DateTimeImmutable::class
+                ? $this->resolveTemporalFormat($dtoReflection, $paramName)
+                : null;
+
+            try {
+                return $this->castValue(
+                    $rawValue,
+                    $paramName,
+                    $typeName,
+                    false,
+                    $source,
+                    $arrayItemType,
+                    $paramName,
+                    $schemaAllowsNull,
+                    $temporalFormat,
+                );
+            } catch (RuntimeException $e) {
+                $errors[] = $e->getMessage();
+            }
+        }
+
+        throw new RuntimeException(implode("\n", array_values(array_unique($errors))));
+    }
+
+    private function extractRawValueFromRequest(Request $request, string $paramName, bool &$wasProvided, string &$source): mixed
+    {
+        $bodyData = $this->getBodyData($request);
+        if (array_key_exists($paramName, $bodyData)) {
+            $wasProvided = true;
+            $source = 'json';
+            return $bodyData[$paramName];
+        }
+
+        if ($request->query->has($paramName)) {
+            $wasProvided = true;
+            $source = 'query';
+            return $request->query->get($paramName);
+        }
+
+        if ($request->attributes->has($paramName)) {
+            $wasProvided = true;
+            $source = 'path';
+            return $request->attributes->get($paramName);
+        }
+
+        if ($request->files->has($paramName)) {
+            $wasProvided = true;
+            $source = 'files';
+            return $request->files->get($paramName);
+        }
+
+        if ($request->request->has($paramName)) {
+            $wasProvided = true;
+            $source = 'form';
+            return $request->request->get($paramName);
+        }
+
+        $wasProvided = false;
+        $source = '';
+        return null;
     }
 
     /**
@@ -348,22 +479,23 @@ final class RequestDeserializerService
             throw new RuntimeException('Expected UploadedFile but got something else.');
         }
 
+        // Handle enums (PHP 8.1+)
+        if (enum_exists($typeName)) {
+            return $this->castToEnum($value, $typeName, $paramPath ?? $paramName);
+        }
+
         // Handle nested DTOs
         if (class_exists($typeName)) {
             if ($value instanceof \stdClass) {
                 $value = $this->stdClassToArray($value);
             }
             if (is_array($value)) {
+                $targetDtoClass = $this->resolveDiscriminatorTargetClass($typeName, $value, $paramPath ?? $paramName) ?? $typeName;
                 // Recursively deserialize nested DTO
                 $nestedRequest = $this->createRequestFromArray($value);
-                return $this->deserialize($nestedRequest, $typeName);
+                return $this->deserialize($nestedRequest, $targetDtoClass);
             }
             throw new RuntimeException(sprintf('Cannot deserialize nested DTO %s from non-array value.', $typeName));
-        }
-
-        // Handle enums (PHP 8.1+)
-        if (enum_exists($typeName)) {
-            return $this->castToEnum($value, $typeName);
         }
 
         throw new RuntimeException(sprintf('Unsupported type: %s', $typeName));
@@ -376,7 +508,7 @@ final class RequestDeserializerService
         }
 
         if (enum_exists($arrayItemType)) {
-            return $this->castToEnum($itemValue, $arrayItemType);
+            return $this->castToEnum($itemValue, $arrayItemType, $itemPath);
         }
 
         if (class_exists($arrayItemType)) {
@@ -588,7 +720,7 @@ final class RequestDeserializerService
         };
     }
 
-    private function castToEnum(mixed $value, string $enumClass): object
+    private function castToEnum(mixed $value, string $enumClass, ?string $paramPath = null): object
     {
         $reflection = new ReflectionClass($enumClass);
         $cases = $reflection->getMethod('cases')->invoke(null);
@@ -602,7 +734,89 @@ final class RequestDeserializerService
             }
         }
 
+        $allowed = [];
+        foreach ($cases as $case) {
+            $allowed[] = property_exists($case, 'value') ? (string) $case->value : $case->name;
+        }
+
+        if ($paramPath !== null) {
+            throw new RuntimeException(sprintf(
+                'param "%s" expects enum %s, got "%s". Allowed: %s',
+                $paramPath,
+                $enumClass,
+                (string) $value,
+                implode(', ', $allowed),
+            ));
+        }
+
         throw new RuntimeException(sprintf('Invalid enum value "%s" for %s.', (string) $value, $enumClass));
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function resolveOpenApiConstraints(ReflectionClass $reflection): array
+    {
+        $className = $reflection->getName();
+        if (!method_exists($className, 'getOpenApiConstraints')) {
+            return [];
+        }
+
+        $constraints = $className::getOpenApiConstraints();
+        return is_array($constraints) ? $constraints : [];
+    }
+
+    /**
+     * @param array<string, mixed> $value
+     */
+    private function resolveDiscriminatorTargetClass(string $baseClass, array $value, string $paramPath): ?string
+    {
+        if (!method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists($baseClass, 'getDiscriminatorMapping')) {
+            return null;
+        }
+
+        $discriminatorProperty = $baseClass::getDiscriminatorPropertyName();
+        $mapping = $baseClass::getDiscriminatorMapping();
+
+        if (!is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array($mapping) || $mapping === []) {
+            throw new RuntimeException(sprintf('DTO %s has invalid discriminator metadata.', $baseClass));
+        }
+
+        $fullDiscriminatorPath = $paramPath . '.' . $discriminatorProperty;
+
+        if (!array_key_exists($discriminatorProperty, $value)) {
+            throw new RuntimeException(sprintf('param "%s" wasn\'t provided', $fullDiscriminatorPath));
+        }
+
+        $discriminatorValue = $value[$discriminatorProperty];
+        if (!is_string($discriminatorValue) && !is_int($discriminatorValue)) {
+            throw new RuntimeException(sprintf(
+                'param "%s" expects string|int discriminator value, got %s',
+                $fullDiscriminatorPath,
+                $this->getTypeString($discriminatorValue),
+            ));
+        }
+
+        $discriminatorKey = (string) $discriminatorValue;
+        if (!array_key_exists($discriminatorKey, $mapping)) {
+            throw new RuntimeException(sprintf(
+                'param "%s" has invalid discriminator value "%s". Allowed: %s',
+                $fullDiscriminatorPath,
+                $discriminatorKey,
+                implode(', ', array_keys($mapping)),
+            ));
+        }
+
+        $targetClass = $mapping[$discriminatorKey];
+        if (!is_string($targetClass) || !class_exists($targetClass)) {
+            throw new RuntimeException(sprintf('Discriminator mapping for "%s" points to unknown class "%s".', $fullDiscriminatorPath, (string) $targetClass));
+        }
+
+        if (!is_a($targetClass, $baseClass, true)) {
+            throw new RuntimeException(sprintf('Discriminator mapping class %s must extend or implement %s.', $targetClass, $baseClass));
+        }
+
+        return $targetClass;
     }
 
     /**

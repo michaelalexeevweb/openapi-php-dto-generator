@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Service;
 
 use RuntimeException;
+use Symfony\Component\Yaml\Yaml;
 
 final class OpenApiDtoGeneratorService
 {
@@ -20,15 +21,64 @@ final class OpenApiDtoGeneratorService
     /** @var array<string, array<int, string>> */
     private array $unionInterfacesByClass = [];
 
+    /** @var array<string, array{propertyName: string, mapping: array<string, string>}> */
+    private array $discriminatorSchemas = [];
+
+    /** @var array<string, string|null> */
+    private array $schemaSourceFiles = [];
+
+    /** @var array<string, string> */
+    private array $schemaNamespaces = [];
+
+    /** @var array<string, string> */
+    private array $schemaOutputDirectories = [];
+
+    /** @var array<string, string|null> */
+    private array $enumSourceFiles = [];
+
+    /** @var array<string, string> */
+    private array $enumNamespaces = [];
+
+    /** @var array<string, string> */
+    private array $enumOutputDirectories = [];
+
+    /** @var array<string, true> */
+    private array $loadedExternalFiles = [];
+
+    private ?string $rootSpecFile = null;
+    private string $baseOutputDirectory = '';
+    private string $baseNamespace = '';
+    private string $baseSpecDirectory = '';
+
+    public function generateFromFile(string $filePath, string $outputDirectory, string $namespace): int
+    {
+        if (!is_file($filePath)) {
+            throw new RuntimeException(sprintf('File not found: %s', $filePath));
+        }
+
+        $data = Yaml::parseFile($filePath);
+        if (!is_array($data)) {
+            throw new RuntimeException('OpenAPI root must be an object/array.');
+        }
+
+        $realFilePath = realpath($filePath);
+        if ($realFilePath === false) {
+            throw new RuntimeException(sprintf('Cannot resolve real path for file: %s', $filePath));
+        }
+
+        $this->initializeGeneration($outputDirectory, $namespace, $realFilePath);
+        $this->registerDocumentSchemas($data, $realFilePath, true);
+        $this->scanExternalSchemaRefs($data, $realFilePath);
+
+        return $this->finalizeGeneration();
+    }
+
     /**
      * @param array<mixed> $openApi
      */
     public function generateFromArray(array $openApi, string $outputDirectory, string $namespace): int
     {
-        $this->dtoSchemas = [];
-        $this->enumSchemas = [];
-        $this->parentClasses = [];
-        $this->unionInterfacesByClass = [];
+        $this->initializeGeneration($outputDirectory, $namespace, null);
 
         $schemas = $this->extractSchemas($openApi);
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
@@ -47,33 +97,58 @@ final class OpenApiDtoGeneratorService
             }
 
             $className = $this->normalizeClassName((string) $schemaName);
-            $this->registerSchema($className, $schemaDefinition);
+            $this->registerSchema($className, $schemaDefinition, null);
         }
 
+        return $this->finalizeGeneration();
+    }
+
+    private function initializeGeneration(string $outputDirectory, string $namespace, ?string $rootSpecFile): void
+    {
+        $this->dtoSchemas = [];
+        $this->enumSchemas = [];
+        $this->parentClasses = [];
+        $this->unionInterfacesByClass = [];
+        $this->discriminatorSchemas = [];
+        $this->schemaSourceFiles = [];
+        $this->schemaNamespaces = [];
+        $this->schemaOutputDirectories = [];
+        $this->enumSourceFiles = [];
+        $this->enumNamespaces = [];
+        $this->enumOutputDirectories = [];
+        $this->loadedExternalFiles = [];
+        $this->rootSpecFile = $rootSpecFile;
+        $this->baseOutputDirectory = $outputDirectory;
+        $this->baseNamespace = $namespace;
+        $this->baseSpecDirectory = $rootSpecFile !== null ? dirname($rootSpecFile) : '';
+    }
+
+    private function finalizeGeneration(): int
+    {
         $this->expandNestedSchemas();
         $this->detectParentClasses();
         $this->detectUnionInterfaces();
-        $this->prepareOutputDirectory($outputDirectory);
+        $this->prepareOutputDirectory($this->baseOutputDirectory);
 
         $generatedCount = 0;
 
         foreach ($this->dtoSchemas as $className => $schemaDefinition) {
             $schemaMetadata = $this->analyzeSchema($className, $schemaDefinition);
+            $namespace = $this->schemaNamespaces[$className] ?? $this->baseNamespace;
+            $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
             $classCode = $this->renderDtoClass($namespace, $className, $schemaMetadata);
-            $filePath = rtrim(
-                    $outputDirectory,
-                    DIRECTORY_SEPARATOR
-                ) . DIRECTORY_SEPARATOR . $className . '.php';
+            $this->ensureDirectoryExists($outputDirectory);
+            $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . '.php';
             file_put_contents($filePath, $classCode);
             $generatedCount++;
         }
 
         foreach ($this->enumSchemas as $enumName => $enumDefinition) {
+            $namespace = $this->enumNamespaces[$enumName] ?? $this->baseNamespace;
+            $outputDirectory = $this->enumOutputDirectories[$enumName] ?? $this->baseOutputDirectory;
             $enumCode = $this->renderEnum($namespace, $enumName, $enumDefinition['type'], $enumDefinition['values']);
-            $filePath = rtrim(
-                    $outputDirectory,
-                    DIRECTORY_SEPARATOR
-                ) . DIRECTORY_SEPARATOR . $enumName . '.php';
+            $this->ensureDirectoryExists($outputDirectory);
+            $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $enumName . '.php';
             file_put_contents($filePath, $enumCode);
             $generatedCount++;
         }
@@ -82,15 +157,46 @@ final class OpenApiDtoGeneratorService
     }
 
     /**
+     * @param array<mixed> $openApi
+     */
+    private function registerDocumentSchemas(array $openApi, ?string $sourceFile, bool $includeInlineSchemas): void
+    {
+        $schemas = $this->extractSchemas($openApi);
+        if ($includeInlineSchemas) {
+            foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
+                $schemas[$name] = $schema;
+            }
+            foreach ($this->extractInlineRequestSchemas($openApi) as $name => $schema) {
+                $schemas[$name] = $schema;
+            }
+            foreach ($this->extractParameterSchemas($openApi) as $name => $schema) {
+                $schemas[$name] = $schema;
+            }
+        }
+
+        foreach ($schemas as $schemaName => $schemaDefinition) {
+            if (!is_array($schemaDefinition)) {
+                continue;
+            }
+
+            $className = $this->normalizeClassName((string) $schemaName);
+            $this->registerSchema($className, $schemaDefinition, $sourceFile);
+        }
+    }
+
+    /**
      * @param array<string, mixed> $schemaDefinition
      */
-    private function registerSchema(string $className, array $schemaDefinition): void
+    private function registerSchema(string $className, array $schemaDefinition, ?string $sourceFile): void
     {
+        $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
+        $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
+
         if ($this->isEnumSchema($schemaDefinition)) {
             $type = $this->resolveEnumBackingType($schemaDefinition);
             /** @var array<int, string|int> $values */
             $values = $schemaDefinition['enum'];
-            $this->registerEnum($className, $type, $values);
+            $this->registerEnum($className, $type, $values, $sourceFile);
             return;
         }
 
@@ -98,10 +204,211 @@ final class OpenApiDtoGeneratorService
             if ($this->dtoSchemas[$className] != $schemaDefinition) {
                 throw new RuntimeException(sprintf('DTO schema name collision for %s.', $className));
             }
+
+             if (($this->schemaNamespaces[$className] ?? $namespace) !== $namespace) {
+                throw new RuntimeException(sprintf('DTO schema namespace collision for %s.', $className));
+            }
             return;
         }
 
         $this->dtoSchemas[$className] = $schemaDefinition;
+        $this->schemaSourceFiles[$className] = $sourceFile;
+        $this->schemaNamespaces[$className] = $namespace;
+        $this->schemaOutputDirectories[$className] = $outputDirectory;
+        $this->collectDiscriminatorMetadata($className, $schemaDefinition);
+    }
+
+    private function resolveNamespaceForSourceFile(?string $sourceFile): string
+    {
+        if ($sourceFile === null || $this->rootSpecFile === null || $sourceFile === $this->rootSpecFile) {
+            return $this->baseNamespace;
+        }
+
+        $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
+        if ($relativeDirectory === '') {
+            return $this->baseNamespace;
+        }
+
+        $segments = array_values(array_filter(explode('/', $relativeDirectory), static fn (string $segment): bool => $segment !== '' && $segment !== '.'));
+        if ($segments === []) {
+            return $this->baseNamespace;
+        }
+
+        $namespaceSuffix = implode('\\', array_map(fn (string $segment): string => $this->normalizeClassName($segment), $segments));
+        return $this->baseNamespace . '\\' . $namespaceSuffix;
+    }
+
+    private function resolveOutputDirectoryForSourceFile(?string $sourceFile): string
+    {
+        if ($sourceFile === null || $this->rootSpecFile === null || $sourceFile === $this->rootSpecFile) {
+            return $this->baseOutputDirectory;
+        }
+
+        $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
+        if ($relativeDirectory === '') {
+            return $this->baseOutputDirectory;
+        }
+
+        return rtrim($this->baseOutputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativeDirectory);
+    }
+
+    private function resolveRelativeSpecDirectory(string $sourceFile): string
+    {
+        if ($this->baseSpecDirectory === '') {
+            return '';
+        }
+
+        $relativeFile = $this->makeRelativePath($this->baseSpecDirectory, $sourceFile);
+        $relativeDirectory = dirname($relativeFile);
+
+        return $relativeDirectory === '.' ? '' : trim(str_replace('\\', '/', $relativeDirectory), '/');
+    }
+
+    private function makeRelativePath(string $fromDirectory, string $toPath): string
+    {
+        $fromParts = array_values(array_filter(explode('/', str_replace('\\', '/', rtrim($fromDirectory, '/'))), static fn (string $part): bool => $part !== ''));
+        $toParts = array_values(array_filter(explode('/', str_replace('\\', '/', $toPath)), static fn (string $part): bool => $part !== ''));
+
+        $length = min(count($fromParts), count($toParts));
+        $commonLength = 0;
+        while ($commonLength < $length && $fromParts[$commonLength] === $toParts[$commonLength]) {
+            $commonLength++;
+        }
+
+        $up = array_fill(0, count($fromParts) - $commonLength, '..');
+        $down = array_slice($toParts, $commonLength);
+        $relativeParts = array_merge($up, $down);
+
+        return $relativeParts === [] ? basename($toPath) : implode('/', $relativeParts);
+    }
+
+    /**
+     * @param array<mixed> $node
+     */
+    private function scanExternalSchemaRefs(array $node, ?string $currentSourceFile): void
+    {
+        foreach ($node as $key => $value) {
+            if ($key === '$ref' && is_string($value)) {
+                $this->ensureSchemaRefRegistered($value, $currentSourceFile);
+                continue;
+            }
+
+            if (is_array($value)) {
+                $this->scanExternalSchemaRefs($value, $currentSourceFile);
+            }
+        }
+    }
+
+    private function ensureSchemaRefRegistered(string $ref, ?string $currentSourceFile): void
+    {
+        if (str_starts_with($ref, '#/components/schemas/')) {
+            return;
+        }
+
+        $resolved = $this->resolveExternalSchemaPointer($ref, $currentSourceFile);
+        if ($resolved === null) {
+            return;
+        }
+
+        [$externalFile] = $resolved;
+        $this->loadExternalDocument($externalFile);
+    }
+
+    /**
+     * @return array{0: string, 1: string}|null
+     */
+    private function resolveExternalSchemaPointer(string $ref, ?string $currentSourceFile): ?array
+    {
+        if ($currentSourceFile === null || !str_contains($ref, '#/components/schemas/')) {
+            return null;
+        }
+
+        [$filePart, $pointerPart] = explode('#', $ref, 2) + [1 => ''];
+        $filePart = rtrim($filePart, '/');
+        if ($filePart === '') {
+            return null;
+        }
+
+        $absoluteFile = realpath(dirname($currentSourceFile) . DIRECTORY_SEPARATOR . $filePart);
+        if ($absoluteFile === false) {
+            throw new RuntimeException(sprintf('Referenced OpenAPI file not found: %s', $ref));
+        }
+
+        return [$absoluteFile, '#'.$pointerPart];
+    }
+
+    private function loadExternalDocument(string $filePath): void
+    {
+        if (isset($this->loadedExternalFiles[$filePath])) {
+            return;
+        }
+
+        $this->loadedExternalFiles[$filePath] = true;
+        $data = Yaml::parseFile($filePath);
+        if (!is_array($data)) {
+            throw new RuntimeException(sprintf('OpenAPI root must be an object/array in %s.', $filePath));
+        }
+
+        $this->registerDocumentSchemas($data, $filePath, false);
+        $this->scanExternalSchemaRefs($data, $filePath);
+    }
+
+    /**
+     * @param array<string, mixed> $schemaDefinition
+     */
+    private function collectDiscriminatorMetadata(string $className, array $schemaDefinition): void
+    {
+        $discriminator = $schemaDefinition['discriminator'] ?? null;
+        if (!is_array($discriminator)) {
+            return;
+        }
+
+        $propertyName = $discriminator['propertyName'] ?? null;
+        $mapping = $discriminator['mapping'] ?? null;
+
+        if (!is_string($propertyName) || trim($propertyName) === '') {
+            throw new RuntimeException(sprintf('Discriminator propertyName must be a non-empty string in %s.', $className));
+        }
+
+        if (!is_array($mapping) || $mapping === []) {
+            throw new RuntimeException(sprintf('Discriminator mapping must be a non-empty map in %s.', $className));
+        }
+
+        $normalizedMapping = [];
+        $targetToSource = [];
+
+        foreach ($mapping as $mappingValue => $ref) {
+            if (!is_string($mappingValue) || $mappingValue === '') {
+                throw new RuntimeException(sprintf('Discriminator mapping key must be a non-empty string in %s.', $className));
+            }
+
+            if (!is_string($ref)) {
+                throw new RuntimeException(sprintf('Discriminator mapping value for "%s" in %s must be a schema $ref string.', $mappingValue, $className));
+            }
+
+            $targetClass = $this->schemaRefToClassName($ref, $this->getSchemaSourceFile($className));
+            if ($targetClass === 'mixed') {
+                throw new RuntimeException(sprintf('Discriminator mapping value for "%s" in %s must reference #/components/schemas/*.', $mappingValue, $className));
+            }
+
+            if (isset($targetToSource[$targetClass])) {
+                throw new RuntimeException(sprintf(
+                    'Discriminator mapping in %s has duplicate target "%s" for values "%s" and "%s".',
+                    $className,
+                    $targetClass,
+                    $targetToSource[$targetClass],
+                    $mappingValue,
+                ));
+            }
+
+            $targetToSource[$targetClass] = $mappingValue;
+            $normalizedMapping[$mappingValue] = $targetClass;
+        }
+
+        $this->discriminatorSchemas[$className] = [
+            'propertyName' => $propertyName,
+            'mapping' => $normalizedMapping,
+        ];
     }
 
     private function expandNestedSchemas(): void
@@ -167,7 +474,7 @@ final class OpenApiDtoGeneratorService
 
     private function detectParentClasses(): void
     {
-        foreach ($this->dtoSchemas as $schemaDefinition) {
+        foreach ($this->dtoSchemas as $className => $schemaDefinition) {
             if (!isset($schemaDefinition['allOf']) || !is_array($schemaDefinition['allOf'])) {
                 continue;
             }
@@ -177,7 +484,7 @@ final class OpenApiDtoGeneratorService
                     continue;
                 }
 
-                $parentClass = $this->schemaRefToClassName($allOfItem['$ref']);
+                $parentClass = $this->schemaRefToClassName($allOfItem['$ref'], $this->getSchemaSourceFile($className));
                 $this->parentClasses[$parentClass] = true;
             }
         }
@@ -220,7 +527,7 @@ final class OpenApiDtoGeneratorService
             }
 
             if (isset($variant['$ref']) && is_string($variant['$ref'])) {
-                $result[] = $this->schemaRefToClassName($variant['$ref']);
+                $result[] = $this->schemaRefToClassName($variant['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 continue;
             }
 
@@ -230,7 +537,7 @@ final class OpenApiDtoGeneratorService
 
             $suffix = $keyword === 'oneOf' ? 'OneOf' : 'AnyOf';
             $variantClassName = $ownerClassName . $suffix . ($index + 1);
-            $this->registerSchema($variantClassName, $variant);
+            $this->registerSchema($variantClassName, $variant, $this->getSchemaSourceFile($ownerClassName));
             $result[] = $variantClassName;
         }
 
@@ -255,7 +562,8 @@ final class OpenApiDtoGeneratorService
      * @return array{
      *     properties: array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>,
      *     extends: string|null,
-     *     unionTypes: array<string>
+     *     unionTypes: array<string>,
+     *     discriminator: array{propertyName: string, mapping: array<string, string>}|null
      * }
      */
     private function analyzeSchema(string $className, array $schemaDefinition): array
@@ -288,10 +596,10 @@ final class OpenApiDtoGeneratorService
 
                 if (isset($allOfItem['$ref']) && is_string($allOfItem['$ref'])) {
                     if ($useInheritance) {
-                        $extends = $this->schemaRefToClassName($allOfItem['$ref']);
+                        $extends = $this->schemaRefToClassName($allOfItem['$ref'], $this->getSchemaSourceFile($className));
                     } else {
                         // Multiple $refs: collect properties from referenced schema
-                        $refClassName = $this->schemaRefToClassName($allOfItem['$ref']);
+                        $refClassName = $this->schemaRefToClassName($allOfItem['$ref'], $this->getSchemaSourceFile($className));
                         foreach ($this->getSchemaProperties($refClassName) as $property) {
                             $allProperties[] = $property;
                         }
@@ -308,6 +616,7 @@ final class OpenApiDtoGeneratorService
                 'properties' => $allProperties,
                 'extends' => $extends,
                 'unionTypes' => [],
+                'discriminator' => $this->discriminatorSchemas[$className] ?? null,
             ];
         }
 
@@ -318,6 +627,7 @@ final class OpenApiDtoGeneratorService
                 'properties' => [],
                 'extends' => null,
                 'unionTypes' => $unionTypes,
+                'discriminator' => null,
             ];
         }
 
@@ -328,6 +638,7 @@ final class OpenApiDtoGeneratorService
                 'properties' => [],
                 'extends' => null,
                 'unionTypes' => $unionTypes,
+                'discriminator' => null,
             ];
         }
 
@@ -335,6 +646,7 @@ final class OpenApiDtoGeneratorService
             'properties' => $this->extractProperties($schemaDefinition, $className),
             'extends' => null,
             'unionTypes' => [],
+            'discriminator' => $this->discriminatorSchemas[$className] ?? null,
         ];
     }
 
@@ -351,7 +663,7 @@ final class OpenApiDtoGeneratorService
 
     /**
      * @param array<string, mixed> $schemaDefinition
-     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>
+     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints: array<string, mixed>}>
      */
     private function extractProperties(array $schemaDefinition, string $ownerClassName): array
     {
@@ -376,12 +688,15 @@ final class OpenApiDtoGeneratorService
                 continue;
             }
 
+            $propertySchema = $this->applyDiscriminatorPropertyEnumIfNeeded($ownerClassName, $propertyName, $propertySchema);
+
             [$type, $nullableBySchema] = $this->resolvePropertyType($propertySchema, $ownerClassName, $propertyName);
             $isRequired = isset($requiredMap[$propertyName]);
             $nullable = $nullableBySchema || !$isRequired;
             $default = $this->extractDefaultValue($propertySchema, $type);
             $description = $this->extractDescription($propertySchema);
             $temporalFormat = $this->resolveTemporalPhpDocFormat($propertySchema);
+            $constraints = $this->extractValidationConstraints($propertySchema);
 
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
             $isInPath = $paramIn === 'path';
@@ -397,6 +712,7 @@ final class OpenApiDtoGeneratorService
                 'temporalFormat' => $temporalFormat,
                 'inPath' => $isInPath,
                 'inQuery' => $isInQuery,
+                'constraints' => $constraints,
             ];
         }
 
@@ -405,29 +721,90 @@ final class OpenApiDtoGeneratorService
 
     /**
      * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function extractValidationConstraints(array $propertySchema): array
+    {
+        $allowedKeys = [
+            'type',
+            'minimum',
+            'maximum',
+            'exclusiveMinimum',
+            'exclusiveMaximum',
+            'multipleOf',
+            'minLength',
+            'maxLength',
+            'pattern',
+            'minItems',
+            'maxItems',
+            'uniqueItems',
+            'format',
+        ];
+
+        $constraints = [];
+        foreach ($allowedKeys as $key) {
+            if (!array_key_exists($key, $propertySchema)) {
+                continue;
+            }
+
+            $constraints[$key] = $propertySchema[$key];
+        }
+
+        foreach (['oneOf', 'anyOf'] as $unionKey) {
+            $variants = $propertySchema[$unionKey] ?? null;
+            if (!is_array($variants) || $variants === []) {
+                continue;
+            }
+
+            $branchConstraints = [];
+            foreach ($variants as $variant) {
+                if (!is_array($variant)) {
+                    continue;
+                }
+
+                $branchConstraints[] = $this->extractValidationConstraints($variant);
+            }
+
+            if ($branchConstraints !== []) {
+                $constraints[$unionKey] = $branchConstraints;
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function applyDiscriminatorPropertyEnumIfNeeded(string $ownerClassName, string $propertyName, array $propertySchema): array
+    {
+        $discriminator = $this->discriminatorSchemas[$ownerClassName] ?? null;
+        if ($discriminator === null || $discriminator['propertyName'] !== $propertyName) {
+            return $propertySchema;
+        }
+
+        $propertySchema['type'] = 'string';
+        $propertySchema['enum'] = array_keys($discriminator['mapping']);
+
+        return $propertySchema;
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
      * @return array{0: string, 1: bool}
      */
     private function resolvePropertyType(array $propertySchema, string $ownerClassName, string $propertyName): array
     {
-        if (isset($propertySchema['$ref']) && is_string($propertySchema['$ref'])) {
-            $binaryType = $this->resolveBinaryRefType($propertySchema['$ref']);
-            if ($binaryType !== null) {
-                return [$binaryType, false];
-            }
-
-            $temporalType = $this->resolveTemporalRefType($propertySchema['$ref']);
-            if ($temporalType !== null) {
-                return [$temporalType, false];
-            }
-
-            return [$this->schemaRefToClassName($propertySchema['$ref']), false];
-        }
-
         $nullable = (bool) ($propertySchema['nullable'] ?? false);
 
-        // Handle nullable allOf
         if (isset($propertySchema['allOf']) && is_array($propertySchema['allOf'])) {
-            // If allOf has only one $ref, use that type directly
+            $normalizedAllOf = $this->normalizeAllOfPropertySchema($propertySchema);
+            if ($normalizedAllOf !== null) {
+                return $this->resolvePropertyType($normalizedAllOf, $ownerClassName, $propertyName);
+            }
+
+            // Keep legacy allOf behavior for refs/objects: single ref -> ref type, multi-part -> merged DTO.
             if (count($propertySchema['allOf']) === 1 && isset($propertySchema['allOf'][0]['$ref'])) {
                 $binaryType = $this->resolveBinaryRefType((string) $propertySchema['allOf'][0]['$ref']);
                 if ($binaryType !== null) {
@@ -439,14 +816,35 @@ final class OpenApiDtoGeneratorService
                     return [$temporalType, $nullable];
                 }
 
-                $refType = $this->schemaRefToClassName($propertySchema['allOf'][0]['$ref']);
+                $refType = $this->schemaRefToClassName($propertySchema['allOf'][0]['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 return [$refType, $nullable];
             }
 
-            // Multiple allOf elements - create merged DTO
             $mergedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
-            $this->registerSchema($mergedClassName, $propertySchema);
+            $this->registerSchema($mergedClassName, $propertySchema, $this->getSchemaSourceFile($ownerClassName));
             return [$mergedClassName, $nullable];
+        }
+
+        if (isset($propertySchema['oneOf']) && is_array($propertySchema['oneOf'])) {
+            return $this->resolveComposedUnionPropertyType($propertySchema, 'oneOf', $ownerClassName, $propertyName);
+        }
+
+        if (isset($propertySchema['anyOf']) && is_array($propertySchema['anyOf'])) {
+            return $this->resolveComposedUnionPropertyType($propertySchema, 'anyOf', $ownerClassName, $propertyName);
+        }
+
+        if (isset($propertySchema['$ref']) && is_string($propertySchema['$ref'])) {
+            $binaryType = $this->resolveBinaryRefType($propertySchema['$ref']);
+            if ($binaryType !== null) {
+                return [$binaryType, $nullable];
+            }
+
+            $temporalType = $this->resolveTemporalRefType($propertySchema['$ref']);
+            if ($temporalType !== null) {
+                return [$temporalType, $nullable];
+            }
+
+            return [$this->schemaRefToClassName($propertySchema['$ref'], $this->getSchemaSourceFile($ownerClassName)), $nullable];
         }
 
         if (isset($propertySchema['enum']) && is_array($propertySchema['enum']) && $propertySchema['enum'] !== []) {
@@ -454,7 +852,7 @@ final class OpenApiDtoGeneratorService
             $type = $this->resolveEnumBackingType($propertySchema);
             /** @var array<int, string|int> $values */
             $values = $propertySchema['enum'];
-            $this->registerEnum($enumName, $type, $values);
+            $this->registerEnum($enumName, $type, $values, $this->getSchemaSourceFile($ownerClassName));
             return [$enumName, $nullable];
         }
 
@@ -479,7 +877,7 @@ final class OpenApiDtoGeneratorService
 
         if ($type === 'object') {
             $nestedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
-            $this->registerSchema($nestedClassName, $propertySchema);
+            $this->registerSchema($nestedClassName, $propertySchema, $this->getSchemaSourceFile($ownerClassName));
             return [$nestedClassName, $nullable];
         }
 
@@ -501,7 +899,7 @@ final class OpenApiDtoGeneratorService
                     return ['array<' . $temporalItemType . '>', $nullable];
                 }
 
-                return ['array<' . $this->schemaRefToClassName($items['$ref']) . '>', $nullable];
+                return ['array<' . $this->schemaRefToClassName($items['$ref'], $this->getSchemaSourceFile($ownerClassName)) . '>', $nullable];
             }
 
             if (isset($items['enum']) && is_array($items['enum']) && $items['enum'] !== []) {
@@ -509,14 +907,14 @@ final class OpenApiDtoGeneratorService
                 $enumType = $this->resolveEnumBackingType($items);
                 /** @var array<int, string|int> $values */
                 $values = $items['enum'];
-                $this->registerEnum($enumName, $enumType, $values);
+                $this->registerEnum($enumName, $enumType, $values, $this->getSchemaSourceFile($ownerClassName));
                 return ['array<' . $enumName . '>', $nullable];
             }
 
             $itemsType = $items['type'] ?? null;
             if ($itemsType === 'object') {
                 $nestedClassName = $ownerClassName . $this->normalizeClassName($propertyName) . 'Item';
-                $this->registerSchema($nestedClassName, $items);
+                $this->registerSchema($nestedClassName, $items, $this->getSchemaSourceFile($ownerClassName));
                 return ['array<' . $nestedClassName . '>', $nullable];
             }
 
@@ -549,6 +947,104 @@ final class OpenApiDtoGeneratorService
             'boolean' => 'bool',
             default => 'mixed',
         }, $nullable];
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>|null
+     */
+    private function normalizeAllOfPropertySchema(array $propertySchema): ?array
+    {
+        $allOf = $propertySchema['allOf'] ?? null;
+        if (!is_array($allOf) || $allOf === []) {
+            return null;
+        }
+
+        foreach ($allOf as $item) {
+            if (!is_array($item) || !$this->canFlattenAllOfPropertyItem($item)) {
+                return null;
+            }
+        }
+
+        $resolved = [];
+        foreach ($allOf as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            // last-wins: each next allOf part overwrites previous keys
+            $resolved = array_replace_recursive($resolved, $item);
+        }
+
+        $topLevel = $propertySchema;
+        unset($topLevel['allOf']);
+        $resolved = array_replace_recursive($resolved, $topLevel);
+
+        return $resolved !== [] ? $resolved : null;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     */
+    private function canFlattenAllOfPropertyItem(array $item): bool
+    {
+        if (isset($item['$ref']) || isset($item['properties']) || isset($item['allOf']) || isset($item['oneOf']) || isset($item['anyOf'])) {
+            return false;
+        }
+
+        return isset($item['type']) || isset($item['enum']) || isset($item['format']);
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     * @return array{0: string, 1: bool}
+     */
+    private function resolveComposedUnionPropertyType(array $propertySchema, string $keyword, string $ownerClassName, string $propertyName): array
+    {
+        $variants = $propertySchema[$keyword] ?? null;
+        if (!is_array($variants)) {
+            return ['mixed', (bool) ($propertySchema['nullable'] ?? false)];
+        }
+
+        $nullable = (bool) ($propertySchema['nullable'] ?? false);
+        $types = [];
+
+        foreach ($variants as $variant) {
+            if (!is_array($variant)) {
+                continue;
+            }
+
+            if (($variant['type'] ?? null) === 'null') {
+                $nullable = true;
+                continue;
+            }
+
+            [$variantType, $variantNullable] = $this->resolvePropertyType($variant, $ownerClassName, $propertyName);
+            if ($variantNullable) {
+                $nullable = true;
+            }
+
+            if ($variantType === 'mixed') {
+                return ['mixed', $nullable];
+            }
+
+            if (str_contains($variantType, '<')) {
+                $variantType = 'array';
+            }
+
+            $types[] = $variantType;
+        }
+
+        $types = array_values(array_unique($types));
+        if ($types === []) {
+            return ['mixed', $nullable];
+        }
+
+        if (count($types) === 1) {
+            return [$types[0], $nullable];
+        }
+
+        return [implode('|', $types), $nullable];
     }
 
     private function mapStringFormatType(mixed $format): ?string
@@ -620,7 +1116,14 @@ final class OpenApiDtoGeneratorService
     {
         $prefix = '#/components/schemas/';
         if (!str_starts_with($ref, $prefix)) {
-            return null;
+            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $this->rootSpecFile);
+            if ($resolvedExternal === null) {
+                return null;
+            }
+
+            [$externalFile, $pointer] = $resolvedExternal;
+            $this->loadExternalDocument($externalFile);
+            $ref = $pointer;
         }
 
         $schemaName = substr($ref, strlen($prefix));
@@ -645,7 +1148,14 @@ final class OpenApiDtoGeneratorService
     {
         $prefix = '#/components/schemas/';
         if (!str_starts_with($ref, $prefix)) {
-            return null;
+            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $this->rootSpecFile);
+            if ($resolvedExternal === null) {
+                return null;
+            }
+
+            [$externalFile, $pointer] = $resolvedExternal;
+            $this->loadExternalDocument($externalFile);
+            $ref = $pointer;
         }
 
         $schemaName = substr($ref, strlen($prefix));
@@ -667,26 +1177,54 @@ final class OpenApiDtoGeneratorService
         return $formatType === 'DateTimeImmutable' ? 'DateTimeImmutable' : null;
     }
 
-    private function schemaRefToClassName(string $ref): string
+    private function schemaRefToClassName(string $ref, ?string $currentSourceFile = null): string
     {
         $prefix = '#/components/schemas/';
 
-        if (!str_starts_with($ref, $prefix)) {
+        if (str_starts_with($ref, $prefix)) {
+            $schemaName = substr($ref, strlen($prefix));
+
+            return is_string($schemaName) && $schemaName !== ''
+                ? $this->normalizeClassName($schemaName)
+                : 'mixed';
+        }
+
+        $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $currentSourceFile);
+        if ($resolvedExternal === null) {
             return 'mixed';
         }
 
-        $schemaName = substr($ref, strlen($prefix));
+        [$externalFile, $pointer] = $resolvedExternal;
+        $this->loadExternalDocument($externalFile);
+
+        $externalPrefix = '#/components/schemas/';
+        if (!str_starts_with($pointer, $externalPrefix)) {
+            return 'mixed';
+        }
+
+        $schemaName = substr($pointer, strlen($externalPrefix));
 
         return is_string($schemaName) && $schemaName !== ''
             ? $this->normalizeClassName($schemaName)
             : 'mixed';
     }
 
+    private function getSchemaSourceFile(string $className): ?string
+    {
+        return $this->schemaSourceFiles[$className] ?? null;
+    }
+
+    private function getClassNamespace(string $className): ?string
+    {
+        return $this->schemaNamespaces[$className] ?? $this->enumNamespaces[$className] ?? null;
+    }
+
     /**
      * @param array{
      *     properties: array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool}>,
      *     extends: string|null,
-     *     unionTypes: array<string>
+     *     unionTypes: array<string>,
+     *     discriminator: array{propertyName: string, mapping: array<string, string>}|null
      * } $schemaMetadata
      */
     private function renderDtoClass(string $namespace, string $className, array $schemaMetadata): string
@@ -694,6 +1232,8 @@ final class OpenApiDtoGeneratorService
         $properties = $schemaMetadata['properties'];
         $extends = $schemaMetadata['extends'];
         $unionTypes = $schemaMetadata['unionTypes'];
+        $discriminator = $schemaMetadata['discriminator'] ?? null;
+        $imports = $this->collectGeneratedClassImports($namespace, $className, $properties, $extends, $unionTypes, $discriminator);
 
         $lines = [
             '<?php',
@@ -713,13 +1253,18 @@ final class OpenApiDtoGeneratorService
         if ($needsUploadedFileImport) {
             $lines[] = 'use Symfony\\Component\\HttpFoundation\\File\\UploadedFile;';
         }
+        foreach ($imports as $import) {
+            $lines[] = 'use ' . $import . ';';
+        }
         if ($needsDateTimeImport || $needsUploadedFileImport) {
+            $lines[] = '';
+        } elseif ($imports !== []) {
             $lines[] = '';
         }
 
         if ($unionTypes !== []) {
             $lines[] = '/**';
-            $lines[] = ' * Members: ' . implode('|', $unionTypes);
+            $lines[] = ' * Members: ' . implode('|', array_map(fn (string $type): string => $this->formatClassNameForNamespace($type, $namespace), $unionTypes));
             $lines[] = ' */';
             $lines[] = 'interface ' . $className;
             $lines[] = '{';
@@ -734,10 +1279,10 @@ final class OpenApiDtoGeneratorService
 
         $signature = $classModifiers . 'class ' . $className;
         if ($extends !== null) {
-            $signature .= ' extends ' . $extends;
+            $signature .= ' extends ' . $this->formatClassNameForNamespace($extends, $namespace);
         }
         if ($implementedInterfaces !== []) {
-            $signature .= ' implements ' . implode(', ', $implementedInterfaces);
+            $signature .= ' implements ' . implode(', ', array_map(fn (string $type): string => $this->formatClassNameForNamespace($type, $namespace), $implementedInterfaces));
         }
 
         $lines[] = $signature;
@@ -773,7 +1318,7 @@ final class OpenApiDtoGeneratorService
                 continue;
             }
 
-            $this->addPrivateProperty($lines, $ownProperty);
+            $this->addPrivateProperty($lines, $ownProperty, $namespace);
         }
 
         if (!empty($ownProperties) && !isset($parentByName[$ownProperties[0]['name']])) {
@@ -799,7 +1344,7 @@ final class OpenApiDtoGeneratorService
         }
 
         foreach ($allConstructorParams as $property) {
-            $this->addConstructorParameter($lines, $property);
+            $this->addConstructorParameter($lines, $property, $namespace);
         }
 
         $lines[] = '    ) {';
@@ -834,7 +1379,7 @@ final class OpenApiDtoGeneratorService
         }
 
         foreach ($allProperties as $index => $property) {
-            $this->addGetter($lines, $property);
+            $this->addGetter($lines, $property, $namespace);
             $lines[] = '';
             $this->addRequiredChecker($lines, $property);
             $lines[] = '';
@@ -850,6 +1395,16 @@ final class OpenApiDtoGeneratorService
             }
         }
 
+        if ($discriminator !== null) {
+            if ($allProperties !== []) {
+                $lines[] = '';
+            }
+            $this->addDiscriminatorMetadataMethods($lines, $discriminator, $namespace);
+        }
+
+        $lines[] = '';
+        $this->addOpenApiConstraintsMethod($lines, $extends, $ownProperties);
+
         $lines[] = '}';
         $lines[] = '';
 
@@ -857,34 +1412,251 @@ final class OpenApiDtoGeneratorService
     }
 
     /**
+     * @param array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}> $properties
+     * @param array<string>|null $unionTypes
+     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @return array<int, string>
+     */
+    private function collectGeneratedClassImports(string $namespace, string $className, array $properties, ?string $extends, array $unionTypes, ?array $discriminator): array
+    {
+        $imports = [];
+
+        if ($extends !== null) {
+            $this->appendImportForClass($imports, $extends, $namespace, $className);
+        }
+
+        foreach ($unionTypes as $unionType) {
+            $this->appendImportForClass($imports, $unionType, $namespace, $className);
+        }
+
+        foreach ($properties as $property) {
+            foreach ($this->extractReferencedClassNamesFromType((string) $property['type']) as $typeClass) {
+                $this->appendImportForClass($imports, $typeClass, $namespace, $className);
+            }
+        }
+
+        if ($discriminator !== null) {
+            foreach ($discriminator['mapping'] as $targetClass) {
+                $this->appendImportForClass($imports, $targetClass, $namespace, $className);
+            }
+        }
+
+        sort($imports);
+
+        return array_values(array_unique($imports));
+    }
+
+    /**
+     * @param array<int, string> $imports
+     */
+    private function appendImportForClass(array &$imports, string $className, string $currentNamespace, string $currentClassName): void
+    {
+        $typeNamespace = $this->getClassNamespace($className);
+        if ($typeNamespace === null || $typeNamespace === '' || $typeNamespace === $currentNamespace || $className === $currentClassName) {
+            return;
+        }
+
+        $imports[] = $typeNamespace . '\\' . $className;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractReferencedClassNamesFromType(string $type): array
+    {
+        $normalized = str_replace(['array<', '>', '?'], ['', '', ''], $type);
+        $parts = preg_split('/\|/', $normalized) ?: [];
+        $result = [];
+
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '' || in_array($part, ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'], true)) {
+                continue;
+            }
+
+            $result[] = $part;
+        }
+
+        return array_values(array_unique($result));
+    }
+
+    private function formatClassNameForNamespace(string $className, string $currentNamespace): string
+    {
+        $typeNamespace = $this->getClassNamespace($className);
+
+        return ($typeNamespace === null || $typeNamespace === '' || $typeNamespace === $currentNamespace)
+            ? $className
+            : $className;
+    }
+
+    private function formatPhpTypeForNamespace(string $type, string $currentNamespace): string
+    {
+        $parts = preg_split('/\|/', $type) ?: [];
+        $formatted = [];
+
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '' || in_array($part, ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'], true)) {
+                $formatted[] = $part;
+                continue;
+            }
+
+            $formatted[] = $this->formatClassNameForNamespace($part, $currentNamespace);
+        }
+
+        return implode('|', $formatted);
+    }
+
+    private function formatDocblockTypeForNamespace(string $type, string $currentNamespace): string
+    {
+        if (str_starts_with($type, 'array<') && str_ends_with($type, '>')) {
+            $inner = substr($type, 6, -1);
+            return 'array<' . $this->formatPhpTypeForNamespace($inner, $currentNamespace) . '>';
+        }
+
+        return $this->formatPhpTypeForNamespace($type, $currentNamespace);
+    }
+
+    /**
+     * @param array<string> $lines
+     * @param array{propertyName: string, mapping: array<string, string>} $discriminator
+     */
+    private function addDiscriminatorMetadataMethods(array &$lines, array $discriminator, string $namespace): void
+    {
+        $propertyName = str_replace(['\\', "'"], ['\\\\', "\\'"], $discriminator['propertyName']);
+
+        $lines[] = '    public static function getDiscriminatorPropertyName(): string';
+        $lines[] = '    {';
+        $lines[] = "        return '" . $propertyName . "';";
+        $lines[] = '    }';
+        $lines[] = '';
+        $lines[] = '    /**';
+        $lines[] = '     * @return array<string, class-string>'; 
+        $lines[] = '     */';
+        $lines[] = '    public static function getDiscriminatorMapping(): array';
+        $lines[] = '    {';
+        $lines[] = '        return [';
+
+        foreach ($discriminator['mapping'] as $value => $targetClass) {
+            $escapedValue = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
+            $lines[] = "            '" . $escapedValue . "' => " . $this->formatClassNameForNamespace($targetClass, $namespace) . '::class,';
+        }
+
+        $lines[] = '        ];';
+        $lines[] = '    }';
+    }
+
+    /**
+     * @param array<string> $lines
+     * @param array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints?: array<string, mixed>}> $properties
+     */
+    private function addOpenApiConstraintsMethod(array &$lines, ?string $extends, array $properties): void
+    {
+        $lines[] = '    /**';
+        $lines[] = '     * @return array<string, array<string, mixed>>';
+        $lines[] = '     */';
+        $lines[] = '    public static function getOpenApiConstraints(): array';
+        $lines[] = '    {';
+
+        if ($extends !== null) {
+            $lines[] = '        $constraints = parent::getOpenApiConstraints();';
+        } else {
+            $lines[] = '        $constraints = [];';
+        }
+
+        foreach ($properties as $property) {
+            $constraints = $property['constraints'] ?? [];
+            if (!is_array($constraints) || $constraints === []) {
+                continue;
+            }
+
+            $lines[] = "        $" . "constraints['" . $property['name'] . "'] = " . $this->renderPhpLiteral($constraints) . ';';
+        }
+
+        $lines[] = '';
+        $lines[] = '        return $constraints;';
+        $lines[] = '    }';
+    }
+
+    private function renderPhpLiteral(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        if (is_string($value)) {
+            $escaped = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
+            return "'" . $escaped . "'";
+        }
+
+        if (is_array($value)) {
+            $items = [];
+            foreach ($value as $key => $item) {
+                $itemLiteral = $this->renderPhpLiteral($item);
+                if (is_string($key)) {
+                    $escapedKey = str_replace(['\\', "'"], ['\\\\', "\\'"], $key);
+                    $items[] = "'" . $escapedKey . "' => " . $itemLiteral;
+                    continue;
+                }
+
+                $items[] = $itemLiteral;
+            }
+
+            return '[' . implode(', ', $items) . ']';
+        }
+
+        return 'null';
+    }
+
+    /**
      * @param array<string> $lines
      * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
      */
-    private function addPrivateProperty(array &$lines, array $property): void
+    private function addPrivateProperty(array &$lines, array $property, string $namespace): void
     {
         $phpType = $property['type'];
         $phpDocType = $property['type'];
 
         if (str_contains($phpType, '<')) {
-            $phpDocType = $phpType;
+            $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
+        } else {
+            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
+            $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
         }
 
-        $type = $property['nullable'] ? '?' . $phpType : $phpType;
+        $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $description = $property['description'] ?? null;
+        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
 
-        // Add description comment if present
-        if ($description !== null && $description !== '') {
+        if (($description !== null && $description !== '') || $constraintsLine !== null) {
             $lines[] = '    /**';
-            $lines[] = '     * ' . $description;
+            if ($description !== null && $description !== '') {
+                $lines[] = '     * ' . $description;
+            }
+            if ($constraintsLine !== null) {
+                if ($description !== null && $description !== '') {
+                    $lines[] = '     *';
+                }
+                $lines[] = '     * Constraints: ' . $constraintsLine;
+            }
             if ($phpType !== $phpDocType) {
-                $docType = $property['nullable'] ? '?' . $phpDocType : $phpDocType;
+                $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
                 $lines[] = '     *';
                 $lines[] = '     * @var ' . $docType;
             }
             $lines[] = '     */';
         } elseif ($phpType !== $phpDocType) {
-            $docType = $property['nullable'] ? '?' . $phpDocType : $phpDocType;
+            $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
             $lines[] = '    /** @var ' . $docType . ' */';
         }
 
@@ -893,20 +1665,159 @@ final class OpenApiDtoGeneratorService
     }
 
     /**
+     * @param array<string, mixed> $constraints
+     */
+    private function formatConstraintsForDocBlock(array $constraints): ?string
+    {
+        if ($constraints === []) {
+            return null;
+        }
+
+        $priority = [
+            'minimum',
+            'exclusiveMinimum',
+            'maximum',
+            'exclusiveMaximum',
+            'multipleOf',
+            'minLength',
+            'maxLength',
+            'pattern',
+            'format',
+            'minItems',
+            'maxItems',
+            'uniqueItems',
+            'oneOf',
+            'anyOf',
+        ];
+
+        $parts = [];
+        foreach ($priority as $key) {
+            if (!array_key_exists($key, $constraints)) {
+                continue;
+            }
+
+            $value = $constraints[$key];
+            if (is_bool($value)) {
+                $parts[] = $key . '=' . ($value ? 'true' : 'false');
+                continue;
+            }
+
+            if (is_array($value)) {
+                if (in_array($key, ['oneOf', 'anyOf'], true)) {
+                    $formattedUnion = $this->formatUnionConstraintsForDocBlock($key, $value);
+                    if ($formattedUnion !== null) {
+                        $parts[] = $formattedUnion;
+                    }
+                    continue;
+                }
+
+                $parts[] = $key . '=' . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                continue;
+            }
+
+            $parts[] = $key . '=' . (string) $value;
+        }
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * @param array<int, mixed> $variants
+     */
+    private function formatUnionConstraintsForDocBlock(string $keyword, array $variants): ?string
+    {
+        $formattedVariants = [];
+
+        foreach ($variants as $variant) {
+            if (!is_array($variant)) {
+                continue;
+            }
+
+            $variantText = $this->formatFlatConstraintsForDocBlock($variant);
+            if ($variantText === null) {
+                continue;
+            }
+
+            $formattedVariants[] = '(' . $variantText . ')';
+        }
+
+        if ($formattedVariants === []) {
+            return null;
+        }
+
+        return $keyword . '=' . implode(' | ', $formattedVariants);
+    }
+
+    /**
+     * @param array<string, mixed> $constraints
+     */
+    private function formatFlatConstraintsForDocBlock(array $constraints): ?string
+    {
+        $priority = [
+            'type',
+            'minimum',
+            'exclusiveMinimum',
+            'maximum',
+            'exclusiveMaximum',
+            'multipleOf',
+            'minLength',
+            'maxLength',
+            'pattern',
+            'format',
+            'minItems',
+            'maxItems',
+            'uniqueItems',
+        ];
+
+        $parts = [];
+        foreach ($priority as $key) {
+            if (!array_key_exists($key, $constraints)) {
+                continue;
+            }
+
+            $value = $constraints[$key];
+            if (is_bool($value)) {
+                $parts[] = $key . '=' . ($value ? 'true' : 'false');
+                continue;
+            }
+
+            if (is_array($value)) {
+                $parts[] = $key . '=' . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                continue;
+            }
+
+            $parts[] = $key . '=' . (string) $value;
+        }
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
      * @param array<string> $lines
      * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
      */
-    private function addConstructorParameter(array &$lines, array $property): void
+    private function addConstructorParameter(array &$lines, array $property, string $namespace): void
     {
         $phpType = $property['type'];
         $phpDocType = $property['type'];
 
         if (str_contains($phpType, '<')) {
-            $phpDocType = $phpType;
+            $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
+        } else {
+            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
+            $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
         }
 
-        $type = $property['nullable'] ? '?' . $phpType : $phpType;
+        $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $defaultValue = $this->renderDefaultValue($property['default'], $phpType, $property['type']);
 
         $lines[] = '        ' . $type . ' $' . $property['name'] . $defaultValue . ',';
@@ -916,17 +1827,20 @@ final class OpenApiDtoGeneratorService
      * @param array<string> $lines
      * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
      */
-    private function addGetter(array &$lines, array $property): void
+    private function addGetter(array &$lines, array $property, string $namespace): void
     {
         $phpType = $property['type'];
         $phpDocType = $property['type'];
 
         if (str_contains($phpType, '<')) {
-            $phpDocType = $phpType;
+            $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
+        } else {
+            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
+            $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
         }
 
-        $type = $property['nullable'] ? '?' . $phpType : $phpType;
+        $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $methodName = 'get' . ucfirst($property['name']);
         $description = $property['description'] ?? null;
         $temporalFormat = $property['temporalFormat'] ?? null;
@@ -963,13 +1877,13 @@ final class OpenApiDtoGeneratorService
             $lines[] = '    /**';
             $lines[] = '     * ' . $description;
             if ($phpType !== $phpDocType) {
-                $docType = $property['nullable'] ? '?' . $phpDocType : $phpDocType;
+                $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
                 $lines[] = '     *';
                 $lines[] = '     * @return ' . $docType;
             }
             $lines[] = '     */';
         } elseif ($phpType !== $phpDocType) {
-            $docType = $property['nullable'] ? '?' . $phpDocType : $phpDocType;
+            $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
             $lines[] = '    /**';
             $lines[] = '     * @return ' . $docType;
             $lines[] = '     */';
@@ -1168,7 +2082,20 @@ final class OpenApiDtoGeneratorService
      */
     private function describePropertyType(array $property): string
     {
-        return ($property['nullable'] ? '?' : '') . $property['type'];
+        return $this->composePhpTypeHint($property['type'], $property['nullable']);
+    }
+
+    private function composePhpTypeHint(string $type, bool $nullable): string
+    {
+        if (!$nullable) {
+            return $type;
+        }
+
+        if (str_contains($type, '|')) {
+            return str_contains($type, 'null') ? $type : $type . '|null';
+        }
+
+        return '?' . $type;
     }
 
     /**
@@ -1208,7 +2135,7 @@ final class OpenApiDtoGeneratorService
                 }
 
                 if (isset($allOfItem['$ref']) && is_string($allOfItem['$ref'])) {
-                    $parentClass = $this->schemaRefToClassName($allOfItem['$ref']);
+                    $parentClass = $this->schemaRefToClassName($allOfItem['$ref'], $this->getSchemaSourceFile($className));
                     // Recursively get parent properties
                     foreach ($this->getSchemaProperties($parentClass) as $prop) {
                         $allProperties[] = $prop;
@@ -1280,6 +2207,17 @@ final class OpenApiDtoGeneratorService
 
         if (!mkdir($outputDirectory, 0775, true) && !is_dir($outputDirectory)) {
             throw new RuntimeException(sprintf('Cannot create directory: %s', $outputDirectory));
+        }
+    }
+
+    private function ensureDirectoryExists(string $directory): void
+    {
+        if (is_dir($directory)) {
+            return;
+        }
+
+        if (!mkdir($directory, 0775, true) && !is_dir($directory)) {
+            throw new RuntimeException(sprintf('Cannot create directory: %s', $directory));
         }
     }
 
@@ -1487,12 +2425,19 @@ final class OpenApiDtoGeneratorService
     /**
      * @param array<int, string|int> $values
      */
-    private function registerEnum(string $enumName, string $type, array $values): void
+    private function registerEnum(string $enumName, string $type, array $values, ?string $sourceFile): void
     {
+        $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
+        $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
+
         if (isset($this->enumSchemas[$enumName])) {
             $existing = $this->enumSchemas[$enumName];
             if ($existing['type'] !== $type || $existing['values'] !== $values) {
                 throw new RuntimeException(sprintf('Enum schema name collision for %s.', $enumName));
+            }
+
+            if (($this->enumNamespaces[$enumName] ?? $namespace) !== $namespace) {
+                throw new RuntimeException(sprintf('Enum schema namespace collision for %s.', $enumName));
             }
             return;
         }
@@ -1505,6 +2450,9 @@ final class OpenApiDtoGeneratorService
             'type' => $type,
             'values' => $values,
         ];
+        $this->enumSourceFiles[$enumName] = $sourceFile;
+        $this->enumNamespaces[$enumName] = $namespace;
+        $this->enumOutputDirectories[$enumName] = $outputDirectory;
     }
 
     /**
@@ -1620,7 +2568,7 @@ final class OpenApiDtoGeneratorService
         }
 
         // Handle enum types - need to use the enum case
-        if (!in_array($phpType, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
+        if (!str_contains($phpType, '|') && !in_array($phpType, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
             // It's an enum or custom type
             if (is_string($defaultValue)) {
                 $usedNames = [];

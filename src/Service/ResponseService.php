@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Service;
 
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionUnionType;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\File\File;
@@ -15,6 +17,13 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class ResponseService
 {
+    private OpenApiConstraintValidator $constraintValidator;
+
+    public function __construct(?OpenApiConstraintValidator $constraintValidator = null)
+    {
+        $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator();
+    }
+
     /**
      * Validates DTO and converts it to HTTP response.
      *
@@ -47,31 +56,50 @@ final class ResponseService
     {
         $errors = [];
         $reflection = new ReflectionClass($dto);
+        $constraintsByField = $this->resolveOpenApiConstraints($reflection);
 
         // Get all getters
         foreach ($reflection->getMethods() as $method) {
+            if (!$this->isSerializableGetter($method)) {
+                continue;
+            }
+
             $methodName = $method->getName();
 
-            // Skip non-getter methods
-            if (!str_starts_with($methodName, 'get') || $methodName === 'get') {
-                continue;
-            }
-
             $returnType = $method->getReturnType();
-            if (!$returnType instanceof ReflectionNamedType) {
+            if (!$returnType instanceof ReflectionNamedType && !$returnType instanceof ReflectionUnionType) {
                 continue;
             }
-
-            $typeName = $returnType->getName();
             $allowsNull = $returnType->allowsNull();
+
+            $typeNames = [];
+            if ($returnType instanceof ReflectionNamedType) {
+                $typeNames[] = $returnType->getName();
+            } else {
+                foreach ($returnType->getTypes() as $unionType) {
+                    if (!$unionType instanceof ReflectionNamedType) {
+                        continue;
+                    }
+                    $typeNames[] = $unionType->getName();
+                }
+            }
 
             try {
                 $value = $method->invoke($dto);
 
                 // Validate type
-                $error = $this->validateValue($value, $typeName, $allowsNull, $methodName);
+                $error = $this->validateValueAgainstTypes($value, $typeNames, $allowsNull, $methodName);
                 if ($error !== null) {
                     $errors[] = $error;
+                }
+
+                $propertyName = lcfirst(substr($methodName, 3));
+                $constraints = $constraintsByField[$propertyName] ?? null;
+                if (is_array($constraints) && $constraints !== []) {
+                    $errors = array_merge(
+                        $errors,
+                        $this->constraintValidator->validate(sprintf('field "%s"', $propertyName), $value, $constraints)
+                    );
                 }
             } catch (\LogicException $e) {
                 // Field wasn't provided in request - skip, it's not a validation error
@@ -115,6 +143,37 @@ final class ResponseService
     }
 
     /**
+     * @param array<int, string> $expectedTypes
+     */
+    private function validateValueAgainstTypes(mixed $value, array $expectedTypes, bool $allowsNull, string $methodName): ?string
+    {
+        if ($value === null) {
+            return $allowsNull ? null : sprintf(
+                'Method %s() returned null but type is non-nullable %s.',
+                $methodName,
+                implode('|', array_values(array_filter($expectedTypes, static fn (string $type): bool => $type !== 'null'))),
+            );
+        }
+
+        $filtered = array_values(array_filter($expectedTypes, static fn (string $type): bool => $type !== 'null'));
+        if ($filtered === []) {
+            return null;
+        }
+
+        $errors = [];
+        foreach ($filtered as $type) {
+            $error = $this->validateValue($value, $type, false, $methodName);
+            if ($error === null) {
+                return null;
+            }
+
+            $errors[] = $error;
+        }
+
+        return implode(' | ', $errors);
+    }
+
+    /**
      * Validates object/enum types.
      */
     private function validateObject(mixed $value, string $expectedType, string $methodName): ?string
@@ -147,12 +206,11 @@ final class ResponseService
         $reflection = new ReflectionClass($dto);
 
         foreach ($reflection->getMethods() as $method) {
-            $methodName = $method->getName();
-
-            // Only process getters
-            if (!str_starts_with($methodName, 'get') || $methodName === 'get') {
+            if (!$this->isSerializableGetter($method)) {
                 continue;
             }
+
+            $methodName = $method->getName();
 
             // Extract property name from getter (getName -> name)
             $propertyName = lcfirst(substr($methodName, 3));
@@ -200,10 +258,11 @@ final class ResponseService
         $nonNullValues = [];
 
         foreach ($reflection->getMethods() as $method) {
-            $methodName = $method->getName();
-            if (!str_starts_with($methodName, 'get') || $methodName === 'get') {
+            if (!$this->isSerializableGetter($method)) {
                 continue;
             }
+
+            $methodName = $method->getName();
 
             try {
                 $value = $method->invoke($dto);
@@ -336,6 +395,35 @@ final class ResponseService
 
         // Scalars pass through
         return $value;
+    }
+
+    private function isSerializableGetter(ReflectionMethod $method): bool
+    {
+        $methodName = $method->getName();
+
+        if (!str_starts_with($methodName, 'get') || $methodName === 'get') {
+            return false;
+        }
+
+        if ($method->isStatic() || !$method->isPublic() || $method->getNumberOfRequiredParameters() > 0) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function resolveOpenApiConstraints(ReflectionClass $reflection): array
+    {
+        $className = $reflection->getName();
+        if (!method_exists($className, 'getOpenApiConstraints')) {
+            return [];
+        }
+
+        $constraints = $className::getOpenApiConstraints();
+        return is_array($constraints) ? $constraints : [];
     }
 
     /**

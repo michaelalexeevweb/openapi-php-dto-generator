@@ -19,8 +19,9 @@ final class RequestValidationService
     /**
      * Validates request and returns result with DTO or errors.
      *
-     * @template T
+     * @template T of object
      * @param class-string<T> $dtoClass
+     * @return RequestValidationResult<T>
      */
     public function validate(Request $request, string $dtoClass): RequestValidationResult
     {
@@ -29,7 +30,9 @@ final class RequestValidationService
             return RequestValidationResult::success($dto);
         } catch (BadRequestException $e) {
             $errors = explode("\n", $e->getMessage());
-            return RequestValidationResult::failure(array_filter($errors));
+            /** @var RequestValidationResult<T> $result */
+            $result = RequestValidationResult::failure(array_filter($errors));
+            return $result;
         }
     }
 

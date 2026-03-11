@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+/**
+ * @template T of object
+ */
 final class RequestValidationResult
 {
+    /** @var T|null */
     private ?object $dto = null;
     /** @var array<string> */
     private array $errors = [];
@@ -14,6 +18,11 @@ final class RequestValidationResult
     {
     }
 
+    /**
+     * @template U of object
+     * @param U $dto
+     * @return self<U>
+     */
     public static function success(object $dto): self
     {
         $result = new self();
@@ -22,7 +31,9 @@ final class RequestValidationResult
     }
 
     /**
+     * @template U of object
      * @param array<string> $errors
+     * @return self<U>
      */
     public static function failure(array $errors): self
     {
@@ -42,7 +53,6 @@ final class RequestValidationResult
     }
 
     /**
-     * @template T
      * @return T
      * @throws \RuntimeException if validation failed
      */
@@ -56,7 +66,6 @@ final class RequestValidationResult
     }
 
     /**
-     * @template T
      * @return T|null
      */
     public function getDtoOrNull(): ?object

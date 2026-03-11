@@ -190,6 +190,135 @@ final class RequestDeserializerServiceTest extends TestCase
 
         $this->deserializer->deserialize($request, NestedArrayDto::class);
     }
+
+    public function testDeserializeResolvesDiscriminatorSubtype(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'animal' => [
+                'animalType' => 'dog',
+                'bark' => 'woof',
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DiscriminatorWrapperDto::class);
+
+        $this->assertInstanceOf(DiscriminatorWrapperDto::class, $dto);
+        $this->assertInstanceOf(DiscriminatorDogDto::class, $dto->animal);
+        $this->assertSame('dog', $dto->animal->getAnimalType()->value);
+    }
+
+    public function testDeserializeThrowsExceptionForInvalidDiscriminatorValue(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'animal' => [
+                'animalType' => 'bird',
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "animal.animalType" has invalid discriminator value "bird". Allowed: dog, cat');
+
+        $this->deserializer->deserialize($request, DiscriminatorWrapperDto::class);
+    }
+
+    public function testDeserializeThrowsExceptionForInvalidEnumValue(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'animalType' => 'bird',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "animalType" expects enum');
+
+        $this->deserializer->deserialize($request, EnumOnlyAnimalDto::class);
+    }
+
+    public function testDeserializeValidatesNumericStringAndArrayConstraints(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'amount' => 1,
+            'email' => 'bad-email',
+            'code' => '12',
+            'tags' => ['a', 'a'],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage("param \"amount\" must be greater than 1\nparam \"amount\" must be a multiple of 2.5\nparam \"email\" must match format email\nparam \"code\" length must be at least 3 characters\nparam \"code\" must match pattern ^\\d{3}-\\d{2}-\\d{4}$\nparam \"tags\" must contain unique items");
+
+        $this->deserializer->deserialize($request, ConstraintsDto::class);
+    }
+
+    public function testDeserializeAcceptsValidConstraintValues(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'amount' => 7.5,
+            'email' => 'user@example.com',
+            'code' => '123-45-6789',
+            'tags' => ['a', 'b'],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, ConstraintsDto::class);
+
+        $this->assertInstanceOf(ConstraintsDto::class, $dto);
+        $this->assertSame(7.5, $dto->amount);
+    }
+
+    public function testDeserializeSupportsUnionTypeIntegerBranch(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 10,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, UnionIdDto::class);
+
+        $this->assertInstanceOf(UnionIdDto::class, $dto);
+        $this->assertSame(10, $dto->id);
+    }
+
+    public function testDeserializeThrowsForUnionTypeWhenNoBranchMatches(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => true,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "id" expects string, got bool');
+
+        $this->deserializer->deserialize($request, UnionIdDto::class);
+    }
+
+    public function testDeserializeThrowsForUnionTypeIntegerBranchConstraintViolation(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 9,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "id" must be greater than or equal to 10');
+
+        $this->deserializer->deserialize($request, UnionIdDto::class);
+    }
+
+    public function testDeserializeThrowsForUnionTypeStringBranchConstraintViolation(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 'test',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "id" must match format uuid');
+
+        $this->deserializer->deserialize($request, UnionIdDto::class);
+    }
 }
 
 // Test DTOs
@@ -425,6 +554,141 @@ final class NestedArrayItemDto
     public function getName(): string
     {
         return $this->name;
+    }
+}
+
+enum DiscriminatorAnimalType: string
+{
+    case DOG = 'dog';
+    case CAT = 'cat';
+}
+
+class DiscriminatorAnimalDto
+{
+    public function __construct(
+        private DiscriminatorAnimalType $animalType,
+    ) {
+    }
+
+    public function getAnimalType(): DiscriminatorAnimalType
+    {
+        return $this->animalType;
+    }
+
+    public static function getDiscriminatorPropertyName(): string
+    {
+        return 'animalType';
+    }
+
+    /** @return array<string, class-string> */
+    public static function getDiscriminatorMapping(): array
+    {
+        return [
+            'dog' => DiscriminatorDogDto::class,
+            'cat' => DiscriminatorCatDto::class,
+        ];
+    }
+}
+
+final class DiscriminatorDogDto extends DiscriminatorAnimalDto
+{
+    public function __construct(
+        DiscriminatorAnimalType $animalType,
+        private string $bark,
+    ) {
+        parent::__construct($animalType);
+    }
+}
+
+final class DiscriminatorCatDto extends DiscriminatorAnimalDto
+{
+    public function __construct(
+        DiscriminatorAnimalType $animalType,
+        private string $meow,
+    ) {
+        parent::__construct($animalType);
+    }
+}
+
+final class DiscriminatorWrapperDto
+{
+    public function __construct(
+        public DiscriminatorAnimalDto $animal,
+    ) {
+    }
+}
+
+final class EnumOnlyAnimalDto
+{
+    public function __construct(
+        public DiscriminatorAnimalType $animalType,
+    ) {
+    }
+}
+
+final class ConstraintsDto
+{
+    /** @param array<string> $tags */
+    public function __construct(
+        public float $amount,
+        public string $email,
+        public string $code,
+        public array $tags,
+    ) {
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getOpenApiConstraints(): array
+    {
+        return [
+            'amount' => [
+                'minimum' => 1,
+                'exclusiveMinimum' => true,
+                'maximum' => 20,
+                'multipleOf' => 2.5,
+            ],
+            'email' => [
+                'format' => 'email',
+            ],
+            'code' => [
+                'minLength' => 3,
+                'maxLength' => 20,
+                'pattern' => '^\d{3}-\d{2}-\d{4}$',
+            ],
+            'tags' => [
+                'minItems' => 1,
+                'maxItems' => 10,
+                'uniqueItems' => true,
+            ],
+        ];
+    }
+}
+
+final class UnionIdDto
+{
+    public function __construct(
+        public string|int $id,
+    ) {
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getOpenApiConstraints(): array
+    {
+        return [
+            'id' => [
+                'oneOf' => [
+                    [
+                        'type' => 'integer',
+                        'minimum' => 10,
+                        'maximum' => 100,
+                    ],
+                    [
+                        'type' => 'string',
+                        'format' => 'uuid',
+                    ],
+                ],
+            ],
+        ];
     }
 }
 

@@ -1,0 +1,15 @@
+openapi: 3.0.0
+info:
+  title: Root
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    LocalResponse:
+      type: object
+      required:
+        - test
+      properties:
+        test:
+          $ref: './common/common.yaml/#/components/schemas/Test'
+
