@@ -4,11 +4,29 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\OpenApiConstraintValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\ValidationMessageProviderInterface;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
-final class OpenApiConstraintValidator
+final class OpenApiConstraintValidator implements OpenApiConstraintValidatorInterface
 {
+    private ValidationMessageProviderInterface $messageProvider;
+    private OpenApiFormatRegistry $formatRegistry;
+
+    /**
+     * @param array<string, string> $messageOverrides
+     */
+    public function __construct(
+        ?ValidationMessageProviderInterface $messageProvider = null,
+        array $messageOverrides = [],
+        ?OpenApiFormatRegistry $formatRegistry = null,
+    )
+    {
+        $this->messageProvider = $messageProvider ?? new ValidationMessageProvider($messageOverrides);
+        $this->formatRegistry = $formatRegistry ?? new OpenApiFormatRegistry();
+    }
+
     /**
      * @param array<string, mixed> $constraints
      * @return array<string>
@@ -42,7 +60,10 @@ final class OpenApiConstraintValidator
         }
 
         if (isset($constraints['format']) && $constraints['format'] === 'binary' && !is_string($value) && !$value instanceof UploadedFile && !$value instanceof File) {
-            $errors[] = sprintf('%s expects binary data, got %s', $subject, $this->typeToOpenApi($value));
+            $errors[] = $this->messageProvider->format(ValidationMessageKey::EXPECTS_BINARY_DATA, [
+                'subject' => $subject,
+                'actualType' => $this->typeToOpenApi($value),
+            ]);
         }
 
         return $errors;
@@ -78,7 +99,9 @@ final class OpenApiConstraintValidator
                 continue;
             }
 
-            $errors = array_merge($errors, $branchErrors);
+            foreach ($branchErrors as $branchError) {
+                $errors[] = $branchError;
+            }
         }
 
         if ($isOneOf) {
@@ -87,7 +110,7 @@ final class OpenApiConstraintValidator
             }
 
             if ($matched > 1 && $errors === []) {
-                return [sprintf('%s matches more than one allowed oneOf branch', $subject)];
+                return [$this->messageProvider->format(ValidationMessageKey::ONE_OF_MULTIPLE_MATCHES, ['subject' => $subject])];
             }
         } else {
             if ($matched > 0 && $errors === []) {
@@ -100,7 +123,7 @@ final class OpenApiConstraintValidator
         }
 
         $kind = $isOneOf ? 'oneOf' : 'anyOf';
-        return [sprintf('%s does not match any %s branch', $subject, $kind)];
+        return [$this->messageProvider->format(ValidationMessageKey::UNION_NO_MATCHING_BRANCH, ['subject' => $subject, 'kind' => $kind])];
     }
 
     private function matchesOpenApiType(mixed $value, mixed $type): bool
@@ -115,7 +138,7 @@ final class OpenApiConstraintValidator
             'string' => is_string($value),
             'boolean' => is_bool($value),
             'array' => is_array($value) && array_is_list($value),
-            'object' => is_array($value) && !array_is_list($value) || is_object($value),
+            'object' => (is_array($value) && !array_is_list($value)) || is_object($value),
             'null' => $value === null,
             default => true,
         };
@@ -137,30 +160,30 @@ final class OpenApiConstraintValidator
         if (is_numeric($exclusiveMinimum)) {
             $minExclusive = (float) $exclusiveMinimum;
             if (!($value > $minExclusive)) {
-                $errors[] = sprintf('%s must be greater than %s', $subject, $this->stringifyNumber($minExclusive));
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_GREATER_THAN, ['subject' => $subject, 'value' => $this->stringifyNumber($minExclusive)]);
             }
         } elseif ($minimum !== null) {
             if ($exclusiveMinimum === true) {
                 if (!($value > $minimum)) {
-                    $errors[] = sprintf('%s must be greater than %s', $subject, $this->stringifyNumber($minimum));
+                    $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_GREATER_THAN, ['subject' => $subject, 'value' => $this->stringifyNumber($minimum)]);
                 }
             } elseif (!($value >= $minimum)) {
-                $errors[] = sprintf('%s must be greater than or equal to %s', $subject, $this->stringifyNumber($minimum));
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_GREATER_THAN_OR_EQUAL, ['subject' => $subject, 'value' => $this->stringifyNumber($minimum)]);
             }
         }
 
         if (is_numeric($exclusiveMaximum)) {
             $maxExclusive = (float) $exclusiveMaximum;
             if (!($value < $maxExclusive)) {
-                $errors[] = sprintf('%s must be less than %s', $subject, $this->stringifyNumber($maxExclusive));
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_LESS_THAN, ['subject' => $subject, 'value' => $this->stringifyNumber($maxExclusive)]);
             }
         } elseif ($maximum !== null) {
             if ($exclusiveMaximum === true) {
                 if (!($value < $maximum)) {
-                    $errors[] = sprintf('%s must be less than %s', $subject, $this->stringifyNumber($maximum));
+                    $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_LESS_THAN, ['subject' => $subject, 'value' => $this->stringifyNumber($maximum)]);
                 }
             } elseif (!($value <= $maximum)) {
-                $errors[] = sprintf('%s must be less than or equal to %s', $subject, $this->stringifyNumber($maximum));
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_LESS_THAN_OR_EQUAL, ['subject' => $subject, 'value' => $this->stringifyNumber($maximum)]);
             }
         }
 
@@ -168,7 +191,7 @@ final class OpenApiConstraintValidator
         if ($multipleOf !== null && $multipleOf > 0.0) {
             $ratio = $value / $multipleOf;
             if (abs($ratio - round($ratio)) > 1e-9) {
-                $errors[] = sprintf('%s must be a multiple of %s', $subject, $this->stringifyNumber($multipleOf));
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::NUMERIC_MUST_BE_MULTIPLE_OF, ['subject' => $subject, 'value' => $this->stringifyNumber($multipleOf)]);
             }
         }
 
@@ -186,27 +209,34 @@ final class OpenApiConstraintValidator
 
         $minLength = $this->toIntOrNull($constraints['minLength'] ?? null);
         if ($minLength !== null && $length < $minLength) {
-            $errors[] = sprintf('%s length must be at least %d characters', $subject, $minLength);
+            $errors[] = $this->messageProvider->format(ValidationMessageKey::STRING_LENGTH_MIN, ['subject' => $subject, 'value' => $minLength]);
         }
 
         $maxLength = $this->toIntOrNull($constraints['maxLength'] ?? null);
         if ($maxLength !== null && $length > $maxLength) {
-            $errors[] = sprintf('%s length must be at most %d characters', $subject, $maxLength);
+            $errors[] = $this->messageProvider->format(ValidationMessageKey::STRING_LENGTH_MAX, ['subject' => $subject, 'value' => $maxLength]);
         }
 
         $pattern = $constraints['pattern'] ?? null;
         if (is_string($pattern) && $pattern !== '') {
             $regex = '/' . str_replace('/', '\\/', $pattern) . '/u';
-            if (@preg_match($regex, '') === false) {
-                $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $subject, $pattern);
+            if (!$this->isValidRegex($regex)) {
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::STRING_INVALID_REGEX_PATTERN, ['subject' => $subject, 'pattern' => $pattern]);
             } elseif (preg_match($regex, $value) !== 1) {
-                $errors[] = sprintf('%s must match pattern %s', $subject, $pattern);
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::STRING_MUST_MATCH_PATTERN, ['subject' => $subject, 'pattern' => $pattern]);
             }
         }
 
         $format = $constraints['format'] ?? null;
-        if (is_string($format) && !$this->isValidStringFormat($value, $format)) {
-            $errors[] = sprintf('%s must match format %s', $subject, $format);
+        if (is_string($format)) {
+            if ($this->formatRegistry->has($format)) {
+                $customError = $this->formatRegistry->validate($format, $subject, $value);
+                if ($customError !== null) {
+                    $errors[] = $customError;
+                }
+            } elseif (!$this->isValidStringFormat($value, $format)) {
+                $errors[] = $this->messageProvider->format(ValidationMessageKey::STRING_MUST_MATCH_FORMAT, ['subject' => $subject, 'format' => $format]);
+            }
         }
 
         return $errors;
@@ -224,12 +254,12 @@ final class OpenApiConstraintValidator
 
         $minItems = $this->toIntOrNull($constraints['minItems'] ?? null);
         if ($minItems !== null && $count < $minItems) {
-            $errors[] = sprintf('%s must contain at least %d items', $subject, $minItems);
+            $errors[] = $this->messageProvider->format(ValidationMessageKey::ARRAY_MIN_ITEMS, ['subject' => $subject, 'value' => $minItems]);
         }
 
         $maxItems = $this->toIntOrNull($constraints['maxItems'] ?? null);
         if ($maxItems !== null && $count > $maxItems) {
-            $errors[] = sprintf('%s must contain at most %d items', $subject, $maxItems);
+            $errors[] = $this->messageProvider->format(ValidationMessageKey::ARRAY_MAX_ITEMS, ['subject' => $subject, 'value' => $maxItems]);
         }
 
         if (($constraints['uniqueItems'] ?? false) === true) {
@@ -240,7 +270,7 @@ final class OpenApiConstraintValidator
                     : 'j:' . (json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: serialize($item));
 
                 if (isset($seen[$fingerprint])) {
-                    $errors[] = sprintf('%s must contain unique items', $subject);
+                    $errors[] = $this->messageProvider->format(ValidationMessageKey::ARRAY_UNIQUE_ITEMS, ['subject' => $subject]);
                     break;
                 }
 
@@ -279,6 +309,17 @@ final class OpenApiConstraintValidator
 
         $decoded = base64_decode($value, true);
         return $decoded !== false;
+    }
+
+    private function isValidRegex(string $regex): bool
+    {
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            return preg_match($regex, '') !== false;
+        } finally {
+            restore_error_handler();
+        }
     }
 
     private function toFloatOrNull(mixed $value): ?float

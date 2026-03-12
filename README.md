@@ -69,16 +69,55 @@ Or throw an exception on validation failure:
 
 ```php
 use OpenapiPhpDtoGenerator\Service\RequestValidationService;
-use OpenapiPhpDtoGenerator\Exception\RequestValidationException;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 
 $validator = new RequestValidationService();
 
 try {
     $dto = $validator->validateOrThrow($request, UserDto::class);
     // Use $dto here
-} catch (RequestValidationException $e) {
+} catch (BadRequestException $e) {
     echo "Validation error: " . $e->getMessage();
 }
+```
+
+You can also customize validation error texts:
+
+```php
+use OpenapiPhpDtoGenerator\Service\RequestValidationService;
+use OpenapiPhpDtoGenerator\Service\ValidationMessageKey;
+
+$validator = new RequestValidationService(messageOverrides: [
+    ValidationMessageKey::PARAM_EXPECTS_TYPE => 'Field "{paramPath}" must be {expectedType}, got {actualType}',
+]);
+```
+
+You can also register custom OpenAPI `format` handlers (validation + deserialization):
+
+```php
+use OpenapiPhpDtoGenerator\Contract\OpenApiFormatHandlerInterface;
+use OpenapiPhpDtoGenerator\Service\OpenApiFormatRegistry;
+use OpenapiPhpDtoGenerator\Service\RequestValidationService;
+
+$registry = new OpenApiFormatRegistry([
+    'upper-code' => new class implements OpenApiFormatHandlerInterface {
+        public function validate(string $subject, mixed $value): ?string
+        {
+            if (!is_string($value) || preg_match('/^[A-Z0-9\-]+$/', $value) !== 1) {
+                return sprintf('%s must match custom format upper-code', $subject);
+            }
+
+            return null;
+        }
+
+        public function deserialize(mixed $value, string $typeName, string $paramPath, bool $allowsNull): mixed
+        {
+            return is_string($value) ? strtoupper($value) : $value;
+        }
+    },
+]);
+
+$validator = new RequestValidationService(formatRegistry: $registry);
 ```
 
 ## CLI commands

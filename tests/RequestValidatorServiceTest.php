@@ -214,6 +214,16 @@ final class RequestValidatorServiceTest extends TestCase
         $this->assertInstanceOf(IntegerValidationDto::class, $dto);
         $this->assertSame(5, $dto->getPage());
     }
+
+    public function testValidateThrowsExceptionForInvalidQueryIntegerWithTrailingChars(): void
+    {
+        $request = new Request(['page' => '1x'], [], [], [], [], []);
+
+        $this->expectException(BadRequestException::class);
+        $this->expectExceptionMessage('param "page" expects int, got string');
+
+        $this->validator->validate($request, IntegerValidationDto::class);
+    }
 }
 
 // Test DTOs

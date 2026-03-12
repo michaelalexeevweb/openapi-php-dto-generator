@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests;
 
+use OpenapiPhpDtoGenerator\Contract\OpenApiFormatHandlerInterface;
 use PHPUnit\Framework\TestCase;
+use OpenapiPhpDtoGenerator\Service\OpenApiFormatRegistry;
+use OpenapiPhpDtoGenerator\Service\ValidationMessageKey;
 use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use OpenapiPhpDtoGenerator\Service\RequestValidationService;
 use Symfony\Component\HttpFoundation\Request;
@@ -177,5 +180,84 @@ final class RequestValidationServiceTest extends TestCase
         $errorString = $result->getErrorsAsString(' | ');
         $this->assertStringContainsString('param "id" expects int, got string', $errorString);
         $this->assertStringContainsString(' | ', $errorString);
+    }
+
+    public function testValidateSupportsCustomErrorMessages(): void
+    {
+        $service = new RequestValidationService(messageOverrides: [
+            ValidationMessageKey::PARAM_EXPECTS_TYPE => 'custom param "{paramPath}" must be {expectedType}, {actualType} given',
+        ]);
+
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 'invalid',
+            'name' => 'Test',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $result = $service->validate($request, SimpleValidationDto::class);
+
+        $this->assertFalse($result->isValid());
+        $this->assertSame('custom param "id" must be int, string given', $result->getFirstError());
+    }
+
+    public function testValidateSupportsCustomFormatValidationAndDeserialization(): void
+    {
+        $registry = new OpenApiFormatRegistry([
+            'upper-code' => new class implements OpenApiFormatHandlerInterface {
+                public function validate(string $subject, mixed $value): ?string
+                {
+                    if (!is_string($value)) {
+                        return sprintf('%s expects uppercase code string', $subject);
+                    }
+
+                    return preg_match('/^[A-Z0-9\-]+$/', $value) === 1
+                        ? null
+                        : sprintf('%s must match custom format upper-code', $subject);
+                }
+
+                public function deserialize(mixed $value, string $typeName, string $paramPath, bool $allowsNull): mixed
+                {
+                    if (!is_string($value)) {
+                        return $value;
+                    }
+
+                    return strtoupper($value);
+                }
+            },
+        ]);
+
+        $service = new RequestValidationService(formatRegistry: $registry);
+
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'code' => 'ab-12',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $result = $service->validate($request, CustomFormatValidationDto::class);
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame('AB-12', $result->getDto()->getCode());
+    }
+}
+
+final class CustomFormatValidationDto
+{
+    public function __construct(private string $code)
+    {
+    }
+
+    public function getCode(): string
+    {
+        return $this->code;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getOpenApiConstraints(): array
+    {
+        return [
+            'code' => ['type' => 'string', 'format' => 'upper-code'],
+        ];
     }
 }

@@ -4,16 +4,29 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\RequestDeserializerInterface;
+use OpenapiPhpDtoGenerator\Contract\RequestValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\ValidationMessageProviderInterface;
 use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use Symfony\Component\HttpFoundation\Request;
 
-final class RequestValidatorService
+final class RequestValidatorService implements RequestValidatorInterface
 {
-    private RequestDeserializerService $deserializer;
+    private RequestDeserializerInterface $deserializer;
 
-    public function __construct(?RequestDeserializerService $deserializer = null)
+    public function __construct(
+        ?RequestDeserializerInterface $deserializer = null,
+        ?ValidationMessageProviderInterface $messageProvider = null,
+        array $messageOverrides = [],
+        ?OpenApiFormatRegistry $formatRegistry = null,
+    )
     {
-        $this->deserializer = $deserializer ?? new RequestDeserializerService();
+        $messageProvider ??= new ValidationMessageProvider($messageOverrides);
+        $this->deserializer = $deserializer ?? new RequestDeserializerService(
+            messageProvider: $messageProvider,
+            messageOverrides: $messageOverrides,
+            formatRegistry: $formatRegistry,
+        );
     }
 
     /**

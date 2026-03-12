@@ -157,6 +157,17 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertFalse($dto->isLimitInRequest());
     }
 
+    public function testDeserializeUsesConstructorDefaultForMissingOptionalField(): void
+    {
+        $request = new Request(['page' => '5'], [], ['userId' => '10'], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, DefaultValueMixedDto::class);
+
+        $this->assertInstanceOf(DefaultValueMixedDto::class, $dto);
+        $this->assertSame(10, $dto->getLimit());
+        $this->assertTrue($dto->isLimitInRequest());
+    }
+
     public function testDeserializeThrowsExceptionWhenObjectPassedInsteadOfArray(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
@@ -535,6 +546,33 @@ final class NestedArrayDto
     public function getTags(): array
     {
         return $this->tags;
+    }
+}
+
+final class DefaultValueMixedDto
+{
+    private bool $limitWasProvidedInRequest = false;
+
+    public function __construct(
+        private int $userId,
+        private int $page,
+        private ?int $limit = 10,
+    ) {
+    }
+
+    public function getLimit(): ?int
+    {
+        return $this->limit;
+    }
+
+    public function isLimitInRequest(): bool
+    {
+        return $this->limitWasProvidedInRequest;
+    }
+
+    public function markAsLimitProvidedInRequest(): void
+    {
+        $this->limitWasProvidedInRequest = true;
     }
 }
 

@@ -4,16 +4,30 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\RequestValidationServiceInterface;
+use OpenapiPhpDtoGenerator\Contract\RequestValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\ValidationMessageProviderInterface;
 use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use Symfony\Component\HttpFoundation\Request;
 
-final class RequestValidationService
+final class RequestValidationService implements RequestValidationServiceInterface
 {
-    private RequestValidatorService $validator;
+    private RequestValidatorInterface $validator;
+    private ValidationMessageProviderInterface $messageProvider;
 
-    public function __construct(?RequestValidatorService $validator = null)
+    public function __construct(
+        ?RequestValidatorInterface $validator = null,
+        ?ValidationMessageProviderInterface $messageProvider = null,
+        array $messageOverrides = [],
+        ?OpenApiFormatRegistry $formatRegistry = null,
+    )
     {
-        $this->validator = $validator ?? new RequestValidatorService();
+        $this->messageProvider = $messageProvider ?? new ValidationMessageProvider($messageOverrides);
+        $this->validator = $validator ?? new RequestValidatorService(
+            messageProvider: $this->messageProvider,
+            messageOverrides: $messageOverrides,
+            formatRegistry: $formatRegistry,
+        );
     }
 
     /**
@@ -27,11 +41,11 @@ final class RequestValidationService
     {
         try {
             $dto = $this->validator->validate($request, $dtoClass);
-            return RequestValidationResult::success($dto);
+            return RequestValidationResult::success($dto, $this->messageProvider);
         } catch (BadRequestException $e) {
             $errors = explode("\n", $e->getMessage());
             /** @var RequestValidationResult<T> $result */
-            $result = RequestValidationResult::failure(array_filter($errors));
+            $result = RequestValidationResult::failure(array_values(array_filter($errors)), $this->messageProvider);
             return $result;
         }
     }
