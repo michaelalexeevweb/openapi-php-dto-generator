@@ -50,11 +50,19 @@ Run command with flags:
 composer openapi:generate-dto -- --file=OpenApiExamples/test.yaml --directory=generated/test
 ```
 
+Provide explicit namespace (optional):
+
+```bash
+composer openapi:generate-dto -- --file=OpenApiExamples/test.yaml --directory=generated/test --namespace=Generated\\Test
+```
+
 Or with positional file argument:
 
 ```bash
 composer openapi:generate-dto -- OpenApiExamples/test.yaml --directory=generated/test
 ```
+
+If `--namespace` is not provided, namespace is derived from `--directory`.
 
 ### Using generated DTOs in your code
 

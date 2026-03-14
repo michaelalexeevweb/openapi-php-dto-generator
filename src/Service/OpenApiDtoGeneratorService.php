@@ -848,6 +848,11 @@ final class OpenApiDtoGeneratorService
         }
 
         if (isset($propertySchema['enum']) && is_array($propertySchema['enum']) && $propertySchema['enum'] !== []) {
+            $parentEnumType = $this->resolveParentEnumTypeForOverride($ownerClassName, $propertyName, $propertySchema);
+            if ($parentEnumType !== null) {
+                return [$parentEnumType, $nullable];
+            }
+
             $enumName = $ownerClassName . $this->normalizeClassName($propertyName);
             $type = $this->resolveEnumBackingType($propertySchema);
             /** @var array<int, string|int> $values */
@@ -965,6 +970,82 @@ final class OpenApiDtoGeneratorService
             'boolean' => 'bool',
             default => 'mixed',
         }, $nullable];
+    }
+
+    /**
+     * If child schema overrides inherited enum with subset values,
+     * reuse parent enum type to keep constructor/parent signature compatible.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    private function resolveParentEnumTypeForOverride(string $ownerClassName, string $propertyName, array $propertySchema): ?string
+    {
+        $childValues = $propertySchema['enum'] ?? null;
+        if (!is_array($childValues) || $childValues === []) {
+            return null;
+        }
+
+        $parentClassName = $this->resolveSingleParentClassName($ownerClassName);
+        if ($parentClassName === null) {
+            return null;
+        }
+
+        $parentProperties = $this->indexPropertiesByName($this->deduplicatePropertiesByLastDefinition($this->getParentProperties($parentClassName)));
+        $parentProperty = $parentProperties[$this->normalizePropertyName($propertyName)] ?? null;
+        if (!is_array($parentProperty)) {
+            return null;
+        }
+
+        $parentType = $parentProperty['type'] ?? null;
+        if (!is_string($parentType) || !isset($this->enumSchemas[$parentType])) {
+            return null;
+        }
+
+        $parentEnum = $this->enumSchemas[$parentType];
+        $parentValues = $parentEnum['values'] ?? [];
+        if (!is_array($parentValues) || $parentValues === []) {
+            return null;
+        }
+
+        foreach ($childValues as $childValue) {
+            if (!in_array($childValue, $parentValues, true)) {
+                return null;
+            }
+        }
+
+        return $parentType;
+    }
+
+    private function resolveSingleParentClassName(string $className): ?string
+    {
+        $schemaDefinition = $this->dtoSchemas[$className] ?? null;
+        if (!is_array($schemaDefinition)) {
+            return null;
+        }
+
+        $allOf = $schemaDefinition['allOf'] ?? null;
+        if (!is_array($allOf)) {
+            return null;
+        }
+
+        $ref = null;
+        foreach ($allOf as $item) {
+            if (!is_array($item) || !isset($item['$ref']) || !is_string($item['$ref'])) {
+                continue;
+            }
+
+            if ($ref !== null) {
+                return null;
+            }
+
+            $ref = $item['$ref'];
+        }
+
+        if ($ref === null) {
+            return null;
+        }
+
+        return $this->schemaRefToClassName($ref, $this->getSchemaSourceFile($className));
     }
 
     /**

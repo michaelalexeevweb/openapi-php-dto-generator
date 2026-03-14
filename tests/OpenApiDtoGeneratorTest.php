@@ -329,6 +329,27 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
     }
 
+    public function testInheritedEnumOverrideSubsetReusesParentEnumType(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/discriminator-enum-override-subset.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $parentFile = $this->outputDirectory . '/Test1.php';
+        $this->assertFileExists($parentFile);
+        $parentContent = file_get_contents($parentFile);
+        $this->assertStringContainsString('private Test1TestField $testField', $parentContent);
+
+        $childFile = $this->outputDirectory . '/Test5.php';
+        $this->assertFileExists($childFile);
+        $childContent = file_get_contents($childFile);
+        $this->assertStringContainsString('extends Test1', $childContent);
+        $this->assertStringContainsString('Test1TestField $testField', $childContent);
+        $this->assertStringNotContainsString('Test5TestField $testField', $childContent);
+
+        $this->assertFileExists($this->outputDirectory . '/Test1TestField.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/Test5TestField.php');
+    }
+
     public function testGeneratesOpenApiConstraintsMetadata(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/constraints.yaml');

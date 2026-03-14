@@ -1,0 +1,57 @@
+openapi: 3.0.3
+info:
+  title: Discriminator enum override subset
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Test1:
+      type: object
+      required:
+        - testField
+      properties:
+        testField:
+          type: string
+          enum:
+            - test2
+            - test3
+            - test4
+            - test5
+      discriminator:
+        propertyName: testField
+        mapping:
+          test2: '#/components/schemas/Test2'
+          test3: '#/components/schemas/Test3'
+          test4: '#/components/schemas/Test4'
+          test5: '#/components/schemas/Test5'
+
+    Test2:
+      allOf:
+        - $ref: '#/components/schemas/Test1'
+        - type: object
+          properties: {}
+
+    Test3:
+      allOf:
+        - $ref: '#/components/schemas/Test1'
+        - type: object
+          properties: {}
+
+    Test4:
+      allOf:
+        - $ref: '#/components/schemas/Test1'
+        - type: object
+          properties: {}
+
+    Test5:
+      allOf:
+        - $ref: '#/components/schemas/Test1'
+        - type: object
+          required:
+            - testField
+          properties:
+            testField:
+              type: string
+              enum:
+                - test5
+

@@ -28,6 +28,7 @@ final class GenerateDtoCommand extends Command
         $this->addArgument('file', InputArgument::OPTIONAL, 'Path to OpenAPI yaml file', 'OpenApiExamples/test.yaml');
         $this->addOption('file', 'f', InputOption::VALUE_REQUIRED, 'Path to OpenAPI yaml file (alternative to argument)');
         $this->addOption('directory', 'd', InputOption::VALUE_REQUIRED, 'Output directory for generated DTO classes');
+        $this->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for generated DTO classes (overrides directory-derived namespace)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -39,9 +40,16 @@ final class GenerateDtoCommand extends Command
         $file = is_string($fileOption) && $fileOption !== '' ? $fileOption : (string) $input->getArgument('file');
         $directoryOption = $input->getOption('directory');
         $directory = is_string($directoryOption) ? trim($directoryOption) : '';
+        $namespaceOption = $input->getOption('namespace');
+        $namespaceOption = is_string($namespaceOption) ? trim($namespaceOption) : '';
 
         if ($directory === '') {
             $io->error('Option --directory is required. Example: --directory=generated/test');
+            return Command::FAILURE;
+        }
+
+        if ($input->hasParameterOption('--namespace') && $namespaceOption === '') {
+            $io->error('Option --namespace cannot be empty. Example: --namespace=Generated\\Test');
             return Command::FAILURE;
         }
 
@@ -51,7 +59,9 @@ final class GenerateDtoCommand extends Command
         }
 
         $outputDirectory = $this->resolveOutputDirectory($directory);
-        $namespace = $this->directoryToNamespace($directory);
+        $namespace = $namespaceOption !== ''
+            ? $this->normalizeExplicitNamespace($namespaceOption)
+            : $this->directoryToNamespace($directory);
 
         try {
             $count = $this->dtoGenerator->generateFromFile($file, $outputDirectory, $namespace);
@@ -109,6 +119,11 @@ final class GenerateDtoCommand extends Command
         }
 
         return $normalized;
+    }
+
+    private function normalizeExplicitNamespace(string $namespace): string
+    {
+        return trim($namespace, " \\t\\n\\r\\0\\x0B\\\\");
     }
 }
 
