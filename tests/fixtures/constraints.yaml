@@ -1,0 +1,32 @@
+openapi: 3.0.0
+info:
+  title: Constraints Test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    ConstraintSample:
+      type: object
+      required:
+        - email
+        - amount
+        - tags
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 3
+        amount:
+          # OAS 3.0 boolean exclusiveMinimum flag
+          type: number
+          minimum: 1
+          exclusiveMinimum: true
+          multipleOf: 2.5
+        tags:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+

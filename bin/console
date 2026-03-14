@@ -31,7 +31,13 @@ if (!$autoloadLoaded) {
 }
 
 $application = new Application('OpenAPI PHP DTO Generator');
-$application->add(new EchoYamlPropertiesCommand(new YamlPhpArrayFormatter()));
-$application->add(new GenerateDtoCommand(new OpenApiDtoGeneratorService()));
+$application->addCommand(new EchoYamlPropertiesCommand(new YamlPhpArrayFormatter()));
+$application->addCommand(new GenerateDtoCommand(new OpenApiDtoGeneratorService()));
 $application->setDefaultCommand('openapi:generate-dto');
-$application->run();
+
+try {
+    $application->run();
+} catch (\Exception $e) {
+    fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+    exit(1);
+}

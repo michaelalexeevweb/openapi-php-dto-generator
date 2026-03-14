@@ -1,0 +1,18 @@
+openapi: 3.0.0
+info:
+  title: AllOf Last-Type-Wins Test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    # allOf with two primitive type overrides – last one (string) must win.
+    AllOfSample:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          allOf:
+            - type: integer
+            - type: string
+

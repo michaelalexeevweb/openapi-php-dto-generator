@@ -859,8 +859,26 @@ final class OpenApiDtoGeneratorService
         $type = $propertySchema['type'] ?? null;
 
         if (is_array($type)) {
-            $nonNullTypes = array_values(array_filter($type, static fn (mixed $item): bool => $item !== 'null'));
+            $nonNullTypes = array_values(array_filter($type, static fn (mixed $item): bool => is_string($item) && $item !== 'null'));
             $nullable = count($nonNullTypes) !== count($type);
+
+            if (count($nonNullTypes) > 1) {
+                // OAS 3.1 multi-type: type: [string, integer]  →  string|int
+                $phpUnionParts = array_values(array_unique(array_map(
+                    static fn (string $t): string => match ($t) {
+                        'integer' => 'int',
+                        'number' => 'float',
+                        'string' => 'string',
+                        'boolean' => 'bool',
+                        'array' => 'array',
+                        default => 'mixed',
+                    },
+                    $nonNullTypes,
+                )));
+
+                return [implode('|', $phpUnionParts), $nullable];
+            }
+
             $type = $nonNullTypes[0] ?? 'mixed';
         }
 

@@ -1,0 +1,115 @@
+openapi: 3.1.0
+info:
+  title: OpenAPI 3.1 Feature Test
+  version: 1.0.0
+
+paths:
+  /orders:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: OK
+
+components:
+  schemas:
+    # 3.1: nullable scalar via array type syntax  [string, null]
+    NullableScalarModel:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+        nickname:
+          type: ['string', 'null']
+        score:
+          type: ['number', 'null']
+
+    # 3.1: nullable $ref via oneOf + {type: null}
+    NullableRefModel:
+      type: object
+      required:
+        - ownerId
+      properties:
+        ownerId:
+          type: integer
+        pet:
+          oneOf:
+            - $ref: '#/components/schemas/SimplePet'
+            - type: 'null'
+
+    SimplePet:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+
+    # 3.1: $ref with sibling description (description on same level as $ref)
+    RefWithSiblingDescription:
+      type: object
+      required:
+        - petId
+      properties:
+        petId:
+          type: integer
+        companion:
+          $ref: '#/components/schemas/SimplePet'
+          description: The companion pet of this owner
+
+    # 3.1: union type (multiple types, non-null)
+    UnionTypeModel:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: ['string', 'integer']
+
+    # 3.1: exclusiveMinimum and exclusiveMaximum as numbers (not booleans)
+    NumericConstraints31Model:
+      type: object
+      required:
+        - quantity
+        - score
+      properties:
+        quantity:
+          type: integer
+          exclusiveMinimum: 0
+          exclusiveMaximum: 1000
+        score:
+          type: number
+          minimum: 0.0
+          exclusiveMaximum: 100.0
+
+    # 3.1: type: null as explicit nullable field
+    ExplicitNullModel:
+      type: object
+      properties:
+        value:
+          oneOf:
+            - type: string
+            - type: 'null'
+
+    # Request body with schema reference (uses 3.1 $ref)
+    CreateOrderRequest:
+      type: object
+      required:
+        - product
+        - quantity
+      properties:
+        product:
+          type: string
+        quantity:
+          type: integer
+          exclusiveMinimum: 0
+        note:
+          type: ['string', 'null']
+

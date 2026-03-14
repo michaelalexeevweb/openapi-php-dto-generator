@@ -1,0 +1,27 @@
+openapi: 3.0.0
+info:
+  title: Discriminator Duplicate Mapping Test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    # Both dog and dogAlias map to the same target DogAnimal – must throw RuntimeException.
+    BaseAnimal:
+      type: object
+      properties:
+        kind:
+          type: string
+      discriminator:
+        propertyName: kind
+        mapping:
+          dog: '#/components/schemas/DogAnimal'
+          dogAlias: '#/components/schemas/DogAnimal'
+
+    DogAnimal:
+      allOf:
+        - $ref: '#/components/schemas/BaseAnimal'
+        - type: object
+          properties:
+            bark:
+              type: string
+

@@ -321,39 +321,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
     public function testDiscriminatorDuplicateMappingTargetThrowsException(): void
     {
-        $openApi = [
-            'openapi' => '3.0.0',
-            'info' => ['title' => 'test', 'version' => '1.0.0'],
-            'paths' => [],
-            'components' => [
-                'schemas' => [
-                    'BaseAnimal' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'kind' => ['type' => 'string'],
-                        ],
-                        'discriminator' => [
-                            'propertyName' => 'kind',
-                            'mapping' => [
-                                'dog' => '#/components/schemas/DogAnimal',
-                                'dogAlias' => '#/components/schemas/DogAnimal',
-                            ],
-                        ],
-                    ],
-                    'DogAnimal' => [
-                        'allOf' => [
-                            ['$ref' => '#/components/schemas/BaseAnimal'],
-                            [
-                                'type' => 'object',
-                                'properties' => [
-                                    'bark' => ['type' => 'string'],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-        ];
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/discriminator-duplicate-mapping.yaml');
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('duplicate target "DogAnimal"');
@@ -363,40 +331,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
     public function testGeneratesOpenApiConstraintsMetadata(): void
     {
-        $openApi = [
-            'openapi' => '3.0.0',
-            'info' => ['title' => 'test', 'version' => '1.0.0'],
-            'paths' => [],
-            'components' => [
-                'schemas' => [
-                    'ConstraintSample' => [
-                        'type' => 'object',
-                        'required' => ['email', 'amount', 'tags'],
-                        'properties' => [
-                            'email' => [
-                                'type' => 'string',
-                                'format' => 'email',
-                                'minLength' => 3,
-                            ],
-                            'amount' => [
-                                'type' => 'number',
-                                'minimum' => 1,
-                                'exclusiveMinimum' => true,
-                                'multipleOf' => 2.5,
-                            ],
-                            'tags' => [
-                                'type' => 'array',
-                                'items' => ['type' => 'string'],
-                                'minItems' => 1,
-                                'maxItems' => 10,
-                                'uniqueItems' => true,
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-        ];
-
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/constraints.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/ConstraintSample.php';
@@ -414,28 +349,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
     public function testGeneratesUnionTypeForPropertyOneOf(): void
     {
-        $openApi = [
-            'openapi' => '3.0.0',
-            'info' => ['title' => 'test', 'version' => '1.0.0'],
-            'paths' => [],
-            'components' => [
-                'schemas' => [
-                    'UnionSample' => [
-                        'type' => 'object',
-                        'required' => ['id'],
-                        'properties' => [
-                            'id' => [
-                                'oneOf' => [
-                                    ['type' => 'string', 'format' => 'uuid'],
-                                    ['type' => 'integer', 'minimum' => 10, 'maximum' => 100],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-        ];
-
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/union-type.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/UnionSample.php';
@@ -475,28 +389,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
     public function testAllOfLastTypeWinsForProperty(): void
     {
-        $openApi = [
-            'openapi' => '3.0.0',
-            'info' => ['title' => 'test', 'version' => '1.0.0'],
-            'paths' => [],
-            'components' => [
-                'schemas' => [
-                    'AllOfSample' => [
-                        'type' => 'object',
-                        'required' => ['value'],
-                        'properties' => [
-                            'value' => [
-                                'allOf' => [
-                                    ['type' => 'integer'],
-                                    ['type' => 'string'],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-        ];
-
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/allof-last-type-wins.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/AllOfSample.php';
@@ -674,24 +567,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
     public function testDatetimeAliasFormatSupport(): void
     {
-        $openApi = [
-            'openapi' => '3.0.0',
-            'components' => [
-                'schemas' => [
-                    'AliasDateTimeModel' => [
-                        'type' => 'object',
-                        'required' => ['createdAt'],
-                        'properties' => [
-                            'createdAt' => [
-                                'type' => 'string',
-                                'format' => 'datetime',
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-        ];
-
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/datetime-alias.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $aliasFile = $this->outputDirectory . '/AliasDateTimeModel.php';
@@ -702,5 +578,140 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertStringContainsString('public function getCreatedAt(): string', $aliasContent);
         $this->assertStringContainsString('return $this->createdAt->format(\'c\');', $aliasContent);
         $this->assertStringContainsString('Expected format: yyyy-MM-dd HH:mm:ss', $aliasContent);
+    }
+
+    // -------------------------------------------------------------------------
+    // OpenAPI 3.1 support
+    // -------------------------------------------------------------------------
+
+    /**
+     * OAS 3.1 replaced `nullable: true` with array type syntax: type: [string, null].
+     */
+    public function testOpenApi31NullableScalarViaArrayType(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/NullableScalarModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // id is required and not nullable
+        $this->assertStringContainsString('private int $id', $content);
+        $this->assertStringNotContainsString('private ?int $id', $content);
+
+        // nickname: type: [string, null]  →  nullable string
+        $this->assertStringContainsString('private ?string $nickname', $content);
+
+        // score: type: [number, null]  →  nullable float
+        $this->assertStringContainsString('private ?float $score', $content);
+    }
+
+    /**
+     * OAS 3.1 uses oneOf: [{$ref: ...}, {type: null}] to express nullable $refs.
+     */
+    public function testOpenApi31NullableRefViaOneOfNull(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/NullableRefModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // pet: oneOf: [$ref: SimplePet, type: null]  →  nullable SimplePet
+        $this->assertStringContainsString('private ?SimplePet $pet', $content);
+    }
+
+    /**
+     * OAS 3.1 allows keywords alongside $ref (sibling keywords).
+     * The description placed next to $ref should still be rendered in the docblock.
+     */
+    public function testOpenApi31RefWithSiblingDescription(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/RefWithSiblingDescription.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // companion is typed as SimplePet
+        $this->assertStringContainsString('private ?SimplePet $companion', $content);
+
+        // The sibling description must appear in the docblock
+        $this->assertStringContainsString('The companion pet of this owner', $content);
+    }
+
+    /**
+     * OAS 3.1 allows multiple non-null types in the type array: type: [string, integer].
+     */
+    public function testOpenApi31MultipleNonNullTypesInArrayType(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/UnionTypeModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // value: type: [string, integer]  →  string|int union
+        $this->assertMatchesRegularExpression('/private (string\|int|int\|string) \$value/', $content);
+    }
+
+    /**
+     * OAS 3.1 changed exclusiveMinimum / exclusiveMaximum from boolean flags
+     * (OAS 3.0) to actual numeric bounds.
+     * The generator must preserve them in getOpenApiConstraints() as numbers.
+     */
+    public function testOpenApi31ExclusiveMinMaxAsNumbers(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/NumericConstraints31Model.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // Numeric exclusiveMinimum/Maximum must be stored as-is, not as booleans
+        $this->assertStringContainsString("'exclusiveMinimum' => 0", $content);
+        $this->assertStringContainsString("'exclusiveMaximum' => 1000", $content);
+        // Note: YAML parses 100.0 as int 100 (whole-number floats lose the decimal)
+        $this->assertStringContainsString("'exclusiveMaximum' => 100", $content);
+    }
+
+    /**
+     * oneOf with type: null  →  the field should be nullable.
+     */
+    public function testOpenApi31ExplicitNullType(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/ExplicitNullModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // value is nullable string (oneOf string | null)
+        $this->assertStringContainsString('private ?string $value', $content);
+    }
+
+    /**
+     * A complete 3.1 spec with request body using $ref and array-nullable type
+     * must generate the expected DTO.
+     */
+    public function testOpenApi31RequestBodyWithNullableArrayType(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/CreateOrderRequest.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string $product', $content);
+        $this->assertStringContainsString('private int $quantity', $content);
+        // note: type: [string, null]  →  nullable
+        $this->assertStringContainsString('private ?string $note', $content);
     }
 }

@@ -14,7 +14,21 @@ composer require michaelalexeevweb/openapi-php-dto-generator
 
 ## Version
 
-**Version 1.0** - Supports OpenAPI 3.0.* only.
+**Version 1.x** - Supports **OpenAPI 3.0.\*** and **OpenAPI 3.1.\***.
+
+
+### OpenAPI 3.1 features supported
+
+| Feature | Notes |
+|---|---|
+| `type: [string, null]` | Nullable scalar via array-type syntax |
+| `type: [string, integer]` | Multi-type union → `string\|int` property |
+| `exclusiveMinimum: 5` / `exclusiveMaximum: 100` | Numeric bounds (not the OAS 3.0 boolean flag) |
+| `oneOf: [{$ref: …}, {type: null}]` | Nullable `$ref` via the recommended 3.1 pattern |
+| `type: null` variant inside `oneOf` / `anyOf` | Treated as nullable |
+| Sibling keywords alongside `$ref` | `description` placed next to `$ref` is preserved in the docblock |
+
+The OAS 3.0 `nullable: true` shorthand is still accepted for backwards compatibility.
 
 ## Usage
 
@@ -127,21 +141,19 @@ $validator = new RequestValidationService(formatRegistry: $registry);
 
 ## Features
 
-- Generate readonly DTO classes from `components.schemas`
-- Generate enums from schema `enum`
+- Generate DTO classes from `components.schemas`
+- Generate enums from schema `enum` (string and int backed)
 - Support nested object schemas and nested enums
-- Support `allOf` inheritance
-- Support `oneOf` and `anyOf` unions
-- Generate request/response inline schemas
-- Handle path and query parameter schemas
-- Preserve schema descriptions and default values
-
-## Testing
-
-```bash
-php vendor/bin/phpunit
-```
-
-## License
-
-MIT - see `LICENSE`.
+- Support `allOf` (inheritance or property merge)
+- Support `oneOf` and `anyOf` (interface unions)
+- Support `discriminator` with `propertyName` / `mapping`
+- Generate DTOs for inline request/response schemas without a named `$ref`
+- Handle path and query parameter schemas (with `isInPath` / `isInQuery` helpers)
+- Preserve schema `description` as PHPDoc comments
+- Preserve `default` values
+- Preserve OpenAPI constraints (`minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `minLength`, `maxLength`, `pattern`, `minItems`, `maxItems`, `uniqueItems`, `format`) via `getOpenApiConstraints()`
+- Validate and deserialize incoming Symfony `Request` objects against generated DTOs
+- Custom validation error messages
+- Custom `format` handlers (validation + deserialization)
+- Support for external `$ref` across multiple YAML files
+- **OpenAPI 3.1**: `type: [string, null]`, multi-type unions, numeric `exclusiveMinimum` / `exclusiveMaximum`, `oneOf` + `{type: null}` nullable references, sibling keywords alongside `$ref`
