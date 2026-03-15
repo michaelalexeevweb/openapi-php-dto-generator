@@ -15,6 +15,9 @@ final class RequestValidationService implements RequestValidationServiceInterfac
     private RequestValidatorInterface $validator;
     private ValidationMessageProviderInterface $messageProvider;
 
+    /**
+     * @param array<string, string> $messageOverrides
+     */
     public function __construct(
         RequestValidatorInterface|null $validator = null,
         ValidationMessageProviderInterface|null $messageProvider = null,
@@ -52,7 +55,7 @@ final class RequestValidationService implements RequestValidationServiceInterfac
     /**
      * Validates request and returns DTO or throws exception.
      *
-     * @template T
+     * @template T of object
      * @param class-string<T> $dtoClass
      * @return T
      * @throws BadRequestException

@@ -26,7 +26,7 @@ final class OpenApiFormatRegistry implements OpenApiFormatRegistryInterface
 
     public function has(string $format): bool
     {
-        return isset($this->handlers[$format]);
+        return array_key_exists($format, $this->handlers);
     }
 
     public function validate(string $format, string $subject, mixed $value): string|null

@@ -31,18 +31,19 @@ final class RequestValidationResult implements RequestValidationResultInterface
      */
     public static function success(object $dto, ValidationMessageProviderInterface|null $messageProvider = null): self
     {
+        /** @var self<U> $result */
         $result = new self($messageProvider);
         $result->dto = $dto;
         return $result;
     }
 
     /**
-     * @template U of object
      * @param array<string> $errors
-     * @return self<U>
+     * @return self<object>
      */
     public static function failure(array $errors, ValidationMessageProviderInterface|null $messageProvider = null): self
     {
+        /** @var self<object> $result */
         $result = new self($messageProvider);
         $result->errors = $errors;
         return $result;

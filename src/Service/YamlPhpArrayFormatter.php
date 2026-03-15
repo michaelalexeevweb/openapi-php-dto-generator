@@ -25,6 +25,9 @@ final class YamlPhpArrayFormatter implements YamlPhpArrayFormatterInterface
         return $this->formatScalar($value);
     }
 
+    /**
+     * @param array<int|string, mixed> $value
+     */
     private function formatArray(array $value): string
     {
         if ($value === []) {

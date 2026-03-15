@@ -34,7 +34,9 @@
         "symfony/yaml": "^6.0 || ^7.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^10.5"
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^2.1",
+        "ergebnis/phpstan-rules": "^2.13"
     },
     "bin": [
         "bin/console"
@@ -47,6 +49,9 @@
             "/OpenApiExamples",
             "/vendor"
         ]
+    },
+    "scripts": {
+        "phpstan": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G"
     },
     "config": {
         "platform": {

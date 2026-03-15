@@ -1,0 +1,21 @@
+includes:
+    - vendor/ergebnis/phpstan-rules/rules.neon
+    - phpstan-baseline.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+    ergebnis:
+        allRules: false
+        declareStrictTypes:
+            enabled: true
+        noCompact:
+            enabled: true
+        noEval:
+            enabled: true
+        privateInFinalClass:
+            enabled: true
+        noIsset:
+            enabled: true
+

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Service;
 
 use DateTimeImmutable;
+use BackedEnum;
 use JsonException;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoNormalizerInterface;
@@ -16,6 +17,7 @@ use RuntimeException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Throwable;
+use UnitEnum;
 
 final class DtoNormalizer implements DtoNormalizerInterface
 {
@@ -223,8 +225,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $value->format('c');
         }
 
-        if (is_object($value) && enum_exists(get_class($value))) {
-            return $value->value ?? $value->name;
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+
+        if ($value instanceof UnitEnum) {
+            return $value->name;
         }
 
         if (is_object($value)) {
@@ -263,7 +269,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
-     * @return array<string, int|string|null>
+     * @return array<string, bool|int|string|null>
      */
     private function normalizeFileValue(File $file): array
     {
@@ -378,6 +384,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
+     * @param ReflectionClass<object> $reflection
      * @return array<string, array<string, mixed>>
      */
     private function resolveOpenApiConstraints(ReflectionClass $reflection): array

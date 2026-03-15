@@ -14,6 +14,9 @@ final class RequestValidatorService implements RequestValidatorInterface
 {
     private RequestDeserializerInterface $deserializer;
 
+    /**
+     * @param array<string, string> $messageOverrides
+     */
     public function __construct(
         RequestDeserializerInterface|null $deserializer = null,
         ValidationMessageProviderInterface|null $messageProvider = null,
@@ -29,7 +32,7 @@ final class RequestValidatorService implements RequestValidatorInterface
     }
 
     /**
-     * @template T
+     * @template T of object
      * @param class-string<T> $dtoClass
      * @return T
      * @throws BadRequestException
