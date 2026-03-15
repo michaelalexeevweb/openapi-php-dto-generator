@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\YamlPhpArrayFormatterInterface;
 use Symfony\Component\Yaml\Yaml;
 
-final class YamlPhpArrayFormatter
+final class YamlPhpArrayFormatter implements YamlPhpArrayFormatterInterface
 {
     public function formatFile(string $filePath): string
     {

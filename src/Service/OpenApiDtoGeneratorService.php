@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\OpenApiDtoGeneratorServiceInterface;
 use RuntimeException;
 use Symfony\Component\Yaml\Yaml;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
-final class OpenApiDtoGeneratorService
+final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInterface
 {
     private Environment|null $twig = null;
 

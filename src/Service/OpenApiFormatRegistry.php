@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Service;
 
 use OpenapiPhpDtoGenerator\Contract\OpenApiFormatHandlerInterface;
+use OpenapiPhpDtoGenerator\Contract\OpenApiFormatRegistryInterface;
 
-final class OpenApiFormatRegistry
+final class OpenApiFormatRegistry implements OpenApiFormatRegistryInterface
 {
     /**
      * @var array<string, OpenApiFormatHandlerInterface>

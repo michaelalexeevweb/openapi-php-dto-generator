@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\RequestValidationResultInterface;
 use OpenapiPhpDtoGenerator\Contract\ValidationMessageProviderInterface;
 
 /**
  * @template T of object
+ * @implements RequestValidationResultInterface<T>
  */
-final class RequestValidationResult
+final class RequestValidationResult implements RequestValidationResultInterface
 {
     /** @var T|null */
     private object|null $dto = null;
