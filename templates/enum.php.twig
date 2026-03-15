@@ -1,0 +1,17 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+{% for import in imports %}
+use {{ import }};
+{% endfor %}
+{% if imports is not empty %}
+{% endif %}
+enum {{ enumName }}: {{ backingType }}
+{
+{% for case in cases %}
+    case {{ case.name }} = {{ case.value }};
+{% endfor %}
+}

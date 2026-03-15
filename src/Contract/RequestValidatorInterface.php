@@ -17,4 +17,3 @@ interface RequestValidatorInterface
      */
     public function validate(Request $request, string $dtoClass): object;
 }
-

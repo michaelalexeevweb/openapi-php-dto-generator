@@ -27,9 +27,9 @@ components:
         id:
           type: integer
         nickname:
-          type: ['string', 'null']
+          type: [ 'string', 'null' ]
         score:
-          type: ['number', 'null']
+          type: [ 'number', 'null' ]
 
     # 3.1: nullable $ref via oneOf + {type: null}
     NullableRefModel:
@@ -71,7 +71,7 @@ components:
         - value
       properties:
         value:
-          type: ['string', 'integer']
+          type: [ 'string', 'integer' ]
 
     # 3.1: exclusiveMinimum and exclusiveMaximum as numbers (not booleans)
     NumericConstraints31Model:
@@ -111,5 +111,4 @@ components:
           type: integer
           exclusiveMinimum: 0
         note:
-          type: ['string', 'null']
-
+          type: [ 'string', 'null' ]

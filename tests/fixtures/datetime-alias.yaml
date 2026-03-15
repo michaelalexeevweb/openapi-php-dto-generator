@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Datetime Alias Format Test
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     # "datetime" is an alias for "date-time" supported by this library.
@@ -14,4 +14,3 @@ components:
         createdAt:
           type: string
           format: datetime
-

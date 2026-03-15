@@ -1,0 +1,177 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+{% for import in imports %}
+use {{ import }};
+{% endfor %}
+{% if imports is not empty %}
+{% endif %}
+{% if unionMembers is not null %}
+/**
+ * Members: {{ unionMembers }}
+ */
+interface {{ className }}
+{
+}
+{% else %}
+{{ signature }}
+{
+{% for property in privateProperties %}
+{% set hasDoc = property.description is not null or property.constraintsLine is not null or property.docVarType is not null %}
+{% if hasDoc %}
+	/**
+{% if property.description is not null %}
+	 * {{ property.description }}
+{% endif %}
+{% if property.constraintsLine is not null %}
+{% if property.description is not null %}
+	 *
+{% endif %}
+	 * Constraints: {{ property.constraintsLine }}
+{% endif %}
+{% if property.docVarType is not null %}
+{% if property.description is not null or property.constraintsLine is not null %}
+	 *
+{% endif %}
+	 * @var {{ property.docVarType }}
+{% endif %}
+	 */
+{% endif %}
+	private {{ property.type }} ${{ property.name }};
+	private bool ${{ property.inRequestFlagName }} = false;
+{% endfor %}
+{% if privateProperties is not empty %}
+
+{% endif %}
+	public function __construct(
+{% for param in constructorParams %}
+		{{ param.type }} ${{ param.name }}{{ param.defaultValue }},
+{% endfor %}
+	) {
+{% if parentArgs is not empty %}
+		parent::__construct({% for arg in parentArgs %}${{ arg }}{% if not loop.last %}, {% endif %}{% endfor %});
+{% endif %}
+{% for name in assignments %}
+		$this->{{ name }} = ${{ name }};
+{% endfor %}
+	}
+{% if methodProperties is not empty %}
+
+{% endif %}
+{% for property in methodProperties %}
+{% set hasDoc = (property.docDescriptionLines is not empty) or (property.docReturnType is not null) or (property.expectedFormat is not null) %}
+{% if hasDoc %}
+	/**
+{% for line in property.docDescriptionLines %}
+	 * {{ line }}
+{% endfor %}
+{% if property.docDescriptionLines is not empty and (property.docReturnType is not null or property.expectedFormat is not null) %}
+	 *
+{% endif %}
+{% if property.expectedFormat is not null %}
+	 * Expected format: {{ property.expectedFormat }}
+{% endif %}
+{% if property.docReturnType is not null %}
+	 * @return {{ property.docReturnType }}
+{% endif %}
+	 */
+{% endif %}
+	public function {{ property.methodName }}(): {{ property.returnType }}
+	{
+{% if property.hasGuard %}
+		if (!$this->{{ property.inRequestFlagName }}) {
+			throw new \LogicException('Field "{{ property.name }}" wasn\'t provided in request');
+		}
+{% endif %}
+{% if property.returnKind == 'temporal' %}
+{% if property.isNullableTemporal %}
+		return $this->{{ property.name }}?->format('{{ property.phpDateFormat }}') ?? "";
+{% else %}
+		return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
+{% endif %}
+{% else %}
+		return $this->{{ property.name }};
+{% endif %}
+	}
+
+	public function is{{ property.nameSuffix }}Required(): bool
+	{
+		return {{ property.requiredLiteral }};
+	}
+
+	public function is{{ property.nameSuffix }}InPath(): bool
+	{
+		return {{ property.inPathLiteral }};
+	}
+
+	public function is{{ property.nameSuffix }}InQuery(): bool
+	{
+		return {{ property.inQueryLiteral }};
+	}
+
+	public function is{{ property.nameSuffix }}InRequest(): bool
+	{
+		return $this->{{ property.inRequestFlagName }};
+	}
+{% if property.hasArrayAdder %}
+
+	public function {{ property.arrayAdderMethodName }}({{ property.arrayAdderItemType }} $item): void
+	{
+		if ($item === null) {
+			return;
+		}
+{% if property.nullableArray %}
+		if ($this->{{ property.name }} === null) {
+			$this->{{ property.name }} = [];
+		}
+{% endif %}
+		$this->{{ property.name }}[] = $item;
+	}
+{% endif %}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% if discriminator is not null %}
+{% if methodProperties is not empty %}
+
+{% endif %}
+	public static function getDiscriminatorPropertyName(): string
+	{
+		return '{{ discriminator.propertyName }}';
+	}
+
+	/**
+	 * @return array<string, class-string>
+	 */
+	public static function getDiscriminatorMapping(): array
+	{
+		return [
+{% for entry in discriminator.mappingEntries %}
+			'{{ entry.value }}' => {{ entry.targetClass }}::class,
+{% endfor %}
+		];
+	}
+{% endif %}
+
+	/**
+	 * @return array<string, array<string, mixed>>
+	 */
+	public static function getOpenApiConstraints(): array
+	{
+{% if extends is not null %}
+		$constraints = parent::getOpenApiConstraints();
+{% else %}
+		$constraints = [];
+{% endif %}
+{% for assignment in constraintAssignments %}
+		$constraints['{{ assignment.name }}'] = {{ assignment.value }};
+{% endfor %}
+
+		return $constraints;
+	}
+}
+{% endif %}

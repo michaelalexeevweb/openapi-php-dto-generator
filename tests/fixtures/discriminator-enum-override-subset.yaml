@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Discriminator enum override subset
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     Test1:
@@ -29,19 +29,19 @@ components:
       allOf:
         - $ref: '#/components/schemas/Test1'
         - type: object
-          properties: {}
+          properties: { }
 
     Test3:
       allOf:
         - $ref: '#/components/schemas/Test1'
         - type: object
-          properties: {}
+          properties: { }
 
     Test4:
       allOf:
         - $ref: '#/components/schemas/Test1'
         - type: object
-          properties: {}
+          properties: { }
 
     Test5:
       allOf:
@@ -54,4 +54,3 @@ components:
               type: string
               enum:
                 - test5
-

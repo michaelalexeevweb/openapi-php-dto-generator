@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests;
 
-use PHPUnit\Framework\TestCase;
 use OpenapiPhpDtoGenerator\Service\OpenApiDtoGeneratorService;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
 final class OpenApiDtoGeneratorTest extends TestCase
@@ -198,7 +198,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $articleFile = $this->outputDirectory . '/Article.php';
         $this->assertFileExists($articleFile);
         $articleContent = file_get_contents($articleFile);
-        $this->assertStringContainsString('public function addItemToTags(ArticleTagsItem $item): void', $articleContent);
+        $this->assertStringContainsString(
+            'public function addItemToTags(ArticleTagsItem $item): void',
+            $articleContent,
+        );
     }
 
     public function testNestedEnumGeneration(): void
@@ -293,7 +296,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertStringContainsString('class Animal', $animalContent);
         $this->assertStringNotContainsString('final class', $animalContent);
         $this->assertStringContainsString('private AnimalAnimalType $animalType', $animalContent);
-        $this->assertStringContainsString('public static function getDiscriminatorPropertyName(): string', $animalContent);
+        $this->assertStringContainsString(
+            'public static function getDiscriminatorPropertyName(): string',
+            $animalContent,
+        );
         $this->assertStringContainsString("return 'animalType';", $animalContent);
         $this->assertStringContainsString("'dog' => Dog::class", $animalContent);
         $this->assertStringContainsString("'cat' => Cat::class", $animalContent);
@@ -378,7 +384,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         $this->assertStringContainsString('private string|int $id', $content);
-        $this->assertStringContainsString('Constraints: oneOf=(type=string, format=uuid) | (type=integer, minimum=10, maximum=100)', $content);
+        $this->assertStringContainsString(
+            'Constraints: oneOf=(type=string, format=uuid) | (type=integer, minimum=10, maximum=100)',
+            $content,
+        );
         $this->assertStringContainsString('public function __construct(', $content);
         $this->assertStringContainsString('string|int $id,', $content);
         $this->assertStringContainsString('public function getId(): string|int', $content);
@@ -389,7 +398,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $count = $this->generator->generateFromFile(
             __DIR__ . '/fixtures/external-ref/root.yaml',
             $this->outputDirectory,
-            'TestNamespace'
+            'TestNamespace',
         );
 
         $this->assertGreaterThanOrEqual(2, $count);
@@ -551,7 +560,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $inlineFile = $this->outputDirectory . '/ApiTestFilePostRequest.php';
         $this->assertFileExists($inlineFile);
         $inlineContent = file_get_contents($inlineFile);
-        $this->assertStringContainsString('use Symfony\\Component\\HttpFoundation\\File\\UploadedFile;', $inlineContent);
+        $this->assertStringContainsString(
+            'use Symfony\\Component\\HttpFoundation\\File\\UploadedFile;',
+            $inlineContent,
+        );
         $this->assertStringContainsString('private UploadedFile $file', $inlineContent);
         $this->assertStringContainsString('public function getFile(): UploadedFile', $inlineContent);
 

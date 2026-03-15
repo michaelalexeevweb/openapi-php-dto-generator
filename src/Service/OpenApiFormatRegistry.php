@@ -28,7 +28,7 @@ final class OpenApiFormatRegistry
         return isset($this->handlers[$format]);
     }
 
-    public function validate(string $format, string $subject, mixed $value): ?string
+    public function validate(string $format, string $subject, mixed $value): string|null
     {
         if (!$this->has($format)) {
             return null;
@@ -37,9 +37,13 @@ final class OpenApiFormatRegistry
         return $this->handlers[$format]->validate($subject, $value);
     }
 
-    public function deserialize(string $format, mixed $value, string $typeName, string $paramPath, bool $allowsNull): mixed
-    {
+    public function deserialize(
+        string $format,
+        mixed $value,
+        string $typeName,
+        string $paramPath,
+        bool $allowsNull,
+    ): mixed {
         return $this->handlers[$format]->deserialize($value, $typeName, $paramPath, $allowsNull);
     }
 }
-

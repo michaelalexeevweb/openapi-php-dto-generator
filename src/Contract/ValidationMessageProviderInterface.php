@@ -11,4 +11,3 @@ interface ValidationMessageProviderInterface
      */
     public function format(string $key, array $parameters = []): string;
 }
-

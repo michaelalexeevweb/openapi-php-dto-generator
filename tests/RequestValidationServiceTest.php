@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use OpenapiPhpDtoGenerator\Contract\OpenApiFormatHandlerInterface;
-use PHPUnit\Framework\TestCase;
 use OpenapiPhpDtoGenerator\Service\OpenApiFormatRegistry;
-use OpenapiPhpDtoGenerator\Service\ValidationMessageKey;
-use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use OpenapiPhpDtoGenerator\Service\RequestValidationService;
+use OpenapiPhpDtoGenerator\Service\ValidationMessageKey;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use Symfony\Component\HttpFoundation\Request;
 
 final class RequestValidationServiceTest extends TestCase
@@ -185,7 +185,7 @@ final class RequestValidationServiceTest extends TestCase
     public function testValidateSupportsCustomErrorMessages(): void
     {
         $service = new RequestValidationService(messageOverrides: [
-            ValidationMessageKey::PARAM_EXPECTS_TYPE => 'custom param "{paramPath}" must be {expectedType}, {actualType} given',
+            ValidationMessageKey::PARAM_EXPECTS_TYPE->value => 'custom param "{paramPath}" must be {expectedType}, {actualType} given',
         ]);
 
         $request = new Request([], [], [], [], [], [], json_encode([

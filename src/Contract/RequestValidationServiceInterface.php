@@ -25,4 +25,3 @@ interface RequestValidationServiceInterface
      */
     public function validateOrThrow(Request $request, string $dtoClass): object;
 }
-

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
-use PHPUnit\Framework\TestCase;
 use OpenapiPhpDtoGenerator\Service\RequestDeserializerService;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 
 final class RequestDeserializerServiceTest extends TestCase
@@ -197,7 +197,9 @@ final class RequestDeserializerServiceTest extends TestCase
         $request->headers->set('Content-Type', 'application/json');
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage("param \"tags.1.id\" expects int, got string\nparam \"tags.2.name\" expects string, got int");
+        $this->expectExceptionMessage(
+            "param \"tags.1.id\" expects int, got string\nparam \"tags.2.name\" expects string, got int",
+        );
 
         $this->deserializer->deserialize($request, NestedArrayDto::class);
     }
@@ -229,7 +231,9 @@ final class RequestDeserializerServiceTest extends TestCase
         $request->headers->set('Content-Type', 'application/json');
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('param "animal.animalType" has invalid discriminator value "bird". Allowed: dog, cat');
+        $this->expectExceptionMessage(
+            'param "animal.animalType" has invalid discriminator value "bird". Allowed: dog, cat',
+        );
 
         $this->deserializer->deserialize($request, DiscriminatorWrapperDto::class);
     }
@@ -258,7 +262,9 @@ final class RequestDeserializerServiceTest extends TestCase
         $request->headers->set('Content-Type', 'application/json');
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage("param \"amount\" must be greater than 1\nparam \"amount\" must be a multiple of 2.5\nparam \"email\" must match format email\nparam \"code\" length must be at least 3 characters\nparam \"code\" must match pattern ^\\d{3}-\\d{2}-\\d{4}$\nparam \"tags\" must contain unique items");
+        $this->expectExceptionMessage(
+            "param \"amount\" must be greater than 1\nparam \"amount\" must be a multiple of 2.5\nparam \"email\" must match format email\nparam \"code\" length must be at least 3 characters\nparam \"code\" must match pattern ^\\d{3}-\\d{2}-\\d{4}$\nparam \"tags\" must contain unique items",
+        );
 
         $this->deserializer->deserialize($request, ConstraintsDto::class);
     }
@@ -729,4 +735,3 @@ final class UnionIdDto
         ];
     }
 }
-

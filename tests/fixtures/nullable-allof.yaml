@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Nullable allOf Test
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     # Test 1: Single $ref in nullable allOf
@@ -74,4 +74,3 @@ components:
       properties:
         name:
           type: string
-

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
+use OpenapiPhpDtoGenerator\Service\RequestValidatorService;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Exception\BadRequestException;
-use OpenapiPhpDtoGenerator\Service\RequestValidatorService;
 use Symfony\Component\HttpFoundation\Request;
 
 final class RequestValidatorServiceTest extends TestCase
@@ -439,4 +439,3 @@ final class IntegerValidationDto
         return $this->page;
     }
 }
-

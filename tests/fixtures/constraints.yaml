@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Constraints Test
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     ConstraintSample:
@@ -29,4 +29,3 @@ components:
           minItems: 1
           maxItems: 10
           uniqueItems: true
-

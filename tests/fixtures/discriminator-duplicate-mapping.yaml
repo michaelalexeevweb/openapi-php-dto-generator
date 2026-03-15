@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Discriminator Duplicate Mapping Test
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     # Both dog and dogAlias map to the same target DogAnimal – must throw RuntimeException.
@@ -24,4 +24,3 @@ components:
           properties:
             bark:
               type: string
-

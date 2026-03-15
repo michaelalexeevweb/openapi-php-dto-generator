@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Union Type (property oneOf) Test
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     UnionSample:
@@ -17,4 +17,3 @@ components:
             - type: integer
               minimum: 10
               maximum: 100
-

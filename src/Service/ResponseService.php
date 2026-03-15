@@ -19,9 +19,13 @@ final class ResponseService
 {
     private OpenApiConstraintValidator $constraintValidator;
 
-    public function __construct(?OpenApiConstraintValidator $constraintValidator = null)
-    {
-        $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator();
+    public function __construct(
+        OpenApiConstraintValidator|null $constraintValidator = null,
+        OpenApiFormatRegistry|null $formatRegistry = null,
+    ) {
+        $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator(
+            formatRegistry: $formatRegistry,
+        );
     }
 
     /**
@@ -98,7 +102,7 @@ final class ResponseService
                 if (is_array($constraints) && $constraints !== []) {
                     $errors = array_merge(
                         $errors,
-                        $this->constraintValidator->validate(sprintf('field "%s"', $propertyName), $value, $constraints)
+                        $this->constraintValidator->validate(sprintf('field "%s"', $propertyName), $value, $constraints),
                     );
                 }
             } catch (\LogicException $e) {
@@ -134,7 +138,9 @@ final class ResponseService
         // Type validation
         return match ($expectedType) {
             'int' => is_int($value) ? null : "Method {$methodName}() must return int, got " . gettype($value),
-            'float' => (is_float($value) || is_int($value)) ? null : "Method {$methodName}() must return float, got " . gettype($value),
+            'float' => (is_float($value) || is_int(
+                    $value,
+                )) ? null : "Method {$methodName}() must return float, got " . gettype($value),
             'string' => is_string($value) ? null : "Method {$methodName}() must return string, got " . gettype($value),
             'bool' => is_bool($value) ? null : "Method {$methodName}() must return bool, got " . gettype($value),
             'array' => is_array($value) ? null : "Method {$methodName}() must return array, got " . gettype($value),
@@ -145,17 +151,24 @@ final class ResponseService
     /**
      * @param array<int, string> $expectedTypes
      */
-    private function validateValueAgainstTypes(mixed $value, array $expectedTypes, bool $allowsNull, string $methodName): ?string
-    {
+    private function validateValueAgainstTypes(
+        mixed $value,
+        array $expectedTypes,
+        bool $allowsNull,
+        string $methodName,
+    ): ?string {
         if ($value === null) {
             return $allowsNull ? null : sprintf(
                 'Method %s() returned null but type is non-nullable %s.',
                 $methodName,
-                implode('|', array_values(array_filter($expectedTypes, static fn (string $type): bool => $type !== 'null'))),
+                implode(
+                    '|',
+                    array_values(array_filter($expectedTypes, static fn(string $type): bool => $type !== 'null')),
+                ),
             );
         }
 
-        $filtered = array_values(array_filter($expectedTypes, static fn (string $type): bool => $type !== 'null'));
+        $filtered = array_values(array_filter($expectedTypes, static fn(string $type): bool => $type !== 'null'));
         if ($filtered === []) {
             return null;
         }
@@ -217,6 +230,14 @@ final class ResponseService
 
             try {
                 $value = $method->invoke($dto);
+            } catch (\LogicException $exception) {
+                if (str_contains($exception->getMessage(), "wasn't provided in request")) {
+                    $fallback = $this->tryReadBackingPropertyValue($dto, $propertyName);
+                    if ($fallback['found']) {
+                        $result[$propertyName] = $this->normalizeValue($fallback['value']);
+                    }
+                }
+                continue;
             } catch (\Throwable) {
                 continue;
             }
@@ -229,6 +250,24 @@ final class ResponseService
         }
 
         return $result;
+    }
+
+    /**
+     * @return array{found: bool, value: mixed}
+     */
+    private function tryReadBackingPropertyValue(object $dto, string $propertyName): array
+    {
+        $reflection = new ReflectionClass($dto);
+        if (!$reflection->hasProperty($propertyName)) {
+            return ['found' => false, 'value' => null];
+        }
+
+        $property = $reflection->getProperty($propertyName);
+        if (!$property->isPublic()) {
+            $property->setAccessible(true);
+        }
+
+        return ['found' => true, 'value' => $property->getValue($dto)];
     }
 
     private function normalizeValueFallback(mixed $value): mixed
@@ -262,8 +301,6 @@ final class ResponseService
                 continue;
             }
 
-            $methodName = $method->getName();
-
             try {
                 $value = $method->invoke($dto);
             } catch (\Throwable) {
@@ -295,9 +332,9 @@ final class ResponseService
     public function createStreamResponse(
         File|string $file,
         bool $asAttachment = false,
-        ?string $downloadName = null,
+        string|null $downloadName = null,
         int $status = Response::HTTP_OK,
-        array $headers = []
+        array $headers = [],
     ): BinaryFileResponse {
         $fileObject = is_string($file) ? new File($file) : $file;
 
@@ -305,7 +342,8 @@ final class ResponseService
 
         if ($downloadName === null || $downloadName === '') {
             $downloadName = $fileObject instanceof UploadedFile
-                ? ($fileObject->getClientOriginalName() !== '' ? $fileObject->getClientOriginalName() : $fileObject->getFilename())
+                ? ($fileObject->getClientOriginalName() !== '' ? $fileObject->getClientOriginalName(
+                ) : $fileObject->getFilename())
                 : $fileObject->getFilename();
         }
 
@@ -324,7 +362,7 @@ final class ResponseService
                 '%s; filename="%s"; filename*=UTF-8\'\'%s',
                 $disposition,
                 $downloadName,
-                $encodedName
+                $encodedName,
             );
             $response->headers->set('Content-Disposition', $dispositionHeader);
         }
@@ -387,7 +425,7 @@ final class ResponseService
             }
 
             if (method_exists($value, '__toString')) {
-                return (string) $value;
+                return (string)$value;
             }
 
             return get_class($value);

@@ -123,7 +123,7 @@ final class GenerateDtoCommand extends Command
 
     private function normalizeExplicitNamespace(string $namespace): string
     {
-        return trim($namespace, " \\t\\n\\r\\0\\x0B\\\\");
+        return trim(trim($namespace), '\\');
     }
 }
 

@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Common
   version: 1.0.0
-paths: {}
+paths: { }
 components:
   schemas:
     Test:
@@ -12,4 +12,3 @@ components:
       properties:
         id:
           type: integer
-

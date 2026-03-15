@@ -12,4 +12,3 @@ interface OpenApiConstraintValidatorInterface
      */
     public function validate(string $subject, mixed $value, array $constraints): array;
 }
-

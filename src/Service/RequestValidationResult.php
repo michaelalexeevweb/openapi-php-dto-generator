@@ -12,12 +12,12 @@ use OpenapiPhpDtoGenerator\Contract\ValidationMessageProviderInterface;
 final class RequestValidationResult
 {
     /** @var T|null */
-    private ?object $dto = null;
+    private object|null $dto = null;
     /** @var array<string> */
     private array $errors = [];
     private ValidationMessageProviderInterface $messageProvider;
 
-    private function __construct(?ValidationMessageProviderInterface $messageProvider = null)
+    private function __construct(ValidationMessageProviderInterface|null $messageProvider = null)
     {
         $this->messageProvider = $messageProvider ?? new ValidationMessageProvider();
     }
@@ -27,7 +27,7 @@ final class RequestValidationResult
      * @param U $dto
      * @return self<U>
      */
-    public static function success(object $dto, ?ValidationMessageProviderInterface $messageProvider = null): self
+    public static function success(object $dto, ValidationMessageProviderInterface|null $messageProvider = null): self
     {
         $result = new self($messageProvider);
         $result->dto = $dto;
@@ -39,7 +39,7 @@ final class RequestValidationResult
      * @param array<string> $errors
      * @return self<U>
      */
-    public static function failure(array $errors, ?ValidationMessageProviderInterface $messageProvider = null): self
+    public static function failure(array $errors, ValidationMessageProviderInterface|null $messageProvider = null): self
     {
         $result = new self($messageProvider);
         $result->errors = $errors;
@@ -63,7 +63,9 @@ final class RequestValidationResult
     public function getDto(): object
     {
         if ($this->dto === null) {
-            throw new \RuntimeException($this->messageProvider->format(ValidationMessageKey::CANNOT_GET_DTO_FROM_FAILED_RESULT));
+            throw new \RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::CANNOT_GET_DTO_FROM_FAILED_RESULT),
+            );
         }
 
         return $this->dto;
@@ -72,7 +74,7 @@ final class RequestValidationResult
     /**
      * @return T|null
      */
-    public function getDtoOrNull(): ?object
+    public function getDtoOrNull(): object|null
     {
         return $this->dto;
     }
@@ -85,7 +87,7 @@ final class RequestValidationResult
         return $this->errors;
     }
 
-    public function getFirstError(): ?string
+    public function getFirstError(): string|null
     {
         return $this->errors[0] ?? null;
     }

@@ -110,7 +110,7 @@ use OpenapiPhpDtoGenerator\Service\RequestValidationService;
 use OpenapiPhpDtoGenerator\Service\ValidationMessageKey;
 
 $validator = new RequestValidationService(messageOverrides: [
-    ValidationMessageKey::PARAM_EXPECTS_TYPE => 'Field "{paramPath}" must be {expectedType}, got {actualType}',
+    ValidationMessageKey::PARAM_EXPECTS_TYPE->value => 'Field "{paramPath}" must be {expectedType}, got {actualType}',
 ]);
 ```
 

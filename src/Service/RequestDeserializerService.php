@@ -25,12 +25,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      * @param array<string, string> $messageOverrides
      */
     public function __construct(
-        ?OpenApiConstraintValidatorInterface $constraintValidator = null,
-        ?ValidationMessageProviderInterface $messageProvider = null,
+        OpenApiConstraintValidatorInterface|null $constraintValidator = null,
+        ValidationMessageProviderInterface|null $messageProvider = null,
         array $messageOverrides = [],
-        ?OpenApiFormatRegistry $formatRegistry = null,
-    )
-    {
+        OpenApiFormatRegistry|null $formatRegistry = null,
+    ) {
         $this->messageProvider = $messageProvider ?? new ValidationMessageProvider($messageOverrides);
         $this->formatRegistry = $formatRegistry ?? new OpenApiFormatRegistry();
         $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator(
@@ -51,7 +50,9 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         $constructor = $reflection->getConstructor();
 
         if ($constructor === null) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::DTO_HAS_NO_CONSTRUCTOR, ['dtoClass' => $dtoClass]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::DTO_HAS_NO_CONSTRUCTOR, ['dtoClass' => $dtoClass]),
+            );
         }
 
         $params = $constructor->getParameters();
@@ -84,17 +85,22 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                     $typeNames[] = $unionType->getName();
                 }
             } else {
-                throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAMETER_HAS_UNSUPPORTED_TYPE, [
-                    'paramName' => $paramName,
-                    'dtoClass' => $dtoClass,
-                ]));
+                throw new RuntimeException(
+                    $this->messageProvider->format(ValidationMessageKey::PARAMETER_HAS_UNSUPPORTED_TYPE, [
+                        'paramName' => $paramName,
+                        'dtoClass' => $dtoClass,
+                    ]),
+                );
             }
 
             if ($typeNames === []) {
                 $typeNames[] = 'mixed';
             }
 
-            $arrayItemType = in_array('array', $typeNames, true) ? $this->resolveArrayItemType($reflection, $paramName) : null;
+            $arrayItemType = in_array('array', $typeNames, true) ? $this->resolveArrayItemType(
+                $reflection,
+                $paramName,
+            ) : null;
 
             // If parameter is absent in request and constructor has a default value,
             // keep constructor default instead of forcing null.
@@ -159,7 +165,13 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
             $constraints = $fieldConstraints;
             if ($wasProvided && is_array($constraints) && $constraints !== []) {
-                foreach ($this->constraintValidator->validate(sprintf('param "%s"', $paramName), $value, $constraints) as $constraintError) {
+                foreach (
+                    $this->constraintValidator->validate(
+                        sprintf('param "%s"', $paramName),
+                        $value,
+                        $constraints,
+                    ) as $constraintError
+                ) {
                     $errors[] = $constraintError;
                 }
             }
@@ -175,13 +187,23 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
         $dto = $reflection->newInstanceArgs($args);
 
-        // Mark fields as provided in request
+        // Mark fields as provided in request.
         foreach ($providedParams as $paramName) {
-            $markMethodName = 'markAs' . ucfirst($paramName) . 'ProvidedInRequest';
-            if ($reflection->hasMethod($markMethodName)) {
-                $markMethod = $reflection->getMethod($markMethodName);
-                $markMethod->invoke($dto);
+            $flagPropertyName = $paramName . 'InRequest';
+            if (!$reflection->hasProperty($flagPropertyName)) {
+                // Backward compatibility for DTOs generated with older versions.
+                $flagPropertyName = $paramName . 'WasProvidedInRequest';
             }
+
+            if (!$reflection->hasProperty($flagPropertyName)) {
+                continue;
+            }
+
+            $flagProperty = $reflection->getProperty($flagPropertyName);
+            if (!$flagProperty->isPublic()) {
+                $flagProperty->setAccessible(true);
+            }
+            $flagProperty->setValue($dto, true);
         }
 
         return $dto;
@@ -204,19 +226,48 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         $bodyData = $this->getBodyData($request);
         if (array_key_exists($paramName, $bodyData)) {
             $wasProvided = true;
-            return $this->castValue($bodyData[$paramName], $paramName, $typeName, $allowsNull, 'json', $arrayItemType, $paramPath, $schemaAllowsNull, $temporalFormat, $openApiFormat);
+            return $this->castValue(
+                $bodyData[$paramName],
+                $paramName,
+                $typeName,
+                $allowsNull,
+                'json',
+                $arrayItemType,
+                $paramPath,
+                $schemaAllowsNull,
+                $temporalFormat,
+                $openApiFormat,
+            );
         }
 
         // Check in query parameters
         if ($request->query->has($paramName)) {
             $wasProvided = true;
-            return $this->castValue($request->query->get($paramName), $paramName, $typeName, $allowsNull, 'query', $arrayItemType, $paramPath, openApiFormat: $openApiFormat);
+            return $this->castValue(
+                $request->query->get($paramName),
+                $paramName,
+                $typeName,
+                $allowsNull,
+                'query',
+                $arrayItemType,
+                $paramPath,
+                openApiFormat: $openApiFormat,
+            );
         }
 
         // Check in route parameters (path)
         if ($request->attributes->has($paramName)) {
             $wasProvided = true;
-            return $this->castValue($request->attributes->get($paramName), $paramName, $typeName, $allowsNull, 'path', $arrayItemType, $paramPath, openApiFormat: $openApiFormat);
+            return $this->castValue(
+                $request->attributes->get($paramName),
+                $paramName,
+                $typeName,
+                $allowsNull,
+                'path',
+                $arrayItemType,
+                $paramPath,
+                openApiFormat: $openApiFormat,
+            );
         }
 
         // Check in uploaded files
@@ -228,7 +279,16 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         // Check in multipart form data
         if ($request->request->has($paramName)) {
             $wasProvided = true;
-            return $this->castValue($request->request->get($paramName), $paramName, $typeName, $allowsNull, 'form', $arrayItemType, $paramPath, openApiFormat: $openApiFormat);
+            return $this->castValue(
+                $request->request->get($paramName),
+                $paramName,
+                $typeName,
+                $allowsNull,
+                'form',
+                $arrayItemType,
+                $paramPath,
+                openApiFormat: $openApiFormat,
+            );
         }
 
         // If nullable and not found, return null
@@ -237,7 +297,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             return null;
         }
 
-        throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::REQUIRED_PARAMETER_NOT_FOUND, ['paramName' => $paramName]));
+        throw new RuntimeException(
+            $this->messageProvider->format(
+                ValidationMessageKey::REQUIRED_PARAMETER_NOT_FOUND,
+                ['paramName' => $paramName],
+            ),
+        );
     }
 
     /**
@@ -262,7 +327,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 return null;
             }
 
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::REQUIRED_PARAMETER_NOT_FOUND, ['paramName' => $paramName]));
+            throw new RuntimeException(
+                $this->messageProvider->format(
+                    ValidationMessageKey::REQUIRED_PARAMETER_NOT_FOUND,
+                    ['paramName' => $paramName],
+                ),
+            );
         }
 
         $errors = [];
@@ -292,8 +362,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         throw new RuntimeException(implode("\n", array_values(array_unique($errors))));
     }
 
-    private function extractRawValueFromRequest(Request $request, string $paramName, bool &$wasProvided, string &$source): mixed
-    {
+    private function extractRawValueFromRequest(
+        Request $request,
+        string $paramName,
+        bool &$wasProvided,
+        string &$source,
+    ): mixed {
         $bodyData = $this->getBodyData($request);
         if (array_key_exists($paramName, $bodyData)) {
             $wasProvided = true;
@@ -363,7 +437,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
     private function stdClassToArray(\stdClass $obj): array
     {
         $result = [];
-        foreach ((array) $obj as $key => $value) {
+        foreach ((array)$obj as $key => $value) {
             if ($value instanceof \stdClass) {
                 $result[$key] = $value;
                 continue;
@@ -424,7 +498,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             if ($allowsNull) {
                 return null;
             }
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::CANNOT_CAST_NULL_TO_NON_NULLABLE_TYPE, ['typeName' => $typeName]));
+            throw new RuntimeException(
+                $this->messageProvider->format(
+                    ValidationMessageKey::CANNOT_CAST_NULL_TO_NON_NULLABLE_TYPE,
+                    ['typeName' => $typeName],
+                ),
+            );
         }
 
         if ($openApiFormat !== null && $this->formatRegistry->has($openApiFormat)) {
@@ -444,7 +523,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 if (!is_float($value) && !is_int($value)) {
                     throw new RuntimeException($this->expectsTypeMessage($paramPath, 'float', $value));
                 }
-                return (float) $value;
+                return (float)$value;
             }
 
             if ($typeName === 'string') {
@@ -504,7 +583,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 throw new RuntimeException($this->expectsTypeMessage($paramPath, 'int', $value));
             }
 
-            return (int) $value;
+            return (int)$value;
         }
 
         if ($typeName === 'float') {
@@ -512,11 +591,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 throw new RuntimeException($this->expectsTypeMessage($paramPath, 'float', $value));
             }
 
-            return (float) $value;
+            return (float)$value;
         }
 
         if ($typeName === 'string') {
-            return (string) $value;
+            return (string)$value;
         }
 
         if ($typeName === 'bool') {
@@ -526,7 +605,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             if (is_string($value)) {
                 return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
             }
-            return (bool) $value;
+            return (bool)$value;
         }
 
         if ($typeName === 'array') {
@@ -566,15 +645,26 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 $value = $this->stdClassToArray($value);
             }
             if (is_array($value)) {
-                $targetDtoClass = $this->resolveDiscriminatorTargetClass($typeName, $value, $paramPath ?? $paramName) ?? $typeName;
+                $targetDtoClass = $this->resolveDiscriminatorTargetClass(
+                    $typeName,
+                    $value,
+                    $paramPath ?? $paramName,
+                ) ?? $typeName;
                 // Recursively deserialize nested DTO
                 $nestedRequest = $this->createRequestFromArray($value);
                 return $this->deserialize($nestedRequest, $targetDtoClass);
             }
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::CANNOT_DESERIALIZE_NESTED_DTO_FROM_NON_ARRAY, ['typeName' => $typeName]));
+            throw new RuntimeException(
+                $this->messageProvider->format(
+                    ValidationMessageKey::CANNOT_DESERIALIZE_NESTED_DTO_FROM_NON_ARRAY,
+                    ['typeName' => $typeName],
+                ),
+            );
         }
 
-        throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::UNSUPPORTED_TYPE, ['typeName' => $typeName]));
+        throw new RuntimeException(
+            $this->messageProvider->format(ValidationMessageKey::UNSUPPORTED_TYPE, ['typeName' => $typeName]),
+        );
     }
 
     private function castArrayItemValue(mixed $itemValue, string $arrayItemType, string $itemPath): mixed
@@ -638,22 +728,26 @@ final class RequestDeserializerService implements RequestDeserializerInterface
     {
         if ($value === '') {
             $hint = $this->temporalFormatHint($temporalFormat);
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_VALID_DATE_EMPTY_STRING, [
-                'paramPath' => $paramPath,
-                'formatHint' => $hint,
-            ]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_VALID_DATE_EMPTY_STRING, [
+                    'paramPath' => $paramPath,
+                    'formatHint' => $hint,
+                ]),
+            );
         }
 
         // date format: only Y-m-d
         if ($temporalFormat === 'Y-m-d') {
             $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
             if ($dt === false || $dt->format('Y-m-d') !== $value) {
-                throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_DATE_IN_FORMAT, [
-                    'paramPath' => $paramPath,
-                    'format' => 'Y-m-d',
-                    'example' => '2026-03-10',
-                    'value' => $value,
-                ]));
+                throw new RuntimeException(
+                    $this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_DATE_IN_FORMAT, [
+                        'paramPath' => $paramPath,
+                        'format' => 'Y-m-d',
+                        'example' => '2026-03-10',
+                        'value' => $value,
+                    ]),
+                );
             }
             return $dt;
         }
@@ -663,16 +757,18 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             // Try RFC3339 with offset (most strict)
             $dt = DateTimeImmutable::createFromFormat(\DateTimeInterface::RFC3339, $value)
                 ?: DateTimeImmutable::createFromFormat(\DateTimeInterface::RFC3339_EXTENDED, $value)
-                ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:sP', $value)
-                ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $value)
-                ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s', $value);
+                    ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:sP', $value)
+                        ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $value)
+                            ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s', $value);
 
             if ($dt === false) {
-                throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_VALID_DATE_TIME, [
-                    'paramPath' => $paramPath,
-                    'example' => '2026-03-10T12:00:00+00:00',
-                    'value' => $value,
-                ]));
+                throw new RuntimeException(
+                    $this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_VALID_DATE_TIME, [
+                        'paramPath' => $paramPath,
+                        'example' => '2026-03-10T12:00:00+00:00',
+                        'value' => $value,
+                    ]),
+                );
             }
 
             return $dt;
@@ -682,10 +778,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         try {
             $dt = new DateTimeImmutable($value);
         } catch (\Exception $e) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_VALID_DATE_TIME_GENERIC, [
-                'paramPath' => $paramPath,
-                'value' => $value,
-            ]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_VALID_DATE_TIME_GENERIC, [
+                    'paramPath' => $paramPath,
+                    'value' => $value,
+                ]),
+            );
         }
 
         return $dt;
@@ -703,8 +801,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      * Reads the temporal format for a DateTimeImmutable field from the getter docblock.
      * Looks for "Expected format: ..." comment generated by the DTO generator.
      */
-    private function resolveTemporalFormat(ReflectionClass $reflection, string $paramName, ?string $openApiFormat = null): ?string
-    {
+    private function resolveTemporalFormat(
+        ReflectionClass $reflection,
+        string $paramName,
+        ?string $openApiFormat = null,
+    ): ?string {
         if ($openApiFormat === 'date') {
             return 'Y-m-d';
         }
@@ -850,20 +951,20 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
         $allowed = [];
         foreach ($cases as $case) {
-            $allowed[] = $case instanceof \BackedEnum ? (string) $case->value : $case->name;
+            $allowed[] = $case instanceof \BackedEnum ? (string)$case->value : $case->name;
         }
 
         if ($paramPath !== null) {
             throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_ENUM, [
                 'paramPath' => $paramPath,
                 'enumClass' => $enumClass,
-                'value' => (string) $value,
+                'value' => (string)$value,
                 'allowed' => implode(', ', $allowed),
             ]));
         }
 
         throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::INVALID_ENUM_VALUE, [
-            'value' => (string) $value,
+            'value' => (string)$value,
             'enumClass' => $enumClass,
         ]));
     }
@@ -887,53 +988,76 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      */
     private function resolveDiscriminatorTargetClass(string $baseClass, array $value, string $paramPath): ?string
     {
-        if (!method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists($baseClass, 'getDiscriminatorMapping')) {
+        if (!method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists(
+                $baseClass,
+                'getDiscriminatorMapping',
+            )) {
             return null;
         }
 
         $discriminatorProperty = $baseClass::getDiscriminatorPropertyName();
         $mapping = $baseClass::getDiscriminatorMapping();
 
-        if (!is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array($mapping) || $mapping === []) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::DTO_HAS_INVALID_DISCRIMINATOR_METADATA, ['baseClass' => $baseClass]));
+        if (!is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array(
+                $mapping,
+            ) || $mapping === []) {
+            throw new RuntimeException(
+                $this->messageProvider->format(
+                    ValidationMessageKey::DTO_HAS_INVALID_DISCRIMINATOR_METADATA,
+                    ['baseClass' => $baseClass],
+                ),
+            );
         }
 
         $fullDiscriminatorPath = $paramPath . '.' . $discriminatorProperty;
 
         if (!array_key_exists($discriminatorProperty, $value)) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_WAS_NOT_PROVIDED, ['paramPath' => $fullDiscriminatorPath]));
+            throw new RuntimeException(
+                $this->messageProvider->format(
+                    ValidationMessageKey::PARAM_WAS_NOT_PROVIDED,
+                    ['paramPath' => $fullDiscriminatorPath],
+                ),
+            );
         }
 
         $discriminatorValue = $value[$discriminatorProperty];
         if (!is_string($discriminatorValue) && !is_int($discriminatorValue)) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_DISCRIMINATOR_VALUE, [
-                'paramPath' => $fullDiscriminatorPath,
-                'actualType' => $this->getTypeString($discriminatorValue),
-            ]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::PARAM_EXPECTS_DISCRIMINATOR_VALUE, [
+                    'paramPath' => $fullDiscriminatorPath,
+                    'actualType' => $this->getTypeString($discriminatorValue),
+                ]),
+            );
         }
 
-        $discriminatorKey = (string) $discriminatorValue;
+        $discriminatorKey = (string)$discriminatorValue;
         if (!array_key_exists($discriminatorKey, $mapping)) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::PARAM_HAS_INVALID_DISCRIMINATOR_VALUE, [
-                'paramPath' => $fullDiscriminatorPath,
-                'value' => $discriminatorKey,
-                'allowed' => implode(', ', array_keys($mapping)),
-            ]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::PARAM_HAS_INVALID_DISCRIMINATOR_VALUE, [
+                    'paramPath' => $fullDiscriminatorPath,
+                    'value' => $discriminatorKey,
+                    'allowed' => implode(', ', array_keys($mapping)),
+                ]),
+            );
         }
 
         $targetClass = $mapping[$discriminatorKey];
         if (!is_string($targetClass) || !class_exists($targetClass)) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::DISCRIMINATOR_MAPPING_UNKNOWN_CLASS, [
-                'paramPath' => $fullDiscriminatorPath,
-                'targetClass' => (string) $targetClass,
-            ]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::DISCRIMINATOR_MAPPING_UNKNOWN_CLASS, [
+                    'paramPath' => $fullDiscriminatorPath,
+                    'targetClass' => (string)$targetClass,
+                ]),
+            );
         }
 
         if (!is_a($targetClass, $baseClass, true)) {
-            throw new RuntimeException($this->messageProvider->format(ValidationMessageKey::DISCRIMINATOR_MAPPING_MUST_EXTEND, [
-                'targetClass' => $targetClass,
-                'baseClass' => $baseClass,
-            ]));
+            throw new RuntimeException(
+                $this->messageProvider->format(ValidationMessageKey::DISCRIMINATOR_MAPPING_MUST_EXTEND, [
+                    'targetClass' => $targetClass,
+                    'baseClass' => $baseClass,
+                ]),
+            );
         }
 
         return $targetClass;
@@ -953,7 +1077,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
     private function expectsTypeMessage(string $paramPath, string $expectedType, mixed $value): string
     {
-        $actualType = is_string($value) && in_array($value, ['int', 'float', 'string', 'bool', 'array', 'object', 'null'], true)
+        $actualType = is_string($value) && in_array(
+            $value,
+            ['int', 'float', 'string', 'bool', 'array', 'object', 'null'],
+            true,
+        )
             ? $value
             : $this->getTypeString($value);
 

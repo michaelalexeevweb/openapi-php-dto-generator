@@ -63,7 +63,11 @@ final class YamlPhpArrayFormatter
         }
 
         if (is_bool($value)) {
-            return $value ? 'true' : 'false';
+            if ($value) {
+                return 'true';
+            }
+
+            return 'false';
         }
 
         if ($value === null) {

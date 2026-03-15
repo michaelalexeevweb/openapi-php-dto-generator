@@ -15,12 +15,11 @@ final class RequestValidatorService implements RequestValidatorInterface
     private RequestDeserializerInterface $deserializer;
 
     public function __construct(
-        ?RequestDeserializerInterface $deserializer = null,
-        ?ValidationMessageProviderInterface $messageProvider = null,
+        RequestDeserializerInterface|null $deserializer = null,
+        ValidationMessageProviderInterface|null $messageProvider = null,
         array $messageOverrides = [],
-        ?OpenApiFormatRegistry $formatRegistry = null,
-    )
-    {
+        OpenApiFormatRegistry|null $formatRegistry = null,
+    ) {
         $messageProvider ??= new ValidationMessageProvider($messageOverrides);
         $this->deserializer = $deserializer ?? new RequestDeserializerService(
             messageProvider: $messageProvider,

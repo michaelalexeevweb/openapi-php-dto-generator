@@ -15,4 +15,3 @@ interface RequestDeserializerInterface
      */
     public function deserialize(Request $request, string $dtoClass): object;
 }
-

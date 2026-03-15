@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
-use PHPUnit\Framework\TestCase;
 use OpenapiPhpDtoGenerator\Service\ResponseService;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
@@ -172,7 +172,7 @@ final class ResponseServiceTest extends TestCase
             $response = $this->service->createResponse($dto);
 
             $this->assertInstanceOf(\Symfony\Component\HttpFoundation\JsonResponse::class, $response);
-            $content = json_decode((string) $response->getContent(), true);
+            $content = json_decode((string)$response->getContent(), true);
 
             $this->assertSame(10, $content['id']);
             $this->assertSame('hello.txt', $content['file']['originalName']);
@@ -196,13 +196,13 @@ final class ResponseServiceTest extends TestCase
             $response = $this->service->createStreamResponse(
                 $tempPath,
                 true,
-                'report.txt'
+                'report.txt',
             );
 
             $this->assertInstanceOf(BinaryFileResponse::class, $response);
             $this->assertSame(200, $response->getStatusCode());
-            $this->assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
-            $this->assertStringContainsString('report.txt', (string) $response->headers->get('Content-Disposition'));
+            $this->assertStringContainsString('attachment', (string)$response->headers->get('Content-Disposition'));
+            $this->assertStringContainsString('report.txt', (string)$response->headers->get('Content-Disposition'));
         } finally {
             if (is_file($tempPath)) {
                 @unlink($tempPath);
@@ -216,7 +216,7 @@ final class ResponseServiceTest extends TestCase
 
         $response = $this->service->createResponse($dto);
 
-        $content = json_decode((string) $response->getContent(), true);
+        $content = json_decode((string)$response->getContent(), true);
         $this->assertSame(123, $content['id']);
         $this->assertSame('discriminator1', $content['type']);
         $this->assertArrayNotHasKey('discriminatorPropertyName', $content);
@@ -241,7 +241,7 @@ final class ResponseServiceTest extends TestCase
         $dto = new UnionGetterResponseDto(42);
 
         $response = $this->service->createResponse($dto);
-        $content = json_decode((string) $response->getContent(), true);
+        $content = json_decode((string)$response->getContent(), true);
 
         $this->assertSame(42, $content['id']);
     }
@@ -252,11 +252,19 @@ final class SimpleResponseDto
 {
     public function __construct(
         private int $id,
-        private string $name
-    ) {}
+        private string $name,
+    ) {
+    }
 
-    public function getId(): int { return $this->id; }
-    public function getName(): string { return $this->name; }
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
 }
 
 final class NullableResponseDto
@@ -264,12 +272,24 @@ final class NullableResponseDto
     public function __construct(
         private int $id,
         private string $name,
-        private ?string $description
-    ) {}
+        private ?string $description,
+    ) {
+    }
 
-    public function getId(): int { return $this->id; }
-    public function getName(): string { return $this->name; }
-    public function getDescription(): ?string { return $this->description; }
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
 }
 
 final class NestedResponseDto
@@ -277,23 +297,39 @@ final class NestedResponseDto
     public function __construct(
         private int $id,
         private string $name,
-        private SimpleResponseDto $nested
-    ) {}
+        private SimpleResponseDto $nested,
+    ) {
+    }
 
-    public function getId(): int { return $this->id; }
-    public function getName(): string { return $this->name; }
-    public function getNested(): SimpleResponseDto { return $this->nested; }
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getNested(): SimpleResponseDto
+    {
+        return $this->nested;
+    }
 }
 
 final class ArrayResponseDto
 {
     /** @param array<string> $tags */
     public function __construct(
-        private array $tags
-    ) {}
+        private array $tags,
+    ) {
+    }
 
     /** @return array<string> */
-    public function getTags(): array { return $this->tags; }
+    public function getTags(): array
+    {
+        return $this->tags;
+    }
 }
 
 enum TestEnum: string
@@ -305,19 +341,27 @@ enum TestEnum: string
 final class EnumResponseDto
 {
     public function __construct(
-        private TestEnum $status
-    ) {}
+        private TestEnum $status,
+    ) {
+    }
 
-    public function getStatus(): TestEnum { return $this->status; }
+    public function getStatus(): TestEnum
+    {
+        return $this->status;
+    }
 }
 
 final class DateTimeResponseDto
 {
     public function __construct(
-        private DateTimeImmutable $createdAt
-    ) {}
+        private DateTimeImmutable $createdAt,
+    ) {
+    }
 
-    public function getCreatedAt(): DateTimeImmutable { return $this->createdAt; }
+    public function getCreatedAt(): DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
 }
 
 final class InvalidResponseDto
@@ -333,31 +377,47 @@ final class ArrayOfDtosResponseDto
 {
     /** @param array<SimpleResponseDto> $items */
     public function __construct(
-        private array $items
-    ) {}
+        private array $items,
+    ) {
+    }
 
     /** @return array<SimpleResponseDto> */
-    public function getItems(): array { return $this->items; }
+    public function getItems(): array
+    {
+        return $this->items;
+    }
 }
 
 final class FileOnlyResponseDto
 {
     public function __construct(
-        private UploadedFile $file
-    ) {}
+        private UploadedFile $file,
+    ) {
+    }
 
-    public function getFile(): UploadedFile { return $this->file; }
+    public function getFile(): UploadedFile
+    {
+        return $this->file;
+    }
 }
 
 final class FileWithExtraDataResponseDto
 {
     public function __construct(
         private int $id,
-        private UploadedFile $file
-    ) {}
+        private UploadedFile $file,
+    ) {
+    }
 
-    public function getId(): int { return $this->id; }
-    public function getFile(): UploadedFile { return $this->file; }
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getFile(): UploadedFile
+    {
+        return $this->file;
+    }
 }
 
 final class DiscriminatorLikeResponseDto
@@ -368,8 +428,15 @@ final class DiscriminatorLikeResponseDto
     ) {
     }
 
-    public function getId(): int { return $this->id; }
-    public function getType(): string { return $this->type; }
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getType(): string
+    {
+        return $this->type;
+    }
 
     public static function getDiscriminatorPropertyName(): string
     {
@@ -393,8 +460,15 @@ final class ConstrainedResponseDto
     ) {
     }
 
-    public function getAmount(): float { return $this->amount; }
-    public function getEmail(): string { return $this->email; }
+    public function getAmount(): float
+    {
+        return $this->amount;
+    }
+
+    public function getEmail(): string
+    {
+        return $this->email;
+    }
 
     /** @return array<string, array<string, mixed>> */
     public static function getOpenApiConstraints(): array
@@ -423,4 +497,3 @@ final class UnionGetterResponseDto
         return $this->id;
     }
 }
-

@@ -16,12 +16,11 @@ final class RequestValidationService implements RequestValidationServiceInterfac
     private ValidationMessageProviderInterface $messageProvider;
 
     public function __construct(
-        ?RequestValidatorInterface $validator = null,
-        ?ValidationMessageProviderInterface $messageProvider = null,
+        RequestValidatorInterface|null $validator = null,
+        ValidationMessageProviderInterface|null $messageProvider = null,
         array $messageOverrides = [],
-        ?OpenApiFormatRegistry $formatRegistry = null,
-    )
-    {
+        OpenApiFormatRegistry|null $formatRegistry = null,
+    ) {
         $this->messageProvider = $messageProvider ?? new ValidationMessageProvider($messageOverrides);
         $this->validator = $validator ?? new RequestValidatorService(
             messageProvider: $this->messageProvider,
