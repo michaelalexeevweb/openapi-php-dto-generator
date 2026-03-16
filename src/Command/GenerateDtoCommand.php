@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command;
 
-use RuntimeException;
 use OpenapiPhpDtoGenerator\Service\OpenApiDtoGeneratorService;
+use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -25,10 +25,30 @@ final class GenerateDtoCommand extends Command
 
     protected function configure(): void
     {
-        $this->addArgument('file', InputArgument::OPTIONAL, 'Path to OpenAPI yaml file', 'OpenApiExamples/test.yaml');
-        $this->addOption('file', 'f', InputOption::VALUE_REQUIRED, 'Path to OpenAPI yaml file (alternative to argument)');
-        $this->addOption('directory', 'd', InputOption::VALUE_REQUIRED, 'Output directory for generated DTO classes');
-        $this->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for generated DTO classes (overrides directory-derived namespace)');
+        $this->addArgument(
+            name: 'file',
+            mode: InputArgument::OPTIONAL,
+            description: 'Path to OpenAPI yaml file',
+            default: 'OpenApiExamples/test.yaml',
+        );
+        $this->addOption(
+            name: 'file',
+            shortcut: 'f',
+            mode: InputOption::VALUE_REQUIRED,
+            description: 'Path to OpenAPI yaml file (alternative to argument)',
+        );
+        $this->addOption(
+            name: 'directory',
+            shortcut: 'd',
+            mode: InputOption::VALUE_REQUIRED,
+            description: 'Output directory for generated DTO classes',
+        );
+        $this->addOption(
+            name: 'namespace',
+            shortcut: null,
+            mode: InputOption::VALUE_REQUIRED,
+            description: 'Namespace for generated DTO classes (overrides directory-derived namespace)',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -37,7 +57,7 @@ final class GenerateDtoCommand extends Command
 
         // Get file from --file option or positional argument
         $fileOption = $input->getOption('file');
-        $file = is_string($fileOption) && $fileOption !== '' ? $fileOption : (string) $input->getArgument('file');
+        $file = is_string($fileOption) && $fileOption !== '' ? $fileOption : (string)$input->getArgument('file');
         $directoryOption = $input->getOption('directory');
         $directory = is_string($directoryOption) ? trim($directoryOption) : '';
         $namespaceOption = $input->getOption('namespace');
@@ -70,7 +90,9 @@ final class GenerateDtoCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->success(sprintf('Generated %d DTO class(es) in %s with namespace %s.', $count, $outputDirectory, $namespace));
+        $io->success(
+            sprintf('Generated %d DTO class(es) in %s with namespace %s.', $count, $outputDirectory, $namespace),
+        );
 
         return Command::SUCCESS;
     }
@@ -95,7 +117,7 @@ final class GenerateDtoCommand extends Command
             return 'Generated';
         }
 
-        $segments = array_filter(explode('/', $normalized), static fn (string $segment): bool => $segment !== '');
+        $segments = array_filter(explode('/', $normalized), static fn(string $segment): bool => $segment !== '');
         $namespaceParts = [];
 
         foreach ($segments as $segment) {
@@ -108,7 +130,10 @@ final class GenerateDtoCommand extends Command
     private function normalizeNamespaceSegment(string $segment): string
     {
         $parts = preg_split('/[^A-Za-z0-9]+/', $segment) ?: [];
-        $normalized = implode('', array_map(static fn (string $part): string => ucfirst(strtolower($part)), array_filter($parts)));
+        $normalized = implode(
+            '',
+            array_map(static fn(string $part): string => ucfirst(strtolower($part)), array_filter($parts)),
+        );
 
         if ($normalized === '') {
             return 'Generated';
@@ -126,4 +151,3 @@ final class GenerateDtoCommand extends Command
         return trim(trim($namespace), '\\');
     }
 }
-
