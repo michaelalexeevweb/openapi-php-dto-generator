@@ -2315,9 +2315,9 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             return 'value';
         }
 
-        $propertyName = strtolower((string)array_shift($parts));
+        $propertyName = (string)array_shift($parts);
         foreach ($parts as $part) {
-            $propertyName .= ucfirst(strtolower($part));
+            $propertyName .= ucfirst($part);
         }
 
         if (is_numeric($propertyName[0])) {
