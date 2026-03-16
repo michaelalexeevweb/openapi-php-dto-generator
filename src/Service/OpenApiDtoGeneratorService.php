@@ -2307,17 +2307,19 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     private function normalizePropertyName(string $name): string
     {
-        $name = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $name) ?? $name;
-        $parts = preg_split('/[^A-Za-z0-9]+/', $name) ?: [];
-        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
-
-        if ($parts === []) {
+        if ($name === '') {
             return 'value';
         }
 
-        $propertyName = (string)array_shift($parts);
-        foreach ($parts as $part) {
-            $propertyName .= ucfirst($part);
+        // Keep property names exactly as in the OpenAPI spec when they are valid PHP identifiers.
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) === 1) {
+            return $name;
+        }
+
+        // Fallback for invalid identifiers: replace unsupported characters with underscores.
+        $propertyName = preg_replace('/[^A-Za-z0-9_]/', '_', $name) ?? $name;
+        if ($propertyName === '') {
+            return 'value';
         }
 
         if (is_numeric($propertyName[0])) {
