@@ -90,7 +90,7 @@ interface {{ className }}
 	{
 {% if property.hasGuard %}
 		if (!$this->{{ property.inRequestFlagName }}) {
-			throw new \LogicException('Field "{{ property.name }}" wasn\'t provided in request');
+			throw new \LogicException('Field "{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}" wasn\'t provided in request');
 		}
 {% endif %}
 {% if property.returnKind == 'temporal' %}
@@ -163,6 +163,23 @@ interface {{ className }}
 		];
 	}
 {% endif %}
+
+	/**
+	 * @return array<string, string>
+	 */
+	public static function getOpenApiPropertyAliases(): array
+	{
+{% if extends is not null %}
+		$aliases = parent::getOpenApiPropertyAliases();
+{% else %}
+		$aliases = [];
+{% endif %}
+{% for assignment in aliasAssignments %}
+		$aliases['{{ assignment.name }}'] = '{{ assignment.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}';
+{% endfor %}
+
+		return $aliases;
+	}
 
 	/**
 	 * @return array<string, array<string, mixed>>

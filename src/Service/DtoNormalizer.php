@@ -155,6 +155,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $result = [];
         $reflection = new ReflectionClass($dto);
+        $aliasesByProperty = $this->resolveOpenApiPropertyAliases($reflection);
 
         foreach ($reflection->getMethods() as $method) {
             if (!$this->isSerializableGetter($method)) {
@@ -163,6 +164,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
             $methodName = $method->getName();
             $propertyName = lcfirst(substr($methodName, 3));
+            $outputName = $aliasesByProperty[$propertyName] ?? $propertyName;
 
             try {
                 $value = $method->invoke($dto);
@@ -170,7 +172,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 if (str_contains($exception->getMessage(), "wasn't provided in request")) {
                     $fallback = $this->tryReadBackingPropertyValue($dto, $propertyName);
                     if ($fallback['found']) {
-                        $result[$propertyName] = $this->normalizeValue($fallback['value']);
+                        $result[$outputName] = $this->normalizeValue($fallback['value']);
                     }
                 }
                 continue;
@@ -179,9 +181,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
             }
 
             try {
-                $result[$propertyName] = $this->normalizeValue($value);
+                $result[$outputName] = $this->normalizeValue($value);
             } catch (Throwable) {
-                $result[$propertyName] = $this->normalizeValueFallback($value);
+                $result[$outputName] = $this->normalizeValueFallback($value);
             }
         }
 
@@ -385,16 +387,45 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     /**
      * @param ReflectionClass<object> $reflection
+     * @return array<string, string>
+     */
+    private function resolveOpenApiPropertyAliases(ReflectionClass $reflection): array
+    {
+        $className = $reflection->getName();
+        $method = [$className, 'getOpenApiPropertyAliases'];
+        if (!is_callable($method)) {
+            return [];
+        }
+
+        $aliases = call_user_func($method);
+        if (!is_array($aliases)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($aliases as $propertyName => $openApiName) {
+            if (!is_string($propertyName) || !is_string($openApiName)) {
+                continue;
+            }
+            $result[$propertyName] = $openApiName;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
      * @return array<string, array<string, mixed>>
      */
     private function resolveOpenApiConstraints(ReflectionClass $reflection): array
     {
         $className = $reflection->getName();
-        if (!method_exists($className, 'getOpenApiConstraints')) {
+        $method = [$className, 'getOpenApiConstraints'];
+        if (!is_callable($method)) {
             return [];
         }
 
-        $constraints = $className::getOpenApiConstraints();
+        $constraints = call_user_func($method);
         return is_array($constraints) ? $constraints : [];
     }
 }

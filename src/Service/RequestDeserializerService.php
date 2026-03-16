@@ -63,9 +63,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         $providedParams = [];
         $errors = [];
         $constraintsByField = $this->resolveOpenApiConstraints($reflection);
+        $aliasesByProperty = $this->resolveOpenApiPropertyAliases($reflection);
 
         foreach ($params as $param) {
             $paramName = $param->getName();
+            $requestFieldName = $aliasesByProperty[$paramName] ?? $paramName;
             $paramType = $param->getType();
             $hasDefaultValue = $param->isDefaultValueAvailable();
             $fieldConstraints = $constraintsByField[$paramName] ?? null;
@@ -109,7 +111,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             // keep constructor default instead of forcing null.
             $rawSource = '';
             $rawWasProvided = false;
-            $this->extractRawValueFromRequest($request, $paramName, $rawWasProvided, $rawSource);
+            $this->extractRawValueFromRequest($request, $requestFieldName, $rawWasProvided, $rawSource);
             if (!$rawWasProvided && $hasDefaultValue) {
                 $args[] = $param->getDefaultValue();
                 $providedParams[] = $paramName;
@@ -127,12 +129,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
                     $value = $this->extractValueFromRequest(
                         $request,
-                        $paramName,
+                        $requestFieldName,
                         $singleType,
                         $allowsNull,
                         $wasProvided,
                         $arrayItemType,
-                        $paramName,
+                        $requestFieldName,
                         $schemaAllowsNull,
                         $temporalFormat,
                         $openApiFormat,
@@ -140,7 +142,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 } else {
                     $value = $this->extractUnionValueFromRequest(
                         $request,
-                        $paramName,
+                        $requestFieldName,
                         $typeNames,
                         $allowsNull,
                         $wasProvided,
@@ -170,7 +172,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             if ($wasProvided && is_array($constraints) && $constraints !== []) {
                 foreach (
                     $this->constraintValidator->validate(
-                        sprintf('param "%s"', $paramName),
+                        sprintf('param "%s"', $requestFieldName),
                         $value,
                         $constraints,
                     ) as $constraintError
@@ -1011,6 +1013,33 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
         $constraints = $className::getOpenApiConstraints();
         return is_array($constraints) ? $constraints : [];
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, string>
+     */
+    private function resolveOpenApiPropertyAliases(ReflectionClass $reflection): array
+    {
+        $className = $reflection->getName();
+        if (!method_exists($className, 'getOpenApiPropertyAliases')) {
+            return [];
+        }
+
+        $aliases = $className::getOpenApiPropertyAliases();
+        if (!is_array($aliases)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($aliases as $propertyName => $openApiName) {
+            if (!is_string($propertyName) || !is_string($openApiName)) {
+                continue;
+            }
+            $result[$propertyName] = $openApiName;
+        }
+
+        return $result;
     }
 
     /**

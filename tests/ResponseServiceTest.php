@@ -245,6 +245,31 @@ final class ResponseServiceTest extends TestCase
 
         $this->assertSame(42, $content['id']);
     }
+
+    public function testCreateResponseUsesOpenApiAliasKeys(): void
+    {
+        $dto = new AliasedResponseDto('yes', 'safe');
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('yes', $content['test-process']);
+        $this->assertSame('safe', $content['processed']);
+        $this->assertArrayNotHasKey('test_process', $content);
+    }
+
+    public function testCreateResponseUsesAliasKeysWhenGetterThrowsProvidedInRequestGuard(): void
+    {
+        $dto = new AliasedGuardedResponseDto('queued');
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('queued', $content['test-process']);
+        $this->assertArrayNotHasKey('test_process', $content);
+    }
 }
 
 // Test DTOs
@@ -497,3 +522,53 @@ final class UnionGetterResponseDto
         return $this->id;
     }
 }
+
+final class AliasedResponseDto
+{
+    public function __construct(
+        private string $test_process,
+        private string $processed,
+    ) {
+    }
+
+    public function getTest_process(): string
+    {
+        return $this->test_process;
+    }
+
+    public function getProcessed(): string
+    {
+        return $this->processed;
+    }
+
+    /** @return array<string, string> */
+    public static function getOpenApiPropertyAliases(): array
+    {
+        return [
+            'test_process' => 'test-process',
+            'processed' => 'processed',
+        ];
+    }
+}
+
+final class AliasedGuardedResponseDto
+{
+    public function __construct(
+        private string $test_process,
+    ) {
+    }
+
+    public function getTest_process(): string
+    {
+        throw new \LogicException('Field "test-process" wasn\'t provided in request');
+    }
+
+    /** @return array<string, string> */
+    public static function getOpenApiPropertyAliases(): array
+    {
+        return [
+            'test_process' => 'test-process',
+        ];
+    }
+}
+

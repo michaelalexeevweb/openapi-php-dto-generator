@@ -711,7 +711,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param array<string, mixed> $schemaDefinition
-     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints: array<string, mixed>}>
+     * @return array<int, array{name: string, openApiName: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints: array<string, mixed>}>
      */
     private function extractProperties(array $schemaDefinition, string $ownerClassName): array
     {
@@ -756,6 +756,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
             $result[] = [
                 'name' => $this->normalizePropertyName($propertyName),
+                'openApiName' => $propertyName,
                 'type' => $type,
                 'nullable' => $nullable,
                 'required' => $isRequired,
@@ -1407,7 +1408,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param array{
-     *     properties: array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool}>,
+     *     properties: array<int, array{name: string, openApiName: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool}>,
      *     extends: string|null,
      *     unionTypes: array<string>,
      *     discriminator: array{propertyName: string, mapping: array<string, string>}|null
@@ -1464,6 +1465,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
                 'discriminator' => null,
                 'extends' => null,
                 'constraintAssignments' => [],
+                'aliasAssignments' => [],
             ]);
         }
 
@@ -1571,6 +1573,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             : null;
 
         $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
+        $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
 
         return $this->renderPhpTemplate('dto.php.twig', [
             'namespace' => $namespace,
@@ -1586,11 +1589,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'discriminator' => $discriminatorData,
             'extends' => $extends,
             'constraintAssignments' => $constraintAssignments,
+            'aliasAssignments' => $aliasAssignments,
         ]);
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints?: array<string, mixed>} $property
+     * @param array{name: string, openApiName: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints?: array<string, mixed>} $property
      * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
@@ -1626,7 +1630,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
+     * @param array{name: string, openApiName: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
      * @return array{type: string, name: string, defaultValue: string}
      */
     private function resolveConstructorParameterData(array $property, string $namespace): array
@@ -1653,8 +1657,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool} $property
-     * @return array<string, mixed>
+     * @param array{name: string, openApiName: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool} $property
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathLiteral: string, inQueryLiteral: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -1698,6 +1702,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
         return [
             'name' => $property['name'],
+            'openApiName' => $property['openApiName'],
             'nameSuffix' => ucfirst($property['name']),
             'methodName' => $methodName,
             'returnType' => $returnType,
@@ -1740,7 +1745,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, constraints?: array<string, mixed>}> $properties
+     * @param array<int, array{name: string, openApiName: string, constraints?: array<string, mixed>}> $properties
      * @return array<int, array{name: string, value: string}>
      */
     private function resolveConstraintAssignments(array $properties): array
@@ -1756,6 +1761,24 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             $result[] = [
                 'name' => $property['name'],
                 'value' => $this->renderPhpLiteral($constraints),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, array{name: string, openApiName: string}> $properties
+     * @return array<int, array{name: string, openApiName: string}>
+     */
+    private function resolveAliasAssignments(array $properties): array
+    {
+        $result = [];
+
+        foreach ($properties as $property) {
+            $result[] = [
+                'name' => $property['name'],
+                'openApiName' => $property['openApiName'],
             ];
         }
 
@@ -2318,6 +2341,9 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
         // Fallback for invalid identifiers: replace unsupported characters with underscores.
         $propertyName = preg_replace('/[^A-Za-z0-9_]/', '_', $name) ?? $name;
+        $propertyName = preg_replace('/_+/', '_', $propertyName) ?? $propertyName;
+        $propertyName = trim($propertyName, '_');
+
         if ($propertyName === '') {
             return 'value';
         }

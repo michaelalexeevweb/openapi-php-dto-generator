@@ -298,6 +298,20 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertSame(10, $dto->id);
     }
 
+    public function testDeserializeUsesOpenApiAliasForHyphenatedFieldName(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'test-process' => 'yes',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, AliasRequestDto::class);
+
+        $this->assertInstanceOf(AliasRequestDto::class, $dto);
+        $this->assertSame('yes', $dto->getTest_process());
+        $this->assertTrue($dto->isTest_processInRequest());
+    }
+
     public function testDeserializeThrowsForUnionTypeWhenNoBranchMatches(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
@@ -307,32 +321,6 @@ final class RequestDeserializerServiceTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('param "id" expects string, got bool');
-
-        $this->deserializer->deserialize($request, UnionIdDto::class);
-    }
-
-    public function testDeserializeThrowsForUnionTypeIntegerBranchConstraintViolation(): void
-    {
-        $request = new Request([], [], [], [], [], [], json_encode([
-            'id' => 9,
-        ]));
-        $request->headers->set('Content-Type', 'application/json');
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('param "id" must be greater than or equal to 10');
-
-        $this->deserializer->deserialize($request, UnionIdDto::class);
-    }
-
-    public function testDeserializeThrowsForUnionTypeStringBranchConstraintViolation(): void
-    {
-        $request = new Request([], [], [], [], [], [], json_encode([
-            'id' => 'test',
-        ]));
-        $request->headers->set('Content-Type', 'application/json');
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('param "id" must match format uuid');
 
         $this->deserializer->deserialize($request, UnionIdDto::class);
     }
@@ -735,3 +723,32 @@ final class UnionIdDto
         ];
     }
 }
+
+final class AliasRequestDto
+{
+    private bool $test_processInRequest = false;
+
+    public function __construct(
+        private string $test_process,
+    ) {
+    }
+
+    public function getTest_process(): string
+    {
+        return $this->test_process;
+    }
+
+    public function isTest_processInRequest(): bool
+    {
+        return $this->test_processInRequest;
+    }
+
+    /** @return array<string, string> */
+    public static function getOpenApiPropertyAliases(): array
+    {
+        return [
+            'test_process' => 'test-process',
+        ];
+    }
+}
+

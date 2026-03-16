@@ -499,6 +499,78 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertStringContainsString('private ?int $limit', $content);
     }
 
+    public function testHyphenatedOpenApiNameKeepsAliasAndRequiredMapping(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => [
+                'title' => 'Hyphenated fields',
+                'version' => '1.0.0',
+            ],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'HyphenFieldModel' => [
+                        'type' => 'object',
+                        'required' => ['test-process'],
+                        'properties' => [
+                            'test-process' => ['type' => 'string'],
+                            'processed' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/HyphenFieldModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // PHP property remains valid identifier while alias keeps original OpenAPI key.
+        $this->assertStringContainsString('private string $test_process', $content);
+        $this->assertStringContainsString('$aliases[\'test_process\'] = \'test-process\';', $content);
+        $this->assertStringContainsString('public function isTest_processRequired(): bool', $content);
+        $this->assertStringContainsString('return true;', $content);
+
+        // Guard message should use OpenAPI alias form for request-facing errors.
+        $this->assertStringContainsString("Field \"processed\" wasn\\'t provided in request", $content);
+    }
+
+    public function testPlaceholderStyleOpenApiNameKeepsAliasAndRequiredMapping(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => [
+                'title' => 'Placeholder fields',
+                'version' => '1.0.0',
+            ],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'PlaceholderFieldModel' => [
+                        'type' => 'object',
+                        'required' => ['<<test name>>'],
+                        'properties' => [
+                            '<<test name>>' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/PlaceholderFieldModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string $test_name', $content);
+        $this->assertStringContainsString('$aliases[\'test_name\'] = \'<<test name>>\';', $content);
+        $this->assertStringContainsString('public function isTest_nameRequired(): bool', $content);
+    }
+
     public function testNullableAllOfWithSingleRef(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');

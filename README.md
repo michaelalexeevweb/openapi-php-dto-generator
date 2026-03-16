@@ -5,7 +5,7 @@ Generate immutable PHP DTO classes from OpenAPI `components.schemas`.
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^1.1.2
+composer require michaelalexeevweb/openapi-php-dto-generator:^1.1.6
 ```
 
 ## Requirements
@@ -14,7 +14,7 @@ composer require michaelalexeevweb/openapi-php-dto-generator:^1.1.2
 
 ## Version
 
-**Version 1.1.5** - Supports **OpenAPI 3.0.\*** and **OpenAPI 3.1.\***.
+**Version 1.1.6** - Supports **OpenAPI 3.0.\*** and **OpenAPI 3.1.\***.
 
 
 ### OpenAPI 3.1 features supported
