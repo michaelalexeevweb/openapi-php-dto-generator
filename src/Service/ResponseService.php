@@ -18,17 +18,25 @@ use Throwable;
 
 final class ResponseService implements ResponseServiceInterface
 {
+    /** @var array<string, bool> */
+    private const array INTERNAL_GETTERS = [
+        'getModelName' => true,
+    ];
+
     private DtoNormalizerInterface $normalizer;
+    private bool $strictValidationEnabled;
 
     public function __construct(
         OpenApiConstraintValidator|null $constraintValidator = null,
         OpenApiFormatRegistry|null $formatRegistry = null,
         DtoNormalizerInterface|null $normalizer = null,
+        bool $strictValidationEnabled = true,
     ) {
         $this->normalizer = $normalizer ?? new DtoNormalizer(
             constraintValidator: $constraintValidator,
             formatRegistry: $formatRegistry,
         );
+        $this->strictValidationEnabled = $strictValidationEnabled;
     }
 
     /**
@@ -42,12 +50,33 @@ final class ResponseService implements ResponseServiceInterface
      */
     public function createResponse(object $dto, int $status = Response::HTTP_OK, array $headers = []): Response
     {
+        if (!$this->strictValidationEnabled) {
+            return new JsonResponse($this->normalizer->toArray($dto), $status, $headers);
+        }
+
         $singleFile = $this->extractSingleFileFromDto($dto);
         if ($singleFile !== null) {
             return $this->createFileResponse($singleFile, $status, $headers);
         }
 
+
         return new JsonResponse($this->normalizer->validateAndNormalizeToArray($dto), $status, $headers);
+    }
+
+    /**
+     * @param array<string, mixed> $headers
+     */
+    public function createStrictResponse(object $dto, int $status = Response::HTTP_OK, array $headers = []): Response
+    {
+        return new JsonResponse($this->normalizer->validateAndNormalizeToArray($dto), $status, $headers);
+    }
+
+    /**
+     * @param array<string, mixed> $headers
+     */
+    public function createFastResponse(object $dto, int $status = Response::HTTP_OK, array $headers = []): Response
+    {
+        return new JsonResponse($this->normalizer->toArray($dto), $status, $headers);
     }
 
     /**
@@ -148,6 +177,10 @@ final class ResponseService implements ResponseServiceInterface
         $name = $method->getName();
 
         if (!str_starts_with($name, 'get') || $name === 'get') {
+            return false;
+        }
+
+        if (array_key_exists($name, self::INTERNAL_GETTERS)) {
             return false;
         }
 

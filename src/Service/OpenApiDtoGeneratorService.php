@@ -1552,19 +1552,20 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         $classModifiers = isset($this->parentClasses[$className]) ? '' : 'final ';
-        $implementedInterfaces = array_values(array_unique($this->unionInterfacesByClass[$className] ?? []));
+        $implementedInterfaces = array_values(array_unique([
+            ...($this->unionInterfacesByClass[$className] ?? []),
+            '\\JsonSerializable',
+        ]));
 
         $signature = $classModifiers . 'class ' . $className;
         if ($extends !== null) {
             $signature .= ' extends ' . $this->formatClassNameForNamespace($extends, $namespace);
         }
-        if ($implementedInterfaces !== []) {
-            $signature .= ' implements ' . implode(
-                    ', ',
-                    array_map(fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                        $implementedInterfaces),
-                );
-        }
+        $signature .= ' implements ' . implode(
+                ', ',
+                array_map(fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+                    $implementedInterfaces),
+            );
 
         $ownProperties = $this->deduplicatePropertiesByLastDefinition($properties);
         $parentProperties = $extends !== null
@@ -1774,7 +1775,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
-            $returnType = 'string';
+            $returnType = (bool)$property['nullable'] ? '?string' : 'string';
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
             $isNullableTemporal = (bool)$property['nullable'];

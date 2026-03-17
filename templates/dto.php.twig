@@ -73,6 +73,134 @@ interface {{ className }}
 		$this->{{ name }} = ${{ name }};
 {% endfor %}
 	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function jsonSerialize(): array
+	{
+		$data = [];
+{% for property in methodProperties %}
+{% if property.openApiName != 'modelName' %}
+{% if property.returnKind == 'temporal' %}
+{% if property.isNullableTemporal %}
+		$value = $this->{{ property.name }} === null
+			? null
+			: $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
+{% else %}
+		$value = $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
+{% endif %}
+{% else %}
+		$value = $this->{{ property.name }};
+{% endif %}
+		$data['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = self::normalizeJsonValue($value);
+
+{% endif %}
+{% endfor %}
+		return $data;
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function toArray(): array
+	{
+		return $this->jsonSerialize();
+	}
+
+	/**
+	 * @throws \JsonException
+	 */
+	public function toJson(): string
+	{
+		return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+	}
+
+	private static function normalizeJsonValue(mixed $value): mixed
+	{
+		if ($value === null) {
+			return null;
+		}
+
+		if (is_scalar($value)) {
+			return $value;
+		}
+
+		if (is_array($value)) {
+			$normalized = [];
+			foreach ($value as $key => $item) {
+				$normalized[$key] = self::normalizeJsonValue($item);
+			}
+
+			return $normalized;
+		}
+
+		if ($value instanceof \JsonSerializable) {
+			return self::normalizeJsonValue($value->jsonSerialize());
+		}
+
+		if ($value instanceof \DateTimeInterface) {
+			return $value->format('c');
+		}
+
+		if ($value instanceof \BackedEnum) {
+			return $value->value;
+		}
+
+		if ($value instanceof \UnitEnum) {
+			return $value->name;
+		}
+
+		if ($value instanceof \Symfony\Component\HttpFoundation\File\UploadedFile) {
+			$mimeType = null;
+			$size = null;
+
+			try {
+				$mimeType = $value->getMimeType();
+			} catch (\Throwable) {
+			}
+
+			try {
+				$size = $value->getSize();
+			} catch (\Throwable) {
+			}
+
+			return [
+				'filename' => $value->getFilename(),
+				'mimeType' => $mimeType,
+				'size' => $size,
+				'originalName' => $value->getClientOriginalName(),
+				'clientMimeType' => $value->getClientMimeType(),
+			];
+		}
+
+		if ($value instanceof \Symfony\Component\HttpFoundation\File\File) {
+			$mimeType = null;
+			$size = null;
+
+			try {
+				$mimeType = $value->getMimeType();
+			} catch (\Throwable) {
+			}
+
+			try {
+				$size = $value->getSize();
+			} catch (\Throwable) {
+			}
+
+			return [
+				'filename' => $value->getFilename(),
+				'mimeType' => $mimeType,
+				'size' => $size,
+			];
+		}
+
+		if (is_object($value) && method_exists($value, '__toString')) {
+			return (string)$value;
+		}
+
+		return is_object($value) ? $value::class : $value;
+	}
 {% if methodProperties is not empty %}
 
 {% endif %}
@@ -103,7 +231,11 @@ interface {{ className }}
 {% endif %}
 {% if property.returnKind == 'temporal' %}
 {% if property.isNullableTemporal %}
-		return $this->{{ property.name }}?->format('{{ property.phpDateFormat }}') ?? "";
+		if ($this->{{ property.name }} === null) {
+			return null;
+		}
+
+		return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
 {% else %}
 		return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
 {% endif %}

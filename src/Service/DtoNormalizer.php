@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Service;
 use BackedEnum;
 use DateTimeImmutable;
 use JsonException;
+use JsonSerializable;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoNormalizerInterface;
 use ReflectionClass;
@@ -22,6 +23,16 @@ use UnitEnum;
 
 final class DtoNormalizer implements DtoNormalizerInterface
 {
+    /** @var array<string, bool> */
+    private const array INTERNAL_GETTERS = [
+        'getModelName' => true,
+    ];
+
+    /** @var array<string, bool> */
+    private const array INTERNAL_OUTPUT_FIELDS = [
+        'modelName' => true,
+    ];
+
     private OpenApiConstraintValidator $constraintValidator;
 
     /** @var array<class-string, ReflectionClass<object>> */
@@ -61,6 +72,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function toArray(object $dto): array
     {
+        $fast = $this->tryFastArray($dto);
+        if ($fast !== null) {
+            return $fast;
+        }
+
         return $this->dtoToArray($dto);
     }
 
@@ -84,6 +100,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function toJson(object $dto): string
     {
+        $fastJson = $this->tryFastJson($dto);
+        if ($fastJson !== null) {
+            return $fastJson;
+        }
+
+        $fastArray = $this->tryFastArray($dto);
+        if ($fastArray !== null) {
+            return json_encode($fastArray, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        }
+
         return json_encode($this->dtoToArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
@@ -100,6 +126,57 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         return json_encode($this->dtoToArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function tryFastArray(object $dto): ?array
+    {
+        if (method_exists($dto, 'toArray')) {
+            try {
+                $result = $dto->toArray();
+            } catch (Throwable) {
+                return null;
+            }
+
+            return is_array($result) ? $result : null;
+        }
+
+        return $this->tryFastJsonSerializableArray($dto);
+    }
+
+    private function tryFastJson(object $dto): ?string
+    {
+        if (!method_exists($dto, 'toJson')) {
+            return null;
+        }
+
+        try {
+            $result = $dto->toJson();
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_string($result) ? $result : null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function tryFastJsonSerializableArray(object $dto): ?array
+    {
+        if (!$dto instanceof JsonSerializable) {
+            return null;
+        }
+
+        try {
+            $serialized = $dto->jsonSerialize();
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_array($serialized) ? $serialized : null;
     }
 
     /**
@@ -120,6 +197,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
             try {
                 $value = $method->invoke($dto);
+                $value = $this->normalizeNullableTemporalValue($value, $getterMeta, $meta);
 
                 $error = $this->validateValueAgainstTypes(
                     $value,
@@ -169,13 +247,18 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $propertyName = $getterMeta['propertyName'];
             $outputName = $getterMeta['outputName'];
 
+            if ($this->isInternalOutputField($outputName)) {
+                continue;
+            }
+
             try {
                 $value = $method->invoke($dto);
             } catch (LogicException $exception) {
                 if (str_contains($exception->getMessage(), "wasn't provided in request")) {
                     $fallback = $this->tryReadBackingPropertyValue($dto, $propertyName, $meta);
                     if ($fallback['found']) {
-                        $result[$outputName] = $this->normalizeValue($fallback['value']);
+                        $normalized = $this->normalizeValue($fallback['value']);
+                        $result[$outputName] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
                     }
                 }
                 continue;
@@ -184,9 +267,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
             }
 
             try {
-                $result[$outputName] = $this->normalizeValue($value);
+                $normalized = $this->normalizeValue($value);
+                $result[$outputName] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
             } catch (Throwable) {
-                $result[$outputName] = $this->normalizeValueFallback($value);
+                $normalized = $this->normalizeValueFallback($value);
+                $result[$outputName] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
             }
         }
 
@@ -217,6 +302,39 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         return ['found' => true, 'value' => $property->getValue($dto)];
+    }
+
+    /**
+     * @param array{propertyName: string, allowsNull: bool} $getterMeta
+     * @param array{constraintsByField: array<string, array<string, mixed>>} $meta
+     */
+    private function normalizeNullableTemporalValue(mixed $value, array $getterMeta, array $meta): mixed
+    {
+        if ($value !== '') {
+            return $value;
+        }
+
+        if (!$getterMeta['allowsNull']) {
+            return $value;
+        }
+
+        $constraints = $meta['constraintsByField'][$getterMeta['propertyName']] ?? [];
+
+        $format = $constraints['format'] ?? null;
+        if (!is_string($format)) {
+            return $value;
+        }
+
+        if (!in_array($format, ['date', 'date-time', 'datetime'], true)) {
+            return $value;
+        }
+
+        return null;
+    }
+
+    private function isInternalOutputField(string $outputName): bool
+    {
+        return array_key_exists($outputName, self::INTERNAL_OUTPUT_FIELDS);
     }
 
     private function normalizeValue(mixed $value): mixed
@@ -399,6 +517,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $name = $method->getName();
 
         if (!str_starts_with($name, 'get') || $name === 'get') {
+            return false;
+        }
+
+        if (array_key_exists($name, self::INTERNAL_GETTERS)) {
             return false;
         }
 

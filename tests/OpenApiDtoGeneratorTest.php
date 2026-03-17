@@ -71,6 +71,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($queryParamsFile);
         $this->assertStringContainsString('class UsersPostsGetQueryParams', $content);
+        $this->assertStringContainsString('implements \\JsonSerializable', $content);
+        $this->assertStringContainsString('public function jsonSerialize(): array', $content);
+        $this->assertStringContainsString('public function toArray(): array', $content);
+        $this->assertStringContainsString('public function toJson(): string', $content);
         $this->assertStringContainsString('private int $userId', $content);
         $this->assertStringContainsString('private string $postId', $content);
         $this->assertStringContainsString('private ?int $page', $content);
@@ -167,10 +171,12 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($statusEnumFile);
 
         $content = file_get_contents($statusEnumFile);
-        $this->assertStringContainsString('enum PostStatus: string', $content);
+        $this->assertStringContainsString('enum PostStatus: string implements \\JsonSerializable', $content);
         $this->assertStringContainsString("case DRAFT = 'draft'", $content);
         $this->assertStringContainsString("case PUBLISHED = 'published'", $content);
         $this->assertStringContainsString("case ARCHIVED = 'archived'", $content);
+        $this->assertStringContainsString('public function toArray(): array', $content);
+        $this->assertStringContainsString('public function toJson(): string', $content);
 
         // Integer enum
         $typeEnumFile = $this->outputDirectory . '/ArticleType.php';

@@ -110,6 +110,28 @@ final class ResponseServiceTest extends TestCase
         $this->assertStringContainsString('2024-01-15', $content['createdAt']);
     }
 
+    public function testCreateResponseWithNullableDateTimeReturnsNull(): void
+    {
+        $dto = new NullableTemporalResponseDto(null);
+
+        $response = $this->service->createResponse($dto);
+
+        $content = json_decode((string)$response->getContent(), true);
+        $this->assertArrayHasKey('createdAt', $content);
+        $this->assertNull($content['createdAt']);
+    }
+
+    public function testCreateResponseConvertsEmptyStringToNullForNullableTemporal(): void
+    {
+        $dto = new NullableTemporalLegacyResponseDto(null);
+
+        $response = $this->service->createResponse($dto);
+
+        $content = json_decode((string)$response->getContent(), true);
+        $this->assertArrayHasKey('createdAt', $content);
+        $this->assertNull($content['createdAt']);
+    }
+
     public function testCreateResponseThrowsExceptionForInvalidDto(): void
     {
         $dto = new InvalidResponseDto();
@@ -118,6 +140,31 @@ final class ResponseServiceTest extends TestCase
         $this->expectExceptionMessage('DTO validation failed');
 
         $this->service->createResponse($dto);
+    }
+
+    public function testCreateResponseInFastModeSkipsValidation(): void
+    {
+        $service = new ResponseService(strictValidationEnabled: false);
+        $dto = new InvalidResponseDto();
+
+        $response = $service->createResponse($dto);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $content = json_decode((string)$response->getContent(), true);
+        $this->assertSame([], $content);
+    }
+
+    public function testCreateResponseInFastModeUsesJsonSerializablePayload(): void
+    {
+        $service = new ResponseService(strictValidationEnabled: false);
+        $dto = new FastJsonSerializableResponseDto(7, 'Fast');
+
+        $response = $service->createResponse($dto);
+
+        $this->assertSame(1, FastJsonSerializableResponseDto::$jsonSerializeCalls);
+        $content = json_decode((string)$response->getContent(), true);
+        $this->assertSame(7, $content['id']);
+        $this->assertSame('Fast', $content['name']);
     }
 
     public function testCreateResponseWithArrayOfDtos(): void
@@ -221,6 +268,28 @@ final class ResponseServiceTest extends TestCase
         $this->assertSame('discriminator1', $content['type']);
         $this->assertArrayNotHasKey('discriminatorPropertyName', $content);
         $this->assertArrayNotHasKey('discriminatorMapping', $content);
+    }
+
+    public function testCreateResponseSkipsInternalModelNameGetter(): void
+    {
+        $dto = new ModelNameInternalResponseDto(10, 'InternalModel');
+
+        $response = $this->service->createResponse($dto);
+
+        $content = json_decode((string)$response->getContent(), true);
+        $this->assertSame(10, $content['id']);
+        $this->assertArrayNotHasKey('modelName', $content);
+    }
+
+    public function testCreateResponseSkipsInternalModelNameAlias(): void
+    {
+        $dto = new ModelNameAliasInternalResponseDto(11, 'InternalAliasModel');
+
+        $response = $this->service->createResponse($dto);
+
+        $content = json_decode((string)$response->getContent(), true);
+        $this->assertSame(11, $content['id']);
+        $this->assertArrayNotHasKey('modelName', $content);
     }
 
     public function testCreateResponseValidatesOpenApiConstraints(): void
@@ -448,12 +517,71 @@ final class DateTimeResponseDto
     }
 }
 
+final class NullableTemporalResponseDto
+{
+    public function __construct(
+        private ?DateTimeImmutable $createdAt,
+    ) {
+    }
+
+    public function getCreatedAt(): ?string
+    {
+        return $this->createdAt?->format('c');
+    }
+}
+
+final class NullableTemporalLegacyResponseDto
+{
+    public function __construct(
+        private ?DateTimeImmutable $createdAt,
+    ) {
+    }
+
+    public function getCreatedAt(): ?string
+    {
+        return $this->createdAt?->format('c') ?? '';
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'createdAt' => [
+                'format' => 'date-time',
+            ],
+        ];
+    }
+}
+
 final class InvalidResponseDto
 {
     // Returns wrong type
     public function getId(): int
     {
         return 'not-an-int'; // @phpstan-ignore-line
+    }
+}
+
+final class FastJsonSerializableResponseDto implements \JsonSerializable
+{
+    public static int $jsonSerializeCalls = 0;
+
+    public function __construct(
+        private int $id,
+        private string $name,
+    ) {
+        self::$jsonSerializeCalls = 0;
+    }
+
+    /** @return array<string, mixed> */
+    public function jsonSerialize(): array
+    {
+        self::$jsonSerializeCalls++;
+
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+        ];
     }
 }
 
@@ -532,6 +660,52 @@ final class DiscriminatorLikeResponseDto
     {
         return [
             'discriminator1' => self::class,
+        ];
+    }
+}
+
+final class ModelNameInternalResponseDto
+{
+    public function __construct(
+        private int $id,
+        private string $modelName,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getModelName(): string
+    {
+        return $this->modelName;
+    }
+}
+
+final class ModelNameAliasInternalResponseDto
+{
+    public function __construct(
+        private int $id,
+        private string $internalModel,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getInternalModel(): string
+    {
+        return $this->internalModel;
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [
+            'internalModel' => 'modelName',
         ];
     }
 }

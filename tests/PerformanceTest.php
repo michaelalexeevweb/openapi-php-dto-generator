@@ -172,6 +172,41 @@ final class PerformanceTest extends TestCase
         $this->assertLessThan(3_000, $elapsedMs);
     }
 
+    public function testJsonSerializableFastPathPerformance(): void
+    {
+        $dto = new PerfJsonSerializableDto(
+            id: 42,
+            name: 'john_doe',
+            createdAt: new DateTimeImmutable('2024-06-01T12:00:00+00:00'),
+            tags: [
+                new PerfTagDto(1, 'php'),
+                new PerfTagDto(2, 'openapi'),
+                new PerfTagDto(3, 'performance'),
+            ],
+        );
+
+        // warm-up
+        $this->normalizer->toArray($dto);
+
+        $start = hrtime(true);
+
+        for ($i = 0; $i < self::ITERATIONS; $i++) {
+            $this->normalizer->toArray($dto);
+        }
+
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
+
+        writePerfLine(sprintf(
+            "\n  [Perf] json-serializable normalize: %d iterations → %.1f ms total (%.3f ms/op)\n",
+            self::ITERATIONS,
+            $elapsedMs,
+            $perOpMs,
+        ));
+
+        $this->assertLessThan(1_000, $elapsedMs);
+    }
+
     // -----------------------------------------------------------------------
     // Round-trip: deserialize → normalize
     // -----------------------------------------------------------------------
@@ -551,6 +586,35 @@ final class PerfAddressDto
     public function getCountry(): string
     {
         return $this->country;
+    }
+}
+
+final class PerfJsonSerializableDto implements \JsonSerializable
+{
+    /** @param array<PerfTagDto> $tags */
+    public function __construct(
+        private readonly int $id,
+        private readonly string $name,
+        private readonly DateTimeImmutable $createdAt,
+        private readonly array $tags,
+    ) {
+    }
+
+    /** @return array<string, mixed> */
+    public function jsonSerialize(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'createdAt' => $this->createdAt->format('c'),
+            'tags' => array_map(
+                static fn(PerfTagDto $tag): array => [
+                    'id' => $tag->getId(),
+                    'label' => $tag->getLabel(),
+                ],
+                $this->tags,
+            ),
+        ];
     }
 }
 
