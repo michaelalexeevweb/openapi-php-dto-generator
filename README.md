@@ -1,11 +1,14 @@
 # OpenAPI PHP DTO Generator
 
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/michaelalexeevweb/openapi-php-dto-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelalexeevweb/openapi-php-dto-generator/actions/workflows/ci.yml)
+
 Generate immutable PHP DTO classes from OpenAPI `components.schemas`.
 
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^1.1.2
+composer require michaelalexeevweb/openapi-php-dto-generator:^1.1.7
 ```
 
 ## Requirements
@@ -14,7 +17,7 @@ composer require michaelalexeevweb/openapi-php-dto-generator:^1.1.2
 
 ## Version
 
-**Version 1.1.2** - Supports **OpenAPI 3.0.\*** and **OpenAPI 3.1.\***.
+**Version 1.1.7** - Supports **OpenAPI 3.0.\*** and **OpenAPI 3.1.\***.
 
 
 ### OpenAPI 3.1 features supported

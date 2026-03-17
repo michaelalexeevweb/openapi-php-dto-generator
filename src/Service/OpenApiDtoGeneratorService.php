@@ -10,6 +10,27 @@ use Symfony\Component\Yaml\Yaml;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
+/**
+ * @phpstan-type SchemaProperty array{
+ *   name: string,
+ *   openApiName: string,
+ *   type: string,
+ *   nullable: bool,
+ *   required: bool,
+ *   default: mixed,
+ *   description: string|null,
+ *   temporalFormat?: string|null,
+ *   inPath?: bool,
+ *   inQuery?: bool,
+ *   constraints?: array<string, mixed>
+ * }
+ * @phpstan-type SchemaMetadata array{
+ *   properties: array<int, SchemaProperty>,
+ *   extends: string|null,
+ *   unionTypes: array<string>,
+ *   discriminator: array{propertyName: string, mapping: array<string, string>}|null
+ * }
+ */
 final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInterface
 {
     private Environment|null $twig = null;
@@ -141,7 +162,11 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             $schemaMetadata = $this->analyzeSchema($className, $schemaDefinition);
             $namespace = $this->schemaNamespaces[$className] ?? $this->baseNamespace;
             $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
-            $classCode = $this->renderDtoClass($namespace, $className, $schemaMetadata);
+            $classCode = $this->renderDtoClass(
+                namespace: $namespace,
+                className: $className,
+                schemaMetadata: $schemaMetadata,
+            );
             $this->ensureDirectoryExists($outputDirectory);
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . '.php';
             file_put_contents($filePath, $classCode);
@@ -151,7 +176,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         foreach ($this->enumSchemas as $enumName => $enumDefinition) {
             $namespace = $this->enumNamespaces[$enumName] ?? $this->baseNamespace;
             $outputDirectory = $this->enumOutputDirectories[$enumName] ?? $this->baseOutputDirectory;
-            $enumCode = $this->renderEnum($namespace, $enumName, $enumDefinition['type'], $enumDefinition['values']);
+            $enumCode = $this->renderEnum(
+                namespace: $namespace,
+                enumName: $enumName,
+                backingType: $enumDefinition['type'],
+                values: $enumDefinition['values'],
+            );
             $this->ensureDirectoryExists($outputDirectory);
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $enumName . '.php';
             file_put_contents($filePath, $enumCode);
@@ -506,11 +536,15 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         foreach ($properties as $propertyName => $propertySchema) {
-            if (!is_string($propertyName) || !is_array($propertySchema)) {
+            if (!is_array($propertySchema)) {
                 continue;
             }
 
-            $this->resolvePropertyType($propertySchema, $ownerClassName, $propertyName);
+            $this->resolvePropertyType(
+                propertySchema: $propertySchema,
+                ownerClassName: $ownerClassName,
+                propertyName: (string)$propertyName,
+            );
         }
     }
 
@@ -601,12 +635,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param array<string, mixed> $schemaDefinition
-     * @return array{
-     *     properties: array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>,
-     *     extends: string|null,
-     *     unionTypes: array<string>,
-     *     discriminator: array{propertyName: string, mapping: array<string, string>}|null
-     * }
+     * @return SchemaMetadata
      */
     private function analyzeSchema(string $className, array $schemaDefinition): array
     {
@@ -711,7 +740,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param array<string, mixed> $schemaDefinition
-     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints: array<string, mixed>}>
+     * @return array<int, SchemaProperty>
      */
     private function extractProperties(array $schemaDefinition, string $ownerClassName): array
     {
@@ -724,26 +753,30 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
         $requiredMap = [];
         foreach ($required as $requiredProperty) {
-            if (is_string($requiredProperty)) {
-                $requiredMap[$requiredProperty] = true;
-            }
+            $requiredMap[(string)$requiredProperty] = true;
         }
 
         $result = [];
 
         foreach ($properties as $propertyName => $propertySchema) {
-            if (!is_string($propertyName) || !is_array($propertySchema)) {
+            if (!is_array($propertySchema)) {
                 continue;
             }
 
+            $openApiPropertyName = (string)$propertyName;
+
             $propertySchema = $this->applyDiscriminatorPropertyEnumIfNeeded(
-                $ownerClassName,
-                $propertyName,
-                $propertySchema,
+                ownerClassName: $ownerClassName,
+                propertyName: $openApiPropertyName,
+                propertySchema: $propertySchema,
             );
 
-            [$type, $nullableBySchema] = $this->resolvePropertyType($propertySchema, $ownerClassName, $propertyName);
-            $isRequired = isset($requiredMap[$propertyName]);
+            [$type, $nullableBySchema] = $this->resolvePropertyType(
+                propertySchema: $propertySchema,
+                ownerClassName: $ownerClassName,
+                propertyName: $openApiPropertyName,
+            );
+            $isRequired = isset($requiredMap[$openApiPropertyName]);
             $nullable = $nullableBySchema || !$isRequired;
             $default = $this->extractDefaultValue($propertySchema, $type);
             $description = $this->extractDescription($propertySchema);
@@ -755,7 +788,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             $isInQuery = $paramIn === 'query';
 
             $result[] = [
-                'name' => $this->normalizePropertyName($propertyName),
+                'name' => $this->normalizePropertyName($openApiPropertyName),
+                'openApiName' => $openApiPropertyName,
                 'type' => $type,
                 'nullable' => $nullable,
                 'required' => $isRequired,
@@ -966,6 +1000,15 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         if ($type === 'object') {
+            if ($this->isAdditionalPropertiesMapSchema($propertySchema)) {
+                $mapValueType = $this->resolveAdditionalPropertiesValueType(
+                    $propertySchema,
+                    $ownerClassName,
+                    $propertyName,
+                );
+                return ['array<' . $mapValueType . '>', $nullable];
+            }
+
             $nestedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
             $this->registerSchema($nestedClassName, $propertySchema, $this->getSchemaSourceFile($ownerClassName));
             return [$nestedClassName, $nullable];
@@ -1077,8 +1120,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             return null;
         }
 
-        $parentType = $parentProperty['type'] ?? null;
-        if (!is_string($parentType) || !isset($this->enumSchemas[$parentType])) {
+        $parentType = $parentProperty['type'];
+        if (!array_key_exists($parentType, $this->enumSchemas)) {
             return null;
         }
 
@@ -1229,6 +1272,51 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         return [implode('|', $types), $nullable];
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    private function isAdditionalPropertiesMapSchema(array $propertySchema): bool
+    {
+        if (!array_key_exists('additionalProperties', $propertySchema)) {
+            return false;
+        }
+
+        if (($propertySchema['additionalProperties'] ?? null) === false) {
+            return false;
+        }
+
+        $properties = $propertySchema['properties'] ?? null;
+        return !is_array($properties) || $properties === [];
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    private function resolveAdditionalPropertiesValueType(
+        array $propertySchema,
+        string $ownerClassName,
+        string $propertyName,
+    ): string {
+        $additionalProperties = $propertySchema['additionalProperties'] ?? true;
+
+        if ($additionalProperties === true) {
+            return 'mixed';
+        }
+
+        if (!is_array($additionalProperties)) {
+            return 'mixed';
+        }
+
+        [$valueType] = $this->resolvePropertyType($additionalProperties, $ownerClassName, $propertyName . 'Value');
+
+        // Keep map value generic simple in phpdoc: array<scalar|class|mixed>.
+        if (str_contains($valueType, '<') || str_contains($valueType, '|')) {
+            return 'mixed';
+        }
+
+        return $valueType;
     }
 
     private function mapStringFormatType(mixed $format): ?string
@@ -1406,12 +1494,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array{
-     *     properties: array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool}>,
-     *     extends: string|null,
-     *     unionTypes: array<string>,
-     *     discriminator: array{propertyName: string, mapping: array<string, string>}|null
-     * } $schemaMetadata
+     * @param SchemaMetadata $schemaMetadata
      */
     private function renderDtoClass(string $namespace, string $className, array $schemaMetadata): string
     {
@@ -1420,12 +1503,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         $unionTypes = $schemaMetadata['unionTypes'];
         $discriminator = $schemaMetadata['discriminator'] ?? null;
         $imports = $this->collectGeneratedClassImports(
-            $namespace,
-            $className,
-            $properties,
-            $extends,
-            $unionTypes,
-            $discriminator,
+            namespace: $namespace,
+            className: $className,
+            properties: $properties,
+            extends: $extends,
+            unionTypes: $unionTypes,
+            discriminator: $discriminator,
         );
 
         $useStatements = [];
@@ -1464,6 +1547,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
                 'discriminator' => null,
                 'extends' => null,
                 'constraintAssignments' => [],
+                'aliasAssignments' => [],
             ]);
         }
 
@@ -1571,6 +1655,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             : null;
 
         $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
+        $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
 
         return $this->renderPhpTemplate('dto.php.twig', [
             'namespace' => $namespace,
@@ -1586,11 +1671,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'discriminator' => $discriminatorData,
             'extends' => $extends,
             'constraintAssignments' => $constraintAssignments,
+            'aliasAssignments' => $aliasAssignments,
         ]);
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, constraints?: array<string, mixed>} $property
+     * @param SchemaProperty $property
      * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
@@ -1621,12 +1707,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'docVarType' => $docVarType,
             'type' => $type,
             'name' => $property['name'],
-            'inRequestFlagName' => $property['name'] . 'InRequest',
+            'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
         ];
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
+     * @param SchemaProperty $property
      * @return array{type: string, name: string, defaultValue: string}
      */
     private function resolveConstructorParameterData(array $property, string $namespace): array
@@ -1653,8 +1739,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string, temporalFormat?: ?string, inPath?: bool, inQuery?: bool} $property
-     * @return array<string, mixed>
+     * @param SchemaProperty $property
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathLiteral: string, inQueryLiteral: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -1698,6 +1784,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
         return [
             'name' => $property['name'],
+            'openApiName' => $property['openApiName'],
             'nameSuffix' => ucfirst($property['name']),
             'methodName' => $methodName,
             'returnType' => $returnType,
@@ -1711,7 +1798,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'requiredLiteral' => $property['required'] ? 'true' : 'false',
             'inPathLiteral' => ($property['inPath'] ?? false) ? 'true' : 'false',
             'inQueryLiteral' => ($property['inQuery'] ?? false) ? 'true' : 'false',
-            'inRequestFlagName' => $property['name'] . 'InRequest',
+            'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'hasArrayAdder' => str_starts_with((string)$property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
@@ -1740,7 +1827,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, constraints?: array<string, mixed>}> $properties
+     * @param array<int, SchemaProperty> $properties
      * @return array<int, array{name: string, value: string}>
      */
     private function resolveConstraintAssignments(array $properties): array
@@ -1756,6 +1843,24 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             $result[] = [
                 'name' => $property['name'],
                 'value' => $this->renderPhpLiteral($constraints),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, array{name: string, openApiName: string}>
+     */
+    private function resolveAliasAssignments(array $properties): array
+    {
+        $result = [];
+
+        foreach ($properties as $property) {
+            $result[] = [
+                'name' => $property['name'],
+                'openApiName' => $property['openApiName'],
             ];
         }
 
@@ -1800,7 +1905,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}> $properties
+     * @param array<int, SchemaProperty> $properties
      * @param array<string>|null $unionTypes
      * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
      * @return array<int, string>
@@ -2131,12 +2236,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, type: string}> $properties
+     * @param array<int, SchemaProperty> $properties
      */
     private function needsUploadedFileImport(array $properties): bool
     {
         foreach ($properties as $property) {
-            $type = (string)($property['type'] ?? '');
+            $type = $property['type'];
             if ($type === 'UploadedFile' || str_contains($type, 'UploadedFile')) {
                 return true;
             }
@@ -2146,8 +2251,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}> $properties
-     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, SchemaProperty>
      */
     private function deduplicatePropertiesByLastDefinition(array $properties): array
     {
@@ -2173,8 +2278,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}> $properties
-     * @return array<string, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, SchemaProperty>
      */
     private function indexPropertiesByName(array $properties): array
     {
@@ -2187,8 +2292,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $parentProperty
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $childProperty
+     * @param SchemaProperty $parentProperty
+     * @param SchemaProperty $childProperty
      */
     private function isPropertyOverrideCompatible(array $parentProperty, array $childProperty): bool
     {
@@ -2204,7 +2309,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string} $property
+     * @param SchemaProperty $property
      */
     private function describePropertyType(array $property): string
     {
@@ -2225,7 +2330,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>
+     * @return array<int, SchemaProperty>
      */
     private function getParentProperties(string $parentClassName): array
     {
@@ -2242,7 +2347,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * Recursively get all properties from a schema, including inherited ones.
-     * @return array<int, array{name: string, type: string, nullable: bool, required: bool, default: mixed, description: ?string}>
+     * @return array<int, SchemaProperty>
      */
     private function getSchemaProperties(string $className): array
     {
@@ -2307,17 +2412,22 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     private function normalizePropertyName(string $name): string
     {
-        $name = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $name) ?? $name;
-        $parts = preg_split('/[^A-Za-z0-9]+/', $name) ?: [];
-        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
-
-        if ($parts === []) {
+        if ($name === '') {
             return 'value';
         }
 
-        $propertyName = strtolower((string)array_shift($parts));
-        foreach ($parts as $part) {
-            $propertyName .= ucfirst(strtolower($part));
+        // Keep property names exactly as in the OpenAPI spec when they are valid PHP identifiers.
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) === 1) {
+            return $name;
+        }
+
+        // Fallback for invalid identifiers: replace unsupported characters with underscores.
+        $propertyName = preg_replace('/[^A-Za-z0-9_]/', '_', $name) ?? $name;
+        $propertyName = preg_replace('/_+/', '_', $propertyName) ?? $propertyName;
+        $propertyName = trim($propertyName, '_');
+
+        if ($propertyName === '') {
+            return 'value';
         }
 
         if (is_numeric($propertyName[0])) {
@@ -2325,6 +2435,30 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         return $propertyName;
+    }
+
+    private function normalizeInRequestFlagName(string $propertyName): string
+    {
+        $parts = preg_split('/[^A-Za-z0-9]+/', $propertyName) ?: [];
+        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+
+        if ($parts === []) {
+            $camel = 'value';
+        } else {
+            $first = $parts[0];
+            $camel = strtoupper($first) === $first ? strtolower($first) : lcfirst($first);
+
+            for ($i = 1, $count = count($parts); $i < $count; $i++) {
+                $part = $parts[$i];
+                $camel .= ucfirst(strtolower($part));
+            }
+        }
+
+        if (is_numeric($camel[0])) {
+            $camel = '_' . $camel;
+        }
+
+        return $camel . 'InRequest';
     }
 
     private function prepareOutputDirectory(string $outputDirectory): void

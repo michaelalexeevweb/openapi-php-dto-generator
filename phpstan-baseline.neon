@@ -1,0 +1,67 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Language construct isset\(\) should not be used\.$#'
+			identifier: ergebnis.noIsset
+			count: 16
+			path: src/Service/OpenApiConstraintValidator.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<int, int\|string\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 6
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Language construct isset\(\) should not be used\.$#'
+			identifier: ergebnis.noIsset
+			count: 57
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Method OpenapiPhpDtoGenerator\\Service\\OpenApiDtoGeneratorService\:\:resolveTemporalPhpDocFormat\(\) has parameter \$propertySchema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Offset ''type'' on array\{name\: string, type\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Offset ''values'' on array\{type\: string, values\: array\<int, int\|string\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^PHPDoc tag @param for parameter \$unionTypes with type array\<string\>\|null is not subtype of native type array\.$#'
+			identifier: parameter.phpDocType
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Property OpenapiPhpDtoGenerator\\Service\\OpenApiDtoGeneratorService\:\:\$enumSourceFiles is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: src/Service/OpenApiDtoGeneratorService.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Service/RequestDeserializerService.php

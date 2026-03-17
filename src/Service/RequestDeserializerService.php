@@ -6,7 +6,6 @@ namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
 use DateTimeImmutable;
-use JsonException;
 use OpenapiPhpDtoGenerator\Contract\OpenApiConstraintValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\RequestDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\ValidationMessageProviderInterface;
@@ -20,9 +19,62 @@ use UnitEnum;
 
 final class RequestDeserializerService implements RequestDeserializerInterface
 {
+    private const PREDECODED_BODY_ATTRIBUTE = '__opg_predecoded_body_data';
+
     private OpenApiConstraintValidatorInterface $constraintValidator;
     private ValidationMessageProviderInterface $messageProvider;
     private OpenApiFormatRegistry $formatRegistry;
+
+    // -----------------------------------------------------------------------
+    // Static per-class reflection caches (populated once, shared across all
+    // instances and requests within the same PHP worker process).
+    // -----------------------------------------------------------------------
+
+    /** @var array<class-string, ReflectionClass<object>> */
+    private static array $reflectionCache = [];
+
+    /**
+     * Comprehensive per-class DTO metadata: constructor params + inRequest flag properties.
+     * Key: class-string
+     *
+     * @var array<class-string, array{
+     *   hasConstructor: bool,
+     *   params: list<array{
+     *     name: string,
+     *     requestFieldName: string,
+     *     typeNames: list<string>,
+     *     allowsNull: bool,
+     *     hasDefaultValue: bool,
+     *     defaultValue: mixed,
+     *     schemaAllowsNull: bool,
+     *     arrayItemType: string|null,
+     *     openApiFormat: string|null,
+     *     allowsAssociativeArray: bool,
+     *     temporalFormat: string|null,
+     *     fieldConstraints: array<string,mixed>|null,
+     *   }>,
+     *   inRequestProperties: array<string, \ReflectionProperty|null>,
+     * }>
+     */
+    private static array $dtoMetaCache = [];
+
+    /**
+     * Enum cases cache to avoid repeated reflection per castToEnum call.
+     * Key: enum class-string → list of UnitEnum cases
+     *
+     * @var array<class-string, list<\UnitEnum>>
+     */
+    private static array $enumCasesCache = [];
+
+    // -----------------------------------------------------------------------
+    // Instance cache: last parsed request body (avoids re-parsing the same
+    // JSON content multiple times within a single deserialization call, since
+    // getBodyData() is invoked once per constructor parameter).
+    // -----------------------------------------------------------------------
+
+    private ?string $bodyDataCacheKey = null;
+    /** @var array<string, mixed> */
+    private array $bodyDataCacheValue = [];
 
     /**
      * @param array<string, string> $messageOverrides
@@ -36,9 +88,9 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         $this->messageProvider = $messageProvider ?? new ValidationMessageProvider($messageOverrides);
         $this->formatRegistry = $formatRegistry ?? new OpenApiFormatRegistry();
         $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator(
-            $this->messageProvider,
-            $messageOverrides,
-            $this->formatRegistry,
+            messageProvider: $this->messageProvider,
+            messageOverrides: $messageOverrides,
+            formatRegistry: $this->formatRegistry,
         );
     }
 
@@ -49,28 +101,179 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      */
     public function deserialize(Request $request, string $dtoClass): object
     {
-        $reflection = new ReflectionClass($dtoClass);
-        $constructor = $reflection->getConstructor();
+        // Use cached ReflectionClass – avoids repeated object instantiation.
+        $reflection = self::$reflectionCache[$dtoClass] ??= new ReflectionClass($dtoClass);
 
-        if ($constructor === null) {
+        // Build (or retrieve from cache) all class-level metadata so that the
+        // expensive reflection + file-reading work is done only on the very first
+        // deserialization of a given DTO class within this PHP worker process.
+        if (!array_key_exists($dtoClass, self::$dtoMetaCache)) {
+            self::$dtoMetaCache[$dtoClass] = $this->buildDtoMeta($reflection, $dtoClass);
+        }
+        $classMeta = self::$dtoMetaCache[$dtoClass];
+
+        if (!$classMeta['hasConstructor']) {
             throw new RuntimeException(
                 $this->messageProvider->format(ValidationMessageKey::DTO_HAS_NO_CONSTRUCTOR, ['dtoClass' => $dtoClass]),
             );
         }
 
-        $params = $constructor->getParameters();
         $args = [];
         $providedParams = [];
         $errors = [];
-        $constraintsByField = $this->resolveOpenApiConstraints($reflection);
 
-        foreach ($params as $param) {
+        foreach ($classMeta['params'] as $paramMeta) {
+            $paramName = $paramMeta['name'];
+            $requestFieldName = $paramMeta['requestFieldName'];
+            $typeNames = $paramMeta['typeNames'];
+            $allowsNull = $paramMeta['allowsNull'];
+            $hasDefaultValue = $paramMeta['hasDefaultValue'];
+            $schemaAllowsNull = $paramMeta['schemaAllowsNull'];
+            $arrayItemType = $paramMeta['arrayItemType'];
+            $openApiFormat = $paramMeta['openApiFormat'];
+            $allowsAssociativeArray = $paramMeta['allowsAssociativeArray'];
+            $temporalFormat = $paramMeta['temporalFormat'];
+            $fieldConstraints = $paramMeta['fieldConstraints'];
+
+            // If parameter is absent in request and constructor has a default value,
+            // keep constructor default instead of forcing null.
+            $rawSource = '';
+            $rawWasProvided = false;
+            $this->extractRawValueFromRequest($request, $requestFieldName, $rawWasProvided, $rawSource);
+            if (!$rawWasProvided && $hasDefaultValue) {
+                $args[] = $paramMeta['defaultValue'];
+                $providedParams[] = $paramName;
+                continue;
+            }
+
+            // Try to get value from request (body, query, path, files)
+            $wasProvided = false;
+            try {
+                if (count($typeNames) === 1) {
+                    $value = $this->extractValueFromRequest(
+                        request: $request,
+                        paramName: $requestFieldName,
+                        typeName: $typeNames[0],
+                        allowsNull: $allowsNull,
+                        wasProvided: $wasProvided,
+                        arrayItemType: $arrayItemType,
+                        paramPath: $requestFieldName,
+                        schemaAllowsNull: $schemaAllowsNull,
+                        temporalFormat: $temporalFormat,
+                        openApiFormat: $openApiFormat,
+                        allowsAssociativeArray: $allowsAssociativeArray,
+                    );
+                } else {
+                    $value = $this->extractUnionValueFromRequest(
+                        request: $request,
+                        paramName: $requestFieldName,
+                        typeNames: $typeNames,
+                        allowsNull: $allowsNull,
+                        wasProvided: $wasProvided,
+                        arrayItemType: $arrayItemType,
+                        schemaAllowsNull: $schemaAllowsNull,
+                        dtoReflection: $reflection,
+                        openApiFormat: $openApiFormat,
+                        allowsAssociativeArray: $allowsAssociativeArray,
+                    );
+                }
+            } catch (RuntimeException $e) {
+                // Collect errors and use null as placeholder so we can continue validating other params
+                foreach (explode("\n", $e->getMessage()) as $msg) {
+                    $errors[] = $msg;
+                }
+                $args[] = null;
+                continue;
+            }
+
+            if (!$wasProvided && $hasDefaultValue) {
+                $value = $paramMeta['defaultValue'];
+                $wasProvided = true;
+            }
+
+            $args[] = $value;
+
+            if ($wasProvided && is_array($fieldConstraints) && $fieldConstraints !== []) {
+                foreach (
+                    $this->constraintValidator->validate(
+                        sprintf('param "%s"', $requestFieldName),
+                        $value,
+                        $fieldConstraints,
+                    ) as $constraintError
+                ) {
+                    $errors[] = $constraintError;
+                }
+            }
+
+            if ($wasProvided) {
+                $providedParams[] = $paramName;
+            }
+        }
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", $errors));
+        }
+
+        /** @var T $dto */
+        $dto = $reflection->newInstanceArgs($args);
+
+        // Mark fields as provided in request using pre-resolved (and already
+        // setAccessible'd) ReflectionProperty objects from the metadata cache.
+        foreach ($providedParams as $paramName) {
+            $flagProperty = $classMeta['inRequestProperties'][$paramName] ?? null;
+            if ($flagProperty !== null) {
+                $flagProperty->setValue($dto, true);
+            }
+        }
+
+        return $dto;
+    }
+
+    /**
+     * Builds and returns the complete per-class metadata array used by deserialize().
+     * Called exactly once per DTO class per PHP process; result is stored in $dtoMetaCache.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array{
+     *   hasConstructor: bool,
+     *   params: list<array{
+     *     name: string,
+     *     requestFieldName: string,
+     *     typeNames: list<string>,
+     *     allowsNull: bool,
+     *     hasDefaultValue: bool,
+     *     defaultValue: mixed,
+     *     schemaAllowsNull: bool,
+     *     arrayItemType: string|null,
+     *     openApiFormat: string|null,
+     *     allowsAssociativeArray: bool,
+     *     temporalFormat: string|null,
+     *     fieldConstraints: array<string,mixed>|null,
+     *   }>,
+     *   inRequestProperties: array<string, \ReflectionProperty|null>,
+     * }
+     */
+    private function buildDtoMeta(ReflectionClass $reflection, string $dtoClass): array
+    {
+        $constructor = $reflection->getConstructor();
+        if ($constructor === null) {
+            return ['hasConstructor' => false, 'params' => [], 'inRequestProperties' => []];
+        }
+
+        $aliases = $this->resolveOpenApiPropertyAliases($reflection);
+        $constraints = $this->resolveOpenApiConstraints($reflection);
+
+        $params = [];
+        $inRequestProperties = [];
+
+        foreach ($constructor->getParameters() as $param) {
             $paramName = $param->getName();
+            $requestFieldName = $aliases[$paramName] ?? $paramName;
             $paramType = $param->getType();
             $hasDefaultValue = $param->isDefaultValueAvailable();
-            $fieldConstraints = $constraintsByField[$paramName] ?? null;
+            $fieldConstraints = $constraints[$paramName] ?? null;
+            $allowsAssociativeArray = $this->allowsAssociativeArray($fieldConstraints);
             $openApiFormat = $this->resolveOpenApiFormat($fieldConstraints);
-
             $allowsNull = $paramType?->allowsNull() ?? false;
             $schemaAllowsNull = $this->resolveSchemaAllowsNull($reflection, $paramName, $allowsNull);
 
@@ -88,6 +291,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                     $typeNames[] = $unionType->getName();
                 }
             } else {
+                // Unsupported intersection / no-type-hint param – surface the error immediately.
                 throw new RuntimeException(
                     $this->messageProvider->format(ValidationMessageKey::PARAMETER_HAS_UNSUPPORTED_TYPE, [
                         'paramName' => $paramName,
@@ -100,116 +304,47 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 $typeNames[] = 'mixed';
             }
 
-            $arrayItemType = in_array('array', $typeNames, true) ? $this->resolveArrayItemType(
-                $reflection,
-                $paramName,
-            ) : null;
+            $arrayItemType = in_array('array', $typeNames, true)
+                ? $this->resolveArrayItemType($reflection, $paramName)
+                : null;
 
-            // If parameter is absent in request and constructor has a default value,
-            // keep constructor default instead of forcing null.
-            $rawSource = '';
-            $rawWasProvided = false;
-            $this->extractRawValueFromRequest($request, $paramName, $rawWasProvided, $rawSource);
-            if (!$rawWasProvided && $hasDefaultValue) {
-                $args[] = $param->getDefaultValue();
-                $providedParams[] = $paramName;
-                continue;
-            }
+            // Pre-compute temporal format for DateTimeImmutable fields.
+            $temporalFormat = in_array(DateTimeImmutable::class, $typeNames, true)
+                ? $this->resolveTemporalFormat($reflection, $paramName, $openApiFormat)
+                : null;
 
-            // Try to get value from request (body, query, path, files)
-            $wasProvided = false;
-            try {
-                if (count($typeNames) === 1) {
-                    $singleType = $typeNames[0];
-                    $temporalFormat = $singleType === DateTimeImmutable::class
-                        ? $this->resolveTemporalFormat($reflection, $paramName, $openApiFormat)
-                        : null;
-
-                    $value = $this->extractValueFromRequest(
-                        $request,
-                        $paramName,
-                        $singleType,
-                        $allowsNull,
-                        $wasProvided,
-                        $arrayItemType,
-                        $paramName,
-                        $schemaAllowsNull,
-                        $temporalFormat,
-                        $openApiFormat,
-                    );
-                } else {
-                    $value = $this->extractUnionValueFromRequest(
-                        $request,
-                        $paramName,
-                        $typeNames,
-                        $allowsNull,
-                        $wasProvided,
-                        $arrayItemType,
-                        $schemaAllowsNull,
-                        $reflection,
-                        $openApiFormat,
-                    );
-                }
-            } catch (RuntimeException $e) {
-                // Collect errors and use null as placeholder so we can continue validating other params
-                foreach (explode("\n", $e->getMessage()) as $msg) {
-                    $errors[] = $msg;
-                }
-                $args[] = null;
-                continue;
-            }
-
-            if (!$wasProvided && $hasDefaultValue) {
-                $value = $param->getDefaultValue();
-                $wasProvided = true;
-            }
-
-            $args[] = $value;
-
-            $constraints = $fieldConstraints;
-            if ($wasProvided && is_array($constraints) && $constraints !== []) {
-                foreach (
-                    $this->constraintValidator->validate(
-                        sprintf('param "%s"', $paramName),
-                        $value,
-                        $constraints,
-                    ) as $constraintError
-                ) {
-                    $errors[] = $constraintError;
+            // Pre-resolve and make accessible the inRequest flag property (if any).
+            $flagPropName = $this->resolveInRequestFlagPropertyName($reflection, $paramName);
+            $flagProperty = null;
+            if ($flagPropName !== null) {
+                $flagProperty = $reflection->getProperty($flagPropName);
+                if (!$flagProperty->isPublic()) {
+                    $flagProperty->setAccessible(true);
                 }
             }
+            $inRequestProperties[$paramName] = $flagProperty;
 
-            if ($wasProvided) {
-                $providedParams[] = $paramName;
-            }
+            $params[] = [
+                'name' => $paramName,
+                'requestFieldName' => $requestFieldName,
+                'typeNames' => $typeNames,
+                'allowsNull' => $allowsNull,
+                'hasDefaultValue' => $hasDefaultValue,
+                'defaultValue' => $hasDefaultValue ? $param->getDefaultValue() : null,
+                'schemaAllowsNull' => $schemaAllowsNull,
+                'arrayItemType' => $arrayItemType,
+                'openApiFormat' => $openApiFormat,
+                'allowsAssociativeArray' => $allowsAssociativeArray,
+                'temporalFormat' => $temporalFormat,
+                'fieldConstraints' => $fieldConstraints,
+            ];
         }
 
-        if ($errors !== []) {
-            throw new RuntimeException(implode("\n", $errors));
-        }
-
-        $dto = $reflection->newInstanceArgs($args);
-
-        // Mark fields as provided in request.
-        foreach ($providedParams as $paramName) {
-            $flagPropertyName = $paramName . 'InRequest';
-            if (!$reflection->hasProperty($flagPropertyName)) {
-                // Backward compatibility for DTOs generated with older versions.
-                $flagPropertyName = $paramName . 'WasProvidedInRequest';
-            }
-
-            if (!$reflection->hasProperty($flagPropertyName)) {
-                continue;
-            }
-
-            $flagProperty = $reflection->getProperty($flagPropertyName);
-            if (!$flagProperty->isPublic()) {
-                $flagProperty->setAccessible(true);
-            }
-            $flagProperty->setValue($dto, true);
-        }
-
-        return $dto;
+        return [
+            'hasConstructor' => true,
+            'params' => $params,
+            'inRequestProperties' => $inRequestProperties,
+        ];
     }
 
     private function extractValueFromRequest(
@@ -223,6 +358,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         bool $schemaAllowsNull = false,
         ?string $temporalFormat = null,
         ?string $openApiFormat = null,
+        bool $allowsAssociativeArray = false,
     ): mixed {
         $paramPath ??= $paramName;
         // Check in request body (JSON)
@@ -240,6 +376,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 $schemaAllowsNull,
                 $temporalFormat,
                 $openApiFormat,
+                $allowsAssociativeArray,
             );
         }
 
@@ -255,6 +392,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 $arrayItemType,
                 $paramPath,
                 openApiFormat: $openApiFormat,
+                allowsAssociativeArray: $allowsAssociativeArray,
             );
         }
 
@@ -270,6 +408,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 $arrayItemType,
                 $paramPath,
                 openApiFormat: $openApiFormat,
+                allowsAssociativeArray: $allowsAssociativeArray,
             );
         }
 
@@ -291,6 +430,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 $arrayItemType,
                 $paramPath,
                 openApiFormat: $openApiFormat,
+                allowsAssociativeArray: $allowsAssociativeArray,
             );
         }
 
@@ -322,6 +462,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         bool $schemaAllowsNull,
         ReflectionClass $dtoReflection,
         ?string $openApiFormat,
+        bool $allowsAssociativeArray,
     ): mixed {
         $source = '';
         $rawValue = $this->extractRawValueFromRequest($request, $paramName, $wasProvided, $source);
@@ -357,6 +498,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                     $schemaAllowsNull,
                     $temporalFormat,
                     $openApiFormat,
+                    $allowsAssociativeArray,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -413,23 +555,39 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      */
     private function getBodyData(Request $request): array
     {
+        $preDecoded = $request->attributes->get(self::PREDECODED_BODY_ATTRIBUTE);
+        if (is_array($preDecoded)) {
+            return $preDecoded;
+        }
+
         $content = $request->getContent();
         if ($content === '') {
             return [];
         }
 
-        $contentType = (string) $request->headers->get('Content-Type', '');
-        if (str_contains($contentType, 'application/json')) {
-            // Decode without assoc flag so JSON objects become stdClass,
-            // allowing us to distinguish {} (object) from [] (array).
-            $decoded = json_decode($content, false);
-            if (!($decoded instanceof \stdClass)) {
-                return [];
-            }
-            return $this->stdClassToArray($decoded);
+        $contentType = (string)$request->headers->get('Content-Type', '');
+        $cacheKey = $contentType . "\n" . $content;
+
+        // Fast path for repeated reads of the same request body.
+        if ($cacheKey === $this->bodyDataCacheKey) {
+            return $this->bodyDataCacheValue;
         }
 
-        return [];
+        if (!str_contains($contentType, 'application/json')) {
+            $this->bodyDataCacheKey = $cacheKey;
+            $this->bodyDataCacheValue = [];
+            return [];
+        }
+
+        // Decode without assoc flag so JSON objects become stdClass,
+        // allowing us to distinguish {} (object) from [] (array).
+        $decoded = json_decode($content, false);
+        $result = ($decoded instanceof \stdClass) ? $this->stdClassToArray($decoded) : [];
+
+        $this->bodyDataCacheKey = $cacheKey;
+        $this->bodyDataCacheValue = $result;
+
+        return $result;
     }
 
     /**
@@ -455,6 +613,50 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             $result[$key] = $value;
         }
         return $result;
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveInRequestFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
+    {
+        $candidates = [
+            $this->normalizeInRequestFlagName($paramName),
+            $paramName . 'InRequest',
+            $paramName . 'WasProvidedInRequest',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($reflection->hasProperty($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeInRequestFlagName(string $propertyName): string
+    {
+        $parts = preg_split('/[^A-Za-z0-9]+/', $propertyName) ?: [];
+        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+
+        if ($parts === []) {
+            $camel = 'value';
+        } else {
+            $first = $parts[0];
+            $camel = strtoupper($first) === $first ? strtolower($first) : lcfirst($first);
+
+            for ($i = 1, $count = count($parts); $i < $count; $i++) {
+                $part = $parts[$i];
+                $camel .= ucfirst(strtolower($part));
+            }
+        }
+
+        if (is_numeric($camel[0])) {
+            $camel = '_' . $camel;
+        }
+
+        return $camel . 'InRequest';
     }
 
     /**
@@ -485,6 +687,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         bool $schemaAllowsNull = false,
         ?string $temporalFormat = null,
         ?string $openApiFormat = null,
+        bool $allowsAssociativeArray = false,
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -546,14 +749,17 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
             if ($typeName === 'array') {
                 if ($value instanceof \stdClass) {
-                    throw new RuntimeException($this->expectsTypeMessage($paramPath, 'array', 'object'));
+                    if (!$allowsAssociativeArray) {
+                        throw new RuntimeException($this->expectsTypeMessage($paramPath, 'array', 'object'));
+                    }
+                    $value = $this->stdClassToArray($value);
                 }
 
                 if (!is_array($value)) {
                     throw new RuntimeException($this->expectsTypeMessage($paramPath, 'array', $value));
                 }
 
-                if (!array_is_list($value)) {
+                if (!array_is_list($value) && !$allowsAssociativeArray) {
                     throw new RuntimeException($this->expectsTypeMessage($paramPath, 'array', 'object'));
                 }
 
@@ -567,7 +773,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                     $itemPath = $paramPath . '.' . $index;
 
                     try {
-                        $normalized[] = $this->castArrayItemValue($itemValue, $arrayItemType, $itemPath);
+                        $normalized[$index] = $this->castArrayItemValue($itemValue, $arrayItemType, $itemPath);
                     } catch (RuntimeException $e) {
                         $errors[] = $e->getMessage();
                     }
@@ -660,7 +866,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                     throw new RuntimeException(
                         $this->messageProvider->format(
                             ValidationMessageKey::DISCRIMINATOR_MAPPING_UNKNOWN_CLASS,
-                            ['paramPath' => $paramPath, 'targetClass' => (string) $targetDtoClass],
+                            ['paramPath' => $paramPath, 'targetClass' => (string)$targetDtoClass],
                         ),
                     );
                 }
@@ -890,11 +1096,9 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         $end = $method->getEndLine();
         $body = implode('', array_slice($lines, $start - 1, $end - $start + 1));
 
-        $isRequired = str_contains($body, 'return true;');
-
-        // If required AND PHP-nullable → schema has nullable: true → null is valid
-        // If not required AND PHP-nullable → just optional → null is NOT valid in JSON
-        return $isRequired;
+        // If required AND PHP-nullable -> schema has nullable:true -> null is valid.
+        // If not required AND PHP-nullable -> just optional -> null is NOT valid in JSON.
+        return str_contains($body, 'return true;');
     }
 
     /**
@@ -963,10 +1167,15 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             );
         }
 
-        /** @var class-string<UnitEnum> $enumClass */
-        $reflection = new ReflectionClass($enumClass);
-        /** @var array<UnitEnum> $cases */
-        $cases = $reflection->getMethod('cases')->invoke(null);
+        // Fetch and cache enum cases – avoids new ReflectionClass + cases() call on every cast.
+        if (!array_key_exists($enumClass, self::$enumCasesCache)) {
+            /** @var class-string<UnitEnum> $enumClass */
+            $reflection = new ReflectionClass($enumClass);
+            self::$enumCasesCache[$enumClass] = $reflection->getMethod('cases')->invoke(null);
+        }
+
+        /** @var list<UnitEnum> $cases */
+        $cases = self::$enumCasesCache[$enumClass];
 
         foreach ($cases as $case) {
             if ($case instanceof BackedEnum && $case->value === $value) {
@@ -980,7 +1189,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
         $allowed = [];
         foreach ($cases as $case) {
-            $allowed[] = $case instanceof BackedEnum ? (string) $case->value : $case->name;
+            $allowed[] = $case instanceof BackedEnum ? (string)$case->value : $case->name;
         }
 
         if ($paramPath !== null) {
@@ -1005,12 +1214,81 @@ final class RequestDeserializerService implements RequestDeserializerInterface
     private function resolveOpenApiConstraints(ReflectionClass $reflection): array
     {
         $className = $reflection->getName();
-        if (!method_exists($className, 'getOpenApiConstraints')) {
-            return [];
+
+        static $constraintsCache = [];
+        if (array_key_exists($className, $constraintsCache)) {
+            return $constraintsCache[$className];
         }
 
-        $constraints = $className::getOpenApiConstraints();
-        return is_array($constraints) ? $constraints : [];
+        $method = $this->resolveMetadataMethod($className, ['getConstraints']);
+        if ($method === null) {
+            return $constraintsCache[$className] = [];
+        }
+
+        $constraints = call_user_func($method);
+        return $constraintsCache[$className] = is_array($constraints) ? $constraints : [];
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, string>
+     */
+    private function resolveOpenApiPropertyAliases(ReflectionClass $reflection): array
+    {
+        $className = $reflection->getName();
+
+        static $aliasesCache = [];
+        if (array_key_exists($className, $aliasesCache)) {
+            return $aliasesCache[$className];
+        }
+
+        $method = $this->resolveMetadataMethod($className, ['getAliases']);
+        if ($method === null) {
+            return $aliasesCache[$className] = [];
+        }
+
+        $aliases = call_user_func($method);
+        if (!is_array($aliases)) {
+            return $aliasesCache[$className] = [];
+        }
+
+        $result = [];
+        foreach ($aliases as $propertyName => $openApiName) {
+            if (!is_string($propertyName) || !is_string($openApiName)) {
+                continue;
+            }
+            $result[$propertyName] = $openApiName;
+        }
+
+        return $aliasesCache[$className] = $result;
+    }
+
+    /**
+     * @param array<string, mixed>|null $constraints
+     */
+    private function allowsAssociativeArray(?array $constraints): bool
+    {
+        if (!is_array($constraints)) {
+            return false;
+        }
+
+        return ($constraints['type'] ?? null) === 'object';
+    }
+
+    /**
+     * @param array<int, string> $candidateMethods
+     * @return callable|null
+     */
+    private function resolveMetadataMethod(string $className, array $candidateMethods): callable|null
+    {
+        foreach ($candidateMethods as $methodName) {
+            $callable = [$className, $methodName];
+            if (is_callable($callable)) {
+                return $callable;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1018,6 +1296,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      */
     private function resolveDiscriminatorTargetClass(string $baseClass, array $value, string $paramPath): ?string
     {
+        if (!class_exists($baseClass)) {
+            return null;
+        }
+
+        /** @var class-string $baseClass */
         if (!method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists(
                 $baseClass,
                 'getDiscriminatorMapping',
@@ -1098,16 +1381,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      */
     private function createRequestFromArray(array $data): Request
     {
-        // Create a minimal request from array data
-        try {
-            $content = json_encode($data, JSON_THROW_ON_ERROR);
-        } catch (JsonException $exception) {
-            throw new RuntimeException('Cannot encode nested DTO payload to JSON.', previous: $exception);
-        }
-
+        // Create a minimal request from array data without JSON re-encode/re-decode.
         $request = new Request();
-        $request->initialize([], [], [], [], [], [], $content);
+        $request->initialize();
         $request->headers->set('Content-Type', 'application/json');
+        $request->attributes->set(self::PREDECODED_BODY_ATTRIBUTE, $data);
         return $request;
     }
 

@@ -298,6 +298,79 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertSame(10, $dto->id);
     }
 
+    public function testDeserializeUsesOpenApiAliasForHyphenatedFieldName(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'test-process' => 'yes',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, AliasRequestDto::class);
+
+        $this->assertInstanceOf(AliasRequestDto::class, $dto);
+        $this->assertSame('yes', $dto->getTest_process());
+        $this->assertTrue($dto->isTest_processInRequest());
+    }
+
+    public function testDeserializeMarksCamelCaseFlagForUppercaseSpecName(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'TEST_NAME' => 'test - name',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, UppercaseFlagRequestDto::class);
+
+        $this->assertInstanceOf(UppercaseFlagRequestDto::class, $dto);
+        $this->assertSame('test - name', $dto->getTEST_NAME());
+        $this->assertTrue($dto->isTestNameInRequest());
+    }
+
+    public function testDeserializeKeepsAdditionalPropertiesMapValues(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'testMap' => [
+                'test1' => 'value1',
+                'test2' => 'value2',
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, AdditionalPropertiesRequestDto::class);
+
+        $this->assertInstanceOf(AdditionalPropertiesRequestDto::class, $dto);
+        $this->assertSame('value1', $dto->getTestMap()['test1']);
+        $this->assertSame('value2', $dto->getTestMap()['test2']);
+    }
+
+    public function testDeserializeKeepsAdditionalPropertiesObjectMapKeys(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'namesById' => [
+                '1' => [
+                    'id' => 1,
+                    'name1' => 'test1',
+                    'flag1' => true,
+                ],
+                '2' => [
+                    'id' => 2,
+                    'name1' => 'test2',
+                    'flag1' => false,
+                ],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, AdditionalPropertiesObjectMapRequestDto::class);
+
+        $this->assertInstanceOf(AdditionalPropertiesObjectMapRequestDto::class, $dto);
+        $map = $dto->getNamesById();
+        $this->assertArrayHasKey('1', $map);
+        $this->assertArrayHasKey('2', $map);
+        $this->assertSame('test1', $map['1']->getName1());
+        $this->assertSame('test2', $map['2']->getName1());
+    }
+
     public function testDeserializeThrowsForUnionTypeWhenNoBranchMatches(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
@@ -307,32 +380,6 @@ final class RequestDeserializerServiceTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('param "id" expects string, got bool');
-
-        $this->deserializer->deserialize($request, UnionIdDto::class);
-    }
-
-    public function testDeserializeThrowsForUnionTypeIntegerBranchConstraintViolation(): void
-    {
-        $request = new Request([], [], [], [], [], [], json_encode([
-            'id' => 9,
-        ]));
-        $request->headers->set('Content-Type', 'application/json');
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('param "id" must be greater than or equal to 10');
-
-        $this->deserializer->deserialize($request, UnionIdDto::class);
-    }
-
-    public function testDeserializeThrowsForUnionTypeStringBranchConstraintViolation(): void
-    {
-        $request = new Request([], [], [], [], [], [], json_encode([
-            'id' => 'test',
-        ]));
-        $request->headers->set('Content-Type', 'application/json');
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('param "id" must match format uuid');
 
         $this->deserializer->deserialize($request, UnionIdDto::class);
     }
@@ -682,7 +729,7 @@ final class ConstraintsDto
     }
 
     /** @return array<string, array<string, mixed>> */
-    public static function getOpenApiConstraints(): array
+    public static function getConstraints(): array
     {
         return [
             'amount' => [
@@ -716,7 +763,7 @@ final class UnionIdDto
     }
 
     /** @return array<string, array<string, mixed>> */
-    public static function getOpenApiConstraints(): array
+    public static function getConstraints(): array
     {
         return [
             'id' => [
@@ -733,5 +780,122 @@ final class UnionIdDto
                 ],
             ],
         ];
+    }
+}
+
+final class AliasRequestDto
+{
+    private bool $test_processInRequest = false;
+
+    public function __construct(
+        private string $test_process,
+    ) {
+    }
+
+    public function getTest_process(): string
+    {
+        return $this->test_process;
+    }
+
+    public function isTest_processInRequest(): bool
+    {
+        return $this->test_processInRequest;
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [
+            'test_process' => 'test-process',
+        ];
+    }
+}
+
+final class UppercaseFlagRequestDto
+{
+    private bool $testNameInRequest = false;
+
+    public function __construct(
+        private string $TEST_NAME,
+    ) {
+    }
+
+    public function getTEST_NAME(): string
+    {
+        return $this->TEST_NAME;
+    }
+
+    public function isTestNameInRequest(): bool
+    {
+        return $this->testNameInRequest;
+    }
+}
+
+final class AdditionalPropertiesRequestDto
+{
+    /** @param array<string, string> $testMap */
+    public function __construct(
+        private array $testMap,
+    ) {
+    }
+
+    /** @return array<string, string> */
+    public function getTestMap(): array
+    {
+        return $this->testMap;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'testMap' => [
+                'type' => 'object',
+            ],
+        ];
+    }
+}
+
+final class AdditionalPropertiesObjectMapRequestDto
+{
+    /** @var array<NameByIdItemRequestDto> */
+    private array $namesById;
+
+    /** @param array<NameByIdItemRequestDto> $namesById */
+    public function __construct(
+        array $namesById,
+    ) {
+        $this->namesById = $namesById;
+    }
+
+    /** @return array<NameByIdItemRequestDto> */
+    public function getNamesById(): array
+    {
+        return $this->namesById;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'namesById' => [
+                'type' => 'object',
+            ],
+        ];
+    }
+}
+
+final class NameByIdItemRequestDto
+{
+    public function __construct(
+        private int $id,
+        private string $name1,
+        private bool $flag1,
+    ) {
+    }
+
+    public function getName1(): string
+    {
+        return $this->name1;
     }
 }

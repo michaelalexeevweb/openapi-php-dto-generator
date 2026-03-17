@@ -59,7 +59,15 @@ interface {{ className }}
 {% endfor %}
 	) {
 {% if parentArgs is not empty %}
-		parent::__construct({% for arg in parentArgs %}${{ arg }}{% if not loop.last %}, {% endif %}{% endfor %});
+{% if parentArgs|length == 1 %}
+		parent::__construct(${{ parentArgs[0] }});
+{% else %}
+		parent::__construct(
+{% for arg in parentArgs %}
+			{{ arg }}: ${{ arg }},
+{% endfor %}
+		);
+{% endif %}
 {% endif %}
 {% for name in assignments %}
 		$this->{{ name }} = ${{ name }};
@@ -90,7 +98,7 @@ interface {{ className }}
 	{
 {% if property.hasGuard %}
 		if (!$this->{{ property.inRequestFlagName }}) {
-			throw new \LogicException('Field "{{ property.name }}" wasn\'t provided in request');
+			throw new \LogicException('Field "{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}" wasn\'t provided in request');
 		}
 {% endif %}
 {% if property.returnKind == 'temporal' %}
@@ -165,12 +173,29 @@ interface {{ className }}
 {% endif %}
 
 	/**
-	 * @return array<string, array<string, mixed>>
+	 * @return array<string, string>
 	 */
-	public static function getOpenApiConstraints(): array
+	public static function getAliases(): array
 	{
 {% if extends is not null %}
-		$constraints = parent::getOpenApiConstraints();
+		$aliases = parent::getAliases();
+{% else %}
+		$aliases = [];
+{% endif %}
+{% for assignment in aliasAssignments %}
+		$aliases['{{ assignment.name }}'] = '{{ assignment.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}';
+{% endfor %}
+
+		return $aliases;
+	}
+
+	/**
+	 * @return array<string, array<string, mixed>>
+	 */
+	public static function getConstraints(): array
+	{
+{% if extends is not null %}
+		$constraints = parent::getConstraints();
 {% else %}
 		$constraints = [];
 {% endif %}

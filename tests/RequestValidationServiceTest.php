@@ -254,7 +254,7 @@ final class CustomFormatValidationDto
     /**
      * @return array<string, array<string, mixed>>
      */
-    public static function getOpenApiConstraints(): array
+    public static function getConstraints(): array
     {
         return [
             'code' => ['type' => 'string', 'format' => 'upper-code'],

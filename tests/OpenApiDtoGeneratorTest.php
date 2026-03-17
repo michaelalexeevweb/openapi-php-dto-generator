@@ -365,7 +365,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('public static function getOpenApiConstraints(): array', $content);
+        $this->assertStringContainsString('public static function getConstraints(): array', $content);
         $this->assertStringContainsString('Constraints: minLength=3, format=email', $content);
         $this->assertStringContainsString("'format' => 'email'", $content);
         $this->assertStringContainsString("'minimum' => 1", $content);
@@ -497,6 +497,221 @@ final class OpenApiDtoGeneratorTest extends TestCase
         // Query required flags from malformed specs still map as required/non-nullable.
         $this->assertStringContainsString('private int $page', $content);
         $this->assertStringContainsString('private ?int $limit', $content);
+    }
+
+    public function testHyphenatedOpenApiNameKeepsAliasAndRequiredMapping(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => [
+                'title' => 'Hyphenated fields',
+                'version' => '1.0.0',
+            ],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'HyphenFieldModel' => [
+                        'type' => 'object',
+                        'required' => ['test-process'],
+                        'properties' => [
+                            'test-process' => ['type' => 'string'],
+                            'processed' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/HyphenFieldModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        // PHP property remains valid identifier while alias keeps original OpenAPI key.
+        $this->assertStringContainsString('private string $test_process', $content);
+        $this->assertStringContainsString('$aliases[\'test_process\'] = \'test-process\';', $content);
+        $this->assertStringContainsString('public function isTest_processRequired(): bool', $content);
+        $this->assertStringContainsString('return true;', $content);
+
+        // Guard message should use OpenAPI alias form for request-facing errors.
+        $this->assertStringContainsString("Field \"processed\" wasn\\'t provided in request", $content);
+    }
+
+    public function testPlaceholderStyleOpenApiNameKeepsAliasAndRequiredMapping(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => [
+                'title' => 'Placeholder fields',
+                'version' => '1.0.0',
+            ],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'PlaceholderFieldModel' => [
+                        'type' => 'object',
+                        'required' => ['<<test name>>'],
+                        'properties' => [
+                            '<<test name>>' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/PlaceholderFieldModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string $test_name', $content);
+        $this->assertStringContainsString('$aliases[\'test_name\'] = \'<<test name>>\';', $content);
+        $this->assertStringContainsString('public function isTest_nameRequired(): bool', $content);
+    }
+
+    public function testUppercaseUnderscoreNameUsesCamelCaseInRequestFlagAndKeepsAlias(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => [
+                'title' => 'Uppercase keys',
+                'version' => '1.0.0',
+            ],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'MeetingTypesDto' => [
+                        'type' => 'object',
+                        'required' => ['TEST_NAME'],
+                        'properties' => [
+                            'TEST_NAME' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/MeetingTypesDto.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string $TEST_NAME', $content);
+        $this->assertStringContainsString('private bool $testNameInRequest = false;', $content);
+        $this->assertStringContainsString('$aliases[\'TEST_NAME\'] = \'TEST_NAME\';', $content);
+        $this->assertStringContainsString('return $this->testNameInRequest;', $content);
+    }
+
+    public function testAdditionalPropertiesMapGeneratesArrayTypeAndNoNestedClass(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/additional-properties.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/TestMapModel.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private array $test_map', $content);
+        $this->assertStringContainsString('@var array<string>', $content);
+        $this->assertStringContainsString("'type' => 'object'", $content);
+        $this->assertStringContainsString('public static function getAliases(): array', $content);
+        $this->assertStringContainsString('public static function getConstraints(): array', $content);
+        $this->assertStringContainsString('private bool $testMapInRequest = false;', $content);
+        $this->assertFileDoesNotExist($this->outputDirectory . '/TestMapModelTestMap.php');
+    }
+
+    public function testNumericPropertyKeysFromReferencedSchemaAreGenerated(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Numeric keys', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'WrapperModel' => [
+                        'type' => 'object',
+                        'required' => ['names'],
+                        'properties' => [
+                            'names' => [
+                                '$ref' => '#/components/schemas/SubStatusesView',
+                            ],
+                        ],
+                    ],
+                    'SubStatusesView' => [
+                        'type' => 'object',
+                        'required' => [1, 2, 3, 4, 5, 6, 7, 8],
+                        'properties' => [
+                            1 => ['type' => 'string'],
+                            2 => ['type' => 'string'],
+                            3 => ['type' => 'string'],
+                            4 => ['type' => 'string'],
+                            5 => ['type' => 'string'],
+                            6 => ['type' => 'string'],
+                            7 => ['type' => 'string'],
+                            8 => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/SubStatusesView.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('private string $_1', $content);
+        $this->assertStringContainsString('private string $_8', $content);
+        $this->assertStringContainsString("\$aliases['_1'] = '1';", $content);
+        $this->assertStringContainsString("\$aliases['_8'] = '8';", $content);
+    }
+
+    public function testAdditionalPropertiesRefObjectMapGeneratesArrayOfDto(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Map ref', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'WrapperNamesModel' => [
+                        'type' => 'object',
+                        'required' => ['namesById'],
+                        'properties' => [
+                            'namesById' => [
+                                'type' => 'object',
+                                'additionalProperties' => [
+                                    '$ref' => '#/components/schemas/NameItemView',
+                                ],
+                            ],
+                        ],
+                    ],
+                    'NameItemView' => [
+                        'type' => 'object',
+                        'required' => ['id', 'name1', 'flag1'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'name1' => ['type' => 'string'],
+                            'flag1' => ['type' => 'boolean'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $wrapper = $this->outputDirectory . '/WrapperNamesModel.php';
+        $this->assertFileExists($wrapper);
+        $wrapperContent = file_get_contents($wrapper);
+
+        $this->assertStringContainsString('private array $namesById', $wrapperContent);
+        $this->assertStringContainsString('@var array<NameItemView>', $wrapperContent);
+        $this->assertFileExists($this->outputDirectory . '/NameItemView.php');
     }
 
     public function testNullableAllOfWithSingleRef(): void
@@ -695,7 +910,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
     /**
      * OAS 3.1 changed exclusiveMinimum / exclusiveMaximum from boolean flags
      * (OAS 3.0) to actual numeric bounds.
-     * The generator must preserve them in getOpenApiConstraints() as numbers.
+     * The generator must preserve them in getConstraints() as numbers.
      */
     public function testOpenApi31ExclusiveMinMaxAsNumbers(): void
     {

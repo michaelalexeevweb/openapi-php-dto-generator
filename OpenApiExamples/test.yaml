@@ -556,9 +556,9 @@ components:
         - type: object
           required:
             - id
-            - name
+            - NAme
           properties:
             id:
               type: integer
-            name:
+            NAme:
               type: string

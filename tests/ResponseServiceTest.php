@@ -245,6 +245,90 @@ final class ResponseServiceTest extends TestCase
 
         $this->assertSame(42, $content['id']);
     }
+
+    public function testCreateResponseUsesOpenApiAliasKeys(): void
+    {
+        $dto = new AliasedResponseDto('yes', 'safe');
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('yes', $content['test-process']);
+        $this->assertSame('safe', $content['processed']);
+        $this->assertArrayNotHasKey('test_process', $content);
+    }
+
+    public function testCreateResponseUsesAliasKeysWhenGetterThrowsProvidedInRequestGuard(): void
+    {
+        $dto = new AliasedGuardedResponseDto('queued');
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('queued', $content['test-process']);
+        $this->assertArrayNotHasKey('test_process', $content);
+    }
+
+    public function testCreateResponseKeepsUppercasePropertyNames(): void
+    {
+        $dto = new UppercaseKeysResponseDto('Test TEST', 'test - name');
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('Test TEST', $content['TEST_TEST']);
+        $this->assertSame('test - name', $content['TEST_NAME']);
+        $this->assertArrayNotHasKey('tEST_TEST', $content);
+    }
+
+    public function testCreateResponseKeepsAdditionalPropertiesMapValues(): void
+    {
+        $dto = new AdditionalPropertiesResponseDto([
+            'test1' => 'value1',
+            'test2' => 'value2',
+        ]);
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('value1', $content['testMap']['test1']);
+        $this->assertSame('value2', $content['testMap']['test2']);
+    }
+
+    public function testCreateResponseKeepsNumericAliasKeysInReferencedObject(): void
+    {
+        $dto = new WrapperNumericAliasesResponseDto(
+            new NumericAliasesResponseDto('test1', 'test2'),
+        );
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('test1', $content['names']['1']);
+        $this->assertSame('test2', $content['names']['2']);
+        $this->assertNotSame([], $content['names']);
+    }
+
+    public function testCreateResponseKeepsAdditionalPropertiesObjectMapShape(): void
+    {
+        $dto = new WrapperObjectMapResponseDto([
+            '1' => new ObjectMapItemResponseDto(1, 'test1', true),
+            '2' => new ObjectMapItemResponseDto(2, 'test2', false),
+        ]);
+
+        $response = $this->service->createResponse($dto);
+        $content = json_decode((string)$response->getContent(), true);
+
+        $this->assertIsArray($content);
+        $this->assertSame('test1', $content['namesById']['1']['name1']);
+        $this->assertSame('test2', $content['namesById']['2']['name1']);
+        $this->assertNotSame([], $content['namesById']);
+    }
 }
 
 // Test DTOs
@@ -471,7 +555,7 @@ final class ConstrainedResponseDto
     }
 
     /** @return array<string, array<string, mixed>> */
-    public static function getOpenApiConstraints(): array
+    public static function getConstraints(): array
     {
         return [
             'amount' => [
@@ -495,5 +579,179 @@ final class UnionGetterResponseDto
     public function getId(): string|int
     {
         return $this->id;
+    }
+}
+
+final class AliasedResponseDto
+{
+    public function __construct(
+        private string $test_process,
+        private string $processed,
+    ) {
+    }
+
+    public function getTest_process(): string
+    {
+        return $this->test_process;
+    }
+
+    public function getProcessed(): string
+    {
+        return $this->processed;
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [
+            'test_process' => 'test-process',
+            'processed' => 'processed',
+        ];
+    }
+}
+
+final class AliasedGuardedResponseDto
+{
+    public function __construct(
+        private string $test_process,
+    ) {
+    }
+
+    public function getTest_process(): string
+    {
+        throw new \LogicException('Field "test-process" wasn\'t provided in request');
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [
+            'test_process' => 'test-process',
+        ];
+    }
+}
+
+final class UppercaseKeysResponseDto
+{
+    public function __construct(
+        private string $TEST_TEST,
+        private string $TEST_NAME,
+    ) {
+    }
+
+    public function getTEST_TEST(): string
+    {
+        return $this->TEST_TEST;
+    }
+
+    public function getTEST_NAME(): string
+    {
+        return $this->TEST_NAME;
+    }
+}
+
+final class AdditionalPropertiesResponseDto
+{
+    /** @param array<string, string> $testMap */
+    public function __construct(
+        private array $testMap,
+    ) {
+    }
+
+    /** @return array<string, string> */
+    public function getTestMap(): array
+    {
+        return $this->testMap;
+    }
+}
+
+final class WrapperNumericAliasesResponseDto
+{
+    public function __construct(
+        private NumericAliasesResponseDto $names,
+    ) {
+    }
+
+    public function getNames(): NumericAliasesResponseDto
+    {
+        return $this->names;
+    }
+}
+
+final class NumericAliasesResponseDto
+{
+    public function __construct(
+        private string $_1,
+        private string $_2,
+    ) {
+    }
+
+    public function get_1(): string
+    {
+        return $this->_1;
+    }
+
+    public function get_2(): string
+    {
+        return $this->_2;
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [
+            '_1' => '1',
+            '_2' => '2',
+        ];
+    }
+}
+
+final class WrapperObjectMapResponseDto
+{
+    /** @param array<string, ObjectMapItemResponseDto> $namesById */
+    public function __construct(
+        private array $namesById,
+    ) {
+    }
+
+    /** @return array<string, ObjectMapItemResponseDto> */
+    public function getNamesById(): array
+    {
+        return $this->namesById;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'namesById' => [
+                'type' => 'object',
+            ],
+        ];
+    }
+}
+
+final class ObjectMapItemResponseDto
+{
+    public function __construct(
+        private int $id,
+        private string $name1,
+        private bool $flag1,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getName1(): string
+    {
+        return $this->name1;
+    }
+
+    public function getFlag1(): bool
+    {
+        return $this->flag1;
     }
 }
