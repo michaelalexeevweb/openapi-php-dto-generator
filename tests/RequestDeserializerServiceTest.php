@@ -166,6 +166,9 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertTrue($dto->isUserIdInRequest());
         $this->assertTrue($dto->isPageInRequest());
         $this->assertFalse($dto->isLimitInRequest());
+        $this->assertTrue($dto->isUserIdInPath());
+        $this->assertTrue($dto->isPageInQuery());
+        $this->assertFalse($dto->isLimitInQuery());
     }
 
     public function testDeserializeUsesConstructorDefaultForMissingOptionalField(): void
@@ -560,10 +563,16 @@ final class TrackableMixedDto
 {
     private int $userId;
     private bool $userIdWasProvidedInRequest = false;
+    private bool $userIdInPath = false;
+    private bool $userIdInQuery = false;
     private int $page;
     private bool $pageWasProvidedInRequest = false;
+    private bool $pageInPath = false;
+    private bool $pageInQuery = false;
     private ?int $limit;
     private bool $limitWasProvidedInRequest = false;
+    private bool $limitInPath = false;
+    private bool $limitInQuery = false;
 
     public function __construct(
         int $userId,
@@ -613,6 +622,21 @@ final class TrackableMixedDto
     public function isLimitInRequest(): bool
     {
         return $this->limitWasProvidedInRequest;
+    }
+
+    public function isUserIdInPath(): bool
+    {
+        return $this->userIdInPath;
+    }
+
+    public function isPageInQuery(): bool
+    {
+        return $this->pageInQuery;
+    }
+
+    public function isLimitInQuery(): bool
+    {
+        return $this->limitInQuery;
     }
 
     public function markAsLimitProvidedInRequest(): void

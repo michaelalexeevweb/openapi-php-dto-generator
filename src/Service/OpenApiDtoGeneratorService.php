@@ -212,9 +212,33 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
                 continue;
             }
 
+            if ($this->isPureExternalSchemaAlias($schemaDefinition)) {
+                $externalRef = $schemaDefinition['$ref'];
+                if (is_string($externalRef)) {
+                    $this->ensureSchemaRefRegistered($externalRef, $sourceFile);
+                }
+                continue;
+            }
+
             $className = $this->normalizeClassName((string)$schemaName);
             $this->registerSchema($className, $schemaDefinition, $sourceFile);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $schemaDefinition
+     */
+    private function isPureExternalSchemaAlias(array $schemaDefinition): bool
+    {
+        if (count($schemaDefinition) !== 1) {
+            return false;
+        }
+
+        $ref = $schemaDefinition['$ref'] ?? null;
+
+        return is_string($ref)
+            && $ref !== ''
+            && !str_starts_with($ref, '#/components/schemas/');
     }
 
     /**
@@ -1815,7 +1839,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param SchemaProperty $property
-     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, isArray: bool}
+     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, isArray: bool}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
     {
@@ -1848,6 +1872,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'type' => $type,
             'name' => $property['name'],
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
+            'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
+            'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
             'isArray' => $isArray,
         ];
     }
@@ -1900,7 +1926,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathLiteral: string, inQueryLiteral: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -1931,6 +1957,9 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         $returnType = $type;
         $phpDateFormat = null;
         $isNullableTemporal = false;
+        $needsInRequestGuard = !$property['required']
+            && !($property['inPath'] ?? false)
+            && !($property['inQuery'] ?? false);
 
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
@@ -1948,7 +1977,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'nameSuffix' => ucfirst($property['name']),
             'methodName' => $methodName,
             'returnType' => $returnType,
-            'hasGuard' => !$property['required'],
+            'hasGuard' => $needsInRequestGuard,
             'docDescriptionLines' => $docDescriptionLines,
             'docReturnType' => $docReturnType,
             'expectedFormat' => $expectedFormat,
@@ -1956,8 +1985,8 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'phpDateFormat' => $phpDateFormat,
             'isNullableTemporal' => $isNullableTemporal,
             'requiredLiteral' => $property['required'] ? 'true' : 'false',
-            'inPathLiteral' => ($property['inPath'] ?? false) ? 'true' : 'false',
-            'inQueryLiteral' => ($property['inQuery'] ?? false) ? 'true' : 'false',
+            'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
+            'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'hasArrayAdder' => str_starts_with((string)$property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
@@ -2599,6 +2628,21 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     private function normalizeInRequestFlagName(string $propertyName): string
     {
+        return $this->normalizeTrackingFlagName($propertyName, 'InRequest');
+    }
+
+    private function normalizeInPathFlagName(string $propertyName): string
+    {
+        return $this->normalizeTrackingFlagName($propertyName, 'InPath');
+    }
+
+    private function normalizeInQueryFlagName(string $propertyName): string
+    {
+        return $this->normalizeTrackingFlagName($propertyName, 'InQuery');
+    }
+
+    private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
+    {
         $parts = preg_split('/[^A-Za-z0-9]+/', $propertyName) ?: [];
         $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
 
@@ -2618,7 +2662,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             $camel = '_' . $camel;
         }
 
-        return $camel . 'InRequest';
+        return $camel . $suffix;
     }
 
     private function prepareOutputDirectory(string $outputDirectory): void

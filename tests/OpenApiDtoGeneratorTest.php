@@ -87,6 +87,8 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertStringContainsString('public function isPostIdInPath(): bool', $content);
         $this->assertStringContainsString('public function isPageInQuery(): bool', $content);
         $this->assertStringContainsString('public function isLimitInQuery(): bool', $content);
+        $this->assertStringContainsString('return $this->userIdInPath;', $content);
+        $this->assertStringContainsString('return $this->pageInQuery;', $content);
     }
 
     public function testRequestBodyPostGeneration(): void
@@ -620,6 +622,86 @@ YAML,
         }
     }
 
+    public function testExternalCommonSchemaAliasDoesNotGenerateLocalDuplicate(): void
+    {
+        $unique = uniqid('openapi_common_alias_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $specDir = $baseDir . '/specs';
+        $commonDir = $baseDir . '/common';
+        $outputDir = $baseDir . '/Generated/Module/Schemas';
+
+        mkdir($specDir, 0755, true);
+        mkdir($commonDir, 0755, true);
+
+        file_put_contents(
+            $specDir . '/module.yml',
+            <<<'YAML'
+openapi: 3.0.0
+info:
+  title: Module
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    TestResponse:
+      $ref: '../common/common_response.yml#/components/schemas/TestResponse'
+    ModuleResponse:
+      type: object
+      required:
+        - response
+      properties:
+        response:
+          $ref: '#/components/schemas/TestResponse'
+YAML,
+        );
+
+        file_put_contents(
+            $commonDir . '/common_response.yml',
+            <<<'YAML'
+openapi: 3.0.0
+info:
+  title: TestResponse
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    TestResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+YAML,
+        );
+
+        try {
+            $count = $this->generator->generateFromFile(
+                $specDir . '/module.yml',
+                $outputDir,
+                'TestNamespace\\Module\\Schemas',
+            );
+
+            $this->assertGreaterThanOrEqual(2, $count);
+
+            $externalFile = $baseDir . '/Generated/Common/Schemas/TestResponse.php';
+            $this->assertFileExists($externalFile);
+
+            $localDuplicate = $outputDir . '/TestResponse.php';
+            $this->assertFileDoesNotExist($localDuplicate);
+
+            $localFile = $outputDir . '/ModuleResponse.php';
+            $this->assertFileExists($localFile);
+            $localContent = file_get_contents($localFile);
+            $this->assertStringContainsString('use TestNamespace\\Common\\Schemas\\TestResponse;', $localContent);
+            $this->assertStringContainsString('private readonly TestResponse $response', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
     public function testAllOfLastTypeWinsForProperty(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/allof-last-type-wins.yaml');
@@ -700,6 +782,11 @@ YAML,
         // Query required flags from malformed specs still map as required/non-nullable.
         $this->assertStringContainsString('private readonly int $page', $content);
         $this->assertStringContainsString('private readonly ?int $limit', $content);
+        $this->assertStringContainsString('public function isPageInQuery(): bool', $content);
+        $this->assertStringContainsString('public function isLimitInQuery(): bool', $content);
+        $this->assertStringContainsString('return $this->pageInQuery;', $content);
+        $this->assertStringContainsString('return $this->limitInQuery;', $content);
+        $this->assertStringNotContainsString("Field \"limit\" wasn\\'t provided in request", $content);
     }
 
     public function testHyphenatedOpenApiNameKeepsAliasAndRequiredMapping(): void

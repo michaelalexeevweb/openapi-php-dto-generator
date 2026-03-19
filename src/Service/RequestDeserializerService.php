@@ -121,6 +121,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
         $args = [];
         $providedParams = [];
+        $providedParamSources = [];
         $errors = [];
 
         foreach ($classMeta['params'] as $paramMeta) {
@@ -215,6 +216,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
             if ($wasProvided) {
                 $providedParams[] = $paramName;
+                $providedParamSources[$paramName] = $rawSource;
             }
         }
 
@@ -231,6 +233,21 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             $flagProperty = $classMeta['inRequestProperties'][$paramName] ?? null;
             if ($flagProperty !== null) {
                 $flagProperty->setValue($dto, true);
+            }
+
+            $source = $providedParamSources[$paramName] ?? null;
+            if ($source === 'path') {
+                $pathFlagProperty = $classMeta['inPathProperties'][$paramName] ?? null;
+                if ($pathFlagProperty !== null) {
+                    $pathFlagProperty->setValue($dto, true);
+                }
+            }
+
+            if ($source === 'query') {
+                $queryFlagProperty = $classMeta['inQueryProperties'][$paramName] ?? null;
+                if ($queryFlagProperty !== null) {
+                    $queryFlagProperty->setValue($dto, true);
+                }
             }
         }
 
@@ -260,13 +277,21 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      *     fieldConstraints: array<string,mixed>|null,
      *   }>,
      *   inRequestProperties: array<string, \ReflectionProperty|null>,
+     *   inPathProperties: array<string, \ReflectionProperty|null>,
+     *   inQueryProperties: array<string, \ReflectionProperty|null>,
      * }
      */
     private function buildDtoMeta(ReflectionClass $reflection, string $dtoClass): array
     {
         $constructor = $reflection->getConstructor();
         if ($constructor === null) {
-            return ['hasConstructor' => false, 'params' => [], 'inRequestProperties' => []];
+            return [
+                'hasConstructor' => false,
+                'params' => [],
+                'inRequestProperties' => [],
+                'inPathProperties' => [],
+                'inQueryProperties' => [],
+            ];
         }
 
         $aliases = $this->resolveOpenApiPropertyAliases($reflection);
@@ -274,6 +299,8 @@ final class RequestDeserializerService implements RequestDeserializerInterface
 
         $params = [];
         $inRequestProperties = [];
+        $inPathProperties = [];
+        $inQueryProperties = [];
 
         foreach ($constructor->getParameters() as $param) {
             $paramName = $param->getName();
@@ -334,6 +361,26 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             }
             $inRequestProperties[$paramName] = $flagProperty;
 
+            $pathFlagPropertyName = $this->resolveInPathFlagPropertyName($reflection, $paramName);
+            $pathFlagProperty = null;
+            if ($pathFlagPropertyName !== null) {
+                $pathFlagProperty = $reflection->getProperty($pathFlagPropertyName);
+                if (!$pathFlagProperty->isPublic()) {
+                    $pathFlagProperty->setAccessible(true);
+                }
+            }
+            $inPathProperties[$paramName] = $pathFlagProperty;
+
+            $queryFlagPropertyName = $this->resolveInQueryFlagPropertyName($reflection, $paramName);
+            $queryFlagProperty = null;
+            if ($queryFlagPropertyName !== null) {
+                $queryFlagProperty = $reflection->getProperty($queryFlagPropertyName);
+                if (!$queryFlagProperty->isPublic()) {
+                    $queryFlagProperty->setAccessible(true);
+                }
+            }
+            $inQueryProperties[$paramName] = $queryFlagProperty;
+
             $params[] = [
                 'name' => $paramName,
                 'requestFieldName' => $requestFieldName,
@@ -355,6 +402,8 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             'hasConstructor' => true,
             'params' => $params,
             'inRequestProperties' => $inRequestProperties,
+            'inPathProperties' => $inPathProperties,
+            'inQueryProperties' => $inQueryProperties,
         ];
     }
 
@@ -664,11 +713,39 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      */
     private function resolveInRequestFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
     {
-        $candidates = [
-            $this->normalizeInRequestFlagName($paramName),
-            $paramName . 'InRequest',
-            $paramName . 'WasProvidedInRequest',
-        ];
+        return $this->resolveTrackingFlagPropertyName($reflection, $paramName, [
+            'InRequest',
+            'WasProvidedInRequest',
+        ]);
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveInPathFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
+    {
+        return $this->resolveTrackingFlagPropertyName($reflection, $paramName, ['InPath']);
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveInQueryFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
+    {
+        return $this->resolveTrackingFlagPropertyName($reflection, $paramName, ['InQuery']);
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     * @param list<string> $suffixes
+     */
+    private function resolveTrackingFlagPropertyName(ReflectionClass $reflection, string $paramName, array $suffixes): ?string
+    {
+        $candidates = [];
+        foreach ($suffixes as $suffix) {
+            $candidates[] = $this->normalizeTrackingFlagName($paramName, $suffix);
+            $candidates[] = $paramName . $suffix;
+        }
 
         foreach ($candidates as $candidate) {
             if ($reflection->hasProperty($candidate)) {
@@ -679,7 +756,8 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         return null;
     }
 
-    private function normalizeInRequestFlagName(string $propertyName): string
+
+    private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
     {
         $parts = preg_split('/[^A-Za-z0-9]+/', $propertyName) ?: [];
         $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
@@ -700,7 +778,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             $camel = '_' . $camel;
         }
 
-        return $camel . 'InRequest';
+        return $camel . $suffix;
     }
 
     /**

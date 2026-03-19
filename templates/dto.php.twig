@@ -54,8 +54,12 @@ interface {{ className }}
 {% endif %}
 	private array ${{ property.name }};
 	private bool ${{ property.inRequestFlagName }} = false;
+	private bool ${{ property.inPathFlagName }} = false;
+	private bool ${{ property.inQueryFlagName }} = false;
 {% else %}
 	private bool ${{ property.inRequestFlagName }} = false;
+	private bool ${{ property.inPathFlagName }} = false;
+	private bool ${{ property.inQueryFlagName }} = false;
 {% endif %}
 {% endfor %}
 {% if privateProperties is not empty %}
@@ -280,12 +284,12 @@ interface {{ className }}
 
 	public function is{{ property.nameSuffix }}InPath(): bool
 	{
-		return {{ property.inPathLiteral }};
+		return $this->{{ property.inPathFlagName }};
 	}
 
 	public function is{{ property.nameSuffix }}InQuery(): bool
 	{
-		return {{ property.inQueryLiteral }};
+		return $this->{{ property.inQueryFlagName }};
 	}
 
 	public function is{{ property.nameSuffix }}InRequest(): bool
