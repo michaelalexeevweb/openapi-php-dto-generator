@@ -1,0 +1,15 @@
+openapi: 3.0.0
+info:
+  title: Root Nested
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    LocalNestedResponse:
+      type: object
+      required:
+        - response
+      properties:
+        response:
+          $ref: './test/common/generic_response.yml#/components/schemas/TestCommonResponse'
+

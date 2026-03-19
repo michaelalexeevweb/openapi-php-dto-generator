@@ -44,6 +44,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      *     requestFieldName: string,
      *     typeNames: list<string>,
      *     allowsNull: bool,
+     *     isRequired: bool,
      *     hasDefaultValue: bool,
      *     defaultValue: mixed,
      *     schemaAllowsNull: bool,
@@ -127,6 +128,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             $requestFieldName = $paramMeta['requestFieldName'];
             $typeNames = $paramMeta['typeNames'];
             $allowsNull = $paramMeta['allowsNull'];
+            $isRequired = $paramMeta['isRequired'];
             $hasDefaultValue = $paramMeta['hasDefaultValue'];
             $schemaAllowsNull = $paramMeta['schemaAllowsNull'];
             $arrayItemType = $paramMeta['arrayItemType'];
@@ -143,6 +145,12 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             if (!$rawWasProvided && $hasDefaultValue) {
                 $args[] = $paramMeta['defaultValue'];
                 $providedParams[] = $paramName;
+                continue;
+            }
+
+            // Missing optional parameter should not raise an error.
+            if (!$rawWasProvided && !$isRequired) {
+                $args[] = null;
                 continue;
             }
 
@@ -241,6 +249,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
      *     requestFieldName: string,
      *     typeNames: list<string>,
      *     allowsNull: bool,
+     *     isRequired: bool,
      *     hasDefaultValue: bool,
      *     defaultValue: mixed,
      *     schemaAllowsNull: bool,
@@ -275,6 +284,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             $allowsAssociativeArray = $this->allowsAssociativeArray($fieldConstraints);
             $openApiFormat = $this->resolveOpenApiFormat($fieldConstraints);
             $allowsNull = $paramType?->allowsNull() ?? false;
+            $isRequired = $this->resolveParameterRequiredFlag($reflection, $paramName, $allowsNull, $hasDefaultValue);
             $schemaAllowsNull = $this->resolveSchemaAllowsNull($reflection, $paramName, $allowsNull);
 
             $typeNames = [];
@@ -329,6 +339,7 @@ final class RequestDeserializerService implements RequestDeserializerInterface
                 'requestFieldName' => $requestFieldName,
                 'typeNames' => $typeNames,
                 'allowsNull' => $allowsNull,
+                'isRequired' => $isRequired,
                 'hasDefaultValue' => $hasDefaultValue,
                 'defaultValue' => $hasDefaultValue ? $param->getDefaultValue() : null,
                 'schemaAllowsNull' => $schemaAllowsNull,
@@ -345,6 +356,39 @@ final class RequestDeserializerService implements RequestDeserializerInterface
             'params' => $params,
             'inRequestProperties' => $inRequestProperties,
         ];
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveParameterRequiredFlag(
+        ReflectionClass $reflection,
+        string $paramName,
+        bool $allowsNull,
+        bool $hasDefaultValue,
+    ): bool {
+        $requiredMethodName = 'is' . ucfirst($paramName) . 'Required';
+
+        if (!$reflection->hasMethod($requiredMethodName)) {
+            return !$allowsNull && !$hasDefaultValue;
+        }
+
+        $method = $reflection->getMethod($requiredMethodName);
+        $filename = $method->getFileName();
+        if ($filename === false) {
+            return !$allowsNull && !$hasDefaultValue;
+        }
+
+        $lines = file($filename);
+        if ($lines === false) {
+            return !$allowsNull && !$hasDefaultValue;
+        }
+
+        $start = $method->getStartLine();
+        $end = $method->getEndLine();
+        $body = implode('', array_slice($lines, $start - 1, $end - $start + 1));
+
+        return str_contains($body, 'return true;');
     }
 
     private function extractValueFromRequest(

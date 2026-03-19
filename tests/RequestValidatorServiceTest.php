@@ -224,6 +224,17 @@ final class RequestValidatorServiceTest extends TestCase
 
         $this->validator->validate($request, IntegerValidationDto::class);
     }
+
+    public function testValidateAllowsMissingOptionalQueryParameter(): void
+    {
+        $request = new Request(['page' => '5'], [], [], [], [], []);
+
+        $dto = $this->validator->validate($request, OptionalQueryValidationDto::class);
+
+        $this->assertInstanceOf(OptionalQueryValidationDto::class, $dto);
+        $this->assertSame(5, $dto->getPage());
+        $this->assertNull($dto->getLimit());
+    }
 }
 
 // Test DTOs
@@ -439,3 +450,43 @@ final class IntegerValidationDto
         return $this->page;
     }
 }
+
+final class OptionalQueryValidationDto
+{
+    public function __construct(
+        private int $page,
+        private ?int $limit,
+    ) {
+    }
+
+    public function getPage(): int
+    {
+        return $this->page;
+    }
+
+    public function getLimit(): ?int
+    {
+        return $this->limit;
+    }
+
+    public function isPageRequired(): bool
+    {
+        return true;
+    }
+
+    public function isPageInQuery(): bool
+    {
+        return true;
+    }
+
+    public function isLimitRequired(): bool
+    {
+        return false;
+    }
+
+    public function isLimitInQuery(): bool
+    {
+        return true;
+    }
+}
+

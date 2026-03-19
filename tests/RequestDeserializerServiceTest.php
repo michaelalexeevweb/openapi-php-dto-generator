@@ -44,6 +44,17 @@ final class RequestDeserializerServiceTest extends TestCase
         $this->assertSame(20, $dto->limit);
     }
 
+    public function testDeserializeDoesNotFailForMissingOptionalQueryParameter(): void
+    {
+        $request = new Request(['page' => '5'], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, OptionalQueryParamsDto::class);
+
+        $this->assertInstanceOf(OptionalQueryParamsDto::class, $dto);
+        $this->assertSame(5, $dto->getPage());
+        $this->assertNull($dto->getLimit());
+    }
+
     public function testDeserializeWithPathParameters(): void
     {
         $request = new Request([], [], ['userId' => '42', 'postId' => '7'], [], [], []);
@@ -401,6 +412,45 @@ final class QueryParamsDto
         public int $page,
         public int $limit,
     ) {
+    }
+}
+
+final class OptionalQueryParamsDto
+{
+    public function __construct(
+        private int $page,
+        private ?int $limit,
+    ) {
+    }
+
+    public function getPage(): int
+    {
+        return $this->page;
+    }
+
+    public function getLimit(): ?int
+    {
+        return $this->limit;
+    }
+
+    public function isPageRequired(): bool
+    {
+        return true;
+    }
+
+    public function isPageInQuery(): bool
+    {
+        return true;
+    }
+
+    public function isLimitRequired(): bool
+    {
+        return false;
+    }
+
+    public function isLimitInQuery(): bool
+    {
+        return true;
     }
 }
 

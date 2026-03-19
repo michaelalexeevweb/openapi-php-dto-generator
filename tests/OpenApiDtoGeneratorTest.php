@@ -75,10 +75,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertStringContainsString('public function jsonSerialize(): array', $content);
         $this->assertStringContainsString('public function toArray(): array', $content);
         $this->assertStringContainsString('public function toJson(): string', $content);
-        $this->assertStringContainsString('private int $userId', $content);
-        $this->assertStringContainsString('private string $postId', $content);
-        $this->assertStringContainsString('private ?int $page', $content);
-        $this->assertStringContainsString('private ?int $limit', $content);
+        $this->assertStringContainsString('private readonly int $userId', $content);
+        $this->assertStringContainsString('private readonly string $postId', $content);
+        $this->assertStringContainsString('private readonly ?int $page', $content);
+        $this->assertStringContainsString('private readonly ?int $limit', $content);
         $this->assertStringContainsString('public function getUserId(): int', $content);
         $this->assertStringContainsString('public function getPostId(): string', $content);
         $this->assertStringContainsString('public function getPage(): ?int', $content);
@@ -100,8 +100,8 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($postRequestFile);
         $this->assertStringContainsString('class ArticlesPostRequest', $content);
-        $this->assertStringContainsString('private string $title', $content);
-        $this->assertStringContainsString('private ?string $content', $content);
+        $this->assertStringContainsString('private readonly string $title', $content);
+        $this->assertStringContainsString('private readonly ?string $content', $content);
     }
 
     public function testRequestBodyPatchGeneration(): void
@@ -115,8 +115,76 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($patchRequestFile);
         $this->assertStringContainsString('class ArticlesPatchRequest', $content);
-        $this->assertStringContainsString('private ?string $title', $content);
-        $this->assertStringContainsString('private ?bool $published', $content);
+        $this->assertStringContainsString('private readonly ?string $title', $content);
+        $this->assertStringContainsString('private readonly ?bool $published', $content);
+    }
+
+    public function testConstructorDocblockKeepsGenericArrayParamAndOmitsRedundantParams(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Docblock test',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'Tag' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                    'User' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'email' => ['type' => 'string'],
+                        ],
+                    ],
+                    'DocblockExample' => [
+                        'type' => 'object',
+                        'required' => ['id', 'name', 'tags'],
+                        'properties' => [
+                            'id' => [
+                                'type' => 'integer',
+                                'description' => 'this is id',
+                                'default' => 1,
+                            ],
+                            'name' => [
+                                'type' => 'string',
+                                'description' => 'this is name',
+                            ],
+                            'tags' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Tag'],
+                            ],
+                            'user' => [
+                                'nullable' => true,
+                                'allOf' => [
+                                    ['$ref' => '#/components/schemas/User'],
+                                ],
+                            ],
+                            'types_with_ids' => [
+                                'type' => 'string',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/DocblockExample.php';
+        $this->assertFileExists($file);
+
+        $content = file_get_contents($file);
+        $this->assertStringContainsString('@param int $id this is id', $content);
+        $this->assertStringContainsString('@param string $name this is name', $content);
+        $this->assertStringContainsString('@param array<Tag> $tags', $content);
+        $this->assertStringNotContainsString('@param ?User $user', $content);
+        $this->assertStringNotContainsString('@param string $types_with_ids', $content);
     }
 
     public function testInlineResponseSchemaGeneration(): void
@@ -130,8 +198,8 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($responseFile);
         $this->assertStringContainsString('class Status200', $content);
-        $this->assertStringContainsString('private ?string $status', $content);
-        $this->assertStringContainsString('private ?int $timestamp', $content);
+        $this->assertStringContainsString('private readonly ?string $status', $content);
+        $this->assertStringContainsString('private readonly ?int $timestamp', $content);
     }
 
     public function testDescriptionSupport(): void
@@ -197,8 +265,8 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($metadataFile);
         $this->assertStringContainsString('class ArticleMetadata', $content);
-        $this->assertStringContainsString('private ?string $createdAt', $content);
-        $this->assertStringContainsString('private ?string $updatedAt', $content);
+        $this->assertStringContainsString('private readonly ?string $createdAt', $content);
+        $this->assertStringContainsString('private readonly ?string $updatedAt', $content);
 
         // Check array helper on Article.tags
         $articleFile = $this->outputDirectory . '/Article.php';
@@ -251,7 +319,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($extendedFile);
         $this->assertStringContainsString('extends BaseEntity', $content);
-        $this->assertStringContainsString('private string $updatedAt', $content);
+        $this->assertStringContainsString('private readonly string $updatedAt', $content);
         $this->assertStringContainsString('string $name,', $content);
         $this->assertStringContainsString('parent::__construct', $content);
     }
@@ -301,7 +369,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $animalContent = file_get_contents($animalFile);
         $this->assertStringContainsString('class Animal', $animalContent);
         $this->assertStringNotContainsString('final class', $animalContent);
-        $this->assertStringContainsString('private AnimalAnimalType $animalType', $animalContent);
+        $this->assertStringContainsString('private readonly AnimalAnimalType $animalType', $animalContent);
         $this->assertStringContainsString(
             'public static function getDiscriminatorPropertyName(): string',
             $animalContent,
@@ -321,14 +389,14 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($dogFile);
         $dogContent = file_get_contents($dogFile);
         $this->assertStringContainsString('extends Animal', $dogContent);
-        $this->assertStringContainsString('private string $bark', $dogContent);
+        $this->assertStringContainsString('private readonly string $bark', $dogContent);
 
         // Check Cat extends Animal
         $catFile = $this->outputDirectory . '/Cat.php';
         $this->assertFileExists($catFile);
         $catContent = file_get_contents($catFile);
         $this->assertStringContainsString('extends Animal', $catContent);
-        $this->assertStringContainsString('private string $meow', $catContent);
+        $this->assertStringContainsString('private readonly string $meow', $catContent);
     }
 
     public function testDiscriminatorDuplicateMappingTargetThrowsException(): void
@@ -349,7 +417,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $parentFile = $this->outputDirectory . '/Test1.php';
         $this->assertFileExists($parentFile);
         $parentContent = file_get_contents($parentFile);
-        $this->assertStringContainsString('private Test1TestField $testField', $parentContent);
+        $this->assertStringContainsString('private readonly Test1TestField $testField', $parentContent);
 
         $childFile = $this->outputDirectory . '/Test5.php';
         $this->assertFileExists($childFile);
@@ -389,7 +457,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private string|int $id', $content);
+        $this->assertStringContainsString('private readonly string|int $id', $content);
         $this->assertStringContainsString(
             'Constraints: oneOf=(type=string, format=uuid) | (type=integer, minimum=10, maximum=100)',
             $content,
@@ -401,26 +469,155 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
     public function testGeneratesExternalRefSchemasIntoSubdirectoryAndImportsThem(): void
     {
-        $count = $this->generator->generateFromFile(
-            __DIR__ . '/fixtures/external-ref/root.yaml',
-            $this->outputDirectory,
-            'TestNamespace',
+        $unique = uniqid('openapi_ext_ref_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0755, true);
+        }
+
+        try {
+            $count = $this->generator->generateFromFile(
+                __DIR__ . '/fixtures/external-ref/root.yaml',
+                $outputDir,
+                'TestNamespace',
+            );
+
+            $this->assertGreaterThanOrEqual(2, $count);
+
+            $externalFile = $baseDir . '/common/Test.php';
+            $this->assertFileExists($externalFile);
+            $externalContent = file_get_contents($externalFile);
+            $this->assertStringContainsString('namespace TestNamespace\\Common;', $externalContent);
+            $this->assertStringContainsString('class Test', $externalContent);
+
+            $localFile = $outputDir . '/LocalResponse.php';
+            $this->assertFileExists($localFile);
+            $localContent = file_get_contents($localFile);
+            $this->assertStringContainsString('namespace TestNamespace;', $localContent);
+            $this->assertStringContainsString('use TestNamespace\\Common\\Test;', $localContent);
+            $this->assertStringContainsString('private readonly Test $test', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testGeneratesExternalRefSchemasForNestedRelativePath(): void
+    {
+        $unique = uniqid('openapi_ext_ref_nested_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0755, true);
+        }
+
+        try {
+            $count = $this->generator->generateFromFile(
+                __DIR__ . '/fixtures/external-ref/root-nested.yaml',
+                $outputDir,
+                'TestNamespace',
+            );
+
+            $this->assertGreaterThanOrEqual(2, $count);
+
+            $externalFile = $baseDir . '/test/common/TestCommonResponse.php';
+            $this->assertFileExists($externalFile);
+            $externalContent = file_get_contents($externalFile);
+            $this->assertStringContainsString('namespace TestNamespace\\Test\\Common;', $externalContent);
+            $this->assertStringContainsString('class TestCommonResponse', $externalContent);
+
+            $localFile = $outputDir . '/LocalNestedResponse.php';
+            $this->assertFileExists($localFile);
+            $localContent = file_get_contents($localFile);
+            $this->assertStringContainsString('use TestNamespace\\Test\\Common\\TestCommonResponse;', $localContent);
+            $this->assertStringContainsString('private readonly TestCommonResponse $response', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testGeneratesCommonExternalRefsIntoSiblingCommonSchemasDirectory(): void
+    {
+        $unique = uniqid('openapi_common_model_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $specDir = $baseDir . '/specs';
+        $commonDir = $baseDir . '/common';
+        $outputDir = $baseDir . '/Generated/Module/Schemas';
+
+        mkdir($specDir, 0755, true);
+        mkdir($commonDir, 0755, true);
+
+        file_put_contents(
+            $specDir . '/module.yml',
+            <<<'YAML'
+openapi: 3.0.0
+info:
+  title: Module
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    ModuleResponse:
+      type: object
+      required:
+        - response
+      properties:
+        response:
+          $ref: '../common/common_response.yml#/components/schemas/TestResponse'
+YAML,
         );
 
-        $this->assertGreaterThanOrEqual(2, $count);
+        file_put_contents(
+            $commonDir . '/common_response.yml',
+            <<<'YAML'
+openapi: 3.0.0
+info:
+  title: TestResponse
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    TestResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+YAML,
+        );
 
-        $externalFile = $this->outputDirectory . '/common/Test.php';
-        $this->assertFileExists($externalFile);
-        $externalContent = file_get_contents($externalFile);
-        $this->assertStringContainsString('namespace TestNamespace\\Common;', $externalContent);
-        $this->assertStringContainsString('class Test', $externalContent);
+        try {
+            $count = $this->generator->generateFromFile(
+                $specDir . '/module.yml',
+                $outputDir,
+                'TestNamespace\\Module\\Schemas',
+            );
 
-        $localFile = $this->outputDirectory . '/LocalResponse.php';
-        $this->assertFileExists($localFile);
-        $localContent = file_get_contents($localFile);
-        $this->assertStringContainsString('namespace TestNamespace;', $localContent);
-        $this->assertStringContainsString('use TestNamespace\\Common\\Test;', $localContent);
-        $this->assertStringContainsString('private Test $test', $localContent);
+            $this->assertGreaterThanOrEqual(2, $count);
+
+            $externalFile = $baseDir . '/Generated/Common/Schemas/TestResponse.php';
+            $this->assertFileExists($externalFile);
+            $externalContent = file_get_contents($externalFile);
+            $this->assertStringContainsString('namespace TestNamespace\\Common\\Schemas;', $externalContent);
+
+            $localFile = $outputDir . '/ModuleResponse.php';
+            $this->assertFileExists($localFile);
+            $localContent = file_get_contents($localFile);
+            $this->assertStringContainsString('namespace TestNamespace\\Module\\Schemas;', $localContent);
+            $this->assertStringContainsString('use TestNamespace\\Common\\Schemas\\TestResponse;', $localContent);
+            $this->assertStringContainsString('private readonly TestResponse $response', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
     }
 
     public function testAllOfLastTypeWinsForProperty(): void
@@ -432,8 +629,8 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private string $value', $content);
-        $this->assertStringNotContainsString('private int $value', $content);
+        $this->assertStringContainsString('private readonly string $value', $content);
+        $this->assertStringNotContainsString('private readonly int $value', $content);
     }
 
     public function testQueryParametersWithDefaults(): void
@@ -496,13 +693,13 @@ final class OpenApiDtoGeneratorTest extends TestCase
         self::assertIsString($content);
 
         // Path params must always stay non-nullable.
-        $this->assertStringContainsString('private string $id', $content);
-        $this->assertStringContainsString('private int $actionId', $content);
-        $this->assertStringNotContainsString('private ?string $id', $content);
+        $this->assertStringContainsString('private readonly string $id', $content);
+        $this->assertStringContainsString('private readonly int $actionId', $content);
+        $this->assertStringNotContainsString('private readonly ?string $id', $content);
 
         // Query required flags from malformed specs still map as required/non-nullable.
-        $this->assertStringContainsString('private int $page', $content);
-        $this->assertStringContainsString('private ?int $limit', $content);
+        $this->assertStringContainsString('private readonly int $page', $content);
+        $this->assertStringContainsString('private readonly ?int $limit', $content);
     }
 
     public function testHyphenatedOpenApiNameKeepsAliasAndRequiredMapping(): void
@@ -535,7 +732,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         // PHP property remains valid identifier while alias keeps original OpenAPI key.
-        $this->assertStringContainsString('private string $test_process', $content);
+        $this->assertStringContainsString('private readonly string $test_process', $content);
         $this->assertStringContainsString('$aliases[\'test_process\'] = \'test-process\';', $content);
         $this->assertStringContainsString('public function isTest_processRequired(): bool', $content);
         $this->assertStringContainsString('return true;', $content);
@@ -572,7 +769,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private string $test_name', $content);
+        $this->assertStringContainsString('private readonly string $test_name', $content);
         $this->assertStringContainsString('$aliases[\'test_name\'] = \'<<test name>>\';', $content);
         $this->assertStringContainsString('public function isTest_nameRequired(): bool', $content);
     }
@@ -605,7 +802,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private string $TEST_NAME', $content);
+        $this->assertStringContainsString('private readonly string $TEST_NAME', $content);
         $this->assertStringContainsString('private bool $testNameInRequest = false;', $content);
         $this->assertStringContainsString('$aliases[\'TEST_NAME\'] = \'TEST_NAME\';', $content);
         $this->assertStringContainsString('return $this->testNameInRequest;', $content);
@@ -670,8 +867,8 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private string $_1', $content);
-        $this->assertStringContainsString('private string $_8', $content);
+        $this->assertStringContainsString('private readonly string $_1', $content);
+        $this->assertStringContainsString('private readonly string $_8', $content);
         $this->assertStringContainsString("\$aliases['_1'] = '1';", $content);
         $this->assertStringContainsString("\$aliases['_8'] = '8';", $content);
     }
@@ -731,7 +928,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($userFile);
         $this->assertStringContainsString('class UserWithSingleRef', $content);
-        $this->assertStringContainsString('private ?Cat $pet', $content);
+        $this->assertStringContainsString('private readonly ?Cat $pet', $content);
         $this->assertStringNotContainsString('private ?mixed $pet', $content);
     }
 
@@ -746,7 +943,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $userContent = file_get_contents($userFile);
         $this->assertStringContainsString('class UserWithMultipleRefs', $userContent);
-        $this->assertStringContainsString('private ?UserWithMultipleRefsPet $pet', $userContent);
+        $this->assertStringContainsString('private readonly ?UserWithMultipleRefsPet $pet', $userContent);
 
         // Check merged DTO exists and contains all properties
         $petFile = $this->outputDirectory . '/UserWithMultipleRefsPet.php';
@@ -756,14 +953,14 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertStringContainsString('class UserWithMultipleRefsPet', $petContent);
 
         // Should have properties from Cat (meow + name from Pet)
-        $this->assertStringContainsString('private string $meow', $petContent);
-        $this->assertStringContainsString('private string $name', $petContent);
+        $this->assertStringContainsString('private readonly string $meow', $petContent);
+        $this->assertStringContainsString('private readonly string $name', $petContent);
 
         // Should have properties from Dog (bark)
-        $this->assertStringContainsString('private string $bark', $petContent);
+        $this->assertStringContainsString('private readonly string $bark', $petContent);
 
         // Should have extraProperty (last definition wins)
-        $this->assertStringContainsString('private string $extraProperty', $petContent);
+        $this->assertStringContainsString('private readonly string $extraProperty', $petContent);
 
         // Should have description from last definition
         $this->assertStringContainsString('This should win (last definition)', $petContent);
@@ -785,14 +982,14 @@ final class OpenApiDtoGeneratorTest extends TestCase
             'use Symfony\\Component\\HttpFoundation\\File\\UploadedFile;',
             $inlineContent,
         );
-        $this->assertStringContainsString('private UploadedFile $file', $inlineContent);
+        $this->assertStringContainsString('private readonly UploadedFile $file', $inlineContent);
         $this->assertStringContainsString('public function getFile(): UploadedFile', $inlineContent);
 
         // Referenced multipart request body schema
         $fileRequest = $this->outputDirectory . '/FileRequest.php';
         $this->assertFileExists($fileRequest);
         $requestContent = file_get_contents($fileRequest);
-        $this->assertStringContainsString('private UploadedFile $file', $requestContent);
+        $this->assertStringContainsString('private readonly UploadedFile $file', $requestContent);
     }
 
     public function testDateAndDateTimeFormatSupport(): void
@@ -804,7 +1001,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($userFile);
         $userContent = file_get_contents($userFile);
         $this->assertStringContainsString('use DateTimeImmutable;', $userContent);
-        $this->assertStringContainsString('private DateTimeImmutable $createdAt', $userContent);
+        $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $userContent);
         $this->assertStringContainsString('public function getCreatedAt(): string', $userContent);
         $this->assertStringContainsString('return $this->createdAt->format(\'c\');', $userContent);
         $this->assertStringContainsString('Expected format: yyyy-MM-dd HH:mm:ss', $userContent);
@@ -813,7 +1010,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($user2File);
         $user2Content = file_get_contents($user2File);
         $this->assertStringContainsString('use DateTimeImmutable;', $user2Content);
-        $this->assertStringContainsString('private DateTimeImmutable $createdAt', $user2Content);
+        $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $user2Content);
         $this->assertStringContainsString('public function getCreatedAt(): string', $user2Content);
         $this->assertStringContainsString('return $this->createdAt->format(\'Y-m-d\');', $user2Content);
         $this->assertStringContainsString('Expected format: Y-m-d', $user2Content);
@@ -828,7 +1025,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($aliasFile);
         $aliasContent = file_get_contents($aliasFile);
         $this->assertStringContainsString('use DateTimeImmutable;', $aliasContent);
-        $this->assertStringContainsString('private DateTimeImmutable $createdAt', $aliasContent);
+        $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $aliasContent);
         $this->assertStringContainsString('public function getCreatedAt(): string', $aliasContent);
         $this->assertStringContainsString('return $this->createdAt->format(\'c\');', $aliasContent);
         $this->assertStringContainsString('Expected format: yyyy-MM-dd HH:mm:ss', $aliasContent);
@@ -851,14 +1048,14 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         // id is required and not nullable
-        $this->assertStringContainsString('private int $id', $content);
-        $this->assertStringNotContainsString('private ?int $id', $content);
+        $this->assertStringContainsString('private readonly int $id', $content);
+        $this->assertStringNotContainsString('private readonly ?int $id', $content);
 
         // nickname: type: [string, null]  →  nullable string
-        $this->assertStringContainsString('private ?string $nickname', $content);
+        $this->assertStringContainsString('private readonly ?string $nickname', $content);
 
         // score: type: [number, null]  →  nullable float
-        $this->assertStringContainsString('private ?float $score', $content);
+        $this->assertStringContainsString('private readonly ?float $score', $content);
     }
 
     /**
@@ -874,7 +1071,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         // pet: oneOf: [$ref: SimplePet, type: null]  →  nullable SimplePet
-        $this->assertStringContainsString('private ?SimplePet $pet', $content);
+        $this->assertStringContainsString('private readonly ?SimplePet $pet', $content);
     }
 
     /**
@@ -891,7 +1088,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         // companion is typed as SimplePet
-        $this->assertStringContainsString('private ?SimplePet $companion', $content);
+        $this->assertStringContainsString('private readonly ?SimplePet $companion', $content);
 
         // The sibling description must appear in the docblock
         $this->assertStringContainsString('The companion pet of this owner', $content);
@@ -910,7 +1107,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         // value: type: [string, integer]  →  string|int union
-        $this->assertMatchesRegularExpression('/private (string\|int|int\|string) \$value/', $content);
+        $this->assertMatchesRegularExpression('/private readonly (string\|int|int\|string) \$value/', $content);
     }
 
     /**
@@ -947,7 +1144,7 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $content = file_get_contents($file);
 
         // value is nullable string (oneOf string | null)
-        $this->assertStringContainsString('private ?string $value', $content);
+        $this->assertStringContainsString('private readonly ?string $value', $content);
     }
 
     /**
@@ -963,9 +1160,9 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private string $product', $content);
-        $this->assertStringContainsString('private int $quantity', $content);
+        $this->assertStringContainsString('private readonly string $product', $content);
+        $this->assertStringContainsString('private readonly int $quantity', $content);
         // note: type: [string, null]  →  nullable
-        $this->assertStringContainsString('private ?string $note', $content);
+        $this->assertStringContainsString('private readonly ?string $note', $content);
     }
 }

@@ -74,7 +74,6 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     private ?string $rootSpecFile = null;
     private string $baseOutputDirectory = '';
     private string $baseNamespace = '';
-    private string $baseSpecDirectory = '';
 
     public function generateFromFile(string $filePath, string $outputDirectory, string $namespace): int
     {
@@ -146,7 +145,6 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         $this->rootSpecFile = $rootSpecFile;
         $this->baseOutputDirectory = $outputDirectory;
         $this->baseNamespace = $namespace;
-        $this->baseSpecDirectory = $rootSpecFile !== null ? dirname($rootSpecFile) : '';
     }
 
     private function finalizeGeneration(): int
@@ -259,6 +257,11 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             return $this->baseNamespace;
         }
 
+        $sharedNamespace = $this->resolveCommonNamespaceForSourceFile($sourceFile);
+        if ($sharedNamespace !== null) {
+            return $sharedNamespace;
+        }
+
         $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
         if ($relativeDirectory === '') {
             return $this->baseNamespace;
@@ -267,7 +270,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         $segments = array_values(
             array_filter(
                 explode('/', $relativeDirectory),
-                static fn(string $segment): bool => $segment !== '' && $segment !== '.',
+                static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
             ),
         );
         if ($segments === []) {
@@ -287,6 +290,11 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             return $this->baseOutputDirectory;
         }
 
+        $sharedOutputDirectory = $this->resolveCommonOutputDirectoryForSourceFile($sourceFile);
+        if ($sharedOutputDirectory !== null) {
+            return $sharedOutputDirectory;
+        }
+
         $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
         if ($relativeDirectory === '') {
             return $this->baseOutputDirectory;
@@ -301,14 +309,136 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     private function resolveRelativeSpecDirectory(string $sourceFile): string
     {
-        if ($this->baseSpecDirectory === '') {
+        if ($this->rootSpecFile === null || $this->rootSpecFile === '') {
             return '';
         }
 
-        $relativeFile = $this->makeRelativePath($this->baseSpecDirectory, $sourceFile);
+        // Relative path is calculated from root spec file path (not its directory),
+        // so external refs naturally go one level up (../common, ../../test/common, etc.).
+        $relativeFile = $this->makeRelativePath($this->rootSpecFile, $sourceFile);
         $relativeDirectory = dirname($relativeFile);
 
-        return $relativeDirectory === '.' ? '' : trim(str_replace('\\', '/', $relativeDirectory), '/');
+        return $relativeDirectory === '.' ? '' : trim(str_replace('\\', '/', $relativeDirectory));
+    }
+
+    private function resolveCommonNamespaceForSourceFile(string $sourceFile): ?string
+    {
+        $relativeSegments = $this->resolveNormalizedRelativeDirectorySegments($sourceFile);
+        if ($relativeSegments === [] || strtolower($relativeSegments[0]) !== 'common') {
+            return null;
+        }
+
+        $baseNamespaceParts = array_values(array_filter(explode('\\', $this->baseNamespace), static fn(string $part): bool => $part !== ''));
+        if ($baseNamespaceParts === []) {
+            return null;
+        }
+
+        $rebasedNamespaceParts = $this->rebasePartsForCommonRoot($baseNamespaceParts, 'Common');
+        if ($rebasedNamespaceParts === null) {
+            return null;
+        }
+
+        $suffixParts = array_map(
+            fn(string $segment): string => $this->normalizeClassName($segment),
+            array_slice($relativeSegments, 1),
+        );
+
+        return implode('\\', [...$rebasedNamespaceParts, ...$suffixParts]);
+    }
+
+    private function resolveCommonOutputDirectoryForSourceFile(string $sourceFile): ?string
+    {
+        $relativeSegments = $this->resolveNormalizedRelativeDirectorySegments($sourceFile);
+        if ($relativeSegments === [] || strtolower($relativeSegments[0]) !== 'common') {
+            return null;
+        }
+
+        $baseOutputParts = $this->splitPathSegments($this->baseOutputDirectory);
+        if ($baseOutputParts === []) {
+            return null;
+        }
+
+        $rebasedOutputParts = $this->rebasePartsForCommonRoot($baseOutputParts, 'Common');
+        if ($rebasedOutputParts === null) {
+            return null;
+        }
+
+        $targetParts = [...$rebasedOutputParts, ...array_slice($relativeSegments, 1)];
+        if ($targetParts === []) {
+            return $this->baseOutputDirectory;
+        }
+
+        $prefix = str_starts_with($this->baseOutputDirectory, DIRECTORY_SEPARATOR) ? DIRECTORY_SEPARATOR : '';
+
+        return $prefix . implode(DIRECTORY_SEPARATOR, $targetParts);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveNormalizedRelativeDirectorySegments(string $sourceFile): array
+    {
+        $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
+        if ($relativeDirectory === '') {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                explode('/', $relativeDirectory),
+                static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
+            ),
+        );
+    }
+
+    /**
+     * @param array<int, string> $parts
+     * @return array<int, string>|null
+     */
+    private function rebasePartsForCommonRoot(array $parts, string $commonSegment): ?array
+    {
+        $rootSpecSegment = $this->getRootSpecSegmentName();
+        if ($rootSpecSegment === null) {
+            return null;
+        }
+
+        for ($index = count($parts) - 1; $index >= 0; $index--) {
+            if ($this->normalizeClassName($parts[$index]) !== $rootSpecSegment) {
+                continue;
+            }
+
+            $parts[$index] = $commonSegment;
+            return $parts;
+        }
+
+        return null;
+    }
+
+    private function getRootSpecSegmentName(): ?string
+    {
+        if ($this->rootSpecFile === null || $this->rootSpecFile === '') {
+            return null;
+        }
+
+        $rootSpecName = pathinfo($this->rootSpecFile, PATHINFO_FILENAME);
+        if ($rootSpecName === '') {
+            return null;
+        }
+
+        return $this->normalizeClassName($rootSpecName);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function splitPathSegments(string $path): array
+    {
+        return array_values(
+            array_filter(
+                explode('/', str_replace('\\', '/', $path)),
+                static fn(string $part): bool => $part !== '',
+            ),
+        );
     }
 
     private function makeRelativePath(string $fromDirectory, string $toPath): string
@@ -821,10 +951,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'minLength',
             'maxLength',
             'pattern',
+            'format',
             'minItems',
             'maxItems',
             'uniqueItems',
-            'format',
+            'oneOf',
+            'anyOf',
         ];
 
         $constraints = [];
@@ -1625,6 +1757,10 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         $constructorParams = $constructorParams ?? [];
+        $constructorDocParams = array_values(array_filter(
+            $constructorParams,
+            static fn(array $param): bool => $param['shouldDocument'],
+        ));
 
         $parentArgs = [];
         if ($extends !== null && $parentProperties !== []) {
@@ -1666,6 +1802,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'signature' => $signature,
             'privateProperties' => $privateProperties,
             'constructorParams' => $constructorParams,
+            'constructorDocParams' => $constructorDocParams,
             'parentArgs' => $parentArgs,
             'assignments' => $assignments,
             'methodProperties' => $methodProperties,
@@ -1678,16 +1815,18 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
     /**
      * @param SchemaProperty $property
-     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string}
+     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, isArray: bool}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
     {
         $phpType = $property['type'];
         $phpDocType = $property['type'];
+        $isArray = false;
 
         if (str_contains($phpType, '<')) {
             $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
+            $isArray = true;
         } else {
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
             $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
@@ -1709,21 +1848,24 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
             'type' => $type,
             'name' => $property['name'],
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
+            'isArray' => $isArray,
         ];
     }
 
     /**
      * @param SchemaProperty $property
-     * @return array{type: string, name: string, defaultValue: string}
+     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, constraintsLine: ?string, shouldDocument: bool}
      */
     private function resolveConstructorParameterData(array $property, string $namespace): array
     {
         $phpType = $property['type'];
         $phpDocType = $property['type'];
+        $isArray = false;
 
         if (str_contains($phpType, '<')) {
             $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
+            $isArray = true;
         } else {
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
             $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
@@ -1731,11 +1873,28 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
 
         $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $defaultValue = $this->renderDefaultValue($property['default'], $phpType, $property['type']);
+        $description = $property['description'] ?? null;
+        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
+        $docType = null;
+
+        if ($phpType !== $phpDocType) {
+            $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
+        }
+
+        $normalizedDescription = is_string($description) && $description !== '' ? $description : null;
+        $shouldDocument = $normalizedDescription !== null || $constraintsLine !== null || $docType !== null;
 
         return [
             'type' => $type,
             'name' => $property['name'],
             'defaultValue' => $defaultValue,
+            'isArray' => $isArray,
+            'isPromoted' => true,
+            'docType' => $docType,
+            'description' => $normalizedDescription,
+            'constraintsLine' => $constraintsLine,
+            'shouldDocument' => $shouldDocument,
         ];
     }
 
@@ -2211,7 +2370,7 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
         }
 
         $itemType = substr($fullType, 6, -1);
-        if (!is_string($itemType) || $itemType === '') {
+        if ($itemType === '') {
             return 'mixed';
         }
 
@@ -2222,12 +2381,12 @@ final class OpenApiDtoGeneratorService implements OpenApiDtoGeneratorServiceInte
     }
 
     /**
-     * @param array<int, array{name: string, type: string}> $properties
+     * @param array<int, SchemaProperty> $properties
      */
     private function needsDateTimeImmutableImport(array $properties): bool
     {
         foreach ($properties as $property) {
-            $type = (string)($property['type'] ?? '');
+            $type = (string)$property['type'];
             if ($type === 'DateTimeImmutable' || str_contains($type, 'DateTimeImmutable')) {
                 return true;
             }

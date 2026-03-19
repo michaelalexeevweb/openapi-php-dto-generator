@@ -27,6 +27,7 @@ interface {{ className }}
 {{ signature }}
 {
 {% for property in privateProperties %}
+{% if property.isArray %}
 {% set hasDoc = property.description is not null or property.constraintsLine is not null or property.docVarType is not null %}
 {% if hasDoc %}
 	/**
@@ -46,16 +47,42 @@ interface {{ className }}
 	 * @var {{ property.docVarType }}
 {% endif %}
 	 */
+{% else %}
+	/**
+	 * @var array
+	 */
 {% endif %}
-	private {{ property.type }} ${{ property.name }};
+	private array ${{ property.name }};
 	private bool ${{ property.inRequestFlagName }} = false;
+{% else %}
+	private bool ${{ property.inRequestFlagName }} = false;
+{% endif %}
 {% endfor %}
 {% if privateProperties is not empty %}
 
 {% endif %}
+{% if constructorDocParams is not empty %}
+	/**
+{% for param in constructorDocParams %}
+{% set docType = param.docType is not null ? param.docType : param.type %}
+{% if param.description is not null %}
+	 * @param {{ docType }} ${{ param.name }} {{ param.description }}
+{% else %}
+	 * @param {{ docType }} ${{ param.name }}
+{% endif %}
+{% if param.constraintsLine is not null %}
+	 * Constraints: {{ param.constraintsLine }}
+{% endif %}
+{% endfor %}
+	 */
+{% endif %}
 	public function __construct(
 {% for param in constructorParams %}
-		{{ param.type }} ${{ param.name }}{{ param.defaultValue }},
+{% if param.isArray %}
+		array ${{ param.name }}{{ param.defaultValue }},
+{% else %}
+		private readonly {{ param.type }} ${{ param.name }}{{ param.defaultValue }},
+{% endif %}
 {% endfor %}
 	) {
 {% if parentArgs is not empty %}
@@ -69,8 +96,10 @@ interface {{ className }}
 		);
 {% endif %}
 {% endif %}
-{% for name in assignments %}
-		$this->{{ name }} = ${{ name }};
+{% for property in privateProperties %}
+{% if property.isArray %}
+		$this->{{ property.name }} = ${{ property.name }};
+{% endif %}
 {% endfor %}
 	}
 
