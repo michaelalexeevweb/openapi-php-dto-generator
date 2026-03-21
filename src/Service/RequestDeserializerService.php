@@ -675,6 +675,11 @@ final class RequestDeserializerService implements RequestDeserializerInterface
         // Decode without assoc flag so JSON objects become stdClass,
         // allowing us to distinguish {} (object) from [] (array).
         $decoded = json_decode($content, false);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \InvalidArgumentException('Json is not valid: ' . json_last_error_msg());
+        }
+
         $result = ($decoded instanceof \stdClass) ? $this->stdClassToArray($decoded) : [];
 
         $this->bodyDataCacheKey = $cacheKey;
