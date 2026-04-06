@@ -5,17 +5,17 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
-use OpenapiPhpDtoGenerator\Service\RequestDeserializerService;
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 
-final class RequestDeserializerServiceTest extends TestCase
+final class DtoDeserializerTest extends TestCase
 {
-    private RequestDeserializerService $deserializer;
+    private DtoDeserializer $deserializer;
 
     protected function setUp(): void
     {
-        $this->deserializer = new RequestDeserializerService();
+        $this->deserializer = new DtoDeserializer();
     }
 
     public function testDeserializeSimpleDto(): void

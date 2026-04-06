@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests;
 
-use OpenapiPhpDtoGenerator\Service\OpenApiDtoGeneratorService;
+use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
-final class OpenApiDtoGeneratorTest extends TestCase
+final class GenerateDtoCommandTest extends TestCase
 {
-    private OpenApiDtoGeneratorService $generator;
+    private GenerateDtoCommand $generator;
     private string $outputDirectory;
 
     protected function setUp(): void
     {
-        $this->generator = new OpenApiDtoGeneratorService();
+        $this->generator = new GenerateDtoCommand();
         $this->outputDirectory = __DIR__ . '/output';
 
         if (!is_dir($this->outputDirectory)) {
@@ -71,10 +71,6 @@ final class OpenApiDtoGeneratorTest extends TestCase
 
         $content = file_get_contents($queryParamsFile);
         $this->assertStringContainsString('class UsersPostsGetQueryParams', $content);
-        $this->assertStringContainsString('implements \\JsonSerializable', $content);
-        $this->assertStringContainsString('public function jsonSerialize(): array', $content);
-        $this->assertStringContainsString('public function toArray(): array', $content);
-        $this->assertStringContainsString('public function toJson(): string', $content);
         $this->assertStringContainsString('private readonly int $userId', $content);
         $this->assertStringContainsString('private readonly string $postId', $content);
         $this->assertStringContainsString('private readonly ?int $page', $content);
@@ -241,7 +237,10 @@ final class OpenApiDtoGeneratorTest extends TestCase
         $this->assertFileExists($statusEnumFile);
 
         $content = file_get_contents($statusEnumFile);
-        $this->assertStringContainsString('enum PostStatus: string implements \\JsonSerializable', $content);
+        $this->assertStringContainsString('enum PostStatus: string', $content);
+        $this->assertStringContainsString('implements \\JsonSerializable', $content);
+        $this->assertStringNotContainsString('implements \\JsonSerializable, \\Stringable', $content);
+        $this->assertStringNotContainsString('public function __toString(): string', $content);
         $this->assertStringContainsString("case DRAFT = 'draft'", $content);
         $this->assertStringContainsString("case PUBLISHED = 'published'", $content);
         $this->assertStringContainsString("case ARCHIVED = 'archived'", $content);
@@ -1251,5 +1250,150 @@ YAML,
         $this->assertStringContainsString('private readonly int $quantity', $content);
         // note: type: [string, null]  →  nullable
         $this->assertStringContainsString('private readonly ?string $note', $content);
+    }
+
+    public function testCopyCommonServices(): void
+    {
+        $namespace = 'MyApp\\Generated';
+        $this->generator->copyCommonServices($this->outputDirectory, $namespace);
+
+        $commonDir = $this->outputDirectory . '/Common';
+        $this->assertDirectoryExists($commonDir);
+
+        $expectedFiles = [
+            'DtoNormalizer.php',
+            'DtoNormalizerInterface.php',
+            'DtoValidator.php',
+            'DtoValidatorInterface.php',
+            'DtoDeserializer.php',
+            'DtoDeserializerInterface.php',
+        ];
+
+        foreach ($expectedFiles as $file) {
+            $path = $commonDir . '/' . $file;
+            $this->assertFileExists($path);
+            $content = (string)file_get_contents($path);
+            $this->assertStringContainsString('namespace MyApp\\Generated\\Common;', $content);
+            $this->assertStringNotContainsString('namespace OpenapiPhpDtoGenerator\\', $content);
+        }
+
+        // Check that interfaces and services are now in the same namespace and refer to each other correctly
+        $serviceContent = (string)file_get_contents($commonDir . '/DtoDeserializer.php');
+        $this->assertStringContainsString('use MyApp\\Generated\\Common\\DtoDeserializerInterface;', $serviceContent);
+        $this->assertStringNotContainsString('use OpenapiPhpDtoGenerator\\Contract\\DtoDeserializerInterface;', $serviceContent);
+    }
+
+    public function testCopyCommonServicesCustomPath(): void
+    {
+        $namespace = 'MyApp\\Generated';
+        $customDirRelative = 'Shared/Infrastructure';
+        $customNamespace = 'MyApp\\Shared\\Infrastructure';
+
+        $workingDirectory = getcwd() ?: '.';
+        $customDir = $workingDirectory . '/' . $customDirRelative;
+
+        try {
+            $this->generator->copyCommonServices(
+                outputDirectory: $this->outputDirectory,
+                namespace: $namespace,
+                dtoGeneratorDirectory: $customDirRelative,
+                dtoGeneratorNamespace: $customNamespace,
+            );
+
+            $this->assertDirectoryExists($customDir);
+
+            $servicePath = $customDir . '/DtoDeserializer.php';
+            $this->assertFileExists($servicePath);
+            $content = (string)file_get_contents($servicePath);
+
+            // Check namespace change
+            $this->assertStringContainsString('namespace MyApp\\Shared\\Infrastructure;', $content);
+            // Check use statements change
+            $this->assertStringContainsString('use MyApp\\Shared\\Infrastructure\\DtoDeserializerInterface;', $content);
+        } finally {
+            $this->deleteDirectory($customDir);
+            $this->deleteDirectory(dirname($customDir)); // Shared
+        }
+    }
+
+    public function testCopyCommonServicesCustomPathOnly(): void
+    {
+        $namespace = 'MyApp\\Generated';
+        $customDirRelative = 'Core/Common';
+
+        $workingDirectory = getcwd() ?: '.';
+        $customDir = $workingDirectory . '/' . $customDirRelative;
+
+        try {
+            $this->generator->copyCommonServices(
+                outputDirectory: $this->outputDirectory,
+                namespace: $namespace,
+                dtoGeneratorDirectory: $customDirRelative,
+            );
+
+            $this->assertDirectoryExists($customDir);
+
+            $servicePath = $customDir . '/DtoDeserializer.php';
+            $this->assertFileExists($servicePath);
+            $content = (string)file_get_contents($servicePath);
+
+            // Check namespace change - it should be derived from base namespace + custom directory
+            $this->assertStringContainsString('namespace MyApp\\Generated\\Core\\Common;', $content);
+        } finally {
+            $this->deleteDirectory($customDir);
+            $this->deleteDirectory(dirname($customDir)); // Core
+        }
+    }
+
+    public function testCopyCommonServicesAbsolutePath(): void
+    {
+        $namespace = 'MyApp\\Generated';
+        $absoluteDir = $this->outputDirectory . '/Absolute/Common';
+
+        $this->generator->copyCommonServices(
+            outputDirectory: $this->outputDirectory,
+            namespace: $namespace,
+            dtoGeneratorDirectory: $absoluteDir,
+        );
+
+        $this->assertDirectoryExists($absoluteDir);
+
+        $servicePath = $absoluteDir . '/DtoDeserializer.php';
+        $this->assertFileExists($servicePath);
+        $content = (string)file_get_contents($servicePath);
+
+        // By default, the namespace is calculated as $namespace . '\' . $commonSubDir
+        // But since the path is absolute, it may look strange.
+        // In our case, GenerateDtoCommand tries to fix this.
+        // Here we are testing the service itself.
+        $expectedNamespace = 'namespace MyApp\\Generated\\' . str_replace('/', '\\', ltrim($absoluteDir, '/')) . ';';
+        $this->assertStringContainsString($expectedNamespace, $content);
+
+        // Cleanup
+        $this->deleteDirectory($this->outputDirectory . '/Absolute');
+    }
+
+    public function testCopyCommonServicesCleansUpDirectory(): void
+    {
+        $namespace = 'MyApp\\Generated';
+        $commonDir = $this->outputDirectory . '/Common';
+        
+        // Ensure directory exists and has some "old" files
+        if (!is_dir($commonDir)) {
+            mkdir($commonDir, 0775, true);
+        }
+        $oldFile = $commonDir . '/OldUnusedFile.php';
+        file_put_contents($oldFile, '<?php echo "I should be deleted";');
+        $this->assertFileExists($oldFile);
+
+        // Run copy common services
+        $this->generator->copyCommonServices($this->outputDirectory, $namespace);
+
+        // Check directory exists and contains new files
+        $this->assertDirectoryExists($commonDir);
+        $this->assertFileExists($commonDir . '/DtoNormalizer.php');
+
+        // Check that old file is deleted
+        $this->assertFileDoesNotExist($oldFile);
     }
 }

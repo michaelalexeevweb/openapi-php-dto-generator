@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Contract;
 
-interface OpenApiConstraintValidatorInterface
+interface DtoValidatorInterface
 {
     /**
      * @param array<string, mixed> $constraints

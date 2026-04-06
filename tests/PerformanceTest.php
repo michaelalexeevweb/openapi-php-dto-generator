@@ -6,7 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
-use OpenapiPhpDtoGenerator\Service\RequestDeserializerService;
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -36,12 +36,12 @@ final class PerformanceTest extends TestCase
     private const LARGE_ITERATIONS = 200;
     private const LARGE_TAG_COUNT = 120;
 
-    private RequestDeserializerService $deserializer;
+    private DtoDeserializer $deserializer;
     private DtoNormalizer $normalizer;
 
     protected function setUp(): void
     {
-        $this->deserializer = new RequestDeserializerService();
+        $this->deserializer = new DtoDeserializer();
         $this->normalizer   = new DtoNormalizer();
     }
 
@@ -346,6 +346,108 @@ final class PerformanceTest extends TestCase
         $this->assertLessThan(3_000, $elapsedMs);
     }
 
+    public function testLargePayloadToArrayVsValidateAndNormalizeToArrayPerformance(): void
+    {
+        $json = json_encode($this->buildLargePerfPayload(self::LARGE_TAG_COUNT), JSON_THROW_ON_ERROR);
+
+        $request = new Request([], [], [], [], [], [], $json);
+        $request->headers->set('Content-Type', 'application/json');
+        $dto = $this->deserializer->deserialize($request, PerfTestRequestDto::class);
+
+        // warm-up
+        $this->normalizer->toArray($dto);
+        $this->normalizer->validateAndNormalizeToArray($dto);
+
+        $toArrayStart = hrtime(true);
+        for ($i = 0; $i < self::LARGE_ITERATIONS; $i++) {
+            $this->normalizer->toArray($dto);
+        }
+        $toArrayElapsedMs = (hrtime(true) - $toArrayStart) / 1_000_000;
+
+        $validateArrayStart = hrtime(true);
+        for ($i = 0; $i < self::LARGE_ITERATIONS; $i++) {
+            $this->normalizer->validateAndNormalizeToArray($dto);
+        }
+        $validateArrayElapsedMs = (hrtime(true) - $validateArrayStart) / 1_000_000;
+
+        $toArrayPerOpMs = $toArrayElapsedMs / self::LARGE_ITERATIONS;
+        $validateArrayPerOpMs = $validateArrayElapsedMs / self::LARGE_ITERATIONS;
+        $arrayDeltaPercent = $toArrayElapsedMs > 0
+            ? (($validateArrayElapsedMs - $toArrayElapsedMs) / $toArrayElapsedMs) * 100
+            : 0.0;
+
+        writePerfLine(sprintf(
+            "\n  [Perf] large toArray: %d iterations -> %.1f ms total (%.3f ms/op)\n",
+            self::LARGE_ITERATIONS,
+            $toArrayElapsedMs,
+            $toArrayPerOpMs,
+        ));
+        writePerfLine(sprintf(
+            "  [Perf] large validate+toArray: %d iterations -> %.1f ms total (%.3f ms/op)\n",
+            self::LARGE_ITERATIONS,
+            $validateArrayElapsedMs,
+            $validateArrayPerOpMs,
+        ));
+        writePerfLine(sprintf(
+            "  [Perf] large array delta: %.2f%%\n",
+            $arrayDeltaPercent,
+        ));
+
+        $this->assertLessThan(2_500, $toArrayElapsedMs);
+        $this->assertLessThan(3_500, $validateArrayElapsedMs);
+    }
+
+    public function testLargePayloadToJsonVsValidateAndNormalizeToJsonPerformance(): void
+    {
+        $json = json_encode($this->buildLargePerfPayload(self::LARGE_TAG_COUNT), JSON_THROW_ON_ERROR);
+
+        $request = new Request([], [], [], [], [], [], $json);
+        $request->headers->set('Content-Type', 'application/json');
+        $dto = $this->deserializer->deserialize($request, PerfTestRequestDto::class);
+
+        // warm-up
+        $this->normalizer->toJson($dto);
+        $this->normalizer->validateAndNormalizeToJson($dto);
+
+        $toJsonStart = hrtime(true);
+        for ($i = 0; $i < self::LARGE_ITERATIONS; $i++) {
+            $this->normalizer->toJson($dto);
+        }
+        $toJsonElapsedMs = (hrtime(true) - $toJsonStart) / 1_000_000;
+
+        $validateJsonStart = hrtime(true);
+        for ($i = 0; $i < self::LARGE_ITERATIONS; $i++) {
+            $this->normalizer->validateAndNormalizeToJson($dto);
+        }
+        $validateJsonElapsedMs = (hrtime(true) - $validateJsonStart) / 1_000_000;
+
+        $toJsonPerOpMs = $toJsonElapsedMs / self::LARGE_ITERATIONS;
+        $validateJsonPerOpMs = $validateJsonElapsedMs / self::LARGE_ITERATIONS;
+        $jsonDeltaPercent = $toJsonElapsedMs > 0
+            ? (($validateJsonElapsedMs - $toJsonElapsedMs) / $toJsonElapsedMs) * 100
+            : 0.0;
+
+        writePerfLine(sprintf(
+            "\n  [Perf] large toJson: %d iterations -> %.1f ms total (%.3f ms/op)\n",
+            self::LARGE_ITERATIONS,
+            $toJsonElapsedMs,
+            $toJsonPerOpMs,
+        ));
+        writePerfLine(sprintf(
+            "  [Perf] large validate+toJson: %d iterations -> %.1f ms total (%.3f ms/op)\n",
+            self::LARGE_ITERATIONS,
+            $validateJsonElapsedMs,
+            $validateJsonPerOpMs,
+        ));
+        writePerfLine(sprintf(
+            "  [Perf] large json delta: %.2f%%\n",
+            $jsonDeltaPercent,
+        ));
+
+        $this->assertLessThan(2_500, $toJsonElapsedMs);
+        $this->assertLessThan(3_500, $validateJsonElapsedMs);
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
@@ -499,7 +601,7 @@ final class PerformanceTest_GeneratedStyleTest extends TestCase
 {
     public function testGeneratedStyleDtoDeserializationPerformance(): void
     {
-        $deserializer = new RequestDeserializerService();
+        $deserializer = new DtoDeserializer();
         $json = json_encode([
             'user-id'   => 7,
             'user-name' => 'alice',

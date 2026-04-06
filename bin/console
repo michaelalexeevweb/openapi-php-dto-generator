@@ -3,10 +3,7 @@
 
 declare(strict_types=1);
 
-use OpenapiPhpDtoGenerator\Command\EchoYamlPropertiesCommand;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
-use OpenapiPhpDtoGenerator\Service\OpenApiDtoGeneratorService;
-use OpenapiPhpDtoGenerator\Service\YamlPhpArrayFormatter;
 use Symfony\Component\Console\Application;
 
 // Walk up directories until vendor/autoload.php is found.
@@ -31,8 +28,7 @@ if (!$autoloadLoaded) {
 }
 
 $application = new Application('OpenAPI PHP DTO Generator');
-$application->add(new EchoYamlPropertiesCommand(new YamlPhpArrayFormatter()));
-$application->add(new GenerateDtoCommand(new OpenApiDtoGeneratorService()));
+$application->addCommand(new GenerateDtoCommand());
 $application->setDefaultCommand('openapi:generate-dto');
 
 try {

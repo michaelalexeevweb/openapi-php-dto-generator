@@ -5,16 +5,11 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
-use DateTimeImmutable;
+use DateTimeInterface;
 use JsonException;
 use JsonSerializable;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoNormalizerInterface;
-use ReflectionClass;
-use ReflectionMethod;
-use ReflectionNamedType;
-use ReflectionProperty;
-use ReflectionUnionType;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -26,6 +21,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /** @var array<string, bool> */
     private const array INTERNAL_GETTERS = [
         'getModelName' => true,
+        'getAliases' => true,
+        'getConstraints' => true,
+        'getNormalizationMap' => true,
+        'getDiscriminatorPropertyName' => true,
+        'getDiscriminatorMapping' => true,
     ];
 
     /** @var array<string, bool> */
@@ -33,38 +33,27 @@ final class DtoNormalizer implements DtoNormalizerInterface
         'modelName' => true,
     ];
 
-    private OpenApiConstraintValidator $constraintValidator;
-
-    /** @var array<class-string, ReflectionClass<object>> */
-    private static array $reflectionCache = [];
+    private(set) DtoValidator $constraintValidator;
 
     /**
      * @var array<class-string, array{
      *   getters: list<array{
-     *     method: ReflectionMethod,
      *     methodName: string,
      *     propertyName: string,
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>
      *   }>,
-     *   backingProperties: array<string, ReflectionProperty|null>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }>
      */
     private static array $classMetaCache = [];
 
-    /** @var array<class-string, bool> */
-    private static array $classHasGetterCache = [];
-
     public function __construct(
-        OpenApiConstraintValidator|null $constraintValidator = null,
-        OpenApiFormatRegistry|null $formatRegistry = null,
+        DtoValidator|null $constraintValidator = null,
     ) {
-        $this->constraintValidator = $constraintValidator ?? new OpenApiConstraintValidator(
-            formatRegistry: $formatRegistry,
-        );
+        $this->constraintValidator = $constraintValidator ?? new DtoValidator();
     }
 
     /**
@@ -133,17 +122,21 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     private function tryFastArray(object $dto): ?array
     {
-        if (method_exists($dto, 'toArray')) {
-            try {
-                $result = $dto->toArray();
-            } catch (Throwable) {
-                return null;
-            }
-
-            return is_array($result) ? $result : null;
+        if (!method_exists($dto, 'toArray')) {
+            return $this->tryFastJsonSerializableArray($dto);
         }
 
-        return $this->tryFastJsonSerializableArray($dto);
+        try {
+            $result = $dto->toArray();
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (!is_array($result)) {
+            return null;
+        }
+
+        return $this->normalizeArrayPayload($result);
     }
 
     private function tryFastJson(object $dto): ?string
@@ -176,7 +169,25 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return is_array($serialized) ? $serialized : null;
+        if (!is_array($serialized)) {
+            return null;
+        }
+
+        return $this->normalizeArrayPayload($serialized);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function normalizeArrayPayload(array $payload): array
+    {
+        $result = [];
+        foreach ($payload as $key => $value) {
+            $result[$key] = $this->normalizeValue($value);
+        }
+
+        return $result;
     }
 
     /**
@@ -190,13 +201,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $meta = $this->getClassMeta($dto);
 
         foreach ($meta['getters'] as $getterMeta) {
-            $method = $getterMeta['method'];
             $methodName = $getterMeta['methodName'];
             $propertyName = $getterMeta['propertyName'];
             $fieldName = $getterMeta['outputName'];
 
             try {
-                $value = $method->invoke($dto);
+                $value = $this->invokeGetter($dto, $methodName);
                 $value = $this->normalizeNullableTemporalValue($value, $getterMeta, $meta);
 
                 $error = $this->validateValueAgainstTypes(
@@ -211,14 +221,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
                 $constraints = $meta['constraintsByField'][$propertyName] ?? null;
                 if (is_array($constraints) && $constraints !== []) {
-                    $errors = array_merge(
-                        $errors,
-                        $this->constraintValidator->validate(
-                            sprintf('field "%s"', $fieldName),
-                            $value,
-                            $constraints,
+                    $errors = [
+                        ...$errors,
+                        ...$this->constraintValidator->validate(
+                            subject: sprintf('field "%s"', $fieldName),
+                            value: $value,
+                            constraints: $constraints,
                         ),
-                    );
+                    ];
                 }
             } catch (LogicException $exception) {
                 if (str_contains($exception->getMessage(), "wasn't provided in request")) {
@@ -242,24 +252,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $meta = $this->getClassMeta($dto);
 
         foreach ($meta['getters'] as $getterMeta) {
-            $method = $getterMeta['method'];
-            $methodName = $getterMeta['methodName'];
-            $propertyName = $getterMeta['propertyName'];
-            $outputName = $getterMeta['outputName'];
-
-            if ($this->isInternalOutputField($outputName)) {
+            if ($this->isInternalOutputField($getterMeta['outputName'])) {
                 continue;
             }
 
             try {
-                $value = $method->invoke($dto);
+                $value = $this->invokeGetter($dto, $getterMeta['methodName']);
             } catch (LogicException $exception) {
-                if (str_contains($exception->getMessage(), "wasn't provided in request")) {
-                    $fallback = $this->tryReadBackingPropertyValue($dto, $propertyName, $meta);
-                    if ($fallback['found']) {
-                        $normalized = $this->normalizeValue($fallback['value']);
-                        $result[$outputName] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
-                    }
+                if (!str_contains($exception->getMessage(), "wasn't provided in request")) {
+                    throw $exception;
                 }
                 continue;
             } catch (Throwable) {
@@ -268,10 +269,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
             try {
                 $normalized = $this->normalizeValue($value);
-                $result[$outputName] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
+                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
             } catch (Throwable) {
                 $normalized = $this->normalizeValueFallback($value);
-                $result[$outputName] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
+                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
             }
         }
 
@@ -279,29 +280,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
-     * @param array{
-     *   getters: list<array{
-     *     method: ReflectionMethod,
-     *     methodName: string,
-     *     propertyName: string,
-     *     outputName: string,
-     *     allowsNull: bool,
-     *     typeNames: list<string>
-     *   }>,
-     *   backingProperties: array<string, ReflectionProperty|null>,
-     *   aliasesByProperty: array<string, string>,
-     *   constraintsByField: array<string, array<string, mixed>>
-     * } $meta
-     * @return array{found: bool, value: mixed}
+     * @throws LogicException
      */
-    private function tryReadBackingPropertyValue(object $dto, string $propertyName, array $meta): array
+    private function invokeGetter(object $dto, string $methodName): mixed
     {
-        $property = $meta['backingProperties'][$propertyName] ?? null;
-        if (!$property instanceof ReflectionProperty) {
-            return ['found' => false, 'value' => null];
+        if (!is_callable([$dto, $methodName])) {
+            throw new LogicException(sprintf('Getter %s::%s() is not callable.', $dto::class, $methodName));
         }
 
-        return ['found' => true, 'value' => $property->getValue($dto)];
+        return $dto->{$methodName}();
     }
 
     /**
@@ -319,8 +306,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         $constraints = $meta['constraintsByField'][$getterMeta['propertyName']] ?? [];
-
         $format = $constraints['format'] ?? null;
+
         if (!is_string($format)) {
             return $value;
         }
@@ -347,12 +334,25 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return array_map(fn($item) => $this->normalizeValue($item), $value);
         }
 
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            try {
+                $arrayValue = $value->toArray();
+                if (is_array($arrayValue)) {
+                    return $this->normalizeArrayPayload($arrayValue);
+                }
+            } catch (Throwable) {
+            }
+        }
+
         if ($value instanceof File) {
             return $this->normalizeFileValue($value);
         }
 
-        // instanceof is cheaper than enum_exists(get_class(...))
-        if ($value instanceof DateTimeImmutable) {
+        if ($value instanceof JsonSerializable) {
+            return $this->normalizeValue($value->jsonSerialize());
+        }
+
+        if ($value instanceof DateTimeInterface) {
             return $value->format('c');
         }
 
@@ -365,20 +365,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         if (is_object($value)) {
-            $className = $value::class;
-            if (!array_key_exists($className, self::$classHasGetterCache)) {
-                $reflection = self::$reflectionCache[$className] ??= new ReflectionClass($value);
-                $hasGetter = false;
-                foreach ($reflection->getMethods() as $method) {
-                    if (str_starts_with($method->getName(), 'get')) {
-                        $hasGetter = true;
-                        break;
-                    }
-                }
-                self::$classHasGetterCache[$className] = $hasGetter;
-            }
-
-            if (self::$classHasGetterCache[$className]) {
+            $meta = $this->getClassMeta($value);
+            if ($meta['getters'] !== []) {
                 return $this->dtoToArray($value);
             }
 
@@ -442,14 +430,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     /**
      * @param array<int, string> $expectedTypes
-     * @return string|null
      */
     private function validateValueAgainstTypes(
         mixed $value,
         array $expectedTypes,
         bool $allowsNull,
         string $methodName,
-    ): string|null {
+    ): ?string {
         if ($value === null) {
             if ($allowsNull) {
                 return null;
@@ -479,28 +466,25 @@ final class DtoNormalizer implements DtoNormalizerInterface
         return implode(' | ', $errors);
     }
 
-    // $value is guaranteed non-null by validateValueAgainstTypes
-    private function validateValue(mixed $value, string $expectedType, string $methodName): string|null
+    private function validateValue(mixed $value, string $expectedType, string $methodName): ?string
     {
         return match ($expectedType) {
             'int' => is_int($value) ? null : "Method $methodName() must return int, got " . gettype($value),
-            'float' => (is_float($value) || is_int(
-                    $value,
-                )) ? null : "Method $methodName() must return float, got " . gettype($value),
+            'float' => (is_float($value) || is_int($value)) ? null : "Method $methodName() must return float, got " . gettype($value),
             'string' => is_string($value) ? null : "Method $methodName() must return string, got " . gettype($value),
             'bool' => is_bool($value) ? null : "Method $methodName() must return bool, got " . gettype($value),
             'array' => is_array($value) ? null : "Method $methodName() must return array, got " . gettype($value),
+            'mixed' => null,
             default => $this->validateObject($value, $expectedType, $methodName),
         };
     }
 
-    private function validateObject(mixed $value, string $expectedType, string $methodName): string|null
+    private function validateObject(mixed $value, string $expectedType, string $methodName): ?string
     {
         if ($value instanceof $expectedType) {
             return null;
         }
 
-        // class_exists is cheaper than enum_exists; check it first
         if (!class_exists($expectedType) && !enum_exists($expectedType)) {
             return null;
         }
@@ -512,87 +496,20 @@ final class DtoNormalizer implements DtoNormalizerInterface
         return "Method $methodName() must return instance of $expectedType, got " . get_debug_type($value);
     }
 
-    private function isSerializableGetter(ReflectionMethod $method): bool
+    private function isSerializableGetterName(string $name): bool
     {
-        $name = $method->getName();
-
         if (!str_starts_with($name, 'get') || $name === 'get') {
             return false;
         }
 
-        if (array_key_exists($name, self::INTERNAL_GETTERS)) {
-            return false;
-        }
-
-        return !$method->isStatic() && $method->isPublic() && $method->getNumberOfRequiredParameters() === 0;
+        return !array_key_exists($name, self::INTERNAL_GETTERS);
     }
 
-    /**
-     * Map getter name to real DTO property while preserving all-caps names (e.g. getINTERNAL -> INTERNAL).
-     *
-     * @param ReflectionClass<object> $reflection
-     */
-    private function resolvePropertyNameFromGetter(ReflectionClass $reflection, string $methodName): string
+    private function resolvePropertyNameFromGetterName(string $methodName): string
     {
         $suffix = substr($methodName, 3);
-        if ($suffix === '') {
-            return '';
-        }
 
-        if ($reflection->hasProperty($suffix)) {
-            return $suffix;
-        }
-
-        $lowerFirst = lcfirst($suffix);
-        if ($reflection->hasProperty($lowerFirst)) {
-            return $lowerFirst;
-        }
-
-        return $lowerFirst;
-    }
-
-    /**
-     * @param ReflectionClass<object> $reflection
-     * @return array<string, string>
-     */
-    private function resolveOpenApiPropertyAliases(ReflectionClass $reflection): array
-    {
-        $className = $reflection->getName();
-        $method = $this->resolveMetadataMethod($className, ['getAliases']);
-        if (!is_callable($method)) {
-            return [];
-        }
-
-        $aliases = call_user_func($method);
-        if (!is_array($aliases)) {
-            return [];
-        }
-
-        $result = [];
-        foreach ($aliases as $propertyName => $openApiName) {
-            if (!is_string($propertyName) || !is_string($openApiName)) {
-                continue;
-            }
-            $result[$propertyName] = $openApiName;
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param ReflectionClass<object> $reflection
-     * @return array<string, array<string, mixed>>
-     */
-    private function resolveOpenApiConstraints(ReflectionClass $reflection): array
-    {
-        $className = $reflection->getName();
-        $method = $this->resolveMetadataMethod($className, ['getConstraints']);
-        if (!is_callable($method)) {
-            return [];
-        }
-
-        $constraints = call_user_func($method);
-        return is_array($constraints) ? $constraints : [];
+        return $suffix === '' ? '' : lcfirst($suffix);
     }
 
     /**
@@ -612,16 +529,55 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
+     * @return array<string, string>
+     */
+    private function resolveOpenApiPropertyAliasesByClass(string $className): array
+    {
+        $method = $this->resolveMetadataMethod($className, ['getAliases']);
+        if (!is_callable($method)) {
+            return [];
+        }
+
+        $aliases = call_user_func($method);
+        if (!is_array($aliases)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($aliases as $propertyName => $openApiName) {
+            if (!is_string($propertyName) || !is_string($openApiName)) {
+                continue;
+            }
+
+            $result[$propertyName] = $openApiName;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function resolveOpenApiConstraintsByClass(string $className): array
+    {
+        $method = $this->resolveMetadataMethod($className, ['getConstraints']);
+        if (!is_callable($method)) {
+            return [];
+        }
+
+        $constraints = call_user_func($method);
+        return is_array($constraints) ? $constraints : [];
+    }
+
+    /**
      * @return array{
      *   getters: list<array{
-     *     method: ReflectionMethod,
      *     methodName: string,
      *     propertyName: string,
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>
      *   }>,
-     *   backingProperties: array<string, ReflectionProperty|null>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }
@@ -633,47 +589,65 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return self::$classMetaCache[$className];
         }
 
-        $reflection = self::$reflectionCache[$className] ??= new ReflectionClass($dto);
-        $aliasesByProperty = $this->resolveOpenApiPropertyAliases($reflection);
-        $constraintsByField = $this->resolveOpenApiConstraints($reflection);
+        $mapMeta = $this->buildClassMetaFromNormalizationMap($className);
+        if ($mapMeta !== null) {
+            return self::$classMetaCache[$className] = $mapMeta;
+        }
 
+        return self::$classMetaCache[$className] = $this->buildClassMetaFromPublicGetters($className);
+    }
+
+    /**
+     * @return array{
+     *   getters: list<array{
+     *     methodName: string,
+     *     propertyName: string,
+     *     outputName: string,
+     *     allowsNull: bool,
+     *     typeNames: list<string>
+     *   }>,
+     *   aliasesByProperty: array<string, string>,
+     *   constraintsByField: array<string, array<string, mixed>>
+     * }|null
+     */
+    private function buildClassMetaFromNormalizationMap(string $className): ?array
+    {
+        $mapCallable = [$className, 'getNormalizationMap'];
+        if (!is_callable($mapCallable)) {
+            return null;
+        }
+
+        $rawMap = call_user_func($mapCallable);
+        if (!is_array($rawMap) || $rawMap === []) {
+            return null;
+        }
+
+        $aliasesByProperty = $this->resolveOpenApiPropertyAliasesByClass($className);
+        $constraintsByField = $this->resolveOpenApiConstraintsByClass($className);
         $getters = [];
-        $backingProperties = [];
 
-        foreach ($reflection->getMethods() as $method) {
-            if (!$this->isSerializableGetter($method)) {
+        foreach ($rawMap as $propertyName => $row) {
+            if (!is_string($propertyName) || !is_array($row)) {
                 continue;
             }
 
-            $methodName = $method->getName();
-            $propertyName = $this->resolvePropertyNameFromGetter($reflection, $methodName);
+            $methodName = $row['getter'] ?? null;
+            if (!is_string($methodName) || $methodName === '' || !method_exists($className, $methodName)) {
+                continue;
+            }
+
+            $type = $row['type'] ?? 'mixed';
+            $typeNames = $this->normalizeTypeNamesFromMapType(is_string($type) ? $type : 'mixed');
+            $nullable = $row['nullable'] ?? null;
+            $allowsNull = is_bool($nullable) ? $nullable : true;
+            $metadata = $row['metadata'] ?? [];
             $outputName = $aliasesByProperty[$propertyName] ?? $propertyName;
 
-            $returnType = $method->getReturnType();
-            $allowsNull = $returnType?->allowsNull() ?? true;
-            $typeNames = [];
-
-            if ($returnType instanceof ReflectionNamedType) {
-                $typeNames[] = $returnType->getName();
-            } elseif ($returnType instanceof ReflectionUnionType) {
-                foreach ($returnType->getTypes() as $unionType) {
-                    if ($unionType instanceof ReflectionNamedType) {
-                        $typeNames[] = $unionType->getName();
-                    }
-                }
+            if (is_array($metadata) && is_string($metadata['openApiName'] ?? null) && $metadata['openApiName'] !== '') {
+                $outputName = $metadata['openApiName'];
             }
-
-            $backingProperty = null;
-            if ($reflection->hasProperty($propertyName)) {
-                $backingProperty = $reflection->getProperty($propertyName);
-                if (!$backingProperty->isPublic()) {
-                    $backingProperty->setAccessible(true);
-                }
-            }
-            $backingProperties[$propertyName] = $backingProperty;
 
             $getters[] = [
-                'method' => $method,
                 'methodName' => $methodName,
                 'propertyName' => $propertyName,
                 'outputName' => $outputName,
@@ -682,11 +656,80 @@ final class DtoNormalizer implements DtoNormalizerInterface
             ];
         }
 
-        return self::$classMetaCache[$className] = [
+        if ($getters === []) {
+            return null;
+        }
+
+        return [
             'getters' => $getters,
-            'backingProperties' => $backingProperties,
             'aliasesByProperty' => $aliasesByProperty,
             'constraintsByField' => $constraintsByField,
         ];
+    }
+
+    /**
+     * @return array{
+     *   getters: list<array{
+     *     methodName: string,
+     *     propertyName: string,
+     *     outputName: string,
+     *     allowsNull: bool,
+     *     typeNames: list<string>
+     *   }>,
+     *   aliasesByProperty: array<string, string>,
+     *   constraintsByField: array<string, array<string, mixed>>
+     * }
+     */
+    private function buildClassMetaFromPublicGetters(string $className): array
+    {
+        $aliasesByProperty = $this->resolveOpenApiPropertyAliasesByClass($className);
+        $constraintsByField = $this->resolveOpenApiConstraintsByClass($className);
+        $methods = get_class_methods($className);
+        $getters = [];
+
+        foreach ($methods as $methodName) {
+            if (!$this->isSerializableGetterName($methodName)) {
+                continue;
+            }
+
+            $propertyName = $this->resolvePropertyNameFromGetterName($methodName);
+            if ($propertyName === '') {
+                continue;
+            }
+
+            $getters[] = [
+                'methodName' => $methodName,
+                'propertyName' => $propertyName,
+                'outputName' => $aliasesByProperty[$propertyName] ?? $propertyName,
+                'allowsNull' => true,
+                'typeNames' => ['mixed'],
+            ];
+        }
+
+        return [
+            'getters' => $getters,
+            'aliasesByProperty' => $aliasesByProperty,
+            'constraintsByField' => $constraintsByField,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normalizeTypeNamesFromMapType(string $type): array
+    {
+        $parts = explode('|', $type);
+        $result = [];
+
+        foreach ($parts as $part) {
+            $normalized = trim($part);
+            if ($normalized === '') {
+                continue;
+            }
+
+            $result[] = $normalized;
+        }
+
+        return $result === [] ? ['mixed'] : array_values(array_unique($result));
     }
 }

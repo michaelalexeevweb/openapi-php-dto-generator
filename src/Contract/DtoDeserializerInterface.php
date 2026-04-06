@@ -6,7 +6,7 @@ namespace OpenapiPhpDtoGenerator\Contract;
 
 use Symfony\Component\HttpFoundation\Request;
 
-interface RequestDeserializerInterface
+interface DtoDeserializerInterface
 {
     /**
      * @template T of object

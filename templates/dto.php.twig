@@ -107,136 +107,6 @@ interface {{ className }}
 {% endfor %}
 	}
 
-	/**
-	 * @return array<string, mixed>
-	 */
-	public function jsonSerialize(): array
-	{
-		$data = [];
-{% for property in methodProperties %}
-{% if property.openApiName != 'modelName' %}
-{% if property.returnKind == 'temporal' %}
-{% if property.isNullableTemporal %}
-		$value = $this->{{ property.name }} === null
-			? null
-			: $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
-{% else %}
-		$value = $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
-{% endif %}
-{% else %}
-		$value = $this->{{ property.name }};
-{% endif %}
-		$data['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = self::normalizeJsonValue($value);
-
-{% endif %}
-{% endfor %}
-		return $data;
-	}
-
-	/**
-	 * @return array<string, mixed>
-	 */
-	public function toArray(): array
-	{
-		return $this->jsonSerialize();
-	}
-
-	/**
-	 * @throws \JsonException
-	 */
-	public function toJson(): string
-	{
-		return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-	}
-
-	private static function normalizeJsonValue(mixed $value): mixed
-	{
-		if ($value === null) {
-			return null;
-		}
-
-		if (is_scalar($value)) {
-			return $value;
-		}
-
-		if (is_array($value)) {
-			$normalized = [];
-			foreach ($value as $key => $item) {
-				$normalized[$key] = self::normalizeJsonValue($item);
-			}
-
-			return $normalized;
-		}
-
-		if ($value instanceof \JsonSerializable) {
-			return self::normalizeJsonValue($value->jsonSerialize());
-		}
-
-		if ($value instanceof \DateTimeInterface) {
-			return $value->format('c');
-		}
-
-		if ($value instanceof \BackedEnum) {
-			return $value->value;
-		}
-
-		if ($value instanceof \UnitEnum) {
-			return $value->name;
-		}
-
-		if ($value instanceof \Symfony\Component\HttpFoundation\File\UploadedFile) {
-			$mimeType = null;
-			$size = null;
-
-			try {
-				$mimeType = $value->getMimeType();
-			} catch (\Throwable) {
-			}
-
-			try {
-				$size = $value->getSize();
-			} catch (\Throwable) {
-			}
-
-			return [
-				'filename' => $value->getFilename(),
-				'mimeType' => $mimeType,
-				'size' => $size,
-				'originalName' => $value->getClientOriginalName(),
-				'clientMimeType' => $value->getClientMimeType(),
-			];
-		}
-
-		if ($value instanceof \Symfony\Component\HttpFoundation\File\File) {
-			$mimeType = null;
-			$size = null;
-
-			try {
-				$mimeType = $value->getMimeType();
-			} catch (\Throwable) {
-			}
-
-			try {
-				$size = $value->getSize();
-			} catch (\Throwable) {
-			}
-
-			return [
-				'filename' => $value->getFilename(),
-				'mimeType' => $mimeType,
-				'size' => $size,
-			];
-		}
-
-		if (is_object($value) && method_exists($value, '__toString')) {
-			return (string)$value;
-		}
-
-		return is_object($value) ? $value::class : $value;
-	}
-{% if methodProperties is not empty %}
-
-{% endif %}
 {% for property in methodProperties %}
 {% set hasDoc = (property.docDescriptionLines is not empty) or (property.docReturnType is not null) or (property.expectedFormat is not null) %}
 {% if hasDoc %}
@@ -336,6 +206,71 @@ interface {{ className }}
 		];
 	}
 {% endif %}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function toArray(): array
+	{
+		$result = [];
+{% for property in methodProperties %}
+		try {
+			$result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+		} catch (\LogicException $exception) {
+			if (!str_contains($exception->getMessage(), "wasn't provided in request")) {
+				throw $exception;
+			}
+		}
+{% endfor %}
+
+		return $result;
+	}
+
+	public function jsonSerialize(): mixed
+	{
+		return $this->toArray();
+	}
+
+	/**
+	 * @throws \JsonException
+	 */
+	public function toJson(): string
+	{
+		return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+	}
+
+	public function __toString(): string
+	{
+		$json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+
+		return is_string($json) ? $json : '{}';
+	}
+
+	/**
+	 * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+	 */
+	public static function getNormalizationMap(): array
+	{
+		$constraints = self::getConstraints();
+
+		return [
+{% for property in methodProperties %}
+			'{{ property.name }}' => [
+				'getter' => '{{ property.methodName }}',
+				'type' => '{{ property.returnType|replace({'?':''})|replace({'|null':''}) }}',
+				'nullable' => {{ property.returnType starts with '?' or ('|null' in property.returnType) ? 'true' : 'false' }},
+				'metadata' => [
+					'openApiName' => '{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}',
+					'required' => {{ property.requiredLiteral }},
+					'inPathFlagGetter' => 'is{{ property.nameSuffix }}InPath',
+					'inQueryFlagGetter' => 'is{{ property.nameSuffix }}InQuery',
+					'inRequestFlagGetter' => 'is{{ property.nameSuffix }}InRequest',
+					'constraints' => $constraints['{{ property.name }}'] ?? [],
+				],
+			],
+{% endfor %}
+		];
+	}
 
 	/**
 	 * @return array<string, string>
