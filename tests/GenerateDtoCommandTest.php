@@ -187,6 +187,44 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringNotContainsString('@param string $types_with_ids', $content);
     }
 
+    public function testNullableGenericArrayUsesNullableArrayTypeHintInConstructorAndProperty(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Nullable generic array type hints',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'FilterEnumView' => [
+                        'type' => 'string',
+                        'enum' => ['a', 'b'],
+                    ],
+                    'SearchRequest' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'availableFilters' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/FilterEnumView'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/SearchRequest.php';
+        $this->assertFileExists($file);
+        $content = file_get_contents($file);
+
+        $this->assertStringContainsString('@param ?array<FilterEnumView> $availableFilters', $content);
+        $this->assertStringContainsString('?array $availableFilters', $content);
+        $this->assertStringContainsString('private ?array $availableFilters;', $content);
+    }
+
     public function testInlineResponseSchemaGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
