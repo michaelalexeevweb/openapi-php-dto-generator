@@ -14,7 +14,7 @@ interface DtoNormalizerInterface
      *
      * @return array<string, mixed>
      */
-    public function toArray(object $dto): array;
+    public function toArray(GeneratedDtoInterface $dto): array;
 
     /**
      * Validates the DTO against its OpenAPI constraints, then converts it to a plain array.
@@ -22,14 +22,14 @@ interface DtoNormalizerInterface
      * @return array<string, mixed>
      * @throws RuntimeException if validation fails
      */
-    public function validateAndNormalizeToArray(object $dto): array;
+    public function validateAndNormalizeToArray(GeneratedDtoInterface $dto): array;
 
     /**
      * Converts DTO to a JSON string without any validation.
      *
      * @throws JsonException
      */
-    public function toJson(object $dto): string;
+    public function toJson(GeneratedDtoInterface $dto): string;
 
     /**
      * Validates the DTO against its OpenAPI constraints, then converts it to a JSON string.
@@ -37,6 +37,6 @@ interface DtoNormalizerInterface
      * @throws RuntimeException if validation fails
      * @throws JsonException
      */
-    public function validateAndNormalizeToJson(object $dto): string;
+    public function validateAndNormalizeToJson(GeneratedDtoInterface $dto): string;
 }
 

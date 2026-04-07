@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
@@ -691,7 +692,7 @@ final class PerfAddressDto
     }
 }
 
-final class PerfJsonSerializableDto implements \JsonSerializable
+final class PerfJsonSerializableDto implements GeneratedDtoInterface
 {
     /** @param array<PerfTagDto> $tags */
     public function __construct(
@@ -718,9 +719,38 @@ final class PerfJsonSerializableDto implements \JsonSerializable
             ),
         ];
     }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return $this->jsonSerialize();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
 }
 
-final class PerfTestRequestDto
+final class PerfTestRequestDto implements GeneratedDtoInterface
 {
     /** @var array<PerfTagDto> */
     private array $tags;
@@ -792,5 +822,60 @@ final class PerfTestRequestDto
     public function getTags(): array
     {
         return $this->tags;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'userId' => $this->userId,
+            'username' => $this->username,
+            'email' => $this->email,
+            'score' => $this->score,
+            'active' => $this->active,
+            'role' => $this->role->value,
+            'createdAt' => $this->createdAt->format('c'),
+            'description' => $this->description,
+            'address' => [
+                'street' => $this->address->getStreet(),
+                'city' => $this->address->getCity(),
+                'country' => $this->address->getCountry(),
+            ],
+            'tags' => array_map(
+                static fn(PerfTagDto $tag): array => [
+                    'id' => $tag->getId(),
+                    'label' => $tag->getLabel(),
+                ],
+                $this->tags,
+            ),
+        ];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
     }
 }

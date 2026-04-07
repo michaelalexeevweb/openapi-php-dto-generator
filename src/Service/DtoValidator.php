@@ -12,10 +12,6 @@ use Symfony\Component\HttpFoundation\File\File;
 
 final class DtoValidator implements DtoValidatorInterface
 {
-    public function __construct()
-    {
-    }
-
     /**
      * @param array<string, mixed> $constraints
      * @return array<string>
@@ -54,7 +50,10 @@ final class DtoValidator implements DtoValidatorInterface
         );
 
         if ((is_int($value) || is_float($value)) && $hasNumericConstraints) {
-            $errors = [...$errors, ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)];
+            $errors = [
+                ...$errors,
+                ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)
+            ];
         }
 
         $hasStringConstraints = array_any(
@@ -63,7 +62,10 @@ final class DtoValidator implements DtoValidatorInterface
         );
 
         if (is_string($value) && $hasStringConstraints) {
-            $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
+            $errors = [
+                ...$errors,
+                ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)
+            ];
         }
 
         $hasArrayConstraints = array_any(
@@ -72,10 +74,15 @@ final class DtoValidator implements DtoValidatorInterface
         );
 
         if (is_array($value) && $hasArrayConstraints) {
-            $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)];
+            $errors = [
+                ...$errors,
+                ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)
+            ];
         }
 
-        if (array_key_exists('format', $constraints) && $constraints['format'] === 'binary' && !is_string($value) && !$value instanceof File) {
+        if (array_key_exists('format', $constraints) && $constraints['format'] === 'binary' && !is_string(
+                $value,
+            ) && !$value instanceof File) {
             $errors[] = "{$subject} expects binary data, got {$this->typeToOpenApi($value)}";
         }
 

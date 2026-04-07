@@ -12,14 +12,13 @@ use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionUnionType;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use UnitEnum;
 
 final class DtoDeserializer implements DtoDeserializerInterface
 {
-    private const PREDECODED_BODY_ATTRIBUTE = '__opg_predecoded_body_data';
+    private const string PREDECODED_BODY_ATTRIBUTE = '__opg_predecoded_body_data';
 
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
@@ -333,7 +332,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             // Pre-compute temporal format for DateTimeImmutable fields.
             $temporalFormat = in_array(DateTimeImmutable::class, $typeNames, true)
-                ? $this->resolveTemporalFormat(reflection: $reflection, paramName: $paramName, openApiFormat: $openApiFormat)
+                ? $this->resolveTemporalFormat(
+                    reflection: $reflection,
+                    paramName: $paramName,
+                    openApiFormat: $openApiFormat,
+                )
                 : null;
 
             // Pre-resolve and make accessible the inRequest flag property (if any).
@@ -347,7 +350,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             $inRequestProperties[$paramName] = $flagProperty;
 
-            $pathFlagPropertyName = $this->resolveInPathFlagPropertyName(reflection: $reflection, paramName: $paramName);
+            $pathFlagPropertyName = $this->resolveInPathFlagPropertyName(
+                reflection: $reflection,
+                paramName: $paramName,
+            );
             $pathFlagProperty = null;
             if ($pathFlagPropertyName !== null) {
                 $pathFlagProperty = $reflection->getProperty($pathFlagPropertyName);
@@ -357,7 +363,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             $inPathProperties[$paramName] = $pathFlagProperty;
 
-            $queryFlagPropertyName = $this->resolveInQueryFlagPropertyName(reflection: $reflection, paramName: $paramName);
+            $queryFlagPropertyName = $this->resolveInQueryFlagPropertyName(
+                reflection: $reflection,
+                paramName: $paramName,
+            );
             $queryFlagProperty = null;
             if ($queryFlagPropertyName !== null) {
                 $queryFlagProperty = $reflection->getProperty($queryFlagPropertyName);
@@ -561,7 +570,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $errors = [];
         foreach ($typeNames as $typeName) {
             $temporalFormat = $typeName === DateTimeImmutable::class
-                ? $this->resolveTemporalFormat(reflection: $dtoReflection, paramName: $paramName, openApiFormat: $openApiFormat)
+                ? $this->resolveTemporalFormat(
+                    reflection: $dtoReflection,
+                    paramName: $paramName,
+                    openApiFormat: $openApiFormat,
+                )
                 : null;
 
             try {
@@ -714,7 +727,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function resolveInPathFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
     {
-        return $this->resolveTrackingFlagPropertyName(reflection: $reflection, paramName: $paramName, suffixes: ['InPath']);
+        return $this->resolveTrackingFlagPropertyName(
+            reflection: $reflection,
+            paramName: $paramName,
+            suffixes: ['InPath'],
+        );
     }
 
     /**
@@ -722,15 +739,22 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function resolveInQueryFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
     {
-        return $this->resolveTrackingFlagPropertyName(reflection: $reflection, paramName: $paramName, suffixes: ['InQuery']);
+        return $this->resolveTrackingFlagPropertyName(
+            reflection: $reflection,
+            paramName: $paramName,
+            suffixes: ['InQuery'],
+        );
     }
 
     /**
      * @param ReflectionClass<object> $reflection
      * @param list<string> $suffixes
      */
-    private function resolveTrackingFlagPropertyName(ReflectionClass $reflection, string $paramName, array $suffixes): ?string
-    {
+    private function resolveTrackingFlagPropertyName(
+        ReflectionClass $reflection,
+        string $paramName,
+        array $suffixes,
+    ): ?string {
         $candidates = [];
         foreach ($suffixes as $suffix) {
             $candidates[] = $this->normalizeTrackingFlagName(propertyName: $paramName, suffix: $suffix);
@@ -822,28 +846,36 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($source === 'json') {
             if ($typeName === 'int') {
                 if (!is_int($value)) {
-                    throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value));
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
+                    );
                 }
                 return $value;
             }
 
             if ($typeName === 'float') {
                 if (!is_float($value) && !is_int($value)) {
-                    throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value));
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
+                    );
                 }
                 return (float)$value;
             }
 
             if ($typeName === 'string') {
                 if (!is_string($value)) {
-                    throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value));
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
+                    );
                 }
                 return $value;
             }
 
             if ($typeName === 'bool') {
                 if (!is_bool($value)) {
-                    throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value));
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
+                    );
                 }
                 return $value;
             }
@@ -851,17 +883,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if ($typeName === 'array') {
                 if ($value instanceof \stdClass) {
                     if (!$allowsAssociativeArray) {
-                        throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'));
+                        throw new RuntimeException(
+                            $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
+                        );
                     }
                     $value = $this->stdClassToArray($value);
                 }
 
                 if (!is_array($value)) {
-                    throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value));
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value),
+                    );
                 }
 
                 if (!array_is_list($value) && !$allowsAssociativeArray) {
-                    throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'));
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
+                    );
                 }
 
                 if ($arrayItemType === null) {
@@ -895,7 +933,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // Handle scalar types
         if ($typeName === 'int') {
             if (!$this->isStrictIntValue($value)) {
-                throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value));
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
+                );
             }
 
             return (int)$value;
@@ -903,7 +943,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if ($typeName === 'float') {
             if (!$this->isStrictFloatValue($value)) {
-                throw new RuntimeException($this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value));
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
+                );
             }
 
             return (float)$value;
@@ -933,9 +975,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 return $value;
             }
             if (is_string($value)) {
-                return $this->parseDateTimeStrict(value: $value, paramPath: $paramPath, temporalFormat: $temporalFormat);
+                return $this->parseDateTimeStrict(
+                    value: $value,
+                    paramPath: $paramPath,
+                    temporalFormat: $temporalFormat,
+                );
             }
-            throw new RuntimeException("param \"{$paramPath}\" expects a date string, got {$this->getTypeString($value)}");
+            throw new RuntimeException(
+                "param \"{$paramPath}\" expects a date string, got {$this->getTypeString($value)}",
+            );
         }
 
         // Handle UploadedFile
@@ -1006,14 +1054,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $itemValue = $this->stdClassToArray($itemValue);
             }
             if (!is_array($itemValue)) {
-                throw new RuntimeException($this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: $itemValue));
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: $itemValue),
+                );
             }
 
             try {
                 $nestedRequest = $this->createRequestFromArray($itemValue);
                 return $this->deserialize(request: $nestedRequest, dtoClass: $arrayItemType);
             } catch (RuntimeException $e) {
-                throw new RuntimeException($this->prependParamPath(message: $e->getMessage(), prefix: $itemPath), previous: $e);
+                throw new RuntimeException(
+                    $this->prependParamPath(message: $e->getMessage(), prefix: $itemPath),
+                    previous: $e,
+                );
             }
         }
 

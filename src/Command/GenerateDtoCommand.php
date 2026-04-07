@@ -81,11 +81,6 @@ final class GenerateDtoCommand extends Command
     private(set) string $baseOutputDirectory = '';
     private(set) string $baseNamespace = '';
 
-    public function __construct()
-    {
-        parent::__construct();
-    }
-
     protected function configure(): void
     {
         $this->addOption(
@@ -163,7 +158,9 @@ final class GenerateDtoCommand extends Command
 
             $dtoGeneratorDirectoryOption = $input->getOption('dto-generator-directory');
             if ($dtoGeneratorDirectoryOption !== false) {
-                $dtoGeneratorDirectory = is_string($dtoGeneratorDirectoryOption) ? $dtoGeneratorDirectoryOption : 'Common';
+                $dtoGeneratorDirectory = is_string(
+                    $dtoGeneratorDirectoryOption,
+                ) ? $dtoGeneratorDirectoryOption : 'Common';
                 $dtoGeneratorNamespace = $input->getOption('dto-generator-namespace');
                 $dtoGeneratorNamespace = is_string($dtoGeneratorNamespace) ? $dtoGeneratorNamespace : null;
 
@@ -261,7 +258,9 @@ final class GenerateDtoCommand extends Command
         $dtoGeneratorDirectory ??= 'Common';
 
         // If dtoGeneratorDirectory is a relative path, calculate it from current directory
-        if (str_starts_with($dtoGeneratorDirectory, '/') || (strlen($dtoGeneratorDirectory) > 1 && $dtoGeneratorDirectory[1] === ':')) {
+        if (str_starts_with($dtoGeneratorDirectory, '/') || (strlen(
+                    $dtoGeneratorDirectory,
+                ) > 1 && $dtoGeneratorDirectory[1] === ':')) {
             $commonDir = rtrim($dtoGeneratorDirectory, '/');
         } elseif ($dtoGeneratorDirectory === 'Common') {
             // Special case: if default 'Common' value is used,
@@ -276,6 +275,7 @@ final class GenerateDtoCommand extends Command
         $this->deleteDirectoryContents($commonDir);
 
         $filesToCopy = [
+            'Contract/GeneratedDtoInterface.php',
             'Contract/DtoNormalizerInterface.php',
             'Contract/DtoValidatorInterface.php',
             'Contract/DtoDeserializerInterface.php',
@@ -285,7 +285,11 @@ final class GenerateDtoCommand extends Command
         ];
 
         $sourceBase = dirname(__DIR__);
-        $targetNamespace = $dtoGeneratorNamespace ?? (rtrim($namespace, '\\') . '\\' . str_replace('/', '\\', $dtoGeneratorDirectory));
+        $targetNamespace = $dtoGeneratorNamespace ?? (rtrim($namespace, '\\') . '\\' . str_replace(
+                '/',
+                '\\',
+                $dtoGeneratorDirectory,
+            ));
 
         foreach ($filesToCopy as $relativePath) {
             $sourcePath = realpath($sourceBase . '/' . $relativePath);
@@ -925,11 +929,23 @@ final class GenerateDtoCommand extends Command
 
             $className = $this->normalizeClassName((string)$schemaName);
 
-            foreach ($this->collectUnionTypes(ownerClassName: $className, variants: $schemaDefinition['oneOf'] ?? [], keyword: 'oneOf') as $unionClass) {
+            foreach (
+                $this->collectUnionTypes(
+                    ownerClassName: $className,
+                    variants: $schemaDefinition['oneOf'] ?? [],
+                    keyword: 'oneOf',
+                ) as $unionClass
+            ) {
                 $this->unionInterfacesByClass[$unionClass][] = $className;
             }
 
-            foreach ($this->collectUnionTypes(ownerClassName: $className, variants: $schemaDefinition['anyOf'] ?? [], keyword: 'anyOf') as $unionClass) {
+            foreach (
+                $this->collectUnionTypes(
+                    ownerClassName: $className,
+                    variants: $schemaDefinition['anyOf'] ?? [],
+                    keyword: 'anyOf',
+                ) as $unionClass
+            ) {
                 $this->unionInterfacesByClass[$unionClass][] = $className;
             }
         }
@@ -1055,7 +1071,11 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists('oneOf', $schemaDefinition) && is_array($schemaDefinition['oneOf'])) {
-            $unionTypes = $this->collectUnionTypes(ownerClassName: $className, variants: $schemaDefinition['oneOf'], keyword: 'oneOf');
+            $unionTypes = $this->collectUnionTypes(
+                ownerClassName: $className,
+                variants: $schemaDefinition['oneOf'],
+                keyword: 'oneOf',
+            );
 
             return [
                 'properties' => [],
@@ -1066,7 +1086,11 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists('anyOf', $schemaDefinition) && is_array($schemaDefinition['anyOf'])) {
-            $unionTypes = $this->collectUnionTypes(ownerClassName: $className, variants: $schemaDefinition['anyOf'], keyword: 'anyOf');
+            $unionTypes = $this->collectUnionTypes(
+                ownerClassName: $className,
+                variants: $schemaDefinition['anyOf'],
+                keyword: 'anyOf',
+            );
 
             return [
                 'properties' => [],
@@ -1323,7 +1347,9 @@ final class GenerateDtoCommand extends Command
             ];
         }
 
-        if (array_key_exists('enum', $propertySchema) && is_array($propertySchema['enum']) && $propertySchema['enum'] !== []) {
+        if (array_key_exists('enum', $propertySchema) && is_array(
+                $propertySchema['enum'],
+            ) && $propertySchema['enum'] !== []) {
             $parentEnumType = $this->resolveParentEnumTypeForOverride($ownerClassName, $propertyName, $propertySchema);
             if ($parentEnumType !== null) {
                 return [$parentEnumType, $nullable];
@@ -1422,13 +1448,13 @@ final class GenerateDtoCommand extends Command
                     return ['array<' . $temporalItemType . '>', $nullable];
                 }
 
-            return [
-                'array<' . $this->schemaRefToClassName(
-                    ref: $items['$ref'],
-                    currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
-                ) . '>',
-                $nullable
-            ];
+                return [
+                    'array<' . $this->schemaRefToClassName(
+                        ref: $items['$ref'],
+                        currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
+                    ) . '>',
+                    $nullable
+                ];
             }
 
             if (array_key_exists('enum', $items) && is_array($items['enum']) && $items['enum'] !== []) {
@@ -1608,7 +1634,13 @@ final class GenerateDtoCommand extends Command
      */
     private function canFlattenAllOfPropertyItem(array $item): bool
     {
-        if (array_key_exists('$ref', $item) || array_key_exists('properties', $item) || array_key_exists('allOf', $item) || array_key_exists('oneOf', $item) || array_key_exists('anyOf', $item)) {
+        if (
+            array_key_exists('$ref', $item)
+            || array_key_exists('properties', $item)
+            || array_key_exists('allOf', $item)
+            || array_key_exists('oneOf', $item)
+            || array_key_exists('anyOf', $item)
+        ) {
             return false;
         }
 
@@ -1743,7 +1775,11 @@ final class GenerateDtoCommand extends Command
             return $this->resolveTemporalRefPhpDocFormat($propertySchema['$ref']);
         }
 
-        if (array_key_exists('allOf', $propertySchema) && is_array($propertySchema['allOf']) && count($propertySchema['allOf']) === 1) {
+        if (
+            array_key_exists('allOf', $propertySchema)
+            && is_array($propertySchema['allOf'])
+            && count($propertySchema['allOf']) === 1
+        ) {
             $allOfItem = $propertySchema['allOf'][0] ?? null;
             if (is_array($allOfItem) && array_key_exists('$ref', $allOfItem) && is_string($allOfItem['$ref'])) {
                 return $this->resolveTemporalRefPhpDocFormat($allOfItem['$ref']);
@@ -1937,6 +1973,7 @@ final class GenerateDtoCommand extends Command
                         $unionTypes),
                 ),
                 'signature' => null,
+                'implementedInterfaces' => [],
                 'privateProperties' => [],
                 'constructorParams' => [],
                 'parentArgs' => [],
@@ -1950,22 +1987,24 @@ final class GenerateDtoCommand extends Command
         }
 
         $classModifiers = array_key_exists($className, $this->parentClasses) ? '' : 'final ';
+        $useStatements[] = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+        $useStatements = array_values(array_unique($useStatements));
+        sort($useStatements);
+
         $implementedInterfaces = array_values(array_unique([
             ...($this->unionInterfacesByClass[$className] ?? []),
-            '\\JsonSerializable',
+            'GeneratedDtoInterface',
             '\\Stringable',
         ]));
+        $implementedInterfaces = array_map(
+            fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+            $implementedInterfaces,
+        );
 
         $signature = $classModifiers . 'class ' . $className;
         if ($extends !== null) {
             $signature .= ' extends ' . $this->formatClassNameForNamespace($extends, $namespace);
         }
-
-        $signature .= ' implements ' . implode(
-                ', ',
-                array_map(fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                    $implementedInterfaces),
-            );
 
         $ownProperties = $this->deduplicatePropertiesByLastDefinition($properties);
         $parentProperties = $extends !== null
@@ -2070,6 +2109,7 @@ final class GenerateDtoCommand extends Command
             'className' => $className,
             'unionMembers' => null,
             'signature' => $signature,
+            'implementedInterfaces' => $implementedInterfaces,
             'privateProperties' => $privateProperties,
             'constructorParams' => $constructorParams,
             'constructorDocParams' => $constructorDocParams,
@@ -2829,7 +2869,12 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                foreach ($this->extractProperties(schemaDefinition: $allOfItem, ownerClassName: $className) as $property) {
+                foreach (
+                    $this->extractProperties(
+                        schemaDefinition: $allOfItem,
+                        ownerClassName: $className,
+                    ) as $property
+                ) {
                     $allProperties[] = $property;
                 }
             }
@@ -3206,7 +3251,7 @@ final class GenerateDtoCommand extends Command
 
         return $this->renderPhpTemplate('enum.php.twig', [
             'namespace' => $namespace,
-            'imports' => [],
+            'imports' => ['OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface'],
             'enumName' => $enumName,
             'backingType' => $backingType,
             'cases' => $cases,

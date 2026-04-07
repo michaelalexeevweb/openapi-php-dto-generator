@@ -71,6 +71,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($queryParamsFile);
         $this->assertStringContainsString('class UsersPostsGetQueryParams', $content);
+        $this->assertStringContainsString('implements GeneratedDtoInterface', $content);
+        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface;', $content);
         $this->assertStringContainsString('private readonly int $userId', $content);
         $this->assertStringContainsString('private readonly string $postId', $content);
         $this->assertStringContainsString('private readonly ?int $page', $content);
@@ -238,14 +240,16 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($statusEnumFile);
         $this->assertStringContainsString('enum PostStatus: string', $content);
-        $this->assertStringContainsString('implements \\JsonSerializable', $content);
-        $this->assertStringNotContainsString('implements \\JsonSerializable, \\Stringable', $content);
+        $this->assertStringContainsString('implements GeneratedDtoInterface', $content);
+        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface;', $content);
         $this->assertStringNotContainsString('public function __toString(): string', $content);
         $this->assertStringContainsString("case DRAFT = 'draft'", $content);
         $this->assertStringContainsString("case PUBLISHED = 'published'", $content);
         $this->assertStringContainsString("case ARCHIVED = 'archived'", $content);
         $this->assertStringContainsString('public function toArray(): array', $content);
         $this->assertStringContainsString('public function toJson(): string', $content);
+        $this->assertStringContainsString('public static function getAliases(): array', $content);
+        $this->assertStringContainsString('public static function getConstraints(): array', $content);
 
         // Integer enum
         $typeEnumFile = $this->outputDirectory . '/ArticleType.php';
@@ -1261,6 +1265,7 @@ YAML,
         $this->assertDirectoryExists($commonDir);
 
         $expectedFiles = [
+            'GeneratedDtoInterface.php',
             'DtoNormalizer.php',
             'DtoNormalizerInterface.php',
             'DtoValidator.php',

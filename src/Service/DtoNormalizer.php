@@ -10,6 +10,8 @@ use JsonException;
 use JsonSerializable;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoNormalizerInterface;
+use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -33,7 +35,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         'modelName' => true,
     ];
 
-    private(set) DtoValidator $constraintValidator;
+    private(set) DtoValidatorInterface $constraintValidator;
 
     /**
      * @var array<class-string, array{
@@ -51,7 +53,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private static array $classMetaCache = [];
 
     public function __construct(
-        DtoValidator|null $constraintValidator = null,
+        DtoValidatorInterface|null $constraintValidator = null,
     ) {
         $this->constraintValidator = $constraintValidator ?? new DtoValidator();
     }
@@ -59,7 +61,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /**
      * @return array<string, mixed>
      */
-    public function toArray(object $dto): array
+    public function toArray(GeneratedDtoInterface $dto): array
     {
         $fast = $this->tryFastArray($dto);
         if ($fast !== null) {
@@ -73,7 +75,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      * @return array<string, mixed>
      * @throws RuntimeException if validation fails
      */
-    public function validateAndNormalizeToArray(object $dto): array
+    public function validateAndNormalizeToArray(GeneratedDtoInterface $dto): array
     {
         $errors = $this->validate($dto);
 
@@ -87,7 +89,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /**
      * @throws JsonException
      */
-    public function toJson(object $dto): string
+    public function toJson(GeneratedDtoInterface $dto): string
     {
         $fastJson = $this->tryFastJson($dto);
         if ($fastJson !== null) {
@@ -106,7 +108,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      * @throws RuntimeException if validation fails
      * @throws JsonException
      */
-    public function validateAndNormalizeToJson(object $dto): string
+    public function validateAndNormalizeToJson(GeneratedDtoInterface $dto): string
     {
         $errors = $this->validate($dto);
 
@@ -195,7 +197,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *
      * @return array<string>
      */
-    public function validate(object $dto): array
+    public function validate(GeneratedDtoInterface $dto): array
     {
         $errors = [];
         $meta = $this->getClassMeta($dto);
@@ -269,10 +271,18 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
             try {
                 $normalized = $this->normalizeValue($value);
-                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
+                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue(
+                    $normalized,
+                    $getterMeta,
+                    $meta,
+                );
             } catch (Throwable) {
                 $normalized = $this->normalizeValueFallback($value);
-                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue($normalized, $getterMeta, $meta);
+                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue(
+                    $normalized,
+                    $getterMeta,
+                    $meta,
+                );
             }
         }
 
@@ -470,7 +480,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         return match ($expectedType) {
             'int' => is_int($value) ? null : "Method $methodName() must return int, got " . gettype($value),
-            'float' => (is_float($value) || is_int($value)) ? null : "Method $methodName() must return float, got " . gettype($value),
+            'float' => (is_float($value) || is_int(
+                    $value,
+                )) ? null : "Method $methodName() must return float, got " . gettype($value),
             'string' => is_string($value) ? null : "Method $methodName() must return string, got " . gettype($value),
             'bool' => is_bool($value) ? null : "Method $methodName() must return bool, got " . gettype($value),
             'array' => is_array($value) ? null : "Method $methodName() must return array, got " . gettype($value),
