@@ -132,11 +132,6 @@ interface {{ className }}
 {% endif %}
 	public function {{ property.methodName }}(): {{ property.returnType }}
 	{
-{% if property.hasGuard %}
-		if (!$this->{{ property.inRequestFlagName }}) {
-			throw new \LogicException('Field "{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}" wasn\'t provided in request');
-		}
-{% endif %}
 {% if property.returnKind == 'temporal' %}
 {% if property.isNullableTemporal %}
 		if ($this->{{ property.name }} === null) {

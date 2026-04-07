@@ -112,8 +112,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         foreach ($classMeta['params'] as $paramMeta) {
             $requestFieldName = $paramMeta['requestFieldName'];
 
-            // If parameter is absent in request and constructor has a default value,
-            // keep constructor default instead of forcing null.
+            // If parameter is absent in request and nullable, preserve semantic "not provided" as null.
+            // For non-nullable params keep constructor default (if any).
             $rawSource = '';
             $rawWasProvided = false;
             $this->extractRawValueFromRequest(
@@ -123,8 +123,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 source: $rawSource,
             );
             if (!$rawWasProvided && $paramMeta['hasDefaultValue']) {
+                if ($paramMeta['allowsNull']) {
+                    $args[] = null;
+                    continue;
+                }
+
                 $args[] = $paramMeta['defaultValue'];
-                $providedParams[] = $paramMeta['name'];
                 continue;
             }
 
@@ -175,8 +179,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             if (!$wasProvided && $paramMeta['hasDefaultValue']) {
-                $value = $paramMeta['defaultValue'];
-                $wasProvided = true;
+                if ($paramMeta['allowsNull']) {
+                    $value = null;
+                } else {
+                    $value = $paramMeta['defaultValue'];
+                }
             }
 
             $args[] = $value;

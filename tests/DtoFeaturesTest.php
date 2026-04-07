@@ -364,6 +364,17 @@ final class DtoFeaturesTest extends TestCase
         $this->assertFalse($dto->isDescriptionInRequest());
     }
 
+    public function testMissingNullableFieldWithDefaultIsNullAndNotMarkedAsProvided(): void
+    {
+        $dto = $this->deserializer->deserialize(
+            $this->jsonRequest([]),
+            TrackableDefaultNullableDto::class,
+        );
+
+        $this->assertNull($dto->message);
+        $this->assertFalse($dto->isMessageInRequest());
+    }
+
     public function testInPathTracking(): void
     {
         $request = new Request([], [], ['resourceId' => '55'], [], [], []);
@@ -722,6 +733,21 @@ final class TrackableBodyDto
     public function isDescriptionRequired(): bool
     {
         return false;
+    }
+}
+
+final class TrackableDefaultNullableDto
+{
+    private bool $messageInRequest = false;
+
+    public function __construct(
+        public ?string $message = 'default-message',
+    ) {
+    }
+
+    public function isMessageInRequest(): bool
+    {
+        return $this->messageInRequest;
     }
 }
 

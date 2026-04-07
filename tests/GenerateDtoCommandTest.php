@@ -910,8 +910,9 @@ YAML,
         $this->assertStringContainsString('public function isTest_processRequired(): bool', $content);
         $this->assertStringContainsString('return true;', $content);
 
-        // Guard message should use OpenAPI alias form for request-facing errors.
-        $this->assertStringContainsString("Field \"processed\" wasn\\'t provided in request", $content);
+        // Getter should not be guarded by inRequest flag.
+        $this->assertStringNotContainsString('if (!$this->processedInRequest) {', $content);
+        $this->assertStringNotContainsString("Field \"processed\" wasn\\'t provided in request", $content);
     }
 
     public function testPlaceholderStyleOpenApiNameKeepsAliasAndRequiredMapping(): void
