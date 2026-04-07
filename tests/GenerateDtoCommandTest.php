@@ -226,6 +226,50 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private ?array $availableFilters;', $content);
     }
 
+    public function testConstructorPlacesRequiredParamsBeforeOptionalWithDefaults(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Constructor order test',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'UserTypeEnum' => [
+                        'type' => 'string',
+                        'enum' => ['all', 'custom'],
+                    ],
+                    'OrderSensitiveDto' => [
+                        'type' => 'object',
+                        'required' => ['userIds'],
+                        'properties' => [
+                            'user' => [
+                                '$ref' => '#/components/schemas/UserTypeEnum',
+                                'default' => 'all',
+                            ],
+                            'userIds' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'integer'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/OrderSensitiveDto.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertMatchesRegularExpression(
+            '/public function __construct\(\s*array \$userIds,\s*private readonly \?UserTypeEnum \$user = UserTypeEnum::ALL,/s',
+            $content,
+        );
+    }
+
     public function testInlineResponseSchemaGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');

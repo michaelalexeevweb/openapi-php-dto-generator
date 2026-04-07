@@ -2092,6 +2092,19 @@ final class GenerateDtoCommand extends Command
         }
 
         $constructorParams = $constructorParams ?? [];
+        $requiredConstructorParams = [];
+        $optionalConstructorParams = [];
+
+        foreach ($constructorParams as $constructorParam) {
+            if ($constructorParam['defaultValue'] === '') {
+                $requiredConstructorParams[] = $constructorParam;
+                continue;
+            }
+
+            $optionalConstructorParams[] = $constructorParam;
+        }
+
+        $constructorParams = [...$requiredConstructorParams, ...$optionalConstructorParams];
         $constructorDocParams = array_values(
             array_filter(
                 $constructorParams,
