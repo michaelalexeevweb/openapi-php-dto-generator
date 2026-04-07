@@ -320,6 +320,90 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame(3, $dto->page);
     }
 
+    public function testQueryArrayParameterDeserializesWithoutNonScalarError(): void
+    {
+        $request = new Request(['itemIds' => ['1']], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryArrayDto::class);
+
+        $this->assertSame(['1'], $dto->itemIds);
+    }
+
+    public function testQueryIntArrayCastsNumericStringsToInts(): void
+    {
+        $request = new Request(['itemIds' => ['1', '2', '3']], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryIntArrayDto::class);
+
+        $this->assertSame([1, 2, 3], $dto->getItemIds());
+    }
+
+    public function testQueryIntArrayThrowsOnInvalidItem(): void
+    {
+        $request = new Request(['itemIds' => ['x']], [], [], [], [], []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "itemIds.0" expects int, got string');
+
+        $this->deserializer->deserialize($request, QueryIntArrayDto::class);
+    }
+
+    public function testQueryFloatArrayCastsNumericStringsToFloats(): void
+    {
+        $request = new Request(['scores' => ['1', '2.5']], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryFloatArrayDto::class);
+
+        $this->assertSame([1.0, 2.5], $dto->getScores());
+    }
+
+    public function testQueryFloatArrayThrowsOnInvalidItem(): void
+    {
+        $request = new Request(['scores' => ['bad']], [], [], [], [], []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "scores.0" expects float, got string');
+
+        $this->deserializer->deserialize($request, QueryFloatArrayDto::class);
+    }
+
+    public function testQueryStringArrayCastsValuesToStrings(): void
+    {
+        $request = new Request(['labels' => ['a', 2]], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryStringArrayDto::class);
+
+        $this->assertSame(['a', '2'], $dto->getLabels());
+    }
+
+    public function testQueryBoolArrayCastsCommonBooleanStrings(): void
+    {
+        $request = new Request(['flags' => ['1', '0']], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryBoolArrayDto::class);
+
+        $this->assertSame([true, false], $dto->getFlags());
+    }
+
+    public function testQueryEnumArrayCastsValuesToEnumCases(): void
+    {
+        $request = new Request(['modes' => ['basic', 'advanced']], [], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, QueryEnumArrayDto::class);
+
+        $this->assertSame([QueryModeEnum::BASIC, QueryModeEnum::ADVANCED], $dto->getModes());
+    }
+
+    public function testQueryEnumArrayThrowsOnInvalidItem(): void
+    {
+        $request = new Request(['modes' => ['unknown']], [], [], [], [], []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "modes.0" expects enum');
+
+        $this->deserializer->deserialize($request, QueryEnumArrayDto::class);
+    }
+
     public function testPathParameters_readFromAttributes(): void
     {
         $request = new Request([], [], ['userId' => '42', 'slug' => 'my-post'], [], [], []);
@@ -672,6 +756,116 @@ final class QuerySourceDto
         public string $search,
         public int $page,
     ) {
+    }
+}
+
+final class QueryArrayDto
+{
+    /** @param array<string> $itemIds */
+    public function __construct(
+        public array $itemIds,
+    ) {
+    }
+}
+
+final class QueryIntArrayDto
+{
+    /** @var array<int> */
+    private array $itemIds;
+
+    /** @param array<int> $itemIds */
+    public function __construct(
+        array $itemIds,
+    ) {
+        $this->itemIds = $itemIds;
+    }
+
+    /** @return array<int> */
+    public function getItemIds(): array
+    {
+        return $this->itemIds;
+    }
+}
+
+final class QueryFloatArrayDto
+{
+    /** @var array<float> */
+    private array $scores;
+
+    /** @param array<float> $scores */
+    public function __construct(
+        array $scores,
+    ) {
+        $this->scores = $scores;
+    }
+
+    /** @return array<float> */
+    public function getScores(): array
+    {
+        return $this->scores;
+    }
+}
+
+final class QueryStringArrayDto
+{
+    /** @var array<string> */
+    private array $labels;
+
+    /** @param array<string> $labels */
+    public function __construct(
+        array $labels,
+    ) {
+        $this->labels = $labels;
+    }
+
+    /** @return array<string> */
+    public function getLabels(): array
+    {
+        return $this->labels;
+    }
+}
+
+final class QueryBoolArrayDto
+{
+    /** @var array<bool> */
+    private array $flags;
+
+    /** @param array<bool> $flags */
+    public function __construct(
+        array $flags,
+    ) {
+        $this->flags = $flags;
+    }
+
+    /** @return array<bool> */
+    public function getFlags(): array
+    {
+        return $this->flags;
+    }
+}
+
+enum QueryModeEnum: string
+{
+    case BASIC = 'basic';
+    case ADVANCED = 'advanced';
+}
+
+final class QueryEnumArrayDto
+{
+    /** @var array<QueryModeEnum> */
+    private array $modes;
+
+    /** @param array<QueryModeEnum> $modes */
+    public function __construct(
+        array $modes,
+    ) {
+        $this->modes = $modes;
+    }
+
+    /** @return array<QueryModeEnum> */
+    public function getModes(): array
+    {
+        return $this->modes;
     }
 }
 

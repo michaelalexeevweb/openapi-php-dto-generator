@@ -475,11 +475,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        // Check in query parameters
-        if ($request->query->has($paramName)) {
+        // Check in query parameters (supports scalar and array query values)
+        $queryData = $request->query->all();
+        if (array_key_exists($paramName, $queryData)) {
             $wasProvided = true;
             return $this->castValue(
-                value: $request->query->get($paramName),
+                value: $queryData[$paramName],
                 paramName: $paramName,
                 typeName: $typeName,
                 allowsNull: $allowsNull,
@@ -619,10 +620,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $bodyData[$paramName];
         }
 
-        if ($request->query->has($paramName)) {
+        $queryData = $request->query->all();
+        if (array_key_exists($paramName, $queryData)) {
             $wasProvided = true;
             $source = 'query';
-            return $request->query->get($paramName);
+            return $queryData[$paramName];
         }
 
         if ($request->attributes->has($paramName)) {
@@ -923,6 +925,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             itemValue: $itemValue,
                             arrayItemType: $arrayItemType,
                             itemPath: $itemPath,
+                            source: 'json',
                         );
                     } catch (RuntimeException $e) {
                         $errors[] = $e->getMessage();
@@ -973,7 +976,34 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($typeName === 'array') {
-            return is_array($value) ? $value : [$value];
+            $arrayValue = is_array($value) ? $value : [$value];
+
+            if ($arrayItemType === null) {
+                return $arrayValue;
+            }
+
+            $normalized = [];
+            $errors = [];
+            foreach ($arrayValue as $index => $itemValue) {
+                $itemPath = $paramPath . '.' . $index;
+
+                try {
+                    $normalized[$index] = $this->castArrayItemValue(
+                        itemValue: $itemValue,
+                        arrayItemType: $arrayItemType,
+                        itemPath: $itemPath,
+                        source: $source,
+                    );
+                } catch (RuntimeException $e) {
+                    $errors[] = $e->getMessage();
+                }
+            }
+
+            if ($errors !== []) {
+                throw new RuntimeException(implode("\n", $errors));
+            }
+
+            return $normalized;
         }
 
         // Handle DateTimeImmutable
@@ -1038,7 +1068,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         );
     }
 
-    private function castArrayItemValue(mixed $itemValue, string $arrayItemType, string $itemPath): mixed
+    private function castArrayItemValue(mixed $itemValue, string $arrayItemType, string $itemPath, string $source): mixed
     {
         if (in_array($arrayItemType, ['int', 'float', 'string', 'bool', 'array'], true)) {
             return $this->castValue(
@@ -1046,7 +1076,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 paramName: $itemPath,
                 typeName: $arrayItemType,
                 allowsNull: false,
-                source: 'json',
+                source: $source,
                 arrayItemType: null,
                 paramPath: $itemPath,
             );
@@ -1275,6 +1305,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $rawType = ltrim($matches[1], '?');
+        if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
+            return $rawType;
+        }
+
         if (str_contains($rawType, '\\')) {
             return $rawType;
         }

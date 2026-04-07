@@ -171,15 +171,15 @@ final class DtoDeserializerTest extends TestCase
         $this->assertFalse($dto->isLimitInQuery());
     }
 
-    public function testDeserializeUsesConstructorDefaultForMissingOptionalField(): void
+    public function testDeserializeSetsNullForMissingNullableFieldEvenWhenConstructorHasDefault(): void
     {
         $request = new Request(['page' => '5'], [], ['userId' => '10'], [], [], []);
 
         $dto = $this->deserializer->deserialize($request, DefaultValueMixedDto::class);
 
         $this->assertInstanceOf(DefaultValueMixedDto::class, $dto);
-        $this->assertSame(10, $dto->getLimit());
-        $this->assertTrue($dto->isLimitInRequest());
+        $this->assertNull($dto->getLimit());
+        $this->assertFalse($dto->isLimitInRequest());
     }
 
     public function testDeserializeThrowsExceptionWhenObjectPassedInsteadOfArray(): void
