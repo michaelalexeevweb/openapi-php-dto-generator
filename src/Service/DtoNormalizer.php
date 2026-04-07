@@ -91,11 +91,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function toJson(GeneratedDtoInterface $dto): string
     {
-        $fastJson = $this->tryFastJson($dto);
-        if ($fastJson !== null) {
-            return $fastJson;
-        }
-
         $fastArray = $this->tryFastArray($dto);
         if ($fastArray !== null) {
             return json_encode($fastArray, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
@@ -139,21 +134,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         return $this->normalizeArrayPayload($result);
-    }
-
-    private function tryFastJson(object $dto): ?string
-    {
-        if (!method_exists($dto, 'toJson')) {
-            return null;
-        }
-
-        try {
-            $result = $dto->toJson();
-        } catch (Throwable) {
-            return null;
-        }
-
-        return is_string($result) ? $result : null;
     }
 
     /**
@@ -344,6 +324,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return array_map(fn($item) => $this->normalizeValue($item), $value);
         }
 
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+
+        if ($value instanceof UnitEnum) {
+            return $value->name;
+        }
+
         if (is_object($value) && method_exists($value, 'toArray')) {
             try {
                 $arrayValue = $value->toArray();
@@ -366,13 +354,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $value->format('c');
         }
 
-        if ($value instanceof BackedEnum) {
-            return $value->value;
-        }
-
-        if ($value instanceof UnitEnum) {
-            return $value->name;
-        }
 
         if (is_object($value)) {
             $meta = $this->getClassMeta($value);
