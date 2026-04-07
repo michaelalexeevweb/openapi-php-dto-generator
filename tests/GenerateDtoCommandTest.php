@@ -1340,6 +1340,52 @@ YAML,
         $this->assertStringContainsString('private readonly ?string $note', $content);
     }
 
+    public function testGeneratesQueryArrayItemConstraintsWithUuidFormat(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Query array item constraints',
+                'version' => '1.0.0',
+            ],
+            'paths' => [
+                '/items' => [
+                    'get' => [
+                        'parameters' => [
+                            [
+                                'name' => 'tokens',
+                                'in' => 'query',
+                                'required' => false,
+                                'schema' => [
+                                    'type' => 'array',
+                                    'items' => [
+                                        'type' => 'string',
+                                        'format' => 'uuid',
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => ['description' => 'ok'],
+                        ],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/ItemsGetQueryParams.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString(
+            '$constraints[\'tokens\'] = [\'type\' => \'array\', \'items\' => [\'type\' => \'string\', \'format\' => \'uuid\']];',
+            $content,
+        );
+    }
+
     public function testCopyCommonServices(): void
     {
         $namespace = 'MyApp\\Generated';

@@ -1235,6 +1235,7 @@ final class GenerateDtoCommand extends Command
             'minItems',
             'maxItems',
             'uniqueItems',
+            'items',
             'oneOf',
             'anyOf',
         ];

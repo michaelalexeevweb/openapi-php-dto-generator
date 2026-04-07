@@ -404,6 +404,16 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, QueryEnumArrayDto::class);
     }
 
+    public function testQueryStringArrayValidatesUuidItemFormatFromConstraints(): void
+    {
+        $request = new Request(['tokens' => ['bad-uuid']], [], [], [], [], []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "tokens".0 must match format uuid');
+
+        $this->deserializer->deserialize($request, QueryUuidArrayDto::class);
+    }
+
     public function testPathParameters_readFromAttributes(): void
     {
         $request = new Request([], [], ['userId' => '42', 'slug' => 'my-post'], [], [], []);
@@ -866,6 +876,39 @@ final class QueryEnumArrayDto
     public function getModes(): array
     {
         return $this->modes;
+    }
+}
+
+final class QueryUuidArrayDto
+{
+    /** @var array<string> */
+    private array $tokens;
+
+    /** @param array<string> $tokens */
+    public function __construct(
+        array $tokens,
+    ) {
+        $this->tokens = $tokens;
+    }
+
+    /** @return array<string> */
+    public function getTokens(): array
+    {
+        return $this->tokens;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'tokens' => [
+                'type' => 'array',
+                'items' => [
+                    'type' => 'string',
+                    'format' => 'uuid',
+                ],
+            ],
+        ];
     }
 }
 

@@ -69,7 +69,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         $hasArrayConstraints = array_any(
-            ['minItems', 'maxItems', 'uniqueItems'],
+            ['minItems', 'maxItems', 'uniqueItems', 'items'],
             static fn(string $key): bool => array_key_exists($key, $constraints),
         );
 
@@ -315,6 +315,20 @@ final class DtoValidator implements DtoValidatorInterface
                 }
 
                 $seen[$fingerprint] = true;
+            }
+        }
+
+        $itemConstraints = $constraints['items'] ?? null;
+        if (is_array($itemConstraints) && $itemConstraints !== []) {
+            foreach ($value as $index => $itemValue) {
+                $errors = [
+                    ...$errors,
+                    ...$this->validate(
+                        subject: sprintf('%s.%s', $subject, (string)$index),
+                        value: $itemValue,
+                        constraints: $itemConstraints,
+                    ),
+                ];
             }
         }
 
