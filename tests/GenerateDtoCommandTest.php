@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Tests;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
+use Symfony\Component\Console\Tester\CommandTester;
 
 final class GenerateDtoCommandTest extends TestCase
 {
@@ -1385,6 +1386,66 @@ YAML,
         } finally {
             $this->deleteDirectory($customDir);
             $this->deleteDirectory(dirname($customDir)); // Core
+        }
+    }
+
+    public function testCliGenerationUsesCustomGeneratedDtoInterfaceImportWhenDtoGeneratorNamespaceProvided(): void
+    {
+        $unique = uniqid('openapi_cli_common_ns_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+        $specFile = $baseDir . '/spec.yaml';
+        $commonDir = $baseDir . '/shared/common';
+
+        mkdir($outputDir, 0755, true);
+        mkdir($commonDir, 0755, true);
+
+        file_put_contents(
+            $specFile,
+            <<<'YAML'
+openapi: 3.0.0
+info:
+  title: CLI import test
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    SampleResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+YAML,
+        );
+
+        try {
+            $commandTester = new CommandTester(new GenerateDtoCommand());
+            $exitCode = $commandTester->execute([
+                '--file' => $specFile,
+                '--directory' => $outputDir,
+                '--namespace' => 'TestNamespace',
+                '--dto-generator-directory' => $commonDir,
+                '--dto-generator-namespace' => 'MyApp\\Shared\\DtoTools',
+            ]);
+
+            $this->assertSame(0, $exitCode);
+
+            $dtoFile = $outputDir . '/SampleResponse.php';
+            $this->assertFileExists($dtoFile);
+            $dtoContent = (string)file_get_contents($dtoFile);
+            $this->assertStringContainsString('use MyApp\\Shared\\DtoTools\\GeneratedDtoInterface;', $dtoContent);
+            $this->assertStringNotContainsString(
+                'use OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface;',
+                $dtoContent,
+            );
+
+            $this->assertFileExists($commonDir . '/GeneratedDtoInterface.php');
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
         }
     }
 

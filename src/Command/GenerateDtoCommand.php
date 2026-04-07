@@ -80,6 +80,7 @@ final class GenerateDtoCommand extends Command
     private(set) ?string $rootSpecFile = null;
     private(set) string $baseOutputDirectory = '';
     private(set) string $baseNamespace = '';
+    private(set) string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
 
     protected function configure(): void
     {
@@ -153,26 +154,40 @@ final class GenerateDtoCommand extends Command
             ? $this->normalizeExplicitNamespace($namespaceOption)
             : $this->directoryToNamespace($directory);
 
+        $dtoGeneratorDirectoryOption = $input->getOption('dto-generator-directory');
+        $dtoGeneratorDirectory = null;
+        $dtoGeneratorNamespace = null;
+
+        if ($dtoGeneratorDirectoryOption !== false) {
+            $dtoGeneratorDirectory = is_string($dtoGeneratorDirectoryOption)
+                ? $dtoGeneratorDirectoryOption
+                : 'Common';
+            $dtoGeneratorNamespaceOption = $input->getOption('dto-generator-namespace');
+            $dtoGeneratorNamespaceOption = is_string($dtoGeneratorNamespaceOption)
+                ? $dtoGeneratorNamespaceOption
+                : null;
+            $dtoGeneratorNamespace = $dtoGeneratorNamespaceOption;
+
+            // Keep existing CLI behavior: when custom directory is provided without namespace,
+            // derive namespace from directory path itself.
+            if ($dtoGeneratorNamespace === null && $dtoGeneratorDirectory !== 'Common') {
+                $dtoGeneratorNamespace = $this->directoryToNamespace($dtoGeneratorDirectory);
+            }
+
+            $dtoGeneratorNamespace = $this->resolveDtoGeneratorTargetNamespace(
+                namespace: $namespace,
+                dtoGeneratorDirectory: $dtoGeneratorDirectory,
+                dtoGeneratorNamespace: $dtoGeneratorNamespace,
+            );
+            $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\\GeneratedDtoInterface';
+        } else {
+            $this->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+        }
+
         try {
             $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace);
 
-            $dtoGeneratorDirectoryOption = $input->getOption('dto-generator-directory');
-            if ($dtoGeneratorDirectoryOption !== false) {
-                $dtoGeneratorDirectory = is_string(
-                    $dtoGeneratorDirectoryOption,
-                ) ? $dtoGeneratorDirectoryOption : 'Common';
-                $dtoGeneratorNamespace = $input->getOption('dto-generator-namespace');
-                $dtoGeneratorNamespace = is_string($dtoGeneratorNamespace) ? $dtoGeneratorNamespace : null;
-
-                if ($dtoGeneratorNamespace === null) {
-                    // If path is absolute OR relative (but not default 'Common'),
-                    // try to guess namespace based on path itself.
-                    // For default 'Common', the service will calculate $namespace . '\Common'
-                    if ($dtoGeneratorDirectory !== 'Common') {
-                        $dtoGeneratorNamespace = $this->directoryToNamespace($dtoGeneratorDirectory);
-                    }
-                }
-
+            if ($dtoGeneratorDirectory !== null) {
                 $this->copyCommonServices(
                     outputDirectory: $outputDirectory,
                     namespace: $namespace,
@@ -285,11 +300,11 @@ final class GenerateDtoCommand extends Command
         ];
 
         $sourceBase = dirname(__DIR__);
-        $targetNamespace = $dtoGeneratorNamespace ?? (rtrim($namespace, '\\') . '\\' . str_replace(
-                '/',
-                '\\',
-                $dtoGeneratorDirectory,
-            ));
+        $targetNamespace = $this->resolveDtoGeneratorTargetNamespace(
+            namespace: $namespace,
+            dtoGeneratorDirectory: $dtoGeneratorDirectory,
+            dtoGeneratorNamespace: $dtoGeneratorNamespace,
+        );
 
         foreach ($filesToCopy as $relativePath) {
             $sourcePath = realpath($sourceBase . '/' . $relativePath);
@@ -337,6 +352,19 @@ final class GenerateDtoCommand extends Command
         $this->rootSpecFile = $rootSpecFile;
         $this->baseOutputDirectory = $outputDirectory;
         $this->baseNamespace = $namespace;
+    }
+
+    private function resolveDtoGeneratorTargetNamespace(
+        string $namespace,
+        string $dtoGeneratorDirectory,
+        ?string $dtoGeneratorNamespace,
+    ): string {
+        if (is_string($dtoGeneratorNamespace) && trim($dtoGeneratorNamespace) !== '') {
+            return trim($dtoGeneratorNamespace, '\\');
+        }
+
+        // Keep BC for copyCommonServices direct calls.
+        return rtrim($namespace, '\\') . '\\' . str_replace('/', '\\', $dtoGeneratorDirectory);
     }
 
     private function finalizeGeneration(): int
@@ -1987,7 +2015,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $classModifiers = array_key_exists($className, $this->parentClasses) ? '' : 'final ';
-        $useStatements[] = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+        $useStatements[] = $this->generatedDtoInterfaceImportFqcn;
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
 
@@ -3251,7 +3279,7 @@ final class GenerateDtoCommand extends Command
 
         return $this->renderPhpTemplate('enum.php.twig', [
             'namespace' => $namespace,
-            'imports' => ['OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface'],
+            'imports' => [$this->generatedDtoInterfaceImportFqcn],
             'enumName' => $enumName,
             'backingType' => $backingType,
             'cases' => $cases,
