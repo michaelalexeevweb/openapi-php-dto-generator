@@ -7,8 +7,6 @@ namespace {{ namespace }};
 {% for import in imports %}
 use {{ import }};
 {% endfor %}
-{% if imports is not empty %}
-{% endif %}
 {% if unionMembers is not null %}
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -31,6 +29,7 @@ interface {{ className }}
 {% endif %}
 {{ classDecl }}
 {
+
 {% for property in privateProperties %}
 {% if property.isArray %}
 {% set hasDoc = property.description is not null or property.constraintsLine is not null or property.docVarType is not null %}
@@ -88,9 +87,9 @@ interface {{ className }}
 	public function __construct(
 {% for param in constructorParams %}
 {% if param.isArray %}
-		{{ param.type }} ${{ param.name }}{{ param.defaultValue }},
+		{{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
 {% else %}
-		private readonly {{ param.type }} ${{ param.name }}{{ param.defaultValue }},
+		private readonly {{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
 {% endif %}
 {% endfor %}
 	) {
@@ -105,15 +104,23 @@ interface {{ className }}
 		);
 {% endif %}
 {% endif %}
-		$providedArgCount = func_num_args();
 {% for param in constructorParams %}
 {% if param.tracksArgPresence %}
-		$this->{{ param.inRequestFlagName }} = $providedArgCount >= {{ loop.index }};
+{% if param.usesUnsetSentinel %}
+		// Track if parameter was explicitly passed
+		$this->{{ param.inRequestFlagName }} = ${{ param.name }} !== UnsetValue::UNSET;
+{% else %}
+		$this->{{ param.inRequestFlagName }} = true;
+{% endif %}
 {% endif %}
 {% endfor %}
 {% for property in privateProperties %}
 {% if property.isArray %}
+{% if property.usesUnsetSentinel %}
+		$this->{{ property.name }} = ${{ property.name }} !== UnsetValue::UNSET ? ${{ property.name }} : null;
+{% else %}
 		$this->{{ property.name }} = ${{ property.name }};
+{% endif %}
 {% endif %}
 {% endfor %}
 	}
@@ -185,6 +192,10 @@ interface {{ className }}
 		}
 {% endif %}
 		$this->{{ property.name }}[] = $item;
+		// Mark as being in request if it wasn't explicitly passed to constructor
+		if (!$this->{{ property.inRequestFlagName }}) {
+			$this->{{ property.inRequestFlagName }} = true;
+		}
 	}
 {% endif %}
 {% if not loop.last %}

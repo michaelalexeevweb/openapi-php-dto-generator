@@ -77,7 +77,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private readonly int $userId', $content);
         $this->assertStringContainsString('private readonly string $postId', $content);
         $this->assertStringContainsString('private readonly ?int $page', $content);
-        $this->assertStringContainsString('private readonly ?int $limit', $content);
+        $this->assertStringContainsString('private readonly int|null|UnsetValue $limit', $content);
         $this->assertStringContainsString('public function getUserId(): int', $content);
         $this->assertStringContainsString('public function getPostId(): string', $content);
         $this->assertStringContainsString('public function getPage(): ?int', $content);
@@ -102,7 +102,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($postRequestFile);
         $this->assertStringContainsString('class ArticlesPostRequest', $content);
         $this->assertStringContainsString('private readonly string $title', $content);
-        $this->assertStringContainsString('private readonly ?string $content', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $content', $content);
     }
 
     public function testRequestBodyPatchGeneration(): void
@@ -116,8 +116,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($patchRequestFile);
         $this->assertStringContainsString('class ArticlesPatchRequest', $content);
-        $this->assertStringContainsString('private readonly ?string $title', $content);
-        $this->assertStringContainsString('private readonly ?bool $published', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $title', $content);
+        $this->assertStringContainsString('private readonly bool|null|UnsetValue $published', $content);
     }
 
     public function testConstructorDocblockKeepsGenericArrayParamAndOmitsRedundantParams(): void
@@ -281,8 +281,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($responseFile);
         $this->assertStringContainsString('class Status200', $content);
-        $this->assertStringContainsString('private readonly ?string $status', $content);
-        $this->assertStringContainsString('private readonly ?int $timestamp', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $status', $content);
+        $this->assertStringContainsString('private readonly int|null|UnsetValue $timestamp', $content);
     }
 
     public function testDescriptionSupport(): void
@@ -353,8 +353,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($metadataFile);
         $this->assertStringContainsString('class ArticleMetadata', $content);
-        $this->assertStringContainsString('private readonly ?string $createdAt', $content);
-        $this->assertStringContainsString('private readonly ?string $updatedAt', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $createdAt', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $updatedAt', $content);
 
         // Check array helper on Article.tags
         $articleFile = $this->outputDirectory . '/Article.php';
@@ -867,7 +867,7 @@ YAML,
 
         // Query required flags from malformed specs still map as required/non-nullable.
         $this->assertStringContainsString('private readonly int $page', $content);
-        $this->assertStringContainsString('private readonly ?int $limit', $content);
+        $this->assertStringContainsString('private readonly int|null|UnsetValue $limit', $content);
         $this->assertStringContainsString('public function isPageInQuery(): bool', $content);
         $this->assertStringContainsString('public function isLimitInQuery(): bool', $content);
         $this->assertStringContainsString('return $this->pageInQuery;', $content);
@@ -1226,10 +1226,10 @@ YAML,
         $this->assertStringNotContainsString('private readonly ?int $id', $content);
 
         // nickname: type: [string, null]  →  nullable string
-        $this->assertStringContainsString('private readonly ?string $nickname', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $nickname', $content);
 
         // score: type: [number, null]  →  nullable float
-        $this->assertStringContainsString('private readonly ?float $score', $content);
+        $this->assertStringContainsString('private readonly float|null|UnsetValue $score', $content);
     }
 
     /**
@@ -1245,7 +1245,7 @@ YAML,
         $content = file_get_contents($file);
 
         // pet: oneOf: [$ref: SimplePet, type: null]  →  nullable SimplePet
-        $this->assertStringContainsString('private readonly ?SimplePet $pet', $content);
+        $this->assertStringContainsString('private readonly SimplePet|null|UnsetValue $pet', $content);
     }
 
     /**
@@ -1262,7 +1262,7 @@ YAML,
         $content = file_get_contents($file);
 
         // companion is typed as SimplePet
-        $this->assertStringContainsString('private readonly ?SimplePet $companion', $content);
+        $this->assertStringContainsString('private readonly SimplePet|null|UnsetValue $companion', $content);
 
         // The sibling description must appear in the docblock
         $this->assertStringContainsString('The companion pet of this owner', $content);
@@ -1318,7 +1318,7 @@ YAML,
         $content = file_get_contents($file);
 
         // value is nullable string (oneOf string | null)
-        $this->assertStringContainsString('private readonly ?string $value', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $value', $content);
     }
 
     /**
@@ -1337,7 +1337,7 @@ YAML,
         $this->assertStringContainsString('private readonly string $product', $content);
         $this->assertStringContainsString('private readonly int $quantity', $content);
         // note: type: [string, null]  →  nullable
-        $this->assertStringContainsString('private readonly ?string $note', $content);
+        $this->assertStringContainsString('private readonly string|null|UnsetValue $note', $content);
     }
 
     public function testGeneratesQueryArrayItemConstraintsWithUuidFormat(): void

@@ -81,6 +81,7 @@ final class GenerateDtoCommand extends Command
     private(set) string $baseOutputDirectory = '';
     private(set) string $baseNamespace = '';
     private(set) string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+    private(set) string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
 
     protected function configure(): void
     {
@@ -180,8 +181,10 @@ final class GenerateDtoCommand extends Command
                 dtoGeneratorNamespace: $dtoGeneratorNamespace,
             );
             $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\\GeneratedDtoInterface';
+            $this->unsetValueImportFqcn = $dtoGeneratorNamespace . '\\UnsetValue';
         } else {
             $this->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+            $this->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
         }
 
         try {
@@ -291,6 +294,7 @@ final class GenerateDtoCommand extends Command
 
         $filesToCopy = [
             'Contract/GeneratedDtoInterface.php',
+            'Contract/UnsetValue.php',
             'Contract/DtoNormalizerInterface.php',
             'Contract/DtoValidatorInterface.php',
             'Contract/DtoDeserializerInterface.php',
@@ -2146,6 +2150,16 @@ final class GenerateDtoCommand extends Command
         $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
         $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
 
+        $needsUnsetValueImport = array_any(
+            $constructorParams,
+            static fn(array $param): bool => $param['usesUnsetSentinel'],
+        );
+        if ($needsUnsetValueImport) {
+            $useStatements[] = $this->unsetValueImportFqcn;
+            $useStatements = array_values(array_unique($useStatements));
+            sort($useStatements);
+        }
+
         return $this->renderPhpTemplate('dto.php.twig', [
             'namespace' => $namespace,
             'imports' => $useStatements,
@@ -2168,7 +2182,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, isArray: bool}
+     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, isArray: bool, usesUnsetSentinel: bool}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
     {
@@ -2204,12 +2218,13 @@ final class GenerateDtoCommand extends Command
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
             'isArray' => $isArray,
+            'usesUnsetSentinel' => $isArray && !$property['required'] && $property['default'] === null,
         ];
     }
 
     /**
      * @param SchemaProperty $property
-     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, constraintsLine: ?string, shouldDocument: bool, tracksArgPresence: bool, inRequestFlagName: string}
+     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, constraintsLine: ?string, shouldDocument: bool, tracksArgPresence: bool, inRequestFlagName: string, usesUnsetSentinel: bool}
      */
     private function resolveConstructorParameterData(array $property, string $namespace, bool $tracksArgPresence): array
     {
@@ -2221,6 +2236,9 @@ final class GenerateDtoCommand extends Command
             $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
             $isArray = true;
+        } elseif ($phpType === 'array' || $phpType === '?array') {
+            // Direct array type (not generic)
+            $isArray = true;
         } else {
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
             $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
@@ -2228,9 +2246,21 @@ final class GenerateDtoCommand extends Command
 
         $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $defaultValue = $this->renderDefaultValue($property['default'], $phpType, $property['type']);
-        if ($defaultValue === '' && !$property['required'] && (bool)$property['nullable']) {
+
+        // Use UnsetValue enum for optional parameters that track presence and have no explicit default
+        $usesUnsetSentinel = false;
+        if ($tracksArgPresence && !$property['required'] && $defaultValue === '') {
+            $usesUnsetSentinel = true;
+            // Add union type with null and UnsetValue - remove ? prefix if present
+            if (strpos($type, '?') === 0) {
+                $type = substr($type, 1) . '|null|UnsetValue';
+            } else {
+                $type = $type . '|null|UnsetValue';
+            }
+        } elseif ($defaultValue === '' && !$property['required'] && (bool)$property['nullable']) {
             $defaultValue = ' = null';
         }
+
         $description = $property['description'] ?? null;
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
         $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
@@ -2255,6 +2285,7 @@ final class GenerateDtoCommand extends Command
             'shouldDocument' => $shouldDocument,
             'tracksArgPresence' => $tracksArgPresence,
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
+            'usesUnsetSentinel' => $usesUnsetSentinel,
         ];
     }
 
