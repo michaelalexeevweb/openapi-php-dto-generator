@@ -180,8 +180,8 @@ final class GenerateDtoCommand extends Command
                 dtoGeneratorDirectory: $dtoGeneratorDirectory,
                 dtoGeneratorNamespace: $dtoGeneratorNamespace,
             );
-            $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\\GeneratedDtoInterface';
-            $this->unsetValueImportFqcn = $dtoGeneratorNamespace . '\\UnsetValue';
+            $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\\' . 'GeneratedDtoInterface';
+            $this->unsetValueImportFqcn = $dtoGeneratorNamespace . '\\' . 'UnsetValue';
         } else {
             $this->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
             $this->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
@@ -2102,7 +2102,7 @@ final class GenerateDtoCommand extends Command
         $optionalConstructorParams = [];
 
         foreach ($constructorParams as $constructorParam) {
-            if ($constructorParam['defaultValue'] === '') {
+            if ($constructorParam['defaultValue'] === '' && !$constructorParam['usesUnsetSentinel']) {
                 $requiredConstructorParams[] = $constructorParam;
                 continue;
             }

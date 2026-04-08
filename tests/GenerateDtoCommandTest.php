@@ -270,6 +270,43 @@ final class GenerateDtoCommandTest extends TestCase
         );
     }
 
+    public function testConstructorPlacesRequiredParamsBeforeUnsetSentinelOptionalParams(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Constructor order sentinel test',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'OrderWithSentinel' => [
+                        'type' => 'object',
+                        'required' => ['payload'],
+                        'properties' => [
+                            'message' => ['type' => 'string'],
+                            'payload' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/OrderWithSentinel.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertMatchesRegularExpression(
+            '/public function __construct\(\s*array \$payload,\s*private readonly string\|null\|UnsetValue \$message = UnsetValue::UNSET,/s',
+            $content,
+        );
+    }
+
     public function testInlineResponseSchemaGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
