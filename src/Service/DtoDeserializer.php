@@ -213,6 +213,26 @@ final class DtoDeserializer implements DtoDeserializerInterface
         /** @var T $dto */
         $dto = $reflection->newInstanceArgs($args);
 
+        // Normalize tracking flags first to override constructor-level defaults.
+        foreach ($classMeta['params'] as $paramMeta) {
+            $paramName = $paramMeta['name'];
+
+            $inRequestProperty = $classMeta['inRequestProperties'][$paramName] ?? null;
+            if ($inRequestProperty !== null) {
+                $inRequestProperty->setValue($dto, false);
+            }
+
+            $inPathProperty = $classMeta['inPathProperties'][$paramName] ?? null;
+            if ($inPathProperty !== null) {
+                $inPathProperty->setValue($dto, false);
+            }
+
+            $inQueryProperty = $classMeta['inQueryProperties'][$paramName] ?? null;
+            if ($inQueryProperty !== null) {
+                $inQueryProperty->setValue($dto, false);
+            }
+        }
+
         // Mark fields as provided in request using pre-resolved (and already
         // setAccessible'd) ReflectionProperty objects from the metadata cache.
         foreach ($providedParams as $paramName) {

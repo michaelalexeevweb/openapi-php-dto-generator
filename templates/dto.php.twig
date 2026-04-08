@@ -105,6 +105,12 @@ interface {{ className }}
 		);
 {% endif %}
 {% endif %}
+		$providedArgCount = func_num_args();
+{% for param in constructorParams %}
+{% if param.tracksArgPresence %}
+		$this->{{ param.inRequestFlagName }} = $providedArgCount >= {{ loop.index }};
+{% endif %}
+{% endfor %}
 {% for property in privateProperties %}
 {% if property.isArray %}
 		$this->{{ property.name }} = ${{ property.name }};
@@ -214,13 +220,13 @@ interface {{ className }}
 	{
 		$result = [];
 {% for property in methodProperties %}
-		try {
+{% if property.requiredLiteral == 'true' %}
+		$result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+{% else %}
+		if ($this->{{ property.inRequestFlagName }}) {
 			$result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
-		} catch (\LogicException $exception) {
-			if (!str_contains($exception->getMessage(), "wasn't provided in request")) {
-				throw $exception;
-			}
 		}
+{% endif %}
 {% endfor %}
 
 		return $result;

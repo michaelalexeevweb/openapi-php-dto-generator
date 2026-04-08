@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
@@ -576,6 +578,26 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, FileUploadDto::class);
     }
 
+    public function testManualDtoOmittedOptionalFieldIsExcludedDuringNormalization(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new ManualPresenceDto('alpha');
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame(['primary' => 'alpha'], $payload);
+    }
+
+    public function testManualDtoExplicitNullOptionalFieldIsIncludedDuringNormalization(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new ManualPresenceDto('alpha', null);
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame(['primary' => 'alpha', 'secondary' => null], $payload);
+    }
+
     // =========================================================================
     // Helpers
     // =========================================================================
@@ -1084,3 +1106,94 @@ final class FileUploadDto
     ) {
     }
 }
+
+final class ManualPresenceDto implements GeneratedDtoInterface
+{
+    private bool $primaryInRequest = false;
+    private bool $secondaryInRequest = false;
+
+    public function __construct(
+        private readonly string $primary,
+        private readonly ?string $secondary = null,
+    ) {
+        $providedArgCount = func_num_args();
+        $this->primaryInRequest = $providedArgCount >= 1;
+        $this->secondaryInRequest = $providedArgCount >= 2;
+    }
+
+    public function getPrimary(): string
+    {
+        return $this->primary;
+    }
+
+    public function getSecondary(): ?string
+    {
+        return $this->secondary;
+    }
+
+    public function isPrimaryInRequest(): bool
+    {
+        return $this->primaryInRequest;
+    }
+
+    public function isSecondaryInRequest(): bool
+    {
+        return $this->secondaryInRequest;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        $result = [
+            'primary' => $this->getPrimary(),
+        ];
+
+        if ($this->secondaryInRequest) {
+            $result['secondary'] = $this->getSecondary();
+        }
+
+        return $result;
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'primary' => [
+                'getter' => 'getPrimary',
+                'type' => 'string',
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'primary', 'inRequestFlagGetter' => 'isPrimaryInRequest'],
+            ],
+            'secondary' => [
+                'getter' => 'getSecondary',
+                'type' => 'string',
+                'nullable' => true,
+                'metadata' => ['openApiName' => 'secondary', 'inRequestFlagGetter' => 'isSecondaryInRequest'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+

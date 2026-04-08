@@ -2089,7 +2089,8 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach ($allConstructorParams as $property) {
-            $constructorParams[] = $this->resolveConstructorParameterData($property, $namespace);
+            $tracksArgPresence = !array_key_exists($property['name'], $parentByName);
+            $constructorParams[] = $this->resolveConstructorParameterData($property, $namespace, $tracksArgPresence);
         }
 
         $constructorParams = $constructorParams ?? [];
@@ -2208,9 +2209,9 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, constraintsLine: ?string, shouldDocument: bool}
+     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, constraintsLine: ?string, shouldDocument: bool, tracksArgPresence: bool, inRequestFlagName: string}
      */
-    private function resolveConstructorParameterData(array $property, string $namespace): array
+    private function resolveConstructorParameterData(array $property, string $namespace, bool $tracksArgPresence): array
     {
         $phpType = $property['type'];
         $phpDocType = $property['type'];
@@ -2227,6 +2228,9 @@ final class GenerateDtoCommand extends Command
 
         $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $defaultValue = $this->renderDefaultValue($property['default'], $phpType, $property['type']);
+        if ($defaultValue === '' && !$property['required'] && (bool)$property['nullable']) {
+            $defaultValue = ' = null';
+        }
         $description = $property['description'] ?? null;
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
         $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
@@ -2249,6 +2253,8 @@ final class GenerateDtoCommand extends Command
             'description' => $normalizedDescription,
             'constraintsLine' => $constraintsLine,
             'shouldDocument' => $shouldDocument,
+            'tracksArgPresence' => $tracksArgPresence,
+            'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
         ];
     }
 
