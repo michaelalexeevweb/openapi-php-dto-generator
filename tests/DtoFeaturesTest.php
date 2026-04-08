@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
@@ -404,6 +405,16 @@ final class DtoFeaturesTest extends TestCase
         $this->expectExceptionMessage('param "modes.0" expects enum');
 
         $this->deserializer->deserialize($request, QueryEnumArrayDto::class);
+    }
+
+    public function testQueryOptionalEnumArrayThrowsOnInvalidItemWithoutArrayToStringWarning(): void
+    {
+        $request = new Request(['levels' => ['unknown']], [], [], [], [], []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "levels.0" expects enum');
+
+        $this->deserializer->deserialize($request, QueryOptionalEnumArrayDto::class);
     }
 
     public function testQueryStringArrayValidatesUuidItemFormatFromConstraints(): void
@@ -1197,3 +1208,29 @@ final class ManualPresenceDto implements GeneratedDtoInterface
     }
 }
 
+// --- 8. Optional query array DTOs with UnsetValue ----------------------------
+
+enum QueryLevelEnum: string
+{
+    case LOW = 'low';
+    case HIGH = 'high';
+}
+
+final class QueryOptionalEnumArrayDto
+{
+    /** @var array<QueryLevelEnum>|null */
+    private array|null $levels;
+
+    /** @param array<QueryLevelEnum>|null|UnsetValue $levels */
+    public function __construct(
+        array|null|UnsetValue $levels = UnsetValue::UNSET,
+    ) {
+        $this->levels = is_array($levels) ? $levels : null;
+    }
+
+    /** @return array<QueryLevelEnum>|null */
+    public function getLevels(): ?array
+    {
+        return $this->levels;
+    }
+}
