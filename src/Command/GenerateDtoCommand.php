@@ -2194,6 +2194,9 @@ final class GenerateDtoCommand extends Command
             $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             $phpType = 'array';
             $isArray = true;
+        } elseif ($phpType === 'array' || $phpType === '?array') {
+            // Direct array type (not generic)
+            $isArray = true;
         } else {
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
             $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);

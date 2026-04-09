@@ -226,6 +226,41 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private ?array $availableFilters;', $content);
     }
 
+    public function testPlainArrayPropertyIsDeclaredAndAssignedInConstructor(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Plain array property',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'PlainArrayPayload' => [
+                        'type' => 'object',
+                        'required' => ['payload'],
+                        'properties' => [
+                            'payload' => [
+                                'type' => 'array',
+                                'items' => new \stdClass(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/PlainArrayPayload.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString('private array $payload;', $content);
+        $this->assertStringContainsString('array $payload,', $content);
+        $this->assertStringContainsString('$this->payload = $payload;', $content);
+    }
+
     public function testConstructorPlacesRequiredParamsBeforeOptionalWithDefaults(): void
     {
         $openApi = [
