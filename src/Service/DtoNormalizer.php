@@ -44,7 +44,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     propertyName: string,
      *     outputName: string,
      *     allowsNull: bool,
-     *     typeNames: list<string>
+     *     typeNames: list<string>,
+     *     arrayItemTypeNames: list<string>
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -179,6 +180,27 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function validate(GeneratedDtoInterface $dto): array
     {
+        return $this->validateDtoRecursive(
+            dto: $dto,
+            pathPrefix: '',
+            visited: [],
+        );
+    }
+
+    /**
+     * Returns a list of validation error messages (empty array = valid).
+     *
+     * @param array<int, true> $visited
+     * @return array<string>
+     */
+    private function validateDtoRecursive(GeneratedDtoInterface $dto, string $pathPrefix, array $visited): array
+    {
+        $dtoId = spl_object_id($dto);
+        if (array_key_exists($dtoId, $visited)) {
+            return [];
+        }
+        $visited[$dtoId] = true;
+
         $errors = [];
         $meta = $this->getClassMeta($dto);
 
@@ -186,6 +208,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $methodName = $getterMeta['methodName'];
             $propertyName = $getterMeta['propertyName'];
             $fieldName = $getterMeta['outputName'];
+            $scopedFieldName = $pathPrefix === '' ? $fieldName : $pathPrefix . '.' . $fieldName;
 
             try {
                 $value = $this->invokeGetter($dto, $methodName);
@@ -201,12 +224,49 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     $errors[] = $error;
                 }
 
+                if (is_array($value) && $getterMeta['arrayItemTypeNames'] !== []) {
+                    $errors = [
+                        ...$errors,
+                        ...$this->validateArrayItemsAgainstTypes(
+                            value: $value,
+                            fieldName: $scopedFieldName,
+                            expectedItemTypes: $getterMeta['arrayItemTypeNames'],
+                        ),
+                    ];
+                }
+
+                if ($value instanceof GeneratedDtoInterface) {
+                    $errors = [
+                        ...$errors,
+                        ...$this->validateDtoRecursive(
+                            dto: $value,
+                            pathPrefix: $scopedFieldName,
+                            visited: $visited,
+                        ),
+                    ];
+                } elseif (is_array($value)) {
+                    foreach ($value as $index => $itemValue) {
+                        if (!$itemValue instanceof GeneratedDtoInterface) {
+                            continue;
+                        }
+
+                        $errors = [
+                            ...$errors,
+                            ...$this->validateDtoRecursive(
+                                dto: $itemValue,
+                                pathPrefix: $scopedFieldName . '.' . (string)$index,
+                                visited: $visited,
+                            ),
+                        ];
+                    }
+                }
+
                 $constraints = $meta['constraintsByField'][$propertyName] ?? null;
                 if (is_array($constraints) && $constraints !== []) {
                     $errors = [
                         ...$errors,
                         ...$this->constraintValidator->validate(
-                            subject: sprintf('field "%s"', $fieldName),
+                            subject: sprintf('field "%s"', $scopedFieldName),
                             value: $value,
                             constraints: $constraints,
                         ),
@@ -472,6 +532,47 @@ final class DtoNormalizer implements DtoNormalizerInterface
         };
     }
 
+    /**
+     * @param array<array-key, mixed> $value
+     * @param list<string> $expectedItemTypes
+     * @return list<string>
+     */
+    private function validateArrayItemsAgainstTypes(array $value, string $fieldName, array $expectedItemTypes): array
+    {
+        $errors = [];
+        $allowsNull = in_array('null', $expectedItemTypes, true);
+
+        foreach ($value as $index => $itemValue) {
+            $error = $this->validateValueAgainstTypes(
+                value: $itemValue,
+                expectedTypes: $expectedItemTypes,
+                allowsNull: $allowsNull,
+                methodName: sprintf('%s.%s', $fieldName, (string)$index),
+            );
+
+            if ($error !== null) {
+                $errors[] = sprintf('field "%s".%s %s', $fieldName, (string)$index, $this->normalizeItemTypeError($error));
+            }
+        }
+
+        return $errors;
+    }
+
+    private function normalizeItemTypeError(string $error): string
+    {
+        $mustPos = strpos($error, ' must ');
+        if ($mustPos !== false) {
+            return substr($error, $mustPos + 1);
+        }
+
+        $returnedPos = strpos($error, ' returned ');
+        if ($returnedPos !== false) {
+            return substr($error, $returnedPos + 1);
+        }
+
+        return $error;
+    }
+
     private function validateObject(mixed $value, string $expectedType, string $methodName): ?string
     {
         if ($value instanceof $expectedType) {
@@ -569,7 +670,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     propertyName: string,
      *     outputName: string,
      *     allowsNull: bool,
-     *     typeNames: list<string>
+     *     typeNames: list<string>,
+     *     arrayItemTypeNames: list<string>
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -597,7 +699,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     propertyName: string,
      *     outputName: string,
      *     allowsNull: bool,
-     *     typeNames: list<string>
+     *     typeNames: list<string>,
+     *     arrayItemTypeNames: list<string>
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -630,7 +733,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
             }
 
             $type = $row['type'] ?? 'mixed';
-            $typeNames = $this->normalizeTypeNamesFromMapType(is_string($type) ? $type : 'mixed');
+            $typeNames = $this->normalizeTypeNamesFromMapType(
+                className: $className,
+                type: is_string($type) ? $type : 'mixed',
+            );
             $nullable = $row['nullable'] ?? null;
             $allowsNull = is_bool($nullable) ? $nullable : true;
             $metadata = $row['metadata'] ?? [];
@@ -646,6 +752,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'outputName' => $outputName,
                 'allowsNull' => $allowsNull,
                 'typeNames' => $typeNames,
+                'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
             ];
         }
 
@@ -667,7 +774,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     propertyName: string,
      *     outputName: string,
      *     allowsNull: bool,
-     *     typeNames: list<string>
+     *     typeNames: list<string>,
+     *     arrayItemTypeNames: list<string>
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -696,6 +804,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'outputName' => $aliasesByProperty[$propertyName] ?? $propertyName,
                 'allowsNull' => true,
                 'typeNames' => ['mixed'],
+                'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
             ];
         }
 
@@ -709,7 +818,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /**
      * @return list<string>
      */
-    private function normalizeTypeNamesFromMapType(string $type): array
+    private function normalizeTypeNamesFromMapType(string $className, string $type): array
     {
         $parts = explode('|', $type);
         $result = [];
@@ -720,9 +829,121 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 continue;
             }
 
-            $result[] = $normalized;
+            $resolved = $this->normalizeDocTypeNameInClassContext($className, $normalized);
+            if ($resolved === '') {
+                continue;
+            }
+
+            $result[] = $resolved;
         }
 
         return $result === [] ? ['mixed'] : array_values(array_unique($result));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveArrayItemTypeNames(string $className, string $methodName): array
+    {
+        if (!method_exists($className, $methodName)) {
+            return [];
+        }
+
+        $reflection = new \ReflectionMethod($className, $methodName);
+        $docComment = $reflection->getDocComment();
+        if (!is_string($docComment) || $docComment === '') {
+            return [];
+        }
+
+        if (!preg_match('/@return\s+([^\n\r*]+)/', $docComment, $matches)) {
+            return [];
+        }
+
+        $returnType = trim($matches[1]);
+        if ($returnType === '') {
+            return [];
+        }
+
+        preg_match_all('/(?:array|list)\s*<([^>]+)>/i', $returnType, $genericMatches);
+        $genericParts = $genericMatches[1];
+        if ($genericParts === []) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($genericParts as $genericPart) {
+            $valueTypePart = str_contains($genericPart, ',')
+                ? substr($genericPart, (int)strrpos($genericPart, ',') + 1)
+                : $genericPart;
+
+            foreach (explode('|', $valueTypePart) as $rawTypeName) {
+                $normalizedTypeName = $this->normalizeDocTypeNameInClassContext($className, trim($rawTypeName));
+                if ($normalizedTypeName === '' || $normalizedTypeName === 'mixed') {
+                    continue;
+                }
+                $result[] = $normalizedTypeName;
+            }
+        }
+
+        return array_values(array_unique($result));
+    }
+
+    private function normalizeDocTypeNameInClassContext(string $className, string $typeName): string
+    {
+        $typeName = trim($typeName, " \t\n\r\0\x0B()");
+        if ($typeName === '') {
+            return '';
+        }
+
+        if (str_starts_with($typeName, '?')) {
+            $typeName = substr($typeName, 1);
+        }
+
+        $lower = strtolower($typeName);
+        $builtinMap = [
+            'integer' => 'int',
+            'boolean' => 'bool',
+            'double' => 'float',
+            'real' => 'float',
+            'null' => 'null',
+            'int' => 'int',
+            'float' => 'float',
+            'string' => 'string',
+            'bool' => 'bool',
+            'array' => 'array',
+            'mixed' => 'mixed',
+        ];
+
+        if (array_key_exists($lower, $builtinMap)) {
+            return $builtinMap[$lower];
+        }
+
+        if (in_array($lower, ['self', 'static', '$this'], true)) {
+            return $className;
+        }
+
+        $trimmed = ltrim($typeName, '\\');
+        if ($trimmed === '') {
+            return '';
+        }
+
+        if (class_exists($trimmed) || enum_exists($trimmed) || interface_exists($trimmed)) {
+            return $trimmed;
+        }
+
+        $namespace = '';
+        $lastSlashPos = strrpos($className, '\\');
+        if ($lastSlashPos !== false) {
+            $namespace = substr($className, 0, $lastSlashPos);
+        }
+
+        if ($namespace !== '') {
+            $candidate = $namespace . '\\' . $trimmed;
+            if (class_exists($candidate) || enum_exists($candidate) || interface_exists($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $trimmed;
     }
 }

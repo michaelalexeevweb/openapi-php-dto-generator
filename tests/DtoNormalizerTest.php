@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests;
 
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class DtoNormalizerTest extends TestCase
 {
@@ -47,6 +49,50 @@ final class DtoNormalizerTest extends TestCase
 
         $this->assertSame($expected, $toJsonPayload);
         $this->assertSame($expected, $validateJsonPayload);
+    }
+
+    public function testValidateAndNormalizeToArrayRejectsInvalidEnumArrayItems(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerOptionalEnumArrayDto(
+            availableFilters: [1, 2, 3],
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('DTO validation failed:');
+        $this->expectExceptionMessage('field "availableFilters".0 must return enum');
+
+        $normalizer->validateAndNormalizeToArray($dto);
+    }
+
+    public function testValidateAndNormalizeToJsonRejectsInvalidEnumArrayItems(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerOptionalEnumArrayDto(
+            availableFilters: [1, 2, 3],
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('DTO validation failed:');
+        $this->expectExceptionMessage('field "availableFilters".0 must return enum');
+
+        $normalizer->validateAndNormalizeToJson($dto);
+    }
+
+    public function testValidateAndNormalizeToArrayValidatesNestedPayloadDto(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerDictionaryResponse(
+            payload: new NormalizerDictionaryPayload(
+                availableFilters: [1, 2, 3],
+            ),
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('DTO validation failed:');
+        $this->expectExceptionMessage('field "payload.availableFilters".0 must return enum');
+
+        $normalizer->validateAndNormalizeToArray($dto);
     }
 }
 
@@ -146,6 +192,187 @@ final class NormalizerEnumArrayDto implements GeneratedDtoInterface
                 'type' => NormalizerFilterEnum::class,
                 'nullable' => false,
                 'metadata' => ['openApiName' => 'primaryFilter'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerOptionalEnumArrayDto implements GeneratedDtoInterface
+{
+    /** @var ?array<mixed> */
+    private ?array $availableFilters;
+
+    /** @param array<NormalizerFilterEnum|int>|null|UnsetValue $availableFilters */
+    public function __construct(
+        array|null|UnsetValue $availableFilters = UnsetValue::UNSET,
+    ) {
+        $this->availableFilters = $availableFilters !== UnsetValue::UNSET ? $availableFilters : null;
+    }
+
+    /** @return ?array<NormalizerFilterEnum> */
+    public function getAvailableFilters(): ?array
+    {
+        return $this->availableFilters;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'availableFilters' => $this->availableFilters,
+        ];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'availableFilters' => [
+                'getter' => 'getAvailableFilters',
+                'type' => 'array|null',
+                'nullable' => true,
+                'metadata' => ['openApiName' => 'availableFilters'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerDictionaryResponse implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly NormalizerDictionaryPayload $payload,
+    ) {
+    }
+
+    public function getPayload(): NormalizerDictionaryPayload
+    {
+        return $this->payload;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'payload' => $this->payload,
+        ];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'payload' => [
+                'getter' => 'getPayload',
+                // Keep short class name to verify class-context resolution.
+                'type' => 'NormalizerDictionaryPayload',
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'payload'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerDictionaryPayload implements GeneratedDtoInterface
+{
+    /** @var ?array<mixed> */
+    private ?array $availableFilters;
+
+    /** @param array<NormalizerFilterEnum|int>|null|UnsetValue $availableFilters */
+    public function __construct(
+        array|null|UnsetValue $availableFilters = UnsetValue::UNSET,
+    ) {
+        $this->availableFilters = $availableFilters !== UnsetValue::UNSET ? $availableFilters : null;
+    }
+
+    /** @return ?array<NormalizerFilterEnum> */
+    public function getAvailableFilters(): ?array
+    {
+        return $this->availableFilters;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'availableFilters' => $this->availableFilters,
+        ];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'availableFilters' => [
+                'getter' => 'getAvailableFilters',
+                'type' => 'array|null',
+                'nullable' => true,
+                'metadata' => ['openApiName' => 'availableFilters'],
             ],
         ];
     }
