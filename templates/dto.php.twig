@@ -146,6 +146,12 @@ interface {{ className }}
 	public function {{ property.methodName }}(): {{ property.returnType }}
 	{
 {% if property.returnKind == 'temporal' %}
+{% if property.usesUnsetSentinel %}
+		if ($this->{{ property.name }} === UnsetValue::UNSET) {
+			return null;
+		}
+
+{% endif %}
 {% if property.isNullableTemporal %}
 		if ($this->{{ property.name }} === null) {
 			return null;
@@ -156,7 +162,11 @@ interface {{ className }}
 		return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
 {% endif %}
 {% else %}
+{% if property.usesUnsetSentinel %}
+		return $this->{{ property.name }} !== UnsetValue::UNSET ? $this->{{ property.name }} : null;
+{% else %}
 		return $this->{{ property.name }};
+{% endif %}
 {% endif %}
 	}
 

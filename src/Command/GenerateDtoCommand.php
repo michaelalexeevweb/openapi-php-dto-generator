@@ -2221,7 +2221,7 @@ final class GenerateDtoCommand extends Command
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
             'isArray' => $isArray,
-            'usesUnsetSentinel' => $isArray && !$property['required'] && $property['default'] === null,
+            'usesUnsetSentinel' => !$property['required'] && $property['default'] === null,
         ];
     }
 
@@ -2294,7 +2294,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -2325,18 +2325,26 @@ final class GenerateDtoCommand extends Command
         $returnType = $type;
         $phpDateFormat = null;
         $isNullableTemporal = false;
+        $usesUnsetSentinel = !$property['required'] && $property['default'] === null;
         $needsInRequestGuard = !$property['required']
             && !($property['inPath'] ?? false)
             && !($property['inQuery'] ?? false);
 
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
-            $returnType = (bool)$property['nullable'] ? '?string' : 'string';
+            $returnType = (bool)$property['nullable'] || $usesUnsetSentinel ? '?string' : 'string';
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
-            $isNullableTemporal = (bool)$property['nullable'];
+            $isNullableTemporal = (bool)$property['nullable'] || $usesUnsetSentinel;
         } elseif ($phpType !== $phpDocType) {
             $docReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
+        }
+
+        if ($usesUnsetSentinel) {
+            $returnType = $this->ensureTypeAllowsNull($returnType);
+            if (is_string($docReturnType)) {
+                $docReturnType = $this->ensureTypeAllowsNull($docReturnType);
+            }
         }
 
         return [
@@ -2360,7 +2368,21 @@ final class GenerateDtoCommand extends Command
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
             'nullableArray' => (bool)$property['nullable'],
+            'usesUnsetSentinel' => $usesUnsetSentinel,
         ];
+    }
+
+    private function ensureTypeAllowsNull(string $type): string
+    {
+        if (str_starts_with($type, '?') || str_contains($type, '|null')) {
+            return $type;
+        }
+
+        if (str_contains($type, '|')) {
+            return $type . '|null';
+        }
+
+        return '?' . $type;
     }
 
     /**

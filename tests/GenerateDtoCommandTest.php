@@ -342,6 +342,139 @@ final class GenerateDtoCommandTest extends TestCase
         );
     }
 
+    public function testConstructorContainsSentinelToNullAssignmentForOptionalArray(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Constructor sentinel assignment test',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'AssignmentCheckPayload' => [
+                        'type' => 'object',
+                        'required' => ['requestId'],
+                        'properties' => [
+                            'requestId' => ['type' => 'string'],
+                            'categoryTags' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/AssignmentCheckPayload.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString(
+            '$this->categoryTags = $categoryTags !== UnsetValue::UNSET ? $categoryTags : null;',
+            $content,
+        );
+    }
+
+    /**
+     * Verifies regression case for optional $ref properties: the generator must
+     * keep constructor promotion with readonly + UnsetValue sentinel, and must not
+     * fall back to separate property declaration/body assignment.
+     */
+    public function testOptionalRefUsesPromotedReadonlySentinel(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Optional ref sentinel test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'CompanionPet' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                    'OwnerWithCompanion' => [
+                        'type' => 'object',
+                        'required' => ['ownerId'],
+                        'properties' => [
+                            'ownerId' => ['type' => 'integer'],
+                            'age' => ['type' => 'integer'],
+                            'score' => ['type' => 'number'],
+                            'active' => ['type' => 'boolean'],
+                            'companion' => [
+                                '$ref' => '#/components/schemas/CompanionPet',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $refFile = $this->outputDirectory . '/CompanionPet.php';
+        $this->assertFileExists($refFile);
+
+        $file = $this->outputDirectory . '/OwnerWithCompanion.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        // Required field should stay regular promoted readonly without sentinel.
+        $this->assertStringContainsString('private readonly int $ownerId', $content);
+
+        // Optional $ref field should use promoted readonly sentinel pattern.
+        $this->assertStringContainsString(
+            'private readonly CompanionPet|null|UnsetValue $companion = UnsetValue::UNSET',
+            $content,
+        );
+
+        // Optional scalar fields should also use promoted readonly sentinel pattern.
+        $this->assertStringContainsString(
+            'private readonly int|null|UnsetValue $age = UnsetValue::UNSET',
+            $content,
+        );
+        $this->assertStringContainsString(
+            'private readonly float|null|UnsetValue $score = UnsetValue::UNSET',
+            $content,
+        );
+        $this->assertStringContainsString(
+            'private readonly bool|null|UnsetValue $active = UnsetValue::UNSET',
+            $content,
+        );
+
+        // Guard against old broken pattern without constructor promotion.
+        $this->assertStringNotContainsString('private CompanionPet|null|UnsetValue $companion;', $content);
+        $this->assertStringNotContainsString('private ?CompanionPet $companion;', $content);
+        $this->assertStringNotContainsString('\n\t\tCompanionPet|null|UnsetValue $companion = UnsetValue::UNSET,', $content);
+        $this->assertStringNotContainsString('$this->companion = $companion', $content);
+        $this->assertStringNotContainsString('$this->age = $age', $content);
+        $this->assertStringNotContainsString('$this->score = $score', $content);
+        $this->assertStringNotContainsString('$this->active = $active', $content);
+
+        // inRequest flag must be tracked via sentinel comparison.
+        $this->assertStringContainsString(
+            '$this->companionInRequest = $companion !== UnsetValue::UNSET',
+            $content,
+        );
+        $this->assertStringContainsString('$this->ageInRequest = $age !== UnsetValue::UNSET', $content);
+        $this->assertStringContainsString('$this->scoreInRequest = $score !== UnsetValue::UNSET', $content);
+        $this->assertStringContainsString('$this->activeInRequest = $active !== UnsetValue::UNSET', $content);
+
+        // Getter must normalize UnsetValue::UNSET to null for optional fields.
+        $this->assertStringContainsString(
+            'return $this->companion !== UnsetValue::UNSET ? $this->companion : null;',
+            $content,
+        );
+        $this->assertStringContainsString('return $this->age !== UnsetValue::UNSET ? $this->age : null;', $content);
+        $this->assertStringContainsString('return $this->score !== UnsetValue::UNSET ? $this->score : null;', $content);
+        $this->assertStringContainsString('return $this->active !== UnsetValue::UNSET ? $this->active : null;', $content);
+    }
+
     public function testInlineResponseSchemaGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
