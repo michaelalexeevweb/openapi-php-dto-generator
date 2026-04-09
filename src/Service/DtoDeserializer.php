@@ -331,13 +331,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             $typeNames = [];
             if ($paramType instanceof ReflectionNamedType) {
-                $typeNames[] = $paramType->getName();
+                if (!$this->isInternalUnsetValueType($paramType->getName())) {
+                    $typeNames[] = $paramType->getName();
+                }
             } elseif ($paramType instanceof ReflectionUnionType) {
                 foreach ($paramType->getTypes() as $unionType) {
                     if (!$unionType instanceof ReflectionNamedType) {
                         continue;
                     }
-                    if ($unionType->getName() === 'null') {
+                    if ($unionType->getName() === 'null' || $this->isInternalUnsetValueType($unionType->getName())) {
                         continue;
                     }
                     $typeNames[] = $unionType->getName();
@@ -897,6 +899,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
                     );
                 }
+
                 return $value;
             }
 
@@ -982,6 +985,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($typeName === 'string') {
+            if (is_array($value) || $value instanceof \stdClass || is_object($value)) {
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
+                );
+            }
+
             return (string)$value;
         }
 
@@ -1403,14 +1412,42 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if ($paramPath !== null) {
             $allowedStr = implode(', ', $allowed);
+            $actualValue = $this->formatValueForError($value);
             throw new RuntimeException(
-                "param \"{$paramPath}\" expects enum {$enumClass}, got \"{$value}\". Allowed: {$allowedStr}",
+                "param \"{$paramPath}\" expects enum {$enumClass}, got {$actualValue}. Allowed: {$allowedStr}",
             );
         }
 
+        $actualValue = $this->formatValueForError($value);
         throw new RuntimeException(
-            "Invalid enum value \"{$value}\" for {$enumClass}.",
+            "Invalid enum value {$actualValue} for {$enumClass}.",
         );
+    }
+
+    private function isInternalUnsetValueType(string $typeName): bool
+    {
+        return $typeName === 'UnsetValue' || str_ends_with($typeName, '\\UnsetValue');
+    }
+
+    private function formatValueForError(mixed $value): string
+    {
+        if (is_string($value)) {
+            return '"' . $value . '"';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string)$value;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if ($value === null) {
+            return 'null';
+        }
+
+        return $this->getTypeString($value);
     }
 
     /**
@@ -1498,7 +1535,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * @param array<string, mixed> $value
+     * @param array<array-key, mixed> $value
      */
     private function resolveDiscriminatorTargetClass(string $baseClass, array $value, string $paramPath): ?string
     {
