@@ -427,4 +427,377 @@ final class DtoValidatorTest extends TestCase
         );
         $this->assertSame([], $errors);
     }
+
+    // =========================================================================
+    // Numeric — minimum / exclusiveMinimum
+    // =========================================================================
+
+    public function testMinimumInclusive_acceptsExactBoundary(): void
+    {
+        $errors = $this->validator->validate(subject: 'n', value: 5.0, constraints: ['minimum' => 5]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMinimumInclusive_rejectsBelowBoundary(): void
+    {
+        $errors = $this->validator->validate(subject: 'n', value: 4.9, constraints: ['minimum' => 5]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be greater than or equal to 5', $errors[0]);
+    }
+
+    public function testExclusiveMinimumNumeric_rejectsEqualValue(): void
+    {
+        // OpenAPI 3.1: exclusiveMinimum IS the exclusive lower boundary
+        $errors = $this->validator->validate(subject: 'n', value: 5.0, constraints: ['exclusiveMinimum' => 5]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be greater than 5', $errors[0]);
+    }
+
+    public function testExclusiveMinimumNumeric_acceptsAboveBoundary(): void
+    {
+        $errors = $this->validator->validate(subject: 'n', value: 5.1, constraints: ['exclusiveMinimum' => 5]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testExclusiveMinimumBoolean_rejectsEqualToMinimum(): void
+    {
+        // OpenAPI 3.0: minimum + exclusiveMinimum: true
+        $errors = $this->validator->validate(
+            subject: 'n',
+            value: 1.0,
+            constraints: ['minimum' => 1, 'exclusiveMinimum' => true],
+        );
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be greater than 1', $errors[0]);
+    }
+
+    public function testExclusiveMinimumBoolean_acceptsAboveMinimum(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'n',
+            value: 2.0,
+            constraints: ['minimum' => 1, 'exclusiveMinimum' => true],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // String — minLength / maxLength / pattern / format (email, uuid, date, datetime)
+    // =========================================================================
+
+    public function testMinLength_acceptsExactLength(): void
+    {
+        $errors = $this->validator->validate(subject: 's', value: 'abc', constraints: ['minLength' => 3]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMinLength_rejectsTooShort(): void
+    {
+        $errors = $this->validator->validate(subject: 's', value: 'ab', constraints: ['minLength' => 3]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('length must be at least 3', $errors[0]);
+    }
+
+    public function testMaxLength_acceptsExactLength(): void
+    {
+        $errors = $this->validator->validate(subject: 's', value: 'abc', constraints: ['maxLength' => 3]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMaxLength_rejectsTooLong(): void
+    {
+        $errors = $this->validator->validate(subject: 's', value: 'abcd', constraints: ['maxLength' => 3]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('length must be at most 3', $errors[0]);
+    }
+
+    public function testPattern_acceptsMatchingString(): void
+    {
+        $errors = $this->validator->validate(subject: 's', value: 'abc123', constraints: ['pattern' => '^[a-z0-9]+$']);
+        $this->assertSame([], $errors);
+    }
+
+    public function testPattern_rejectsNonMatchingString(): void
+    {
+        $errors = $this->validator->validate(subject: 's', value: 'ABC!', constraints: ['pattern' => '^[a-z0-9]+$']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match pattern', $errors[0]);
+    }
+
+    public function testFormatEmail_acceptsValidAddress(): void
+    {
+        $errors = $this->validator->validate(subject: 'e', value: 'user@example.com', constraints: ['format' => 'email']);
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatEmail_rejectsPlainText(): void
+    {
+        $errors = $this->validator->validate(subject: 'e', value: 'not-an-email', constraints: ['format' => 'email']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format email', $errors[0]);
+    }
+
+    public function testFormatUuid_acceptsValidUuid(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'id',
+            value: '550e8400-e29b-41d4-a716-446655440000',
+            constraints: ['format' => 'uuid'],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatUuid_rejectsNonUuidString(): void
+    {
+        $errors = $this->validator->validate(subject: 'id', value: 'not-a-uuid', constraints: ['format' => 'uuid']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format uuid', $errors[0]);
+    }
+
+    public function testFormatDate_acceptsValidDate(): void
+    {
+        $errors = $this->validator->validate(subject: 'd', value: '2024-06-15', constraints: ['format' => 'date']);
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatDate_rejectsInvalidDate(): void
+    {
+        $errors = $this->validator->validate(subject: 'd', value: '15-06-2024', constraints: ['format' => 'date']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format date', $errors[0]);
+    }
+
+    public function testFormatDateTime_acceptsAtomString(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'ts',
+            value: '2024-06-15T12:00:00+00:00',
+            constraints: ['format' => 'date-time'],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatDateTime_rejectsDateOnlyString(): void
+    {
+        $errors = $this->validator->validate(subject: 'ts', value: '2024-06-15', constraints: ['format' => 'date-time']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format date-time', $errors[0]);
+    }
+
+    // =========================================================================
+    // Array — minItems / maxItems / uniqueItems
+    // =========================================================================
+
+    public function testMinItems_acceptsEnoughItems(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: [1, 2, 3], constraints: ['minItems' => 3]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMinItems_rejectsTooFewItems(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: [1, 2], constraints: ['minItems' => 3]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must contain at least 3 items', $errors[0]);
+    }
+
+    public function testMaxItems_acceptsFewEnoughItems(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: [1, 2], constraints: ['maxItems' => 3]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMaxItems_rejectsTooManyItems(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: [1, 2, 3, 4], constraints: ['maxItems' => 3]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must contain at most 3 items', $errors[0]);
+    }
+
+    public function testUniqueItems_acceptsDistinctItems(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: ['a', 'b', 'c'], constraints: ['uniqueItems' => true]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testUniqueItems_rejectsDuplicateScalar(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: ['x', 'x', 'y'], constraints: ['uniqueItems' => true]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('unique items', $errors[0]);
+    }
+
+    public function testUniqueItems_falseAllowsDuplicates(): void
+    {
+        $errors = $this->validator->validate(subject: 'a', value: [1, 1, 1], constraints: ['uniqueItems' => false]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // enum
+    // =========================================================================
+
+    public function testEnum_acceptsValueInList(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'status',
+            value: 'active',
+            constraints: ['enum' => ['active', 'inactive', 'pending']],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    public function testEnum_rejectsValueNotInList(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'status',
+            value: 'deleted',
+            constraints: ['enum' => ['active', 'inactive', 'pending']],
+        );
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be one of', $errors[0]);
+        $this->assertStringContainsString('"active"', $errors[0]);
+    }
+
+    public function testEnum_usesStrictComparison(): void
+    {
+        // "1" (string) must not match 1 (int)
+        $errors = $this->validator->validate(
+            subject: 'n',
+            value: '1',
+            constraints: ['enum' => [1, 2, 3]],
+        );
+        $this->assertNotEmpty($errors);
+    }
+
+    public function testEnum_acceptsIntegerValue(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'priority',
+            value: 2,
+            constraints: ['enum' => [1, 2, 3]],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // const
+    // =========================================================================
+
+    public function testConst_acceptsMatchingValue(): void
+    {
+        $errors = $this->validator->validate(subject: 'v', value: 'fixed', constraints: ['const' => 'fixed']);
+        $this->assertSame([], $errors);
+    }
+
+    public function testConst_rejectsNonMatchingValue(): void
+    {
+        $errors = $this->validator->validate(subject: 'v', value: 'other', constraints: ['const' => 'fixed']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must equal', $errors[0]);
+        $this->assertStringContainsString('"fixed"', $errors[0]);
+    }
+
+    public function testConst_usesStrictComparison(): void
+    {
+        // 0 (int) must not match false (bool)
+        $errors = $this->validator->validate(subject: 'v', value: 0, constraints: ['const' => false]);
+        $this->assertNotEmpty($errors);
+    }
+
+    public function testConst_acceptsMatchingInteger(): void
+    {
+        $errors = $this->validator->validate(subject: 'v', value: 42, constraints: ['const' => 42]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // allOf
+    // =========================================================================
+
+    public function testAllOf_acceptsWhenAllBranchesPass(): void
+    {
+        $errors = $this->validator->validate('n', 7, [
+            'allOf' => [
+                ['minimum' => 1],
+                ['maximum' => 10],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testAllOf_rejectsWhenOneBranchFails(): void
+    {
+        $errors = $this->validator->validate('n', 15, [
+            'allOf' => [
+                ['minimum' => 1],
+                ['maximum' => 10],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be less than or equal to 10', $errors[0]);
+    }
+
+    public function testAllOf_collectsErrorsFromAllFailingBranches(): void
+    {
+        // Both branches fail: value 0 is below minimum 1 and below minimum 5
+        $errors = $this->validator->validate('n', 0, [
+            'allOf' => [
+                ['minimum' => 1],
+                ['minimum' => 5],
+            ],
+        ]);
+        $this->assertCount(2, $errors);
+    }
+
+    public function testAllOf_canCombineStringConstraints(): void
+    {
+        $errors = $this->validator->validate('s', 'hi', [
+            'allOf' => [
+                ['minLength' => 2],
+                ['maxLength' => 5],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // not
+    // =========================================================================
+
+    public function testNot_acceptsWhenSchemaDoesNotMatch(): void
+    {
+        // Value is not a multiple of 3 → passes 'not' constraint
+        $errors = $this->validator->validate('n', 7, [
+            'not' => ['multipleOf' => 3],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testNot_rejectsWhenSchemaMatches(): void
+    {
+        // Value IS a multiple of 3 → violates 'not' constraint
+        $errors = $this->validator->validate('n', 9, [
+            'not' => ['multipleOf' => 3],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString("must not match the 'not' schema", $errors[0]);
+    }
+
+    public function testNot_withTypeConstraint_rejectsMatchingType(): void
+    {
+        // 'not integer' → string passes, integer fails
+        $errors = $this->validator->validate('v', 42, [
+            'not' => ['type' => 'integer'],
+        ]);
+        $this->assertNotEmpty($errors);
+    }
+
+    public function testNot_withTypeConstraint_acceptsNonMatchingType(): void
+    {
+        $errors = $this->validator->validate('v', 'hello', [
+            'not' => ['type' => 'integer'],
+        ]);
+        $this->assertSame([], $errors);
+    }
 }

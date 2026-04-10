@@ -24,25 +24,71 @@ final class DtoValidator implements DtoValidatorInterface
 
         $value = $this->normalizeTemporalValueForValidation($value, $constraints);
 
+        $errors = [];
+
+        // allOf: every branch must pass; errors from all failing branches are collected.
+        if (array_key_exists('allOf', $constraints) && is_array($constraints['allOf'])) {
+            foreach ($constraints['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $branch)];
+            }
+        }
+
         if (array_key_exists('oneOf', $constraints) && is_array($constraints['oneOf'])) {
-            return $this->validateUnionBranches(
+            return [...$errors, ...$this->validateUnionBranches(
                 subject: $subject,
                 value: $value,
                 branches: $constraints['oneOf'],
                 isOneOf: true,
-            );
+            )];
         }
 
         if (array_key_exists('anyOf', $constraints) && is_array($constraints['anyOf'])) {
-            return $this->validateUnionBranches(
+            return [...$errors, ...$this->validateUnionBranches(
                 subject: $subject,
                 value: $value,
                 branches: $constraints['anyOf'],
                 isOneOf: false,
-            );
+            )];
         }
 
-        $errors = [];
+        // enum: value must be strictly equal to one of the allowed values.
+        if (array_key_exists('enum', $constraints) && is_array($constraints['enum'])) {
+            if (!in_array($value, $constraints['enum'], true)) {
+                $allowed = implode(', ', array_map(
+                    static fn(mixed $v): string => json_encode($v) ?: var_export($v, true),
+                    $constraints['enum'],
+                ));
+                $errors[] = "{$subject} must be one of: {$allowed}";
+            }
+        }
+
+        // const: value must be strictly equal to the given constant.
+        if (array_key_exists('const', $constraints)) {
+            if ($value !== $constraints['const']) {
+                $errors[] = sprintf(
+                    '%s must equal %s',
+                    $subject,
+                    json_encode($constraints['const']) ?: var_export($constraints['const'], true),
+                );
+            }
+        }
+
+        // not: value must NOT satisfy the given schema.
+        if (array_key_exists('not', $constraints) && is_array($constraints['not'])) {
+            if ($this->validate(subject: $subject, value: $value, constraints: $constraints['not']) === []) {
+                $errors[] = "{$subject} must not match the 'not' schema";
+            }
+        }
+
+        // type: value must match the declared OpenAPI type.
+        if (array_key_exists('type', $constraints) && is_string($constraints['type'])) {
+            if (!$this->matchesOpenApiType(value: $value, type: $constraints['type'])) {
+                $errors[] = "{$subject} must be of type {$constraints['type']}";
+            }
+        }
 
         if ((is_int($value) || is_float($value)) && $this->constraintsHave($constraints, 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf')) {
             $errors = [...$errors, ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)];
