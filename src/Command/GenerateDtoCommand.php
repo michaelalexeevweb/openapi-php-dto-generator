@@ -2272,7 +2272,22 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, example: ?string, constraintsLine: ?string, shouldDocument: bool, tracksArgPresence: bool, inRequestFlagName: string, usesUnsetSentinel: bool}
+     * @return array{
+     *   type: string,
+     *   name: string,
+     *   defaultValue: string,
+     *   isArray: bool,
+     *   isPromoted: bool,
+     *   docType: ?string,
+     *   description: ?string,
+     *   example: ?string,
+     *   constraintsLine: ?string,
+     *   shouldDocument: bool,
+     *   tracksArgPresence: bool,
+     *   inRequestFlagName: string,
+     *   presenceFlagName: string,
+     *   usesUnsetSentinel: bool
+     * }
      */
     private function resolveConstructorParameterData(array $property, string $namespace, bool $tracksArgPresence): array
     {
@@ -2325,6 +2340,7 @@ final class GenerateDtoCommand extends Command
             || $normalizedExample !== null
             || $constraintsLine !== null
             || $docType !== null;
+        $presenceFlagName = $this->resolvePresenceFlagName($property);
 
         return [
             'type' => $type,
@@ -2339,13 +2355,14 @@ final class GenerateDtoCommand extends Command
             'shouldDocument' => $shouldDocument,
             'tracksArgPresence' => $tracksArgPresence,
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
+            'presenceFlagName' => $presenceFlagName,
             'usesUnsetSentinel' => $usesUnsetSentinel,
         ];
     }
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inRequestFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -2419,12 +2436,29 @@ final class GenerateDtoCommand extends Command
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
+            'presenceFlagName' => $this->resolvePresenceFlagName($property),
             'hasArrayAdder' => str_starts_with((string)$property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
             'nullableArray' => (bool)$property['nullable'],
             'usesUnsetSentinel' => $usesUnsetSentinel,
         ];
+    }
+
+    /**
+     * @param SchemaProperty $property
+     */
+    private function resolvePresenceFlagName(array $property): string
+    {
+        if (($property['inPath'] ?? false) === true) {
+            return $this->normalizeInPathFlagName($property['name']);
+        }
+
+        if (($property['inQuery'] ?? false) === true) {
+            return $this->normalizeInQueryFlagName($property['name']);
+        }
+
+        return $this->normalizeInRequestFlagName($property['name']);
     }
 
     private function ensureTypeAllowsNull(string $type): string

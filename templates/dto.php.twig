@@ -118,9 +118,9 @@ interface {{ className }}
 {% if param.tracksArgPresence %}
 {% if param.usesUnsetSentinel %}
 		// Track if parameter was explicitly passed
-		$this->{{ param.inRequestFlagName }} = ${{ param.name }} !== UnsetValue::UNSET;
+		$this->{{ param.presenceFlagName }} = ${{ param.name }} !== UnsetValue::UNSET;
 {% else %}
-		$this->{{ param.inRequestFlagName }} = true;
+		$this->{{ param.presenceFlagName }} = true;
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -213,8 +213,8 @@ interface {{ className }}
 {% endif %}
 		$this->{{ property.name }}[] = $item;
 		// Mark as being in request if it wasn't explicitly passed to constructor
-		if (!$this->{{ property.inRequestFlagName }}) {
-			$this->{{ property.inRequestFlagName }} = true;
+		if (!$this->{{ property.presenceFlagName }}) {
+			$this->{{ property.presenceFlagName }} = true;
 		}
 	}
 {% endif %}
@@ -254,7 +254,7 @@ interface {{ className }}
 {% if property.requiredLiteral == 'true' %}
 		$result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% else %}
-		if ($this->{{ property.inRequestFlagName }}) {
+		if ($this->{{ property.inRequestFlagName }} || $this->{{ property.inPathFlagName }} || $this->{{ property.inQueryFlagName }}) {
 			$result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 		}
 {% endif %}

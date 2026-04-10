@@ -88,6 +88,15 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('public function isLimitInQuery(): bool', $content);
         $this->assertStringContainsString('return $this->userIdInPath;', $content);
         $this->assertStringContainsString('return $this->pageInQuery;', $content);
+        $this->assertStringContainsString('$this->userIdInPath = true;', $content);
+        $this->assertStringContainsString('$this->postIdInPath = true;', $content);
+        $this->assertStringContainsString('$this->pageInQuery = true;', $content);
+        $this->assertStringContainsString('$this->limitInQuery = $limit !== UnsetValue::UNSET;', $content);
+        $this->assertStringNotContainsString('$this->limitInRequest = $limit !== UnsetValue::UNSET;', $content);
+        $this->assertStringContainsString(
+            'if ($this->limitInRequest || $this->limitInPath || $this->limitInQuery) {',
+            $content,
+        );
     }
 
     public function testRequestBodyPostGeneration(): void
