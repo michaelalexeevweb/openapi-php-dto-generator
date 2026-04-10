@@ -197,9 +197,9 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return match ($type) {
-            'integer' => is_int($value),
-            'number' => is_int($value) || is_float($value),
-            'string' => is_string($value),
+            'integer' => is_int($value) || ($value instanceof \BackedEnum && is_int($value->value)),
+            'number' => is_int($value) || is_float($value) || ($value instanceof \BackedEnum && is_int($value->value)),
+            'string' => is_string($value) || ($value instanceof \BackedEnum && is_string($value->value)),
             'boolean' => is_bool($value),
             'array' => is_array($value) && array_is_list($value),
             'object' => (is_array($value) && !array_is_list($value)) || is_object($value),

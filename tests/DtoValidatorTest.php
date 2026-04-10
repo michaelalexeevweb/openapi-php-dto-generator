@@ -9,6 +9,16 @@ use DateTimeInterface;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use PHPUnit\Framework\TestCase;
 
+enum TestStringBackedEnum: string
+{
+    case INTEGER = 'integer';
+}
+
+enum TestIntBackedEnum: int
+{
+    case ONE = 1;
+}
+
 /**
  * Unit tests for DtoValidator.
  *
@@ -41,6 +51,63 @@ final class DtoValidatorTest extends TestCase
             value: null,
             constraints: ['minimum' => 10, 'format' => 'email', 'minLength' => 5],
         );
+        $this->assertSame([], $errors);
+    }
+
+    public function testTypeString_acceptsStringBackedEnum(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'type',
+            value: TestStringBackedEnum::INTEGER,
+            constraints: ['type' => 'string'],
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    public function testTypeString_rejectsIntBackedEnum(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'type',
+            value: TestIntBackedEnum::ONE,
+            constraints: ['type' => 'string'],
+        );
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('type must be of type string', $errors[0]);
+    }
+
+    public function testTypeInteger_acceptsIntBackedEnum(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'type',
+            value: TestIntBackedEnum::ONE,
+            constraints: ['type' => 'integer'],
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    public function testTypeInteger_rejectsStringBackedEnum(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'type',
+            value: TestStringBackedEnum::INTEGER,
+            constraints: ['type' => 'integer'],
+        );
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('type must be of type integer', $errors[0]);
+    }
+
+    public function testTypeNumber_acceptsIntBackedEnum(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'type',
+            value: TestIntBackedEnum::ONE,
+            constraints: ['type' => 'number'],
+        );
+
         $this->assertSame([], $errors);
     }
 
