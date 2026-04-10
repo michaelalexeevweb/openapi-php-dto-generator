@@ -504,6 +504,57 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('ID of the author who created the post', $content);
     }
 
+    public function testDocCommentsAreGeneratedForDescriptionOnlyExampleOnlyAndCombined(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Description and example docs',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'DocCommentModel' => [
+                        'type' => 'object',
+                        'required' => ['textOnly', 'sampleOnly', 'textAndSample'],
+                        'properties' => [
+                            'textOnly' => [
+                                'type' => 'string',
+                                'description' => 'Text only field',
+                            ],
+                            'sampleOnly' => [
+                                'type' => 'integer',
+                                'example' => 42,
+                            ],
+                            'textAndSample' => [
+                                'type' => 'string',
+                                'description' => 'Text with sample',
+                                'example' => 'demo-value',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/DocCommentModel.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        // description only
+        $this->assertStringContainsString('@param string $textOnly Text only field', $content);
+
+        // example only
+        $this->assertStringContainsString('@param int $sampleOnly Example: 42', $content);
+        $this->assertStringContainsString('Example: 42', $content);
+
+        // description + example
+        $this->assertStringContainsString('@param string $textAndSample Text with sample Example: demo-value', $content);
+        $this->assertStringContainsString('Example: demo-value', $content);
+    }
+
     public function testDefaultValuesSupport(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
@@ -1346,6 +1397,51 @@ YAML,
 
         // Should NOT have inheritance (multiple $refs means merge, not extend)
         $this->assertStringNotContainsString('extends', $petContent);
+    }
+
+    public function testNullableInsideAllOfWithSingleRef(): void
+    {
+        // OAS 3.0 spec-valid alternative: nullable: true as a branch inside allOf
+        // allOf: [{$ref: '...'}, {nullable: true}]
+        // Must produce the same result as: nullable: true + allOf: [{$ref: '...'}]
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $userFile = $this->outputDirectory . '/UserWithNullableInsideAllOf.php';
+        $this->assertFileExists($userFile);
+
+        $content = file_get_contents($userFile);
+        $this->assertStringContainsString('class UserWithNullableInsideAllOf', $content);
+        // Must generate ?Cat, not a spurious merged DTO
+        $this->assertStringContainsString('private readonly ?Cat $pet', $content);
+        $this->assertStringNotContainsString('private ?mixed $pet', $content);
+        // No extra merged DTO class must be created for this property
+        $this->assertFileDoesNotExist($this->outputDirectory . '/UserWithNullableInsideAllOfPet.php');
+    }
+
+    public function testNullableInsideAllOfWithMultipleRefs(): void
+    {
+        // allOf: [{$ref: Cat}, {$ref: Dog}, {nullable: true}]
+        // The nullable branch must be stripped before creating the merged DTO,
+        // and the merged DTO must be nullable.
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $userFile = $this->outputDirectory . '/UserWithNullableInsideAllOfMultiRefs.php';
+        $this->assertFileExists($userFile);
+
+        $content = file_get_contents($userFile);
+        $this->assertStringContainsString('class UserWithNullableInsideAllOfMultiRefs', $content);
+        // Merged DTO must be nullable
+        $this->assertStringContainsString('private readonly ?UserWithNullableInsideAllOfMultiRefsPet $pet', $content);
+
+        // Merged DTO must exist and contain merged properties (Cat + Dog)
+        $petFile = $this->outputDirectory . '/UserWithNullableInsideAllOfMultiRefsPet.php';
+        $this->assertFileExists($petFile);
+
+        $petContent = file_get_contents($petFile);
+        $this->assertStringContainsString('private readonly string $meow', $petContent);
+        $this->assertStringContainsString('private readonly string $bark', $petContent);
     }
 
     public function testMultipartBinaryFileSupport(): void

@@ -24,6 +24,7 @@ use Twig\Loader\FilesystemLoader;
  *   required: bool,
  *   default: mixed,
  *   description: string|null,
+ *   example: string|null,
  *   temporalFormat?: string|null,
  *   inPath?: bool,
  *   inQuery?: bool,
@@ -1193,6 +1194,7 @@ final class GenerateDtoCommand extends Command
             $nullable = $nullableBySchema || !$isRequired;
             $default = $this->extractDefaultValue($propertySchema, $type);
             $description = $this->extractDescription($propertySchema);
+            $example = $this->extractExample($propertySchema);
             $temporalFormat = $this->resolveTemporalPhpDocFormat($propertySchema);
             $constraints = $this->extractValidationConstraints($propertySchema);
 
@@ -1208,6 +1210,7 @@ final class GenerateDtoCommand extends Command
                 'required' => $isRequired,
                 'default' => $default,
                 'description' => $description,
+                'example' => $example,
                 'temporalFormat' => $temporalFormat,
                 'inPath' => $isInPath,
                 'inQuery' => $isInQuery,
@@ -1305,6 +1308,21 @@ final class GenerateDtoCommand extends Command
         $nullable = (bool)($propertySchema['nullable'] ?? false);
 
         if (array_key_exists('allOf', $propertySchema) && is_array($propertySchema['allOf'])) {
+            // Hoist standalone {nullable: true} items out of allOf into the top-level $nullable flag.
+            // This lets `allOf: [{$ref: '...'}, {nullable: true}]` (valid OAS 3.0) behave
+            // identically to the canonical `nullable: true` + `allOf: [{$ref: '...'}]` form.
+            $filteredAllOf = [];
+            foreach ($propertySchema['allOf'] as $item) {
+                if (is_array($item) && count($item) === 1 && ($item['nullable'] ?? null) === true) {
+                    $nullable = true;
+                } else {
+                    $filteredAllOf[] = $item;
+                }
+            }
+            if (count($filteredAllOf) !== count($propertySchema['allOf'])) {
+                $propertySchema = array_merge($propertySchema, ['allOf' => $filteredAllOf, 'nullable' => $nullable]);
+            }
+
             $normalizedAllOf = $this->normalizeAllOfPropertySchema($propertySchema);
             if ($normalizedAllOf !== null) {
                 return $this->resolvePropertyType(
@@ -2182,7 +2200,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{description: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, isArray: bool, usesUnsetSentinel: bool}
+     * @return array{description: ?string, example: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, isArray: bool, usesUnsetSentinel: bool}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
     {
@@ -2204,6 +2222,7 @@ final class GenerateDtoCommand extends Command
 
         $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $description = $property['description'] ?? null;
+        $example = $property['example'] ?? null;
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
         $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
         $docVarType = null;
@@ -2213,6 +2232,7 @@ final class GenerateDtoCommand extends Command
 
         return [
             'description' => is_string($description) && $description !== '' ? $description : null,
+            'example' => is_string($example) && $example !== '' ? $example : null,
             'constraintsLine' => $constraintsLine,
             'docVarType' => $docVarType,
             'type' => $type,
@@ -2227,7 +2247,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, constraintsLine: ?string, shouldDocument: bool, tracksArgPresence: bool, inRequestFlagName: string, usesUnsetSentinel: bool}
+     * @return array{type: string, name: string, defaultValue: string, isArray: bool, isPromoted: bool, docType: ?string, description: ?string, example: ?string, constraintsLine: ?string, shouldDocument: bool, tracksArgPresence: bool, inRequestFlagName: string, usesUnsetSentinel: bool}
      */
     private function resolveConstructorParameterData(array $property, string $namespace, bool $tracksArgPresence): array
     {
@@ -2265,6 +2285,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $description = $property['description'] ?? null;
+        $example = $property['example'] ?? null;
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
         $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
         $docType = null;
@@ -2274,7 +2295,11 @@ final class GenerateDtoCommand extends Command
         }
 
         $normalizedDescription = is_string($description) && $description !== '' ? $description : null;
-        $shouldDocument = $normalizedDescription !== null || $constraintsLine !== null || $docType !== null;
+        $normalizedExample = is_string($example) && $example !== '' ? $example : null;
+        $shouldDocument = $normalizedDescription !== null
+            || $normalizedExample !== null
+            || $constraintsLine !== null
+            || $docType !== null;
 
         return [
             'type' => $type,
@@ -2284,6 +2309,7 @@ final class GenerateDtoCommand extends Command
             'isPromoted' => true,
             'docType' => $docType,
             'description' => $normalizedDescription,
+            'example' => $normalizedExample,
             'constraintsLine' => $constraintsLine,
             'shouldDocument' => $shouldDocument,
             'tracksArgPresence' => $tracksArgPresence,
@@ -2312,11 +2338,15 @@ final class GenerateDtoCommand extends Command
         $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $methodName = 'get' . ucfirst($property['name']);
         $description = $property['description'] ?? null;
+        $example = $property['example'] ?? null;
         $temporalFormat = $property['temporalFormat'] ?? null;
 
         $docDescriptionLines = [];
         if ($description !== null && $description !== '') {
             $docDescriptionLines[] = $description;
+        }
+        if (is_string($example) && $example !== '') {
+            $docDescriptionLines[] = 'Example: ' . $example;
         }
 
         $docReturnType = null;
@@ -3438,6 +3468,34 @@ final class GenerateDtoCommand extends Command
         $description = preg_replace('/\s+/', ' ', $description);
 
         return $description;
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    private function extractExample(array $propertySchema): ?string
+    {
+        if (!array_key_exists('example', $propertySchema)) {
+            return null;
+        }
+
+        $example = $propertySchema['example'];
+
+        if (is_string($example)) {
+            $normalized = trim($example);
+            if ($normalized === '') {
+                return null;
+            }
+
+            return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+        }
+
+        if (is_int($example) || is_float($example) || is_bool($example) || is_array($example)) {
+            $encoded = json_encode($example, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return is_string($encoded) ? $encoded : null;
+        }
+
+        return null;
     }
 
     private function renderDefaultValue(mixed $defaultValue, string $phpType, string $fullType): string

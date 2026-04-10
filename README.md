@@ -8,7 +8,7 @@ Generate immutable PHP DTO classes from OpenAPI YAML specs (`.yaml` / `.yml`) an
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.18
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.19
 ```
 
 ## Requirements

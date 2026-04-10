@@ -32,20 +32,26 @@ interface {{ className }}
 
 {% for property in privateProperties %}
 {% if property.isArray %}
-{% set hasDoc = property.description is not null or property.constraintsLine is not null or property.docVarType is not null %}
+{% set hasDoc = property.description is not null or property.example is not null or property.constraintsLine is not null or property.docVarType is not null %}
 {% if hasDoc %}
 	/**
 {% if property.description is not null %}
 	 * {{ property.description }}
 {% endif %}
-{% if property.constraintsLine is not null %}
+{% if property.example is not null %}
 {% if property.description is not null %}
+	 *
+{% endif %}
+	 * Example: {{ property.example }}
+{% endif %}
+{% if property.constraintsLine is not null %}
+{% if property.description is not null or property.example is not null %}
 	 *
 {% endif %}
 	 * Constraints: {{ property.constraintsLine }}
 {% endif %}
 {% if property.docVarType is not null %}
-{% if property.description is not null or property.constraintsLine is not null %}
+{% if property.description is not null or property.example is not null or property.constraintsLine is not null %}
 	 *
 {% endif %}
 	 * @var {{ property.docVarType }}
@@ -73,8 +79,12 @@ interface {{ className }}
 	/**
 {% for param in constructorDocParams %}
 {% set docType = param.docType is not null ? param.docType : param.type %}
-{% if param.description is not null %}
+{% if param.description is not null and param.example is not null %}
+	 * @param {{ docType }} ${{ param.name }} {{ param.description }} Example: {{ param.example }}
+{% elseif param.description is not null %}
 	 * @param {{ docType }} ${{ param.name }} {{ param.description }}
+{% elseif param.example is not null %}
+	 * @param {{ docType }} ${{ param.name }} Example: {{ param.example }}
 {% else %}
 	 * @param {{ docType }} ${{ param.name }}
 {% endif %}

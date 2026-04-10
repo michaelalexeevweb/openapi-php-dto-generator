@@ -47,6 +47,35 @@ components:
                   type: string
                   description: This should win (last definition)
 
+    # Test 3: nullable: true as a branch inside allOf (OAS 3.0 spec-valid alternative syntax)
+    UserWithNullableInsideAllOf:
+      type: object
+      required:
+        - id
+        - pet
+      properties:
+        id:
+          type: integer
+        pet:
+          allOf:
+            - $ref: '#/components/schemas/Cat'
+            - nullable: true
+
+    # Test 4: multiple refs + nullable branch inside allOf
+    UserWithNullableInsideAllOfMultiRefs:
+      type: object
+      required:
+        - id
+        - pet
+      properties:
+        id:
+          type: integer
+        pet:
+          allOf:
+            - $ref: '#/components/schemas/Cat'
+            - $ref: '#/components/schemas/Dog'
+            - nullable: true
+
     Cat:
       allOf:
         - $ref: '#/components/schemas/Pet'
