@@ -1227,6 +1227,8 @@ final class GenerateDtoCommand extends Command
      */
     private function extractValidationConstraints(array $propertySchema): array
     {
+        $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
+
         $allowedKeys = [
             'type',
             'nullable',
@@ -1307,22 +1309,10 @@ final class GenerateDtoCommand extends Command
     {
         $nullable = (bool)($propertySchema['nullable'] ?? false);
 
-        if (array_key_exists('allOf', $propertySchema) && is_array($propertySchema['allOf'])) {
-            // Hoist standalone {nullable: true} items out of allOf into the top-level $nullable flag.
-            // This lets `allOf: [{$ref: '...'}, {nullable: true}]` (valid OAS 3.0) behave
-            // identically to the canonical `nullable: true` + `allOf: [{$ref: '...'}]` form.
-            $filteredAllOf = [];
-            foreach ($propertySchema['allOf'] as $item) {
-                if (is_array($item) && count($item) === 1 && ($item['nullable'] ?? null) === true) {
-                    $nullable = true;
-                } else {
-                    $filteredAllOf[] = $item;
-                }
-            }
-            if (count($filteredAllOf) !== count($propertySchema['allOf'])) {
-                $propertySchema = array_merge($propertySchema, ['allOf' => $filteredAllOf, 'nullable' => $nullable]);
-            }
+        $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
+        $nullable = (bool)($propertySchema['nullable'] ?? false);
 
+        if (array_key_exists('allOf', $propertySchema) && is_array($propertySchema['allOf'])) {
             $normalizedAllOf = $this->normalizeAllOfPropertySchema($propertySchema);
             if ($normalizedAllOf !== null) {
                 return $this->resolvePropertyType(
@@ -1560,6 +1550,41 @@ final class GenerateDtoCommand extends Command
             },
             $nullable
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function normalizeNullableBranchInAllOf(array $propertySchema): array
+    {
+        if (!array_key_exists('allOf', $propertySchema) || !is_array($propertySchema['allOf'])) {
+            return $propertySchema;
+        }
+
+        $nullable = (bool)($propertySchema['nullable'] ?? false);
+        $filteredAllOf = [];
+        $hadNullableBranch = false;
+
+        foreach ($propertySchema['allOf'] as $item) {
+            if (is_array($item) && count($item) === 1 && ($item['nullable'] ?? null) === true) {
+                $nullable = true;
+                $hadNullableBranch = true;
+                continue;
+            }
+
+            $filteredAllOf[] = $item;
+        }
+
+        if (!$hadNullableBranch) {
+            return $propertySchema;
+        }
+
+        $normalized = $propertySchema;
+        $normalized['allOf'] = $filteredAllOf;
+        $normalized['nullable'] = $nullable;
+
+        return $normalized;
     }
 
     /**

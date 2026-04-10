@@ -1417,6 +1417,7 @@ YAML,
         $this->assertStringNotContainsString('private ?mixed $pet', $content);
         // No extra merged DTO class must be created for this property
         $this->assertFileDoesNotExist($this->outputDirectory . '/UserWithNullableInsideAllOfPet.php');
+        $this->assertStringContainsString('$constraints[\'pet\'] = [\'nullable\' => true];', $content);
     }
 
     public function testNullableInsideAllOfWithMultipleRefs(): void
@@ -1442,6 +1443,7 @@ YAML,
         $petContent = file_get_contents($petFile);
         $this->assertStringContainsString('private readonly string $meow', $petContent);
         $this->assertStringContainsString('private readonly string $bark', $petContent);
+        $this->assertStringContainsString('$constraints[\'pet\'] = [\'nullable\' => true];', $content);
     }
 
     public function testMultipartBinaryFileSupport(): void
