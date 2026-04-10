@@ -397,6 +397,134 @@ final class DtoDeserializerTest extends TestCase
 
         $this->deserializer->deserialize($request, UnionIdDto::class);
     }
+
+    public function testDeserializeFloatFromJsonBody(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'price' => 9.99,
+            'discount' => 2,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, FloatFieldDto::class);
+
+        $this->assertSame(9.99, $dto->price);
+        $this->assertSame(2.0, $dto->discount);
+    }
+
+    public function testDeserializeThrowsForFloatFieldReceivingString(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'price' => 'not-a-number',
+            'discount' => 0,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "price" expects float, got string');
+
+        $this->deserializer->deserialize($request, FloatFieldDto::class);
+    }
+
+    public function testDeserializeExclusiveMaximumNumericConstraint(): void
+    {
+        // OpenAPI 3.1 style: exclusiveMaximum is the exclusive upper bound value itself
+        $request = new Request([], [], [], [], [], [], json_encode(['score' => 100]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('must be less than 100');
+
+        $this->deserializer->deserialize($request, ExclusiveMaxDto::class);
+    }
+
+    public function testDeserializeExclusiveMaximumBooleanConstraint(): void
+    {
+        // OpenAPI 3.0 style: maximum + exclusiveMaximum: true
+        $request = new Request([], [], [], [], [], [], json_encode(['rating' => 5]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('must be less than 5');
+
+        $this->deserializer->deserialize($request, ExclusiveMaxBoolDto::class);
+    }
+
+    public function testDeserializeAcceptsExplicitNullForSchemaNullableField(): void
+    {
+        // nullable: true in schema + isXxxRequired() = true → explicit null in JSON is valid
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'name' => null,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, SchemaNullableDto::class);
+
+        $this->assertNull($dto->getName());
+    }
+
+    public function testDeserializeRejectsExplicitNullForNonNullableJsonField(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => null,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('param "id" expects int, got null');
+
+        $this->deserializer->deserialize($request, SimpleTestDto::class);
+    }
+
+    public function testDeserializeFromFormData(): void
+    {
+        // Form-encoded POST: values are in $request->request (not $request->query or JSON body)
+        $request = new Request([], ['username' => 'alice', 'age' => '30'], [], [], [], []);
+
+        $dto = $this->deserializer->deserialize($request, FormDataDto::class);
+
+        $this->assertSame('alice', $dto->username);
+        $this->assertSame(30, $dto->age);
+    }
+
+    public function testDeserializeUnitEnumByName(): void
+    {
+        // UnitEnum (non-backed): matched by case name
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'direction' => 'NORTH',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DirectionDto::class);
+
+        $this->assertSame(DirectionEnum::NORTH, $dto->direction);
+    }
+
+    public function testDeserializeIntBackedEnum(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'priority' => 2,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, PriorityDto::class);
+
+        $this->assertSame(PriorityEnum::HIGH, $dto->priority);
+    }
+
+    public function testDeserializeNestedDtoFromJsonBody(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'user' => ['id' => 5, 'name' => 'Bob'],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, WrapperDto::class);
+
+        $this->assertInstanceOf(SimpleTestDto::class, $dto->user);
+        $this->assertSame(5, $dto->user->id);
+        $this->assertSame('Bob', $dto->user->name);
+    }
 }
 
 // Test DTOs
@@ -971,5 +1099,124 @@ final class NameByIdItemRequestDto
     public function getName1(): string
     {
         return $this->name1;
+    }
+}
+
+final class FloatFieldDto
+{
+    public function __construct(
+        public float $price,
+        public float $discount,
+    ) {
+    }
+}
+
+final class ExclusiveMaxDto
+{
+    public function __construct(
+        public int $score,
+    ) {
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            // OpenAPI 3.1 numeric form: exclusiveMaximum is the exclusive upper bound
+            'score' => ['exclusiveMaximum' => 100],
+        ];
+    }
+}
+
+final class ExclusiveMaxBoolDto
+{
+    public function __construct(
+        public int $rating,
+    ) {
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            // OpenAPI 3.0 boolean form: maximum + exclusiveMaximum: true
+            'rating' => ['maximum' => 5, 'exclusiveMaximum' => true],
+        ];
+    }
+}
+
+final class SchemaNullableDto
+{
+    private ?string $name;
+
+    public function __construct(?string $name)
+    {
+        $this->name = $name;
+    }
+
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    public function isNameRequired(): bool
+    {
+        return true;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'name' => ['nullable' => true],
+        ];
+    }
+}
+
+final class FormDataDto
+{
+    public function __construct(
+        public string $username,
+        public int $age,
+    ) {
+    }
+}
+
+enum DirectionEnum
+{
+    case NORTH;
+    case SOUTH;
+    case EAST;
+    case WEST;
+}
+
+final class DirectionDto
+{
+    public function __construct(
+        public DirectionEnum $direction,
+    ) {
+    }
+}
+
+enum PriorityEnum: int
+{
+    case LOW = 1;
+    case HIGH = 2;
+    case CRITICAL = 3;
+}
+
+final class PriorityDto
+{
+    public function __construct(
+        public PriorityEnum $priority,
+    ) {
+    }
+}
+
+final class WrapperDto
+{
+    public function __construct(
+        public SimpleTestDto $user,
+    ) {
     }
 }

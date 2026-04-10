@@ -104,31 +104,32 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
+        // Pre-fetch all request data sources once — avoids N per-parameter array allocations.
+        $bodyData = $this->getBodyData($request);
+        $queryData = $request->query->all();
+        $formData = $request->request->all();
+
         $args = [];
-        $providedParams = [];
         $providedParamSources = [];
         $errors = [];
 
         foreach ($classMeta['params'] as $paramMeta) {
             $requestFieldName = $paramMeta['requestFieldName'];
 
-            // If parameter is absent in request and nullable, preserve semantic "not provided" as null.
-            // For non-nullable params keep constructor default (if any).
             $rawSource = '';
             $rawWasProvided = false;
-            $this->extractRawValueFromRequest(
+            $rawValue = $this->resolveRawRequestValue(
                 request: $request,
                 paramName: $requestFieldName,
+                bodyData: $bodyData,
+                queryData: $queryData,
+                formData: $formData,
                 wasProvided: $rawWasProvided,
                 source: $rawSource,
             );
-            if (!$rawWasProvided && $paramMeta['hasDefaultValue']) {
-                if ($paramMeta['allowsNull']) {
-                    $args[] = null;
-                    continue;
-                }
 
-                $args[] = $paramMeta['defaultValue'];
+            if (!$rawWasProvided && $paramMeta['hasDefaultValue']) {
+                $args[] = $paramMeta['allowsNull'] ? null : $paramMeta['defaultValue'];
                 continue;
             }
 
@@ -138,16 +139,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 continue;
             }
 
-            // Try to get value from request (body, query, path, files)
-            $wasProvided = false;
+            // Cast the pre-resolved raw value to the declared type.
             try {
                 if (count($paramMeta['typeNames']) === 1) {
-                    $value = $this->extractValueFromRequest(
-                        request: $request,
+                    if (!$rawWasProvided) {
+                        if ($paramMeta['allowsNull']) {
+                            $args[] = null;
+                            continue;
+                        }
+                        throw new RuntimeException(
+                            "Required parameter \"{$requestFieldName}\" not found in request.",
+                        );
+                    }
+                    $value = $this->castValue(
+                        value: $rawValue,
                         paramName: $requestFieldName,
                         typeName: $paramMeta['typeNames'][0],
                         allowsNull: $paramMeta['allowsNull'],
-                        wasProvided: $wasProvided,
+                        source: $rawSource,
                         arrayItemType: $paramMeta['arrayItemType'],
                         paramPath: $requestFieldName,
                         schemaAllowsNull: $paramMeta['schemaAllowsNull'],
@@ -156,12 +165,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                     );
                 } else {
-                    $value = $this->extractUnionValueFromRequest(
-                        request: $request,
+                    $value = $this->castUnionValue(
                         paramName: $requestFieldName,
                         typeNames: $paramMeta['typeNames'],
                         allowsNull: $paramMeta['allowsNull'],
-                        wasProvided: $wasProvided,
+                        rawValue: $rawValue,
+                        rawWasProvided: $rawWasProvided,
+                        rawSource: $rawSource,
                         arrayItemType: $paramMeta['arrayItemType'],
                         schemaAllowsNull: $paramMeta['schemaAllowsNull'],
                         dtoReflection: $reflection,
@@ -170,7 +180,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     );
                 }
             } catch (RuntimeException $e) {
-                // Collect errors and use null as placeholder so we can continue validating other params
+                // Collect errors and use null as placeholder so we can continue validating other params.
                 foreach (explode("\n", $e->getMessage()) as $msg) {
                     $errors[] = $msg;
                 }
@@ -178,17 +188,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 continue;
             }
 
-            if (!$wasProvided && $paramMeta['hasDefaultValue']) {
-                if ($paramMeta['allowsNull']) {
-                    $value = null;
-                } else {
-                    $value = $paramMeta['defaultValue'];
-                }
-            }
-
             $args[] = $value;
 
-            if ($wasProvided && is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
+            if ($rawWasProvided && is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
                     $this->constraintValidator->validate(
                         sprintf('param "%s"', $requestFieldName),
@@ -200,8 +202,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
             }
 
-            if ($wasProvided) {
-                $providedParams[] = $paramMeta['name'];
+            if ($rawWasProvided) {
                 $providedParamSources[$paramMeta['name']] = $rawSource;
             }
         }
@@ -213,47 +214,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
         /** @var T $dto */
         $dto = $reflection->newInstanceArgs($args);
 
-        // Normalize tracking flags first to override constructor-level defaults.
+        // Set tracking flags: all to false first, then mark provided sources.
         foreach ($classMeta['params'] as $paramMeta) {
             $paramName = $paramMeta['name'];
-
-            $inRequestProperty = $classMeta['inRequestProperties'][$paramName] ?? null;
-            if ($inRequestProperty !== null) {
-                $inRequestProperty->setValue($dto, false);
-            }
-
-            $inPathProperty = $classMeta['inPathProperties'][$paramName] ?? null;
-            if ($inPathProperty !== null) {
-                $inPathProperty->setValue($dto, false);
-            }
-
-            $inQueryProperty = $classMeta['inQueryProperties'][$paramName] ?? null;
-            if ($inQueryProperty !== null) {
-                $inQueryProperty->setValue($dto, false);
-            }
-        }
-
-        // Mark fields as provided in request using pre-resolved (and already
-        // setAccessible'd) ReflectionProperty objects from the metadata cache.
-        foreach ($providedParams as $paramName) {
-            $flagProperty = $classMeta['inRequestProperties'][$paramName] ?? null;
-            if ($flagProperty !== null) {
-                $flagProperty->setValue($dto, true);
-            }
-
             $source = $providedParamSources[$paramName] ?? null;
-            if ($source === 'path') {
-                $pathFlagProperty = $classMeta['inPathProperties'][$paramName] ?? null;
-                if ($pathFlagProperty !== null) {
-                    $pathFlagProperty->setValue($dto, true);
-                }
-            }
 
-            if ($source === 'query') {
-                $queryFlagProperty = $classMeta['inQueryProperties'][$paramName] ?? null;
-                if ($queryFlagProperty !== null) {
-                    $queryFlagProperty->setValue($dto, true);
-                }
+            if (($prop = $classMeta['inRequestProperties'][$paramName] ?? null) !== null) {
+                $prop->setValue($dto, $source !== null);
+            }
+            if (($prop = $classMeta['inPathProperties'][$paramName] ?? null) !== null) {
+                $prop->setValue($dto, $source === 'path');
+            }
+            if (($prop = $classMeta['inQueryProperties'][$paramName] ?? null) !== null) {
+                $prop->setValue($dto, $source === 'query');
             }
         }
 
@@ -368,42 +341,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 )
                 : null;
 
-            // Pre-resolve and make accessible the inRequest flag property (if any).
-            $flagPropName = $this->resolveInRequestFlagPropertyName(reflection: $reflection, paramName: $paramName);
-            $flagProperty = null;
-            if ($flagPropName !== null) {
-                $flagProperty = $reflection->getProperty($flagPropName);
-                if (!$flagProperty->isPublic()) {
-                    $flagProperty->setAccessible(true);
-                }
-            }
-            $inRequestProperties[$paramName] = $flagProperty;
-
-            $pathFlagPropertyName = $this->resolveInPathFlagPropertyName(
+            $inRequestProperties[$paramName] = $this->resolveReflectionProperty(
                 reflection: $reflection,
-                paramName: $paramName,
+                propName: $this->resolveInRequestFlagPropertyName(reflection: $reflection, paramName: $paramName),
             );
-            $pathFlagProperty = null;
-            if ($pathFlagPropertyName !== null) {
-                $pathFlagProperty = $reflection->getProperty($pathFlagPropertyName);
-                if (!$pathFlagProperty->isPublic()) {
-                    $pathFlagProperty->setAccessible(true);
-                }
-            }
-            $inPathProperties[$paramName] = $pathFlagProperty;
-
-            $queryFlagPropertyName = $this->resolveInQueryFlagPropertyName(
+            $inPathProperties[$paramName] = $this->resolveReflectionProperty(
                 reflection: $reflection,
-                paramName: $paramName,
+                propName: $this->resolveInPathFlagPropertyName(reflection: $reflection, paramName: $paramName),
             );
-            $queryFlagProperty = null;
-            if ($queryFlagPropertyName !== null) {
-                $queryFlagProperty = $reflection->getProperty($queryFlagPropertyName);
-                if (!$queryFlagProperty->isPublic()) {
-                    $queryFlagProperty->setAccessible(true);
-                }
-            }
-            $inQueryProperties[$paramName] = $queryFlagProperty;
+            $inQueryProperties[$paramName] = $this->resolveReflectionProperty(
+                reflection: $reflection,
+                propName: $this->resolveInQueryFlagPropertyName(reflection: $reflection, paramName: $paramName),
+            );
 
             $params[] = [
                 'name' => $paramName,
@@ -446,148 +395,103 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return !$allowsNull && !$hasDefaultValue;
         }
 
-        $method = $reflection->getMethod($requiredMethodName);
+        return $this->readMethodBodyContainsReturnTrue($reflection->getMethod($requiredMethodName))
+            ?? (!$allowsNull && !$hasDefaultValue);
+    }
+
+    /**
+     * Reads a method's source body and returns whether it contains `return true;`.
+     * Returns null when the source file is unavailable (caller chooses fallback).
+     */
+    private function readMethodBodyContainsReturnTrue(\ReflectionMethod $method): ?bool
+    {
         $filename = $method->getFileName();
         if ($filename === false) {
-            return !$allowsNull && !$hasDefaultValue;
+            return null;
         }
 
         $lines = file($filename);
         if ($lines === false) {
-            return !$allowsNull && !$hasDefaultValue;
+            return null;
         }
 
-        $start = $method->getStartLine();
-        $end = $method->getEndLine();
-        $body = implode('', array_slice($lines, $start - 1, $end - $start + 1));
+        $body = implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
 
         return str_contains($body, 'return true;');
     }
 
-    private function extractValueFromRequest(
+    /**
+     * Resolves the raw value for a single parameter from all request sources using pre-fetched data.
+     * Sets $wasProvided and $source by reference.
+     *
+     * @param array<string, mixed> $bodyData
+     * @param array<string, mixed> $queryData
+     * @param array<string, mixed> $formData
+     */
+    private function resolveRawRequestValue(
         Request $request,
         string $paramName,
-        string $typeName,
-        bool $allowsNull,
+        array $bodyData,
+        array $queryData,
+        array $formData,
         bool &$wasProvided,
-        ?string $arrayItemType = null,
-        ?string $paramPath = null,
-        bool $schemaAllowsNull = false,
-        ?string $temporalFormat = null,
-        ?string $openApiFormat = null,
-        bool $allowsAssociativeArray = false,
+        string &$source,
     ): mixed {
-        $paramPath ??= $paramName;
-        // Check in request body (JSON)
-        $bodyData = $this->getBodyData($request);
         if (array_key_exists($paramName, $bodyData)) {
             $wasProvided = true;
-            return $this->castValue(
-                value: $bodyData[$paramName],
-                paramName: $paramName,
-                typeName: $typeName,
-                allowsNull: $allowsNull,
-                source: 'json',
-                arrayItemType: $arrayItemType,
-                paramPath: $paramPath,
-                schemaAllowsNull: $schemaAllowsNull,
-                temporalFormat: $temporalFormat,
-                openApiFormat: $openApiFormat,
-                allowsAssociativeArray: $allowsAssociativeArray,
-            );
+            $source = 'json';
+            return $bodyData[$paramName];
         }
 
-        // Check in query parameters (supports scalar and array query values)
-        $queryData = $request->query->all();
         if (array_key_exists($paramName, $queryData)) {
             $wasProvided = true;
-            return $this->castValue(
-                value: $queryData[$paramName],
-                paramName: $paramName,
-                typeName: $typeName,
-                allowsNull: $allowsNull,
-                source: 'query',
-                arrayItemType: $arrayItemType,
-                paramPath: $paramPath,
-                openApiFormat: $openApiFormat,
-                allowsAssociativeArray: $allowsAssociativeArray,
-            );
+            $source = 'query';
+            return $queryData[$paramName];
         }
 
-        // Check in route parameters (path)
         if ($request->attributes->has($paramName)) {
             $wasProvided = true;
-            return $this->castValue(
-                value: $request->attributes->get($paramName),
-                paramName: $paramName,
-                typeName: $typeName,
-                allowsNull: $allowsNull,
-                source: 'path',
-                arrayItemType: $arrayItemType,
-                paramPath: $paramPath,
-                openApiFormat: $openApiFormat,
-                allowsAssociativeArray: $allowsAssociativeArray,
-            );
+            $source = 'path';
+            return $request->attributes->get($paramName);
         }
 
-        // Check in uploaded files
-        if ($typeName === UploadedFile::class && $request->files->has($paramName)) {
+        if ($request->files->has($paramName)) {
             $wasProvided = true;
+            $source = 'files';
             return $request->files->get($paramName);
         }
 
-        // Check in multipart form data
-        if ($request->request->has($paramName)) {
+        if (array_key_exists($paramName, $formData)) {
             $wasProvided = true;
-            return $this->castValue(
-                value: $request->request->get($paramName),
-                paramName: $paramName,
-                typeName: $typeName,
-                allowsNull: $allowsNull,
-                source: 'form',
-                arrayItemType: $arrayItemType,
-                paramPath: $paramPath,
-                openApiFormat: $openApiFormat,
-                allowsAssociativeArray: $allowsAssociativeArray,
-            );
+            $source = 'form';
+            return $formData[$paramName];
         }
 
-        // If nullable and not found, return null
-        if ($allowsNull) {
-            $wasProvided = false;
-            return null;
-        }
-
-        throw new RuntimeException(
-            "Required parameter \"{$paramName}\" not found in request.",
-        );
+        $wasProvided = false;
+        $source = '';
+        return null;
     }
 
     /**
+     * Casts a pre-resolved raw value to one of the given union types.
+     *
      * @param array<int, string> $typeNames
      * @param ReflectionClass<object> $dtoReflection
      */
-    private function extractUnionValueFromRequest(
-        Request $request,
+    private function castUnionValue(
         string $paramName,
         array $typeNames,
         bool $allowsNull,
-        bool &$wasProvided,
+        mixed $rawValue,
+        bool $rawWasProvided,
+        string $rawSource,
         ?string $arrayItemType,
         bool $schemaAllowsNull,
         ReflectionClass $dtoReflection,
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
     ): mixed {
-        $source = '';
-        $rawValue = $this->extractRawValueFromRequest(
-            request: $request,
-            paramName: $paramName,
-            wasProvided: $wasProvided,
-            source: $source,
-        );
-
-        if (!$wasProvided) {
+        if (!$rawWasProvided) {
             if ($allowsNull) {
                 return null;
             }
@@ -613,7 +517,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     paramName: $paramName,
                     typeName: $typeName,
                     allowsNull: false,
-                    source: $source,
+                    source: $rawSource,
                     arrayItemType: $arrayItemType,
                     paramPath: $paramName,
                     schemaAllowsNull: $schemaAllowsNull,
@@ -627,49 +531,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         throw new RuntimeException(implode("\n", array_values(array_unique($errors))));
-    }
-
-    private function extractRawValueFromRequest(
-        Request $request,
-        string $paramName,
-        bool &$wasProvided,
-        string &$source,
-    ): mixed {
-        $bodyData = $this->getBodyData($request);
-        if (array_key_exists($paramName, $bodyData)) {
-            $wasProvided = true;
-            $source = 'json';
-            return $bodyData[$paramName];
-        }
-
-        $queryData = $request->query->all();
-        if (array_key_exists($paramName, $queryData)) {
-            $wasProvided = true;
-            $source = 'query';
-            return $queryData[$paramName];
-        }
-
-        if ($request->attributes->has($paramName)) {
-            $wasProvided = true;
-            $source = 'path';
-            return $request->attributes->get($paramName);
-        }
-
-        if ($request->files->has($paramName)) {
-            $wasProvided = true;
-            $source = 'files';
-            return $request->files->get($paramName);
-        }
-
-        if ($request->request->has($paramName)) {
-            $wasProvided = true;
-            $source = 'form';
-            return $request->request->get($paramName);
-        }
-
-        $wasProvided = false;
-        $source = '';
-        return null;
     }
 
     /**
@@ -740,6 +601,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $result[$key] = $value;
         }
         return $result;
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveReflectionProperty(ReflectionClass $reflection, ?string $propName): ?\ReflectionProperty
+    {
+        return $propName !== null ? $reflection->getProperty($propName) : null;
     }
 
     /**
@@ -938,28 +807,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     return $value;
                 }
 
-                $normalized = [];
-                $errors = [];
-                foreach ($value as $index => $itemValue) {
-                    $itemPath = $paramPath . '.' . $index;
-
-                    try {
-                        $normalized[$index] = $this->castArrayItemValue(
-                            itemValue: $itemValue,
-                            arrayItemType: $arrayItemType,
-                            itemPath: $itemPath,
-                            source: 'json',
-                        );
-                    } catch (RuntimeException $e) {
-                        $errors[] = $e->getMessage();
-                    }
-                }
-
-                if ($errors !== []) {
-                    throw new RuntimeException(implode("\n", $errors));
-                }
-
-                return $normalized;
+                return $this->castArrayItems(
+                    items: $value,
+                    arrayItemType: $arrayItemType,
+                    paramPath: $paramPath,
+                    source: $source,
+                );
             }
         }
 
@@ -1011,28 +864,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 return $arrayValue;
             }
 
-            $normalized = [];
-            $errors = [];
-            foreach ($arrayValue as $index => $itemValue) {
-                $itemPath = $paramPath . '.' . $index;
-
-                try {
-                    $normalized[$index] = $this->castArrayItemValue(
-                        itemValue: $itemValue,
-                        arrayItemType: $arrayItemType,
-                        itemPath: $itemPath,
-                        source: $source,
-                    );
-                } catch (RuntimeException $e) {
-                    $errors[] = $e->getMessage();
-                }
-            }
-
-            if ($errors !== []) {
-                throw new RuntimeException(implode("\n", $errors));
-            }
-
-            return $normalized;
+            return $this->castArrayItems(
+                items: $arrayValue,
+                arrayItemType: $arrayItemType,
+                paramPath: $paramPath,
+                source: $source,
+            );
         }
 
         // Handle DateTimeImmutable
@@ -1097,6 +934,35 @@ final class DtoDeserializer implements DtoDeserializerInterface
         );
     }
 
+    /**
+     * @param array<array-key, mixed> $items
+     * @return array<array-key, mixed>
+     */
+    private function castArrayItems(array $items, string $arrayItemType, string $paramPath, string $source): array
+    {
+        $normalized = [];
+        $errors = [];
+        foreach ($items as $index => $itemValue) {
+            $itemPath = $paramPath . '.' . $index;
+            try {
+                $normalized[$index] = $this->castArrayItemValue(
+                    itemValue: $itemValue,
+                    arrayItemType: $arrayItemType,
+                    itemPath: $itemPath,
+                    source: $source,
+                );
+            } catch (RuntimeException $e) {
+                $errors[] = $e->getMessage();
+            }
+        }
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", $errors));
+        }
+
+        return $normalized;
+    }
+
     private function castArrayItemValue(mixed $itemValue, string $arrayItemType, string $itemPath, string $source): mixed
     {
         if (in_array($arrayItemType, ['int', 'float', 'string', 'bool', 'array'], true)) {
@@ -1152,17 +1018,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
         return $message;
     }
 
-    /**
-     * Determines whether the schema explicitly allows null for this field.
-     *
-     * PHP uses ?Type for both:
-     *   1. Fields with nullable: true in the schema (explicit null is valid)
-     *   2. Optional (non-required) fields (field absent is ok, but null is NOT valid)
-     *
-     * We distinguish them by checking isXxxRequired(): if the field is required AND
-     * nullable in PHP, it means the schema has nullable: true. If it is not required,
-     * the nullable PHP type is only to represent "absent" as null internally.
-     */
     /**
      * Parses a date/time string strictly according to the schema format.
      * Rejects empty strings and strings that don't match the expected format.
@@ -1294,25 +1149,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $phpAllowsNull;
         }
 
-        // Parse the method source to detect `return true;`
-        $method = $reflection->getMethod($requiredMethodName);
-        $filename = $method->getFileName();
-        if ($filename === false) {
-            return $phpAllowsNull;
-        }
-
-        $lines = file($filename);
-        if ($lines === false) {
-            return $phpAllowsNull;
-        }
-
-        $start = $method->getStartLine();
-        $end = $method->getEndLine();
-        $body = implode('', array_slice($lines, $start - 1, $end - $start + 1));
-
         // If required AND PHP-nullable -> schema has nullable:true -> null is valid.
         // If not required AND PHP-nullable -> just optional -> null is NOT valid in JSON.
-        return str_contains($body, 'return true;');
+        return $this->readMethodBodyContainsReturnTrue($reflection->getMethod($requiredMethodName))
+            ?? $phpAllowsNull;
     }
 
     /**
@@ -1395,19 +1235,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
         /** @var list<UnitEnum> $cases */
         $cases = self::$enumCasesCache[$enumClass];
 
+        $allowed = [];
         foreach ($cases as $case) {
-            if ($case instanceof BackedEnum && $case->value === $value) {
-                return $case;
+            if ($case instanceof BackedEnum) {
+                if ($case->value === $value) {
+                    return $case;
+                }
+                $allowed[] = (string)$case->value;
+            } else {
+                $allowed[] = $case->name;
             }
 
             if ($case->name === $value) {
                 return $case;
             }
-        }
-
-        $allowed = [];
-        foreach ($cases as $case) {
-            $allowed[] = $case instanceof BackedEnum ? (string)$case->value : $case->name;
         }
 
         if ($paramPath !== null) {

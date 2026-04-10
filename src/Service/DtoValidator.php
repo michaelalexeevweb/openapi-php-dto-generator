@@ -44,40 +44,16 @@ final class DtoValidator implements DtoValidatorInterface
 
         $errors = [];
 
-        $hasNumericConstraints = array_any(
-            ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
-            static fn(string $key): bool => array_key_exists($key, $constraints),
-        );
-
-        if ((is_int($value) || is_float($value)) && $hasNumericConstraints) {
-            $errors = [
-                ...$errors,
-                ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)
-            ];
+        if ((is_int($value) || is_float($value)) && $this->constraintsHave($constraints, 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf')) {
+            $errors = [...$errors, ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)];
         }
 
-        $hasStringConstraints = array_any(
-            ['minLength', 'maxLength', 'pattern', 'format'],
-            static fn(string $key): bool => array_key_exists($key, $constraints),
-        );
-
-        if (is_string($value) && $hasStringConstraints) {
-            $errors = [
-                ...$errors,
-                ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)
-            ];
+        if (is_string($value) && $this->constraintsHave($constraints, 'minLength', 'maxLength', 'pattern', 'format')) {
+            $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
         }
 
-        $hasArrayConstraints = array_any(
-            ['minItems', 'maxItems', 'uniqueItems', 'items'],
-            static fn(string $key): bool => array_key_exists($key, $constraints),
-        );
-
-        if (is_array($value) && $hasArrayConstraints) {
-            $errors = [
-                ...$errors,
-                ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)
-            ];
+        if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items')) {
+            $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)];
         }
 
         if (array_key_exists('format', $constraints) && $constraints['format'] === 'binary' && !is_string(
@@ -105,7 +81,6 @@ final class DtoValidator implements DtoValidatorInterface
 
         return match ($format) {
             'date' => $value->format('Y-m-d'),
-            'date-time', 'datetime' => $value->format(DateTimeInterface::ATOM),
             default => $value->format(DateTimeInterface::ATOM),
         };
     }
@@ -301,9 +276,9 @@ final class DtoValidator implements DtoValidatorInterface
                 } else {
                     try {
                         $fingerprint = 'j:' . json_encode(
-                                $item,
-                                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
-                            );
+                            value: $item,
+                            flags: JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+                        );
                     } catch (JsonException) {
                         $fingerprint = 'j:' . serialize($item);
                     }
@@ -342,9 +317,9 @@ final class DtoValidator implements DtoValidatorInterface
             'date-time', 'datetime' => $this->isValidDateTimeFormat(value: $value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
             'uuid' => preg_match(
-                    '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
-                    $value,
-                ) === 1,
+                pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
+                subject: $value,
+            ) === 1,
             'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
             'hostname' => filter_var($value, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false,
             'ipv4' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false,
@@ -447,5 +422,13 @@ final class DtoValidator implements DtoValidatorInterface
             'NULL' => 'null',
             default => gettype($value),
         };
+    }
+
+    /**
+     * @param array<string, mixed> $constraints
+     */
+    private function constraintsHave(array $constraints, string ...$keys): bool
+    {
+        return array_any($keys, static fn(string $key): bool => array_key_exists($key, $constraints));
     }
 }

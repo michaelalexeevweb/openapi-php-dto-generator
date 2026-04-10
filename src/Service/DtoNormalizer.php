@@ -78,11 +78,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function validateAndNormalizeToArray(GeneratedDtoInterface $dto): array
     {
-        $errors = $this->validate($dto);
-
-        if ($errors !== []) {
-            throw new RuntimeException('DTO validation failed: ' . implode(', ', $errors));
-        }
+        $this->validateOrThrow($dto);
 
         return $this->dtoToArray($dto);
     }
@@ -92,12 +88,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function toJson(GeneratedDtoInterface $dto): string
     {
-        $fastArray = $this->tryFastArray($dto);
-        if ($fastArray !== null) {
-            return json_encode($fastArray, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-        }
-
-        return json_encode($this->dtoToArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->toArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -106,13 +97,20 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function validateAndNormalizeToJson(GeneratedDtoInterface $dto): string
     {
-        $errors = $this->validate($dto);
+        $this->validateOrThrow($dto);
 
+        return json_encode($this->dtoToArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @throws RuntimeException if validation fails
+     */
+    private function validateOrThrow(GeneratedDtoInterface $dto): void
+    {
+        $errors = $this->validate($dto);
         if ($errors !== []) {
             throw new RuntimeException('DTO validation failed: ' . implode(', ', $errors));
         }
-
-        return json_encode($this->dtoToArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -414,7 +412,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $value->format('c');
         }
 
-
         if (is_object($value)) {
             $meta = $this->getClassMeta($value);
             if ($meta['getters'] !== []) {
@@ -488,6 +485,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
         bool $allowsNull,
         string $methodName,
     ): ?string {
+        $filtered = array_values(array_filter($expectedTypes, static fn(string $t): bool => $t !== 'null'));
+
         if ($value === null) {
             if ($allowsNull) {
                 return null;
@@ -496,11 +495,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return sprintf(
                 'Method %s() returned null but type is non-nullable %s.',
                 $methodName,
-                implode('|', array_values(array_filter($expectedTypes, static fn(string $t): bool => $t !== 'null'))),
+                implode('|', $filtered),
             );
         }
 
-        $filtered = array_values(array_filter($expectedTypes, static fn(string $t): bool => $t !== 'null'));
         if ($filtered === []) {
             return null;
         }
@@ -628,7 +626,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private function resolveOpenApiPropertyAliasesByClass(string $className): array
     {
         $method = $this->resolveMetadataMethod($className, ['getAliases']);
-        if (!is_callable($method)) {
+        if ($method === null) {
             return [];
         }
 
@@ -655,7 +653,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private function resolveOpenApiConstraintsByClass(string $className): array
     {
         $method = $this->resolveMetadataMethod($className, ['getConstraints']);
-        if (!is_callable($method)) {
+        if ($method === null) {
             return [];
         }
 

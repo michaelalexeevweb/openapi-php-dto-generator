@@ -122,6 +122,91 @@ final class DtoNormalizerTest extends TestCase
 
         $normalizer->validateAndNormalizeToArray($dto);
     }
+
+    public function testToArrayNormalizesDateTimeInterfaceToIsoString(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerDateTimeDto(new \DateTimeImmutable('2024-06-15T10:30:00+00:00'));
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame('2024-06-15T10:30:00+00:00', $payload['createdAt']);
+    }
+
+    public function testToArrayNormalizesStringBackedEnumToValue(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerEnumValueDto(NormalizerStatusEnum::ACTIVE);
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame('active', $payload['status']);
+    }
+
+    public function testToArrayNormalizesIntBackedEnumToIntValue(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerIntEnumDto(NormalizerPriorityEnum::HIGH);
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame(2, $payload['priority']);
+    }
+
+    public function testToArrayNormalizesUnitEnumToName(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerUnitEnumDto(NormalizerDirectionEnum::NORTH);
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame('NORTH', $payload['direction']);
+    }
+
+    public function testValidateReturnsEmptyArrayForValidDto(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerValidDto(name: 'alice', score: 42);
+
+        $errors = $normalizer->validate($dto);
+
+        $this->assertSame([], $errors);
+    }
+
+    public function testValidateReturnsConstraintErrorsForInvalidDto(): void
+    {
+        $normalizer = new DtoNormalizer();
+        // score must be >= 1, but we pass 0
+        $dto = new NormalizerValidDto(name: 'alice', score: 0);
+
+        $errors = $normalizer->validate($dto);
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('score', $errors[0]);
+    }
+
+    public function testToArrayViaReflectionGettersWhenNoNormalizationMap(): void
+    {
+        // DTO has no toArray() / getNormalizationMap() — falls back to public getter discovery
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerGetterOnlyDto(id: 7, label: 'hello');
+
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame(7, $payload['id']);
+        $this->assertSame('hello', $payload['label']);
+    }
+
+    public function testToJsonMatchesToArray(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerGetterOnlyDto(id: 3, label: 'test');
+
+        $json = $normalizer->toJson($dto);
+        $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame($normalizer->toArray($dto), $decoded);
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -603,6 +688,325 @@ final class NormalizerOuterFqcnDto implements GeneratedDtoInterface
         return [
             'body' => ['getter' => 'getBody', 'type' => NormalizerInnerItemsDto::class, 'nullable' => false, 'metadata' => ['openApiName' => 'body']],
         ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+// DTO with a DateTimeImmutable field — normalized to 'c' ISO string by the normalizer
+final class NormalizerDateTimeDto implements GeneratedDtoInterface
+{
+    public function __construct(private readonly \DateTimeImmutable $createdAt)
+    {
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['createdAt' => $this->createdAt];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+enum NormalizerStatusEnum: string
+{
+    case ACTIVE = 'active';
+    case INACTIVE = 'inactive';
+}
+
+enum NormalizerPriorityEnum: int
+{
+    case LOW = 1;
+    case HIGH = 2;
+}
+
+enum NormalizerDirectionEnum
+{
+    case NORTH;
+    case SOUTH;
+}
+
+final class NormalizerEnumValueDto implements GeneratedDtoInterface
+{
+    public function __construct(private readonly NormalizerStatusEnum $status)
+    {
+    }
+
+    public function getStatus(): NormalizerStatusEnum
+    {
+        return $this->status;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['status' => $this->status];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerIntEnumDto implements GeneratedDtoInterface
+{
+    public function __construct(private readonly NormalizerPriorityEnum $priority)
+    {
+    }
+
+    public function getPriority(): NormalizerPriorityEnum
+    {
+        return $this->priority;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['priority' => $this->priority];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerUnitEnumDto implements GeneratedDtoInterface
+{
+    public function __construct(private readonly NormalizerDirectionEnum $direction)
+    {
+    }
+
+    public function getDirection(): NormalizerDirectionEnum
+    {
+        return $this->direction;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['direction' => $this->direction];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+// DTO with constraint metadata — used to test validate() with/without violations
+final class NormalizerValidDto implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly string $name,
+        private readonly int $score,
+    ) {
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getScore(): int
+    {
+        return $this->score;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['name' => $this->name, 'score' => $this->score];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'name' => ['getter' => 'getName', 'type' => 'string', 'nullable' => false, 'metadata' => ['openApiName' => 'name']],
+            'score' => ['getter' => 'getScore', 'type' => 'int', 'nullable' => false, 'metadata' => ['openApiName' => 'score']],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'score' => ['minimum' => 1, 'maximum' => 100],
+        ];
+    }
+}
+
+// DTO that exercises the public-getter discovery path in dtoToArray.
+// toArray() throws so tryFastArray() returns null and dtoToArray() falls back to
+// reflecting over public getters (buildClassMetaFromPublicGetters).
+final class NormalizerGetterOnlyDto implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly int $id,
+        private readonly string $label,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        // Throw so the normalizer falls back to the reflection-based getter path
+        throw new \LogicException('toArray not implemented — use reflection path');
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return ['id' => $this->id, 'label' => $this->label];
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
     }
 
     /** @return array<string, string> */
