@@ -1171,6 +1171,8 @@ final class GenerateDtoCommand extends Command
         }
 
         $result = [];
+        /** @var array<string, string> $normalizedToOpenApiName */
+        $normalizedToOpenApiName = [];
 
         foreach ($properties as $propertyName => $propertySchema) {
             if (!is_array($propertySchema)) {
@@ -1202,8 +1204,21 @@ final class GenerateDtoCommand extends Command
             $isInPath = $paramIn === 'path';
             $isInQuery = $paramIn === 'query';
 
+            $normalizedName = $this->normalizePropertyName($openApiPropertyName);
+            $alreadyMappedOpenApiName = $normalizedToOpenApiName[$normalizedName] ?? null;
+            if ($alreadyMappedOpenApiName !== null && $alreadyMappedOpenApiName !== $openApiPropertyName) {
+                throw new RuntimeException(sprintf(
+                    'Property name collision in %s: "%s" and "%s" normalize to "$%s".',
+                    $ownerClassName,
+                    $alreadyMappedOpenApiName,
+                    $openApiPropertyName,
+                    $normalizedName,
+                ));
+            }
+            $normalizedToOpenApiName[$normalizedName] = $openApiPropertyName;
+
             $result[] = [
-                'name' => $this->normalizePropertyName($openApiPropertyName),
+                'name' => $normalizedName,
                 'openApiName' => $openApiPropertyName,
                 'type' => $type,
                 'nullable' => $nullable,
@@ -2347,7 +2362,7 @@ final class GenerateDtoCommand extends Command
             'name' => $property['name'],
             'defaultValue' => $defaultValue,
             'isArray' => $isArray,
-            'isPromoted' => true,
+            'isPromoted' => !$isArray && $tracksArgPresence,
             'docType' => $docType,
             'description' => $normalizedDescription,
             'example' => $normalizedExample,
@@ -3102,22 +3117,26 @@ final class GenerateDtoCommand extends Command
 
     private function normalizePropertyName(string $name): string
     {
-        if ($name === '') {
+        $normalized = trim($name);
+        if ($normalized === '') {
             return 'value';
         }
 
-        // Keep property names exactly as in the OpenAPI spec when they are valid PHP identifiers.
-        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) === 1) {
-            return $name;
+        // Split camelCase/PascalCase and keep arbitrary separators from OpenAPI keys.
+        $normalized = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $normalized) ?? $normalized;
+        $normalized = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1 $2', $normalized) ?? $normalized;
+        $parts = preg_split('/[^A-Za-z0-9]+/', $normalized) ?: [];
+        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+
+        if ($parts === []) {
+            return 'value';
         }
 
-        // Fallback for invalid identifiers: replace unsupported characters with underscores.
-        $propertyName = preg_replace('/[^A-Za-z0-9_]/', '_', $name) ?? $name;
-        $propertyName = preg_replace('/_+/', '_', $propertyName) ?? $propertyName;
-        $propertyName = trim($propertyName, '_');
+        $first = strtolower($parts[0]);
+        $propertyName = $first;
 
-        if ($propertyName === '') {
-            return 'value';
+        for ($index = 1, $count = count($parts); $index < $count; $index++) {
+            $propertyName .= ucfirst(strtolower($parts[$index]));
         }
 
         if (is_numeric($propertyName[0])) {

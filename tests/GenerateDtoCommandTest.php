@@ -564,6 +564,115 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('Example: demo-value', $content);
     }
 
+    public function testArrayPropertyDocblockKeepsVarTypeWhenOnlyExampleExists(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Array property var doc test',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'PayloadExampleModel' => [
+                        'type' => 'object',
+                        'required' => ['success', 'payload'],
+                        'properties' => [
+                            'success' => ['type' => 'boolean'],
+                            'payload' => [
+                                'type' => 'array',
+                                'items' => new \stdClass(),
+                                'example' => [],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/PayloadExampleModel.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString('* Example: []', $content);
+        $this->assertStringContainsString('* @var array', $content);
+        $this->assertStringContainsString('@param array $payload Example: []', $content);
+    }
+
+    public function testGenericArrayDocblockScenariosForDescriptionAndExample(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => [
+                'title' => 'Generic array docblock matrix',
+                'version' => '1.0.0',
+            ],
+            'components' => [
+                'schemas' => [
+                    'Tag' => [
+                        'type' => 'object',
+                        'required' => ['label'],
+                        'properties' => [
+                            'label' => ['type' => 'string'],
+                        ],
+                    ],
+                    'GenericArrayDocMatrix' => [
+                        'type' => 'object',
+                        'required' => ['plainTags', 'descriptionTags', 'exampleTags', 'fullTags'],
+                        'properties' => [
+                            'plainTags' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Tag'],
+                            ],
+                            'descriptionTags' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Tag'],
+                                'description' => 'Description only tags',
+                            ],
+                            'exampleTags' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Tag'],
+                                'example' => [['label' => 'demo']],
+                            ],
+                            'fullTags' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Tag'],
+                                'description' => 'Description and example tags',
+                                'example' => [['label' => 'demo']],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/GenericArrayDocMatrix.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        // 1) no description and no example
+        $this->assertStringContainsString('@param array<Tag> $plainTags', $content);
+
+        // 2) description only
+        $this->assertStringContainsString('@param array<Tag> $descriptionTags Description only tags', $content);
+
+        // 3) example only
+        $this->assertStringContainsString('@param array<Tag> $exampleTags Example: [{"label":"demo"}]', $content);
+
+        // 4) description + example
+        $this->assertStringContainsString(
+            '@param array<Tag> $fullTags Description and example tags Example: [{"label":"demo"}]',
+            $content,
+        );
+
+        // Ensure property docblocks keep generic @var type in all scenarios
+        $this->assertSame(4, substr_count($content, '@var array<Tag>'));
+    }
+
     public function testDefaultValuesSupport(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
@@ -674,6 +783,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('extends BaseEntity', $content);
         $this->assertStringContainsString('private readonly string $updatedAt', $content);
         $this->assertStringContainsString('string $name,', $content);
+        $this->assertStringNotContainsString('private readonly string $name,', $content);
         $this->assertStringContainsString('parent::__construct', $content);
     }
 
@@ -1170,9 +1280,9 @@ YAML,
         $content = file_get_contents($file);
 
         // PHP property remains valid identifier while alias keeps original OpenAPI key.
-        $this->assertStringContainsString('private readonly string $test_process', $content);
-        $this->assertStringContainsString('$aliases[\'test_process\'] = \'test-process\';', $content);
-        $this->assertStringContainsString('public function isTest_processRequired(): bool', $content);
+        $this->assertStringContainsString('private readonly string $testProcess', $content);
+        $this->assertStringContainsString('$aliases[\'testProcess\'] = \'test-process\';', $content);
+        $this->assertStringContainsString('public function isTestProcessRequired(): bool', $content);
         $this->assertStringContainsString('return true;', $content);
 
         // Getter should not be guarded by inRequest flag.
@@ -1208,9 +1318,9 @@ YAML,
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private readonly string $test_name', $content);
-        $this->assertStringContainsString('$aliases[\'test_name\'] = \'<<test name>>\';', $content);
-        $this->assertStringContainsString('public function isTest_nameRequired(): bool', $content);
+        $this->assertStringContainsString('private readonly string $testName', $content);
+        $this->assertStringContainsString('$aliases[\'testName\'] = \'<<test name>>\';', $content);
+        $this->assertStringContainsString('public function isTestNameRequired(): bool', $content);
     }
 
     public function testUppercaseUnderscoreNameUsesCamelCaseInRequestFlagAndKeepsAlias(): void
@@ -1241,10 +1351,68 @@ YAML,
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private readonly string $TEST_NAME', $content);
+        $this->assertStringContainsString('private readonly string $testName', $content);
         $this->assertStringContainsString('private bool $testNameInRequest = false;', $content);
-        $this->assertStringContainsString('$aliases[\'TEST_NAME\'] = \'TEST_NAME\';', $content);
+        $this->assertStringContainsString('$aliases[\'testName\'] = \'TEST_NAME\';', $content);
         $this->assertStringContainsString('return $this->testNameInRequest;', $content);
+    }
+
+    public function testGenerationFailsWhenTwoPropertiesNormalizeToSameCamelCaseName(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Collision test', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'CollisionModel' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'test_param' => ['type' => 'string'],
+                            'test-param' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Property name collision in CollisionModel');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+    }
+
+    public function testGenerationFailsWhenQueryParameterNamesNormalizeToSameCamelCaseName(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Param collision test', 'version' => '1.0.0'],
+            'paths' => [
+                '/items' => [
+                    'get' => [
+                        'parameters' => [
+                            [
+                                'name' => 'user_id',
+                                'in' => 'query',
+                                'required' => false,
+                                'schema' => ['type' => 'string'],
+                            ],
+                            [
+                                'name' => 'user-id',
+                                'in' => 'query',
+                                'required' => false,
+                                'schema' => ['type' => 'string'],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Property name collision in ItemsGetQueryParams');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
     }
 
     public function testAdditionalPropertiesMapGeneratesArrayTypeAndNoNestedClass(): void
@@ -1256,7 +1424,7 @@ YAML,
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private array $test_map', $content);
+        $this->assertStringContainsString('private array $testMap', $content);
         $this->assertStringContainsString('@var array<string>', $content);
         $this->assertStringContainsString("'type' => 'object'", $content);
         $this->assertStringContainsString('public static function getAliases(): array', $content);

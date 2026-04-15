@@ -50,12 +50,10 @@ interface {{ className }}
 {% endif %}
 	 * Constraints: {{ property.constraintsLine }}
 {% endif %}
-{% if property.docVarType is not null %}
 {% if property.description is not null or property.example is not null or property.constraintsLine is not null %}
 	 *
 {% endif %}
-	 * @var {{ property.docVarType }}
-{% endif %}
+	 * @var {{ property.docVarType is not null ? property.docVarType : property.type }}
 	 */
 {% else %}
 	/**
@@ -96,10 +94,10 @@ interface {{ className }}
 {% endif %}
 	public function __construct(
 {% for param in constructorParams %}
-{% if param.isArray %}
-		{{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
-{% else %}
+{% if param.isPromoted %}
 		private readonly {{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
+{% else %}
+		{{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
 {% endif %}
 {% endfor %}
 	) {

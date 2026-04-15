@@ -3,12 +3,32 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/michaelalexeevweb/openapi-php-dto-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelalexeevweb/openapi-php-dto-generator/actions/workflows/ci.yml)
 
-Generate immutable PHP DTO classes from OpenAPI YAML specs (`.yaml` / `.yml`) and validate/normalize request data with generated DTO constraints.
+**Generate PHP DTOs from OpenAPI and validate incoming HTTP requests against OpenAPI schema.**
+
+Stop writing boilerplate PHP data transfer objects by hand. This library reads your OpenAPI 3.x YAML specification and automatically generates strictly-typed, immutable PHP 8.4 DTO classes. On top of that, it provides runtime services to **deserialize** Symfony `Request` objects into those DTOs, **validate HTTP requests** against the original OpenAPI schema rules (OpenAPI request validation), and **normalize** them back to arrays or JSON — all in one package.
+
+## Features
+
+- 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
+- ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
+- 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
+- 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
+- 🔒 **Immutable by design** — all generated classes are read-only value objects
+- ⚡ **Supports OpenAPI 3.0.x and 3.1.x**
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Generate DTOs](#generate-dto-classes-from-yaml-openapi-spec)
+- [Validate & Normalize](#validate-and-normalize-generated-dtos)
+- [CLI Commands](#cli-commands)
 
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.22
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.23
 ```
 
 ## Requirements
@@ -16,10 +36,27 @@ composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.22
 - PHP 8.4+
 - Symfony 7.4 components (`console`, `http-foundation`, `mime`, `yaml`)
 
-## Supports
+## Quick Start
 
-**OpenAPI 3.0.x** and **OpenAPI 3.1.x**.
+1. **Generate DTOs** from your OpenAPI YAML spec
+2. **Deserialize** an incoming HTTP request into a generated DTO
+3. **Validate** and **normalize** the DTO for further use
 
+```php
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use Symfony\Component\HttpFoundation\Request;
+use YourApp\Generated\UserPostRequest;
+
+$deserializer = new DtoDeserializer();
+$normalizer   = new DtoNormalizer();
+
+/** @var Request $request */
+$dto = $deserializer->deserialize($request, UserPostRequest::class);
+
+// validate against OpenAPI constraints + normalize to array
+$data = $normalizer->validateAndNormalizeToArray($dto);
+```
 
 ## Usage
 
@@ -48,13 +85,17 @@ composer openapi:generate-dto -- \
 
 Parameters:
 
-- `--file` (`-f`) - required, path to OpenAPI YAML spec file.
-- `--directory` (`-d`) - required, output directory for generated DTOs.
-- `--namespace` - optional, explicit DTO namespace (if omitted, derived from `--directory`).
-- `--dto-generator-directory` - optional, copy runtime services into this directory (`Common` by default when option is present without value).
-- `--dto-generator-namespace` - optional, explicit namespace for copied runtime services.
+| Option | Alias | Required | Description |
+|---|---|---|---|
+| `--file` | `-f` | ✅ | Path to OpenAPI YAML spec file |
+| `--directory` | `-d` | ✅ | Output directory for generated DTOs |
+| `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
+| `--dto-generator-directory` | | | Copy runtime services into this directory (`Common` by default) |
+| `--dto-generator-namespace` | | | Explicit namespace for copied runtime services |
 
 ### Validate and normalize generated DTOs
+
+Once DTOs are generated, use the runtime services to deserialize, validate, and normalize request data:
 
 ```php
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
@@ -63,20 +104,22 @@ use Symfony\Component\HttpFoundation\Request;
 use YourApp\Generated\UserPostRequest;
 
 $deserializer = new DtoDeserializer();
-$normalizer = new DtoNormalizer();
+$normalizer   = new DtoNormalizer();
 
 /** @var Request $request */
+
+// Deserialize HTTP request into a typed DTO
 $dto = $deserializer->deserialize($request, UserPostRequest::class);
 
-// normalize only
+// Normalize only (no validation)
 $array = $normalizer->toArray($dto);
-$json = $normalizer->toJson($dto);
+$json  = $normalizer->toJson($dto);
 
-// validate against OpenAPI constraints + normalize
+// Validate against OpenAPI constraints, then normalize
 $validatedArray = $normalizer->validateAndNormalizeToArray($dto);
-$validatedJson = $normalizer->validateAndNormalizeToJson($dto);
+$validatedJson  = $normalizer->validateAndNormalizeToJson($dto);
 ```
 
 ## CLI commands
 
-- `openapi:generate-dto` - generate DTO classes from OpenAPI schemas
+- `openapi:generate-dto` — generate immutable PHP DTO classes from OpenAPI YAML schemas
