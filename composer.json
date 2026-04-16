@@ -1,13 +1,20 @@
 {
     "name": "michaelalexeevweb/openapi-php-dto-generator",
-    "description": "Generate immutable PHP DTO classes from OpenAPI schemas with request and response validation.",
+    "description": "Generate PHP DTOs from OpenAPI and validate incoming HTTP requests against OpenAPI schema.",
     "type": "library",
     "license": "MIT",
     "keywords": [
-        "openapi",
         "php",
+        "openapi",
         "dto",
-        "generator"
+        "dto-generator",
+        "api",
+        "validation",
+        "request-validation",
+        "openapi-validation",
+        "serializer",
+        "deserialization",
+        "symfony"
     ],
     "authors": [
         {
