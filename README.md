@@ -1,7 +1,10 @@
 # OpenAPI PHP DTO Generator
 
-[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![MIT License](https://img.shields.io/github/license/michaelalexeevweb/openapi-php-dto-generator)](LICENSE)
 [![CI](https://github.com/michaelalexeevweb/openapi-php-dto-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelalexeevweb/openapi-php-dto-generator/actions/workflows/ci.yml)
+[![Latest Version](https://img.shields.io/packagist/v/michaelalexeevweb/openapi-php-dto-generator)](https://packagist.org/packages/michaelalexeevweb/openapi-php-dto-generator)
+[![PHP Version](https://img.shields.io/packagist/php-v/michaelalexeevweb/openapi-php-dto-generator)](https://packagist.org/packages/michaelalexeevweb/openapi-php-dto-generator)
+[![Total Downloads](https://img.shields.io/packagist/dt/michaelalexeevweb/openapi-php-dto-generator)](https://packagist.org/packages/michaelalexeevweb/openapi-php-dto-generator)
 
 **Generate PHP DTOs from OpenAPI and validate incoming HTTP requests against OpenAPI schema.**
 
@@ -39,23 +42,27 @@ composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.23
 ## Quick Start
 
 1. **Generate DTOs** from your OpenAPI YAML spec
-2. **Deserialize** an incoming HTTP request into a generated DTO
-3. **Validate** and **normalize** the DTO for further use
+2. **Deserialize** and **validate** an incoming HTTP request into a generated DTO
+3. **Validate** and **normalize** the DTO for response
 
 ```php
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use Symfony\Component\HttpFoundation\Request;
-use YourApp\Generated\UserPostRequest;
+use YourApp\Generated\UserPostRequest; // generated DTO from OpenAPI spec
+use YourApp\Generated\UserViewResponse; // generated DTO from OpenAPI spec
 
 $deserializer = new DtoDeserializer();
 $normalizer   = new DtoNormalizer();
 
 /** @var Request $request */
-$dto = $deserializer->deserialize($request, UserPostRequest::class);
+// request: deserialize -> validate
+$requestDto = $deserializer->deserialize($request, UserPostRequest::class);
 
-// validate against OpenAPI constraints + normalize to array
-$data = $normalizer->validateAndNormalizeToArray($dto);
+// response: validate -> normalize
+$responseData = $normalizer->validateAndNormalizeToArray($requestDto);
+// response: normalize without validation for faster response
+$responseData = $normalizer->toArray(new UserViewResponse(name: 'John', surname: 'Doe'));
 ```
 
 ## Usage
@@ -92,34 +99,3 @@ Parameters:
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | Copy runtime services into this directory (`Common` by default) |
 | `--dto-generator-namespace` | | | Explicit namespace for copied runtime services |
-
-### Validate and normalize generated DTOs
-
-Once DTOs are generated, use the runtime services to deserialize, validate, and normalize request data:
-
-```php
-use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
-use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
-use Symfony\Component\HttpFoundation\Request;
-use YourApp\Generated\UserPostRequest;
-
-$deserializer = new DtoDeserializer();
-$normalizer   = new DtoNormalizer();
-
-/** @var Request $request */
-
-// Deserialize HTTP request into a typed DTO
-$dto = $deserializer->deserialize($request, UserPostRequest::class);
-
-// Normalize only (no validation)
-$array = $normalizer->toArray($dto);
-$json  = $normalizer->toJson($dto);
-
-// Validate against OpenAPI constraints, then normalize
-$validatedArray = $normalizer->validateAndNormalizeToArray($dto);
-$validatedJson  = $normalizer->validateAndNormalizeToJson($dto);
-```
-
-## CLI commands
-
-- `openapi:generate-dto` — generate immutable PHP DTO classes from OpenAPI YAML schemas
