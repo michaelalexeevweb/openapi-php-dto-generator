@@ -124,7 +124,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
         try {
             $result = $dto->toArray();
-        } catch (Throwable) {
+        } catch (\LogicException $e) {
+            if (!str_contains($e->getMessage(), "wasn't provided in request")) {
+                throw $e;
+            }
             return null;
         }
 

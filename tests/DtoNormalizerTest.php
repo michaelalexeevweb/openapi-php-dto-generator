@@ -185,9 +185,8 @@ final class DtoNormalizerTest extends TestCase
         $this->assertStringContainsString('score', $errors[0]);
     }
 
-    public function testToArrayViaReflectionGettersWhenNoNormalizationMap(): void
+    public function testToArrayNormalizesSimpleDtoWithoutNormalizationMap(): void
     {
-        // DTO has no toArray() / getNormalizationMap() — falls back to public getter discovery
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerGetterOnlyDto(id: 7, label: 'hello');
 
@@ -216,6 +215,16 @@ final class DtoNormalizerTest extends TestCase
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessageMatches('/Cannot normalize object of class/');
+        $normalizer->toArray($dto);
+    }
+
+    public function testTryFastArrayPropagatesNonWasProvidedLogicException(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerDtoWithThrowingToArray();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('toArray exploded');
         $normalizer->toArray($dto);
     }
 
@@ -1012,13 +1021,12 @@ final class NormalizerGetterOnlyDto implements GeneratedDtoInterface
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        // Throw so the normalizer falls back to the reflection-based getter path
-        throw new \LogicException('toArray not implemented — use reflection path');
+        return ['id' => $this->id, 'label' => $this->label];
     }
 
     public function jsonSerialize(): mixed
     {
-        return ['id' => $this->id, 'label' => $this->label];
+        return $this->toArray();
     }
 
     public function toJson(): string
@@ -1124,6 +1132,43 @@ final class NormalizerDtoWithOpaqueGetter implements GeneratedDtoInterface
                 'metadata' => ['openApiName' => 'nestedValue', 'required' => true, 'inPathFlagGetter' => '', 'inQueryFlagGetter' => '', 'inRequestFlagGetter' => '', 'constraints' => []],
             ],
         ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerDtoWithThrowingToArray implements GeneratedDtoInterface
+{
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        throw new \LogicException('toArray exploded');
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
     }
 
     /** @return array<string, string> */

@@ -471,14 +471,14 @@ final class DtoFeaturesTest extends TestCase
         $this->assertFalse($dto->isDescriptionInRequest());
     }
 
-    public function testMissingNullableFieldWithDefaultIsNullAndNotMarkedAsProvided(): void
+    public function testMissingNullableFieldWithDefaultUsesPhpDefaultAndNotMarkedAsProvided(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest([]),
             TrackableDefaultNullableDto::class,
         );
 
-        $this->assertNull($dto->message);
+        $this->assertSame('default-message', $dto->message);
         $this->assertFalse($dto->isMessageInRequest());
     }
 
@@ -615,7 +615,7 @@ final class DtoFeaturesTest extends TestCase
 
     private function jsonRequest(array $data): Request
     {
-        $request = new Request([], [], [], [], [], [], json_encode($data));
+        $request = new Request([], [], [], [], [], [], json_encode($data ?: new \stdClass()));
         $request->headers->set('Content-Type', 'application/json');
         return $request;
     }

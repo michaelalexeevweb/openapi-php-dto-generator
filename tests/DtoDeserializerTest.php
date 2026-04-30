@@ -195,14 +195,14 @@ final class DtoDeserializerTest extends TestCase
         $this->assertFalse($dto->isLimitInQuery());
     }
 
-    public function testDeserializeSetsNullForMissingNullableFieldEvenWhenConstructorHasDefault(): void
+    public function testDeserializeUsesPHPDefaultForMissingNullableField(): void
     {
         $request = new Request(['page' => '5'], [], ['userId' => '10'], [], [], []);
 
         $dto = $this->deserializer->deserialize($request, DefaultValueMixedDto::class);
 
         $this->assertInstanceOf(DefaultValueMixedDto::class, $dto);
-        $this->assertNull($dto->getLimit());
+        $this->assertSame(10, $dto->getLimit());
         $this->assertFalse($dto->isLimitInRequest());
     }
 
@@ -553,7 +553,7 @@ final class DtoDeserializerTest extends TestCase
     public function testIsRequiredDetectionIgnoresCommentContainingReturnTrue(): void
     {
         // isTitleRequired() body has "return true;" only in a comment → field must be treated as optional
-        $request = new Request([], [], [], [], [], [], json_encode([]));
+        $request = new Request([], [], [], [], [], [], '{}');
         $request->headers->set('Content-Type', 'application/json');
 
         $dto = $this->deserializer->deserialize($request, RequiredFlagCommentFalsePositiveDto::class);
@@ -565,7 +565,7 @@ final class DtoDeserializerTest extends TestCase
     public function testIsRequiredDetectionIgnoresDeadBranchReturnTrue(): void
     {
         // isTitleRequired() has `if (false) { return true; }` → field must be optional
-        $request = new Request([], [], [], [], [], [], json_encode([]));
+        $request = new Request([], [], [], [], [], [], '{}');
         $request->headers->set('Content-Type', 'application/json');
 
         $dto = $this->deserializer->deserialize($request, RequiredFlagDeadBranchFalsePositiveDto::class);

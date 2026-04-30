@@ -141,12 +141,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
 
             if (!$rawWasProvided && $paramMeta['hasDefaultValue']) {
-                $defaultValue = $paramMeta['defaultValue'];
-                // UnsetValue sentinel must be passed as-is so the constructor can detect "not in request".
-                // For regular nullable defaults, null is used to signal "absent from request".
-                $args[] = ($paramMeta['allowsNull'] && !($defaultValue instanceof UnsetValue))
-                    ? null
-                    : $defaultValue;
+                $args[] = $paramMeta['defaultValue'];
                 continue;
             }
 
@@ -582,7 +577,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
             throw new \InvalidArgumentException('Json is not valid: ' . json_last_error_msg());
         }
 
-        $result = ($decoded instanceof \stdClass) ? $this->stdClassToArray($decoded) : [];
+        if (!$decoded instanceof \stdClass) {
+            throw new \InvalidArgumentException(
+                'JSON body must be an object, got ' . gettype($decoded),
+            );
+        }
+
+        $result = $this->stdClassToArray($decoded);
 
         $this->bodyDataCacheKey = $cacheKey;
         $this->bodyDataCacheValue = $result;
