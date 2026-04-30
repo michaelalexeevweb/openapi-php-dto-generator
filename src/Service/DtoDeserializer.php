@@ -8,12 +8,14 @@ use BackedEnum;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionUnionType;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
+use Throwable;
 use UnitEnum;
 
 final class DtoDeserializer implements DtoDeserializerInterface
@@ -50,6 +52,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     fieldConstraints: array<string,mixed>|null,
      *   }>,
      *   inRequestProperties: array<string, \ReflectionProperty|null>,
+     *   inPathProperties: array<string, \ReflectionProperty|null>,
+     *   inQueryProperties: array<string, \ReflectionProperty|null>,
      * }>
      */
     private static array $dtoMetaCache = [];
@@ -129,7 +133,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
 
             if (!$rawWasProvided && $paramMeta['hasDefaultValue']) {
-                $args[] = $paramMeta['allowsNull'] ? null : $paramMeta['defaultValue'];
+                $defaultValue = $paramMeta['defaultValue'];
+                // UnsetValue sentinel must be passed as-is so the constructor can detect "not in request".
+                // For regular nullable defaults, null is used to signal "absent from request".
+                $args[] = ($paramMeta['allowsNull'] && !($defaultValue instanceof UnsetValue))
+                    ? null
+                    : $defaultValue;
                 continue;
             }
 
@@ -395,29 +404,22 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return !$allowsNull && !$hasDefaultValue;
         }
 
-        return $this->readMethodBodyContainsReturnTrue($reflection->getMethod($requiredMethodName))
+        return $this->invokeRequiredMethod($reflection, $requiredMethodName)
             ?? (!$allowsNull && !$hasDefaultValue);
     }
 
     /**
-     * Reads a method's source body and returns whether it contains `return true;`.
-     * Returns null when the source file is unavailable (caller chooses fallback).
+     * @param ReflectionClass<object> $reflection
      */
-    private function readMethodBodyContainsReturnTrue(\ReflectionMethod $method): ?bool
+    private function invokeRequiredMethod(ReflectionClass $reflection, string $methodName): ?bool
     {
-        $filename = $method->getFileName();
-        if ($filename === false) {
+        try {
+            $method = $reflection->getMethod($methodName);
+            $instance = $method->isStatic() ? null : $reflection->newInstanceWithoutConstructor();
+            return (bool)$method->invoke($instance);
+        } catch (Throwable) {
             return null;
         }
-
-        $lines = file($filename);
-        if ($lines === false) {
-            return null;
-        }
-
-        $body = implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
-
-        return str_contains($body, 'return true;');
     }
 
     /**
@@ -1141,17 +1143,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $fieldConstraints['nullable'] === true;
         }
 
-        // Check isXxxRequired() on the DTO instance would require constructing it first.
-        // Instead, read the method body via reflection to see if it returns true/false.
         $requiredMethodName = 'is' . ucfirst($paramName) . 'Required';
         if (!$reflection->hasMethod($requiredMethodName)) {
-            // No method available — fall back to allowing null if PHP allows it
             return $phpAllowsNull;
         }
 
-        // If required AND PHP-nullable -> schema has nullable:true -> null is valid.
-        // If not required AND PHP-nullable -> just optional -> null is NOT valid in JSON.
-        return $this->readMethodBodyContainsReturnTrue($reflection->getMethod($requiredMethodName))
+        // required + PHP-nullable → schema nullable:true → null is valid in JSON.
+        // not required + PHP-nullable → just optional → null is NOT valid in JSON.
+        return $this->invokeRequiredMethod($reflection, $requiredMethodName)
             ?? $phpAllowsNull;
     }
 

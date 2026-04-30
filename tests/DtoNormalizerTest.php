@@ -207,6 +207,17 @@ final class DtoNormalizerTest extends TestCase
 
         $this->assertSame($normalizer->toArray($dto), $decoded);
     }
+
+    public function testNormalizationThrowsLogicExceptionForOpaqueObject(): void
+    {
+        // An object with no getters, no __toString, not backed enum, not DateTimeInterface — must throw
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerWithOpaquePropertyDto();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/Cannot normalize object of class/');
+        $normalizer->toArray($dto);
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -1022,3 +1033,46 @@ final class NormalizerGetterOnlyDto implements GeneratedDtoInterface
     }
 }
 
+
+// Opaque object: no getters, no __toString — triggers LogicException in normalizeValue
+final class OpaqueObject
+{
+}
+
+// DTO whose toArray() returns an OpaqueObject nested value
+final class NormalizerWithOpaquePropertyDto implements GeneratedDtoInterface
+{
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['nested' => new OpaqueObject()];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}

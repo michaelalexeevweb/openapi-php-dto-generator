@@ -422,7 +422,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 return (string)$value;
             }
 
-            return get_class($value);
+            throw new LogicException(sprintf(
+                'Cannot normalize object of class %s: no getters, no __toString.',
+                get_class($value),
+            ));
         }
 
         return $value;

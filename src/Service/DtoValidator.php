@@ -138,6 +138,7 @@ final class DtoValidator implements DtoValidatorInterface
     private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf): array
     {
         $matched = 0;
+        $validBranches = 0;
         $errors = [];
 
         foreach ($branches as $branch) {
@@ -155,6 +156,7 @@ final class DtoValidator implements DtoValidatorInterface
 
             $branchErrors = $this->validate(subject: $subject, value: $value, constraints: $branchConstraints);
             if ($branchErrors === []) {
+                $validBranches++;
                 if (!$isOneOf) {
                     return [];
                 }
@@ -165,11 +167,11 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if ($isOneOf) {
-            if ($matched === 1 && $errors === []) {
+            if ($validBranches === 1) {
                 return [];
             }
 
-            if ($matched > 1 && $errors === []) {
+            if ($validBranches > 1) {
                 return [
                     "{$subject} matches more than one allowed oneOf branch"
                 ];
@@ -280,7 +282,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
-            $regex = '/' . str_replace('/', '\\/', $pattern) . '/u';
+            $regex = '#' . str_replace('#', '\\#', $pattern) . '#u';
             if (!$this->isValidRegex($regex)) {
                 $errors[] = "{$subject} has invalid regex pattern in schema: {$pattern}";
             } elseif (preg_match($regex, $value) !== 1) {

@@ -525,6 +525,30 @@ final class DtoDeserializerTest extends TestCase
         $this->assertSame(5, $dto->user->id);
         $this->assertSame('Bob', $dto->user->name);
     }
+
+    public function testIsRequiredDetectionIgnoresCommentContainingReturnTrue(): void
+    {
+        // isTitleRequired() body has "return true;" only in a comment → field must be treated as optional
+        $request = new Request([], [], [], [], [], [], json_encode([]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, RequiredFlagCommentFalsePositiveDto::class);
+
+        $this->assertNull($dto->getTitle());
+        $this->assertFalse($dto->isTitleInRequest());
+    }
+
+    public function testIsRequiredDetectionIgnoresDeadBranchReturnTrue(): void
+    {
+        // isTitleRequired() has `if (false) { return true; }` → field must be optional
+        $request = new Request([], [], [], [], [], [], json_encode([]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, RequiredFlagDeadBranchFalsePositiveDto::class);
+
+        $this->assertNull($dto->getTitle());
+        $this->assertFalse($dto->isTitleInRequest());
+    }
 }
 
 // Test DTOs
@@ -1218,5 +1242,65 @@ final class WrapperDto
     public function __construct(
         public SimpleTestDto $user,
     ) {
+    }
+}
+
+// DTO where isXRequired() returns true, but body contains "return true;" in a comment
+// Old str_contains: false-positive (sees "return true;" in comment)
+// New token-based: correctly detects NO top-level return true; → treats field as optional
+final class RequiredFlagCommentFalsePositiveDto
+{
+    private bool $titleInRequest = false;
+
+    public function __construct(
+        private ?string $title = null,
+    ) {
+    }
+
+    public function getTitle(): ?string
+    {
+        return $this->title;
+    }
+
+    public function isTitleInRequest(): bool
+    {
+        return $this->titleInRequest;
+    }
+
+    public function isTitleRequired(): bool
+    {
+        // We do NOT return true; here — this comment used to trick str_contains
+        return false;
+    }
+}
+
+// DTO where isXRequired() has a dead-branch "return true;" inside if (false)
+// Old str_contains: false-positive
+// New token-based: correctly skips depth > 1 → treats field as not-required
+final class RequiredFlagDeadBranchFalsePositiveDto
+{
+    private bool $titleInRequest = false;
+
+    public function __construct(
+        private ?string $title = null,
+    ) {
+    }
+
+    public function getTitle(): ?string
+    {
+        return $this->title;
+    }
+
+    public function isTitleInRequest(): bool
+    {
+        return $this->titleInRequest;
+    }
+
+    public function isTitleRequired(): bool
+    {
+        if (false) {
+            return true;
+        }
+        return false;
     }
 }

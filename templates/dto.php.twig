@@ -201,9 +201,11 @@ interface {{ className }}
 
 	public function {{ property.arrayAdderMethodName }}({{ property.arrayAdderItemType }} $item): void
 	{
+{% if property.arrayAdderItemNullable %}
 		if ($item === null) {
 			return;
 		}
+{% endif %}
 {% if property.nullableArray %}
 		if ($this->{{ property.name }} === null) {
 			$this->{{ property.name }} = [];

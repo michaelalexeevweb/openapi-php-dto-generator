@@ -422,6 +422,20 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('does not match any oneOf branch', $errors[0]);
     }
 
+    public function testOneOf_acceptsWhenOneOfTwoTypeMatchingBranchesFullyValidates(): void
+    {
+        // value = 0: both branches match type integer, but only branch1 passes minimum: 0
+        // Old bug: $matched=2, $errors=[branch2 errors] → incorrectly returned errors
+        // Fix: $validBranches=1 → must return []
+        $errors = $this->validator->validate('num', 0, [
+            'oneOf' => [
+                ['type' => 'integer', 'minimum' => 0],
+                ['type' => 'integer', 'minimum' => 10],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
     // =========================================================================
     // items (recursive)
     // =========================================================================
@@ -587,6 +601,20 @@ final class DtoValidatorTest extends TestCase
     public function testPattern_rejectsNonMatchingString(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'ABC!', constraints: ['pattern' => '^[a-z0-9]+$']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match pattern', $errors[0]);
+    }
+
+    public function testPattern_acceptsPatternContainingForwardSlash(): void
+    {
+        // Patterns with `/` must not double-escape when `#` delimiter is used
+        $errors = $this->validator->validate(subject: 'url', value: 'https://example.com/path', constraints: ['pattern' => '^https?://.+']);
+        $this->assertSame([], $errors);
+    }
+
+    public function testPattern_rejectsNonMatchingPatternWithForwardSlash(): void
+    {
+        $errors = $this->validator->validate(subject: 'url', value: 'ftp://example.com', constraints: ['pattern' => '^https?://.+']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match pattern', $errors[0]);
     }

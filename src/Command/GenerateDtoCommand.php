@@ -1493,19 +1493,22 @@ final class GenerateDtoCommand extends Command
                 return ['array', $nullable];
             }
 
+            $itemNullable = (bool)($items['nullable'] ?? false);
+            $itemPrefix = $itemNullable ? '?' : '';
+
             if (array_key_exists('$ref', $items) && is_string($items['$ref'])) {
                 $binaryItemType = $this->resolveBinaryRefType($items['$ref']);
                 if ($binaryItemType !== null) {
-                    return ['array<' . $binaryItemType . '>', $nullable];
+                    return ['array<' . $itemPrefix . $binaryItemType . '>', $nullable];
                 }
 
                 $temporalItemType = $this->resolveTemporalRefType($items['$ref']);
                 if ($temporalItemType !== null) {
-                    return ['array<' . $temporalItemType . '>', $nullable];
+                    return ['array<' . $itemPrefix . $temporalItemType . '>', $nullable];
                 }
 
                 return [
-                    'array<' . $this->schemaRefToClassName(
+                    'array<' . $itemPrefix . $this->schemaRefToClassName(
                         ref: $items['$ref'],
                         currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
                     ) . '>',
@@ -1519,7 +1522,7 @@ final class GenerateDtoCommand extends Command
                 /** @var array<int, string|int> $values */
                 $values = $items['enum'];
                 $this->registerEnum($enumName, $enumType, $values, $this->getSchemaSourceFile($ownerClassName));
-                return ['array<' . $enumName . '>', $nullable];
+                return ['array<' . $itemPrefix . $enumName . '>', $nullable];
             }
 
             $itemsType = $items['type'] ?? null;
@@ -1530,13 +1533,13 @@ final class GenerateDtoCommand extends Command
                     schemaDefinition: $items,
                     sourceFile: $this->getSchemaSourceFile($ownerClassName),
                 );
-                return ['array<' . $nestedClassName . '>', $nullable];
+                return ['array<' . $itemPrefix . $nestedClassName . '>', $nullable];
             }
 
             if ($itemsType === 'string') {
                 $itemsFormatType = $this->mapStringFormatType($items['format'] ?? null);
                 if ($itemsFormatType !== null) {
-                    return ['array<' . $itemsFormatType . '>', $nullable];
+                    return ['array<' . $itemPrefix . $itemsFormatType . '>', $nullable];
                 }
             }
 
@@ -1549,7 +1552,7 @@ final class GenerateDtoCommand extends Command
                     default => 'mixed',
                 };
 
-                return ['array<' . $mapped . '>', $nullable];
+                return ['array<' . $itemPrefix . $mapped . '>', $nullable];
             }
 
             return ['array', $nullable];
@@ -2455,6 +2458,7 @@ final class GenerateDtoCommand extends Command
             'hasArrayAdder' => str_starts_with((string)$property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
+            'arrayAdderItemNullable' => str_starts_with($this->resolveArrayItemPhpType($property['type']), '?'),
             'nullableArray' => (bool)$property['nullable'],
             'usesUnsetSentinel' => $usesUnsetSentinel,
         ];

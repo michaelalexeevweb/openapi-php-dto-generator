@@ -235,6 +235,100 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private ?array $availableFilters;', $content);
     }
 
+    public function testNullableArrayItemsGenerateNullableTypeAndNullGuardInAdder(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Nullable array items', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Tag' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                    'Container' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'tags' => [
+                                'type' => 'array',
+                                'items' => [
+                                    '$ref' => '#/components/schemas/Tag',
+                                    'nullable' => true,
+                                ],
+                            ],
+                            'ids' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'integer', 'nullable' => true],
+                            ],
+                            'names' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/Container.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        // Nullable $ref item: ?array<?Tag> docblock, ?Tag adder param, null guard present
+        $this->assertStringContainsString('@var ?array<?Tag>', $content);
+        $this->assertStringContainsString('public function addItemToTags(?Tag $item): void', $content);
+        $this->assertStringContainsString('if ($item === null)', $content);
+
+        // Nullable scalar item: ?array<?int> docblock, ?int adder param
+        $this->assertStringContainsString('@var ?array<?int>', $content);
+        $this->assertStringContainsString('public function addItemToIds(?int $item): void', $content);
+
+        // Non-nullable item: no ? prefix on item type in adder
+        $this->assertStringContainsString('public function addItemToNames(string $item): void', $content);
+    }
+
+    public function testNonNullableArrayItemsDoNotGenerateNullGuardInAdder(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Non-nullable array items', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Tag' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                    'Container' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'tags' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Tag'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/Container.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString('public function addItemToTags(Tag $item): void', $content);
+        $this->assertStringNotContainsString('if ($item === null)', $content);
+    }
+
     public function testPlainArrayPropertyIsDeclaredAndAssignedInConstructor(): void
     {
         $openApi = [
