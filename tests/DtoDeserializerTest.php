@@ -113,6 +113,30 @@ final class DtoDeserializerTest extends TestCase
         $this->assertFalse($dto->verified);
     }
 
+    public function testDeserializeBoolFromQueryStringRecognizedValues(): void
+    {
+        foreach (['1', 'true', 'yes', 'on', 'TRUE', 'YES'] as $trueVal) {
+            $request = new Request(['enabled' => $trueVal, 'verified' => 'false']);
+            $dto = $this->deserializer->deserialize($request, BooleanDto::class);
+            $this->assertTrue($dto->enabled, "Expected true for query value '{$trueVal}'");
+        }
+
+        foreach (['0', 'false', 'no', 'off', '', 'FALSE', 'NO'] as $falseVal) {
+            $request = new Request(['enabled' => 'true', 'verified' => $falseVal]);
+            $dto = $this->deserializer->deserialize($request, BooleanDto::class);
+            $this->assertFalse($dto->verified, "Expected false for query value '{$falseVal}'");
+        }
+    }
+
+    public function testDeserializeBoolFromQueryStringThrowsForInvalidValue(): void
+    {
+        $request = new Request(['enabled' => 'oops', 'verified' => 'false']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/expects bool/');
+        $this->deserializer->deserialize($request, BooleanDto::class);
+    }
+
     public function testDeserializeThrowsExceptionForInvalidJsonScalarTypes(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([

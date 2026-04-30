@@ -218,6 +218,18 @@ final class DtoNormalizerTest extends TestCase
         $this->expectExceptionMessageMatches('/Cannot normalize object of class/');
         $normalizer->toArray($dto);
     }
+
+    public function testDtoToArrayPropagatesExceptionForUnnormalizableGetterValue(): void
+    {
+        // dtoToArray path (validateAndNormalizeToArray always uses reflection-based dtoToArray).
+        // Before fix: catch (Throwable) silently wrote null. After fix: exception propagates.
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerDtoWithOpaqueGetter();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/Cannot normalize object of class/');
+        $normalizer->validateAndNormalizeToArray($dto);
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -1062,6 +1074,56 @@ final class NormalizerWithOpaquePropertyDto implements GeneratedDtoInterface
     public static function getNormalizationMap(): array
     {
         return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+// DTO that goes through reflection-based dtoToArray and has a getter returning OpaqueObject
+final class NormalizerDtoWithOpaqueGetter implements GeneratedDtoInterface
+{
+    public function getNestedValue(): OpaqueObject
+    {
+        return new OpaqueObject();
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['nestedValue' => $this->getNestedValue()];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'nestedValue' => [
+                'getter' => 'getNestedValue',
+                'type' => OpaqueObject::class,
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'nestedValue', 'required' => true, 'inPathFlagGetter' => '', 'inQueryFlagGetter' => '', 'inRequestFlagGetter' => '', 'constraints' => []],
+            ],
+        ];
     }
 
     /** @return array<string, string> */

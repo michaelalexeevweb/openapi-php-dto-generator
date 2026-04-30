@@ -312,7 +312,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     $getterMeta,
                     $meta,
                 );
-            } catch (Throwable) {
+            } catch (Throwable $e) {
+                if (!$value instanceof File) {
+                    throw $e;
+                }
                 $normalized = $this->normalizeValueFallback($value);
                 $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue(
                     $normalized,

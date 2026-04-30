@@ -864,7 +864,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 return $value;
             }
             if (is_string($value)) {
-                return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
+                $lower = strtolower($value);
+                if (in_array($lower, ['1', 'true', 'yes', 'on'], true)) {
+                    return true;
+                }
+                if (in_array($lower, ['0', 'false', 'no', 'off', ''], true)) {
+                    return false;
+                }
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
+                );
             }
             return (bool)$value;
         }
