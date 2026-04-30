@@ -12,6 +12,14 @@ use Symfony\Component\HttpFoundation\File\File;
 
 final class DtoValidator implements DtoValidatorInterface
 {
+    /** @var list<string> */
+    private const array DATE_TIME_FORMATS = [
+        'Y-m-d\TH:i:sp',
+        'Y-m-d\TH:i:s.vp',
+        'Y-m-d H:i:s',
+        'Y-m-d\TH:i:s',
+    ];
+
     /**
      * @param array<string, mixed> $constraints
      * @return array<string>
@@ -399,12 +407,14 @@ final class DtoValidator implements DtoValidatorInterface
             return false;
         }
 
-        $date = DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value);
-        if (!$date instanceof DateTimeImmutable) {
-            return false;
+        // Accept same formats as DtoDeserializer::DATE_TIME_FORMATS — including Z suffix (lowercase p).
+        foreach (self::DATE_TIME_FORMATS as $format) {
+            if (DateTimeImmutable::createFromFormat($format, $value) instanceof DateTimeImmutable) {
+                return true;
+            }
         }
 
-        return $date->format(DateTimeInterface::ATOM) === $value;
+        return false;
     }
 
     private function isValidBase64(string $value): bool

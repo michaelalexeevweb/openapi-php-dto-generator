@@ -22,6 +22,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
 {
     private const string PREDECODED_BODY_ATTRIBUTE = '__opg_predecoded_body_data';
 
+    /** @var list<string> */
+    private const array DATE_TIME_FORMATS = [
+        'Y-m-d\TH:i:sp',
+        'Y-m-d\TH:i:s.vp',
+        'Y-m-d H:i:s',
+        'Y-m-d\TH:i:s',
+    ];
+
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
     // instances and requests within the same PHP worker process).
@@ -439,6 +447,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool &$wasProvided,
         string &$source,
     ): mixed {
+        // Path attributes carry router-verified values and must take highest precedence
+        // to prevent a malicious request body from overriding trusted path parameters.
+        if ($request->attributes->has($paramName)) {
+            $wasProvided = true;
+            $source = 'path';
+            return $request->attributes->get($paramName);
+        }
+
         if (array_key_exists($paramName, $bodyData)) {
             $wasProvided = true;
             $source = 'json';
@@ -449,12 +465,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $wasProvided = true;
             $source = 'query';
             return $queryData[$paramName];
-        }
-
-        if ($request->attributes->has($paramName)) {
-            $wasProvided = true;
-            $source = 'path';
-            return $request->attributes->get($paramName);
         }
 
         if ($request->files->has($paramName)) {
@@ -1046,12 +1056,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         // date-time / datetime: RFC3339 / ISO8601 — must have at least date+time
         if ($temporalFormat !== null) {
-            // Try RFC3339 with offset (most strict)
-            $dt = DateTimeImmutable::createFromFormat(\DateTimeInterface::RFC3339, $value)
-                ?: DateTimeImmutable::createFromFormat(\DateTimeInterface::RFC3339_EXTENDED, $value)
-                    ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:sP', $value)
-                        ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $value)
-                            ?: DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s', $value);
+            $dt = false;
+            foreach (self::DATE_TIME_FORMATS as $format) {
+                $dt = DateTimeImmutable::createFromFormat($format, $value);
+                if ($dt !== false) {
+                    break;
+                }
+            }
 
             if ($dt === false) {
                 throw new RuntimeException(
@@ -1242,11 +1253,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
                 $allowed[] = (string)$case->value;
             } else {
+                // Pure UnitEnum: match by name only
+                if ($case->name === $value) {
+                    return $case;
+                }
                 $allowed[] = $case->name;
-            }
-
-            if ($case->name === $value) {
-                return $case;
             }
         }
 

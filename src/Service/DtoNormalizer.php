@@ -303,8 +303,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     throw $exception;
                 }
                 continue;
-            } catch (Throwable) {
-                continue;
             }
 
             try {
