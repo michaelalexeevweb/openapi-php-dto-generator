@@ -82,6 +82,24 @@ final class DtoDeserializerTest extends TestCase
         $this->assertSame('2024-01-15', $dto->createdAt->format('Y-m-d'));
     }
 
+    public function testDeserializeDateTimeRejectsRelativeStrings(): void
+    {
+        foreach (['now', '+1 year', 'yesterday', 'next Monday', 'tomorrow'] as $relative) {
+            $request = new Request([], [], [], [], [], [], json_encode([
+                'id' => 1,
+                'createdAt' => $relative,
+            ]));
+            $request->headers->set('Content-Type', 'application/json');
+
+            try {
+                $this->deserializer->deserialize($request, DateTimeDto::class);
+                $this->fail("Expected exception for relative date string '{$relative}' but none thrown");
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('createdAt', $e->getMessage());
+            }
+        }
+    }
+
     public function testDeserializeWithNullableField(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([

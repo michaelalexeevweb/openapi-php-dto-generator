@@ -1083,16 +1083,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $dt;
         }
 
-        // No format hint — try generic parse but reject "now"-like strings
-        try {
-            $dt = new DateTimeImmutable($value);
-        } catch (\Exception $e) {
-            throw new RuntimeException(
-                "param \"{$paramPath}\" expects a valid date/time, got \"{$value}\"",
-            );
+        // No format hint — try known formats only; rejects relative strings like "now", "+1 year".
+        foreach (self::DATE_TIME_FORMATS as $format) {
+            $dt = DateTimeImmutable::createFromFormat($format, $value);
+            if ($dt !== false) {
+                return $dt;
+            }
         }
 
-        return $dt;
+        throw new RuntimeException(
+            "param \"{$paramPath}\" expects a valid date/time, got \"{$value}\"",
+        );
     }
 
     private function temporalFormatHint(?string $temporalFormat): string
