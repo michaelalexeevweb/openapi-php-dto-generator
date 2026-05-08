@@ -12,6 +12,7 @@ use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoNormalizerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -124,7 +125,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
         try {
             $result = $dto->toArray();
-        } catch (\LogicException $e) {
+        } catch (LogicException $e) {
             if (!str_contains($e->getMessage(), "wasn't provided in request")) {
                 throw $e;
             }
@@ -854,7 +855,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return [];
         }
 
-        $reflection = new \ReflectionMethod($className, $methodName);
+        $reflection = new ReflectionMethod($className, $methodName);
         $docComment = $reflection->getDocComment();
         if (!is_string($docComment) || $docComment === '') {
             return [];

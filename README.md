@@ -31,7 +31,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.28
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.0.29
 ```
 
 ## Requirements

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Contract;
 
+use JsonException;
 use JsonSerializable;
 
 interface GeneratedDtoInterface extends JsonSerializable
@@ -16,7 +17,7 @@ interface GeneratedDtoInterface extends JsonSerializable
     public function jsonSerialize(): mixed;
 
     /**
-     * @throws \JsonException
+     * @throws JsonException
      */
     public function toJson(): string;
 

@@ -6,13 +6,15 @@ namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
 use DateTimeImmutable;
+use InvalidArgumentException;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
-use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use ReflectionClass;
 use ReflectionNamedType;
+use ReflectionProperty;
 use ReflectionUnionType;
 use RuntimeException;
+use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Throwable;
@@ -59,9 +61,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     temporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
      *   }>,
-     *   inRequestProperties: array<string, \ReflectionProperty|null>,
-     *   inPathProperties: array<string, \ReflectionProperty|null>,
-     *   inQueryProperties: array<string, \ReflectionProperty|null>,
+     *   inRequestProperties: array<string, ReflectionProperty|null>,
+     *   inPathProperties: array<string, ReflectionProperty|null>,
+     *   inQueryProperties: array<string, ReflectionProperty|null>,
      * }>
      */
     private static array $dtoMetaCache = [];
@@ -267,9 +269,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     temporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
      *   }>,
-     *   inRequestProperties: array<string, \ReflectionProperty|null>,
-     *   inPathProperties: array<string, \ReflectionProperty|null>,
-     *   inQueryProperties: array<string, \ReflectionProperty|null>,
+     *   inRequestProperties: array<string, ReflectionProperty|null>,
+     *   inPathProperties: array<string, ReflectionProperty|null>,
+     *   inQueryProperties: array<string, ReflectionProperty|null>,
      * }
      */
     private function buildDtoMeta(ReflectionClass $reflection, string $dtoClass): array
@@ -574,11 +576,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $decoded = json_decode($content, false);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \InvalidArgumentException('Json is not valid: ' . json_last_error_msg());
+            throw new InvalidArgumentException('Json is not valid: ' . json_last_error_msg());
         }
 
-        if (!$decoded instanceof \stdClass) {
-            throw new \InvalidArgumentException(
+        if (!$decoded instanceof stdClass) {
+            throw new InvalidArgumentException(
                 'JSON body must be an object, got ' . gettype($decoded),
             );
         }
@@ -597,11 +599,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @return array<string, mixed>
      */
-    private function stdClassToArray(\stdClass $obj): array
+    private function stdClassToArray(stdClass $obj): array
     {
         $result = [];
         foreach ((array)$obj as $key => $value) {
-            if ($value instanceof \stdClass) {
+            if ($value instanceof stdClass) {
                 $result[$key] = $value;
                 continue;
             }
@@ -619,7 +621,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /**
      * @param ReflectionClass<object> $reflection
      */
-    private function resolveReflectionProperty(ReflectionClass $reflection, ?string $propName): ?\ReflectionProperty
+    private function resolveReflectionProperty(ReflectionClass $reflection, ?string $propName): ?ReflectionProperty
     {
         return $propName !== null ? $reflection->getProperty($propName) : null;
     }
@@ -715,7 +717,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private function normalizeArrayValues(array $arr): array
     {
         foreach ($arr as $k => $v) {
-            if ($v instanceof \stdClass) {
+            if ($v instanceof stdClass) {
                 // Keep as stdClass so castValue can flag it as object
                 $arr[$k] = $v;
             } elseif (is_array($v)) {
@@ -795,7 +797,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             if ($typeName === 'array') {
-                if ($value instanceof \stdClass) {
+                if ($value instanceof stdClass) {
                     if (!$allowsAssociativeArray) {
                         throw new RuntimeException(
                             $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
@@ -851,7 +853,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($typeName === 'string') {
-            if (is_array($value) || $value instanceof \stdClass || is_object($value)) {
+            if (is_array($value) || $value instanceof stdClass || is_object($value)) {
                 throw new RuntimeException(
                     $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
                 );
@@ -926,7 +928,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         // Handle nested DTOs
         if (class_exists($typeName)) {
-            if ($value instanceof \stdClass) {
+            if ($value instanceof stdClass) {
                 $value = $this->stdClassToArray($value);
             }
             if (is_array($value)) {
@@ -1004,7 +1006,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if (class_exists($arrayItemType)) {
-            if ($itemValue instanceof \stdClass) {
+            if ($itemValue instanceof stdClass) {
                 $itemValue = $this->stdClassToArray($itemValue);
             }
             if (!is_array($itemValue)) {
@@ -1210,7 +1212,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     private function getTypeString(mixed $value): string
     {
-        if ($value instanceof \stdClass) {
+        if ($value instanceof stdClass) {
             return 'object';
         }
 
