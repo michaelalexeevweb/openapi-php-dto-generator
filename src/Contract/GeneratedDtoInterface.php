@@ -36,4 +36,3 @@ interface GeneratedDtoInterface extends JsonSerializable
      */
     public static function getConstraints(): array;
 }
-

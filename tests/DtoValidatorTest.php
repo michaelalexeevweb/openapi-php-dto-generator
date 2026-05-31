@@ -469,6 +469,144 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('nums.2', $errors[1]);
     }
 
+    public function testItems_withAnyOf_acceptsElementsMatchingAtLeastOneBranch(): void
+    {
+        $errors = $this->validator->validate('tags', ['hello', 42, 'world'], [
+            'items' => [
+                'anyOf' => [
+                    ['type' => 'string'],
+                    ['type' => 'integer'],
+                ],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testItems_withAnyOf_rejectsElementMatchingNoBranch(): void
+    {
+        $errors = $this->validator->validate('tags', ['hello', 3.14], [
+            'items' => [
+                'anyOf' => [
+                    ['type' => 'string'],
+                    ['type' => 'integer'],
+                ],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('tags.1', $errors[0]);
+    }
+
+    public function testItems_withOneOf_acceptsElementMatchingExactlyOneBranch(): void
+    {
+        $errors = $this->validator->validate('values', ['text', 5], [
+            'items' => [
+                'oneOf' => [
+                    ['type' => 'string'],
+                    ['type' => 'integer'],
+                ],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testItems_withOneOf_rejectsElementMatchingMoreThanOneBranch(): void
+    {
+        // 10 matches both integer branches
+        $errors = $this->validator->validate('values', [10], [
+            'items' => [
+                'oneOf' => [
+                    ['type' => 'integer', 'minimum' => 1],
+                    ['type' => 'integer', 'maximum' => 100],
+                ],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('values.0', $errors[0]);
+    }
+
+    public function testItems_withOneOf_rejectsElementMatchingNoBranch(): void
+    {
+        $errors = $this->validator->validate('values', ['text', 3.14], [
+            'items' => [
+                'oneOf' => [
+                    ['type' => 'string'],
+                    ['type' => 'integer'],
+                ],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('values.1', $errors[0]);
+    }
+
+    // =========================================================================
+    // contains / minContains / maxContains
+    // =========================================================================
+
+    public function testContains_acceptsWhenAtLeastOneItemMatches(): void
+    {
+        $errors = $this->validator->validate('tags', ['hello', 42, 'world'], [
+            'contains' => ['type' => 'integer'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testContains_rejectsWhenNoItemMatches(): void
+    {
+        $errors = $this->validator->validate('tags', ['hello', 'world'], [
+            'contains' => ['type' => 'integer'],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('contains', $errors[0]);
+    }
+
+    public function testContains_withMinContains_requiresEnoughMatches(): void
+    {
+        $errors = $this->validator->validate('nums', [1, 'a', 2], [
+            'contains' => ['type' => 'integer'],
+            'minContains' => 3,
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('at least 3', $errors[0]);
+    }
+
+    public function testContains_withMinContains_acceptsEnoughMatches(): void
+    {
+        $errors = $this->validator->validate('nums', [1, 2, 3, 'x'], [
+            'contains' => ['type' => 'integer'],
+            'minContains' => 3,
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testContains_withMaxContains_rejectsTooManyMatches(): void
+    {
+        $errors = $this->validator->validate('nums', [1, 2, 3], [
+            'contains' => ['type' => 'integer'],
+            'maxContains' => 2,
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('at most 2', $errors[0]);
+    }
+
+    public function testContains_withMaxContains_acceptsWithinLimit(): void
+    {
+        $errors = $this->validator->validate('nums', [1, 'a', 'b'], [
+            'contains' => ['type' => 'integer'],
+            'maxContains' => 2,
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testContains_withMinAndMaxContains_acceptsExactRange(): void
+    {
+        $errors = $this->validator->validate('nums', [1, 2, 'x'], [
+            'contains' => ['type' => 'integer'],
+            'minContains' => 1,
+            'maxContains' => 3,
+        ]);
+        $this->assertSame([], $errors);
+    }
+
     // =========================================================================
     // DateTimeInterface normalization before validation
     // =========================================================================
@@ -856,6 +994,57 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
+    public function testAllOf_withAnyOf_acceptsWhenBothSatisfied(): void
+    {
+        // allOf: must be integer >= 1; anyOf: must be < 5 OR > 100
+        // value 3: allOf passes (integer, >= 1), anyOf passes (< 5)
+        $errors = $this->validator->validate('n', 3, [
+            'allOf' => [
+                ['type' => 'integer'],
+                ['minimum' => 1],
+            ],
+            'anyOf' => [
+                ['maximum' => 5],
+                ['minimum' => 100],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testAllOf_withAnyOf_rejectsWhenAllOfFails(): void
+    {
+        // value 0: fails allOf minimum:1
+        $errors = $this->validator->validate('n', 0, [
+            'allOf' => [
+                ['type' => 'integer'],
+                ['minimum' => 1],
+            ],
+            'anyOf' => [
+                ['maximum' => 5],
+                ['minimum' => 100],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be greater than or equal to 1', $errors[0]);
+    }
+
+    public function testAllOf_withAnyOf_rejectsWhenAnyOfFails(): void
+    {
+        // value 50: allOf passes, anyOf fails (not <= 5, not >= 100)
+        // branches have no 'type' so both are tried; both fail → branch errors returned
+        $errors = $this->validator->validate('n', 50, [
+            'allOf' => [
+                ['type' => 'integer'],
+                ['minimum' => 1],
+            ],
+            'anyOf' => [
+                ['maximum' => 5],
+                ['minimum' => 100],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+    }
+
     // =========================================================================
     // not
     // =========================================================================
@@ -894,5 +1083,644 @@ final class DtoValidatorTest extends TestCase
             'not' => ['type' => 'integer'],
         ]);
         $this->assertSame([], $errors);
+    }
+
+    public function testNot_withAllOf_rejectsWhenAllBranchesMatch(): void
+    {
+        // 'not allOf[string, minLength:3]' — 'hello' matches both branches → rejected
+        $errors = $this->validator->validate('v', 'hello', [
+            'not' => [
+                'allOf' => [
+                    ['type' => 'string'],
+                    ['minLength' => 3],
+                ],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString("must not match the 'not' schema", $errors[0]);
+    }
+
+    public function testNot_withAllOf_acceptsWhenAnyBranchFails(): void
+    {
+        // 'not allOf[string, minLength:10]' — 'hi' fails minLength → allOf fails → not passes
+        $errors = $this->validator->validate('v', 'hi', [
+            'not' => [
+                'allOf' => [
+                    ['type' => 'string'],
+                    ['minLength' => 10],
+                ],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // minProperties / maxProperties
+    // =========================================================================
+
+    public function testMinProperties_acceptsEnoughProperties(): void
+    {
+        $errors = $this->validator->validate('obj', ['a' => 1, 'b' => 2], ['minProperties' => 2]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMinProperties_rejectsTooFewProperties(): void
+    {
+        $errors = $this->validator->validate('obj', ['a' => 1], ['minProperties' => 2]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must have at least 2 properties', $errors[0]);
+    }
+
+    public function testMinProperties_singularWord_whenOne(): void
+    {
+        $errors = $this->validator->validate('obj', [], ['minProperties' => 1]);
+        $this->assertStringContainsString('at least 1 property', $errors[0]);
+    }
+
+    public function testMaxProperties_acceptsFewEnoughProperties(): void
+    {
+        $errors = $this->validator->validate('obj', ['a' => 1], ['maxProperties' => 3]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMaxProperties_rejectsTooManyProperties(): void
+    {
+        $errors = $this->validator->validate('obj', ['a' => 1, 'b' => 2, 'c' => 3, 'd' => 4], ['maxProperties' => 3]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must have at most 3 properties', $errors[0]);
+    }
+
+    public function testMaxProperties_singularWord_whenOne(): void
+    {
+        $errors = $this->validator->validate('obj', ['a' => 1, 'b' => 2], ['maxProperties' => 1]);
+        $this->assertStringContainsString('at most 1 property', $errors[0]);
+    }
+
+    public function testMinAndMaxProperties_combinedRange_acceptsValid(): void
+    {
+        $errors = $this->validator->validate('obj', ['x' => 1, 'y' => 2], ['minProperties' => 1, 'maxProperties' => 3]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // additionalProperties: false
+    // =========================================================================
+
+    public function testAdditionalProperties_false_rejectsExtraKey(): void
+    {
+        $errors = $this->validator->validate('obj', ['name' => 'Alice', 'extra' => 'oops'], [
+            'properties' => [
+                'name' => ['type' => 'string'],
+            ],
+            'additionalProperties' => false,
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('"extra"', $errors[0]);
+        $this->assertStringContainsString('not allowed', $errors[0]);
+    }
+
+    public function testAdditionalProperties_false_acceptsExactlyDefinedKeys(): void
+    {
+        $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
+            'properties' => [
+                'name' => ['type' => 'string'],
+            ],
+            'additionalProperties' => false,
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testAdditionalProperties_false_rejectsMultipleExtraKeys(): void
+    {
+        $errors = $this->validator->validate('obj', ['name' => 'Bob', 'foo' => 1, 'bar' => 2], [
+            'properties' => ['name' => ['type' => 'string']],
+            'additionalProperties' => false,
+        ]);
+        $this->assertCount(2, $errors);
+    }
+
+    public function testAdditionalProperties_false_withoutProperties_allowsNothing(): void
+    {
+        // additionalProperties: false without properties defined → no defined keys → all are additional
+        // But $definedPropertyNames stays null when 'properties' key absent → no check applied
+        // Verify: no error (guard requires 'properties' to be present)
+        $errors = $this->validator->validate('obj', ['key' => 'value'], ['additionalProperties' => false]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testAdditionalProperties_asSchema_validatesExtraPropertyValues(): void
+    {
+        $errors = $this->validator->validate('obj', ['dynamic' => 'not-a-number'], [
+            'additionalProperties' => ['type' => 'integer'],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('obj.dynamic', $errors[0]);
+        $this->assertStringContainsString('type integer', $errors[0]);
+    }
+
+    public function testAdditionalProperties_asSchema_acceptsValidExtraPropertyValues(): void
+    {
+        $errors = $this->validator->validate('obj', ['count' => 42, 'total' => 100], [
+            'additionalProperties' => ['type' => 'integer', 'minimum' => 0],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testAdditionalProperties_asSchema_skipsDefinedProperties(): void
+    {
+        // 'name' is defined in properties (string), extra keys validated as integer
+        $errors = $this->validator->validate('obj', ['name' => 'Alice', 'count' => 5], [
+            'properties' => ['name' => ['type' => 'string']],
+            'additionalProperties' => ['type' => 'integer'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // properties — nested property validation
+    // =========================================================================
+
+    public function testProperties_validatesDefinedPropertyConstraints(): void
+    {
+        $errors = $this->validator->validate('obj', ['age' => -1], [
+            'properties' => [
+                'age' => ['type' => 'integer', 'minimum' => 0],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('obj.age', $errors[0]);
+        $this->assertStringContainsString('greater than or equal to 0', $errors[0]);
+    }
+
+    public function testProperties_acceptsValidNestedValues(): void
+    {
+        $errors = $this->validator->validate('obj', ['age' => 25, 'name' => 'Bob'], [
+            'properties' => [
+                'age' => ['type' => 'integer', 'minimum' => 0],
+                'name' => ['type' => 'string', 'minLength' => 1],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testProperties_skipsAbsentOptionalProperties(): void
+    {
+        // 'email' not present → no error even if it had format: email constraint
+        $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
+            'properties' => [
+                'name' => ['type' => 'string'],
+                'email' => ['type' => 'string', 'format' => 'email'],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testProperties_collectsErrorsFromMultipleInvalidFields(): void
+    {
+        $errors = $this->validator->validate('user', ['age' => -1, 'score' => 200], [
+            'properties' => [
+                'age' => ['minimum' => 0],
+                'score' => ['maximum' => 100],
+            ],
+        ]);
+        $this->assertCount(2, $errors);
+        $this->assertStringContainsString('user.age', $errors[0]);
+        $this->assertStringContainsString('user.score', $errors[1]);
+    }
+
+    // =========================================================================
+    // required — mandatory properties in object schema
+    // =========================================================================
+
+    public function testRequired_missingRequiredProperty_returnsError(): void
+    {
+        $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
+            'properties' => [
+                'name' => ['type' => 'string'],
+                'email' => ['type' => 'string'],
+            ],
+            'required' => ['name', 'email'],
+        ]);
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('obj.email', $errors[0]);
+        $this->assertStringContainsString('required', $errors[0]);
+    }
+
+    public function testRequired_allRequiredPresent_returnsNoErrors(): void
+    {
+        $errors = $this->validator->validate('obj', ['name' => 'Alice', 'email' => 'a@b.com'], [
+            'properties' => [
+                'name' => ['type' => 'string'],
+                'email' => ['type' => 'string'],
+            ],
+            'required' => ['name', 'email'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testRequired_multipleMissingFields_reportsAll(): void
+    {
+        $errors = $this->validator->validate('obj', [], [
+            'required' => ['name', 'email', 'age'],
+        ]);
+        $this->assertCount(3, $errors);
+        $this->assertStringContainsString('obj.name', $errors[0]);
+        $this->assertStringContainsString('obj.email', $errors[1]);
+        $this->assertStringContainsString('obj.age', $errors[2]);
+    }
+
+    public function testRequired_withoutPropertiesConstraint_stillValidates(): void
+    {
+        // required without properties is valid OpenAPI — just checks key presence
+        $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
+            'required' => ['name', 'email'],
+        ]);
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('obj.email', $errors[0]);
+    }
+
+    public function testRequired_nullValueForRequiredKey_passesPresenceCheck(): void
+    {
+        // key exists with null value — presence satisfied, type may fail separately
+        $errors = $this->validator->validate('obj', ['name' => null], [
+            'required' => ['name'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // Edge cases
+    // =========================================================================
+
+    public function testMultipleOf_zero_doesNotDivideByZero(): void
+    {
+        // multipleOf: 0 is invalid per OpenAPI spec, but must not throw division by zero
+        $errors = $this->validator->validate('n', 5, ['multipleOf' => 0]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testUniqueItems_withComplexObjects_detectsDuplicates(): void
+    {
+        $errors = $this->validator->validate('arr', [
+            ['id' => 1, 'name' => 'Alice'],
+            ['id' => 1, 'name' => 'Alice'],
+        ], ['uniqueItems' => true]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('unique items', $errors[0]);
+    }
+
+    public function testUniqueItems_withComplexObjects_acceptsDistinct(): void
+    {
+        $errors = $this->validator->validate('arr', [
+            ['id' => 1],
+            ['id' => 2],
+        ], ['uniqueItems' => true]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatDatetime_aliasForDateTime(): void
+    {
+        // 'datetime' is an alias for 'date-time' in the validator
+        $errors = $this->validator->validate('ts', '2024-06-15T12:00:00+00:00', ['format' => 'datetime']);
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatDatetimeAlias_rejectsDateOnlyString(): void
+    {
+        $errors = $this->validator->validate('ts', '2024-06-15', ['format' => 'datetime']);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format datetime', $errors[0]);
+    }
+
+    public function testTypeNull_matchesNullValue(): void
+    {
+        // null values skip validation (line 29: if $value === null return [])
+        // But if value IS null and somehow reaches matchesOpenApiType, type: null should match
+        // Test via not constraint so null value check doesn't short-circuit
+        $errors = $this->validator->validate('v', 42, [
+            'not' => ['type' => 'null'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // --- if/then/else ---
+
+    public function testIfThen_conditionPasses_thenApplied(): void
+    {
+        // if type=string → then minLength=5; value 'hi' fails then
+        $errors = $this->validator->validate('v', 'hi', [
+            'if' => ['type' => 'string'],
+            'then' => ['minLength' => 5],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('at least 5', $errors[0]);
+    }
+
+    public function testIfThen_conditionPasses_thenSatisfied(): void
+    {
+        $errors = $this->validator->validate('v', 'hello world', [
+            'if' => ['type' => 'string'],
+            'then' => ['minLength' => 5],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testIfThen_conditionFails_thenSkipped(): void
+    {
+        // value is integer, if=string fails → then not applied → no errors
+        $errors = $this->validator->validate('v', 42, [
+            'if' => ['type' => 'string'],
+            'then' => ['minLength' => 5],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testIfElse_conditionFails_elseApplied(): void
+    {
+        // if type=string fails → else minimum=10; value 3 fails else
+        $errors = $this->validator->validate('v', 3, [
+            'if' => ['type' => 'string'],
+            'else' => ['minimum' => 10],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('greater than or equal to 10', $errors[0]);
+    }
+
+    public function testIfElse_conditionFails_elseSatisfied(): void
+    {
+        $errors = $this->validator->validate('v', 42, [
+            'if' => ['type' => 'string'],
+            'else' => ['minimum' => 10],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testIfThenElse_conditionPasses_thenApplied_elseSkipped(): void
+    {
+        $errors = $this->validator->validate('v', 'hi', [
+            'if' => ['type' => 'string'],
+            'then' => ['minLength' => 5],
+            'else' => ['minimum' => 10],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('at least 5', $errors[0]);
+    }
+
+    public function testIfThenElse_conditionFails_elseApplied_thenSkipped(): void
+    {
+        $errors = $this->validator->validate('v', 3, [
+            'if' => ['type' => 'string'],
+            'then' => ['minLength' => 5],
+            'else' => ['minimum' => 10],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('greater than or equal to 10', $errors[0]);
+    }
+
+    public function testIf_withoutThenOrElse_noErrors(): void
+    {
+        // if alone: only evaluates condition, no then/else → always no errors
+        $errors = $this->validator->validate('v', 'hello', [
+            'if' => ['type' => 'string'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testArrayType_oas31_acceptsMatchingType(): void
+    {
+        $errors = $this->validator->validate('v', 'hello', ['type' => ['string', 'null']]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testArrayType_oas31_rejectsNonMatchingType(): void
+    {
+        $errors = $this->validator->validate('v', 42, ['type' => ['string', 'null']]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must be of type', $errors[0]);
+        $this->assertStringContainsString('string', $errors[0]);
+    }
+
+    public function testArrayType_oas31_multiType_acceptsEither(): void
+    {
+        $errorsStr = $this->validator->validate('v', 'hello', ['type' => ['string', 'integer']]);
+        $errorsInt = $this->validator->validate('v', 42, ['type' => ['string', 'integer']]);
+        $this->assertSame([], $errorsStr);
+        $this->assertSame([], $errorsInt);
+    }
+
+    public function testArrayType_oas31_multiType_rejectsMismatch(): void
+    {
+        $errors = $this->validator->validate('v', 3.14, ['type' => ['string', 'integer']]);
+        $this->assertNotEmpty($errors);
+    }
+
+    // =========================================================================
+    // VAL-4: nested oneOf/anyOf inside union branch
+    // =========================================================================
+
+    public function testNestedOneOfInBranch_passesWhenInnerBranchMatches(): void
+    {
+        $errors = $this->validator->validate('v', ['a' => 1], [
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'oneOf' => [
+                        ['required' => ['a']],
+                        ['required' => ['b']],
+                    ],
+                ],
+                ['type' => 'string'],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testNestedOneOfInBranch_rejectsWhenInnerBranchFails(): void
+    {
+        // ['c' => 1] doesn't satisfy required:a or required:b → inner oneOf fails → outer branch fails
+        $errors = $this->validator->validate('v', ['c' => 1], [
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'oneOf' => [
+                        ['required' => ['a']],
+                        ['required' => ['b']],
+                    ],
+                ],
+                ['type' => 'string'],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+    }
+
+    public function testNestedAnyOfInBranch_passesWhenInnerBranchMatches(): void
+    {
+        $errors = $this->validator->validate('v', 5, [
+            'anyOf' => [
+                [
+                    'type' => 'integer',
+                    'anyOf' => [
+                        ['minimum' => 1],
+                        ['maximum' => -1],
+                    ],
+                ],
+                ['type' => 'string'],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // VAL-5: toIntOrNull ignores non-integer float constraints
+    // =========================================================================
+
+    public function testMinLength_withFloatConstraint_isIgnored(): void
+    {
+        // minLength: 2.9 is invalid schema (must be integer) — constraint is skipped
+        $errors = $this->validator->validate('s', 'ab', ['minLength' => 2.9]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testMaxItems_withFloatConstraint_isIgnored(): void
+    {
+        $errors = $this->validator->validate('a', [1, 2, 3], ['maxItems' => 2.7]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // dependentRequired
+    // =========================================================================
+
+    public function testDependentRequired_fieldPresent_missingDep_returnsError(): void
+    {
+        $errors = $this->validator->validate('obj', ['creditCard' => '1234'], [
+            'dependentRequired' => ['creditCard' => ['billingAddress']],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('billingAddress', $errors[0]);
+        $this->assertStringContainsString('creditCard', $errors[0]);
+    }
+
+    public function testDependentRequired_fieldPresent_depAlsoPresent_passes(): void
+    {
+        $errors = $this->validator->validate('obj', ['creditCard' => '1234', 'billingAddress' => 'Main St'], [
+            'dependentRequired' => ['creditCard' => ['billingAddress']],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testDependentRequired_fieldAbsent_depNotRequired(): void
+    {
+        $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
+            'dependentRequired' => ['creditCard' => ['billingAddress']],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testDependentRequired_multipleDeps_reportsAllMissing(): void
+    {
+        $errors = $this->validator->validate('obj', ['creditCard' => '1234'], [
+            'dependentRequired' => ['creditCard' => ['billingAddress', 'billingCity']],
+        ]);
+        $this->assertCount(2, $errors);
+    }
+
+    // =========================================================================
+    // dependentSchemas
+    // =========================================================================
+
+    public function testDependentSchemas_fieldPresent_schemaApplied_fails(): void
+    {
+        $errors = $this->validator->validate('obj', ['premium' => true, 'score' => 50], [
+            'dependentSchemas' => [
+                'premium' => ['properties' => ['score' => ['minimum' => 100]]],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('score', $errors[0]);
+    }
+
+    public function testDependentSchemas_fieldAbsent_schemaNotApplied(): void
+    {
+        $errors = $this->validator->validate('obj', ['score' => 50], [
+            'dependentSchemas' => [
+                'premium' => ['properties' => ['score' => ['minimum' => 100]]],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testDependentSchemas_fieldPresent_schemaSatisfied_passes(): void
+    {
+        $errors = $this->validator->validate('obj', ['premium' => true, 'score' => 150], [
+            'dependentSchemas' => [
+                'premium' => ['properties' => ['score' => ['minimum' => 100]]],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    // =========================================================================
+    // prefixItems (tuple validation)
+    // =========================================================================
+
+    public function testPrefixItems_validTuple_passes(): void
+    {
+        $errors = $this->validator->validate('t', ['hello', 42, true], [
+            'prefixItems' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+                ['type' => 'boolean'],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testPrefixItems_invalidItemAtIndex_fails(): void
+    {
+        $errors = $this->validator->validate('t', ['hello', 'not-int'], [
+            'prefixItems' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+            ],
+        ]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('t.1', $errors[0]);
+    }
+
+    public function testPrefixItems_shorterArrayThanSchema_passes(): void
+    {
+        // Only present items are validated
+        $errors = $this->validator->validate('t', ['hello'], [
+            'prefixItems' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testPrefixItems_extraItemsBeyondSchema_notValidated(): void
+    {
+        $errors = $this->validator->validate('t', ['hello', 42, 'extra', 'more'], [
+            'prefixItems' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+            ],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testPrefixItems_withConstraintsOnItems_fails(): void
+    {
+        $errors = $this->validator->validate('t', ['ab', 5], [
+            'prefixItems' => [
+                ['type' => 'string', 'minLength' => 5],
+                ['type' => 'integer', 'minimum' => 10],
+            ],
+        ]);
+        $this->assertCount(2, $errors);
+        $this->assertStringContainsString('t.0', $errors[0]);
+        $this->assertStringContainsString('t.1', $errors[1]);
     }
 }

@@ -36,7 +36,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         'modelName' => true,
     ];
 
-    private(set) DtoValidatorInterface $constraintValidator;
+    public private(set) DtoValidatorInterface $constraintValidator;
 
     /**
      * @var array<class-string, array{
@@ -46,7 +46,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
-     *     arrayItemTypeNames: list<string>
+     *     arrayItemTypeNames: list<string>,
+     *     writeOnly: bool
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -55,7 +56,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private static array $classMetaCache = [];
 
     public function __construct(
-        DtoValidatorInterface|null $constraintValidator = null,
+        ?DtoValidatorInterface $constraintValidator = null,
     ) {
         $this->constraintValidator = $constraintValidator ?? new DtoValidator();
     }
@@ -136,7 +137,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return $this->normalizeArrayPayload($result);
+        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($result));
     }
 
     /**
@@ -158,7 +159,22 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return $this->normalizeArrayPayload($serialized);
+        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($serialized));
+    }
+
+    /**
+     * @param array<string, mixed> $normalized
+     * @return array<string, mixed>
+     */
+    private function applyWriteOnlyFilter(object $dto, array $normalized): array
+    {
+        $meta = $this->getClassMeta($dto);
+        foreach ($meta['getters'] as $getter) {
+            if ($getter['writeOnly']) {
+                unset($normalized[$getter['outputName']]);
+            }
+        }
+        return $normalized;
     }
 
     /**
@@ -214,7 +230,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
             try {
                 $value = $this->invokeGetter($dto, $methodName);
-                $value = $this->normalizeNullableTemporalValue($value, $getterMeta, $meta);
+                $value = $this->coerceEmptyStringToNull($value, $getterMeta, $meta);
 
                 $error = $this->validateValueAgainstTypes(
                     $value,
@@ -300,8 +316,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 continue;
             }
 
+            if ($getterMeta['writeOnly']) {
+                continue;
+            }
+
             try {
-                $value = $this->invokeGetter($dto, $getterMeta['methodName']);
+                $rawValue = $this->invokeGetter($dto, $getterMeta['methodName']);
             } catch (LogicException $exception) {
                 if (!str_contains($exception->getMessage(), "wasn't provided in request")) {
                     throw $exception;
@@ -309,23 +329,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 continue;
             }
 
+            $value = $this->coerceEmptyStringToNull($rawValue, $getterMeta, $meta);
+
             try {
-                $normalized = $this->normalizeValue($value);
-                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue(
-                    $normalized,
-                    $getterMeta,
-                    $meta,
-                );
+                $result[$getterMeta['outputName']] = $this->normalizeValue($value);
             } catch (Throwable $e) {
-                if (!$value instanceof File) {
+                if (!$rawValue instanceof File) {
                     throw $e;
                 }
-                $normalized = $this->normalizeValueFallback($value);
-                $result[$getterMeta['outputName']] = $this->normalizeNullableTemporalValue(
-                    $normalized,
-                    $getterMeta,
-                    $meta,
-                );
+                $result[$getterMeta['outputName']] = $this->normalizeValueFallback($rawValue);
             }
         }
 
@@ -337,18 +349,18 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     private function invokeGetter(object $dto, string $methodName): mixed
     {
-        if (!is_callable([$dto, $methodName])) {
-            throw new LogicException(sprintf('Getter %s::%s() is not callable.', $dto::class, $methodName));
+        if (!method_exists($dto, $methodName)) {
+            throw new LogicException(sprintf('Getter %s::%s() does not exist.', $dto::class, $methodName));
         }
 
-        return $dto->{$methodName}();
+        return new ReflectionMethod($dto, $methodName)->invoke($dto);
     }
 
     /**
      * @param array{propertyName: string, allowsNull: bool} $getterMeta
      * @param array{constraintsByField: array<string, array<string, mixed>>} $meta
      */
-    private function normalizeNullableTemporalValue(mixed $value, array $getterMeta, array $meta): mixed
+    private function coerceEmptyStringToNull(mixed $value, array $getterMeta, array $meta): mixed
     {
         if ($value !== '') {
             return $value;
@@ -395,18 +407,21 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $value->name;
         }
 
+        if ($value instanceof File) {
+            return $this->normalizeFileValue($value);
+        }
+
         if (is_object($value) && method_exists($value, 'toArray')) {
             try {
                 $arrayValue = $value->toArray();
                 if (is_array($arrayValue)) {
                     return $this->normalizeArrayPayload($arrayValue);
                 }
-            } catch (Throwable) {
+            } catch (LogicException $e) {
+                if (!str_contains($e->getMessage(), "wasn't provided in request")) {
+                    throw $e;
+                }
             }
-        }
-
-        if ($value instanceof File) {
-            return $this->normalizeFileValue($value);
         }
 
         if ($value instanceof JsonSerializable) {
@@ -528,8 +543,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
         return match ($expectedType) {
             'int' => is_int($value) ? null : "Method $methodName() must return int, got " . gettype($value),
             'float' => (is_float($value) || is_int(
-                    $value,
-                )) ? null : "Method $methodName() must return float, got " . gettype($value),
+                $value,
+            )) ? null : "Method $methodName() must return float, got " . gettype($value),
             'string' => is_string($value) ? null : "Method $methodName() must return string, got " . gettype($value),
             'bool' => is_bool($value) ? null : "Method $methodName() must return bool, got " . gettype($value),
             'array' => is_array($value) ? null : "Method $methodName() must return array, got " . gettype($value),
@@ -614,9 +629,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     /**
      * @param array<int, string> $candidateMethods
-     * @return callable|null
      */
-    private function resolveMetadataMethod(string $className, array $candidateMethods): callable|null
+    private function resolveMetadataMethod(string $className, array $candidateMethods): ?callable
     {
         foreach ($candidateMethods as $methodName) {
             $callable = [$className, $methodName];
@@ -677,7 +691,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
-     *     arrayItemTypeNames: list<string>
+     *     arrayItemTypeNames: list<string>,
+     *     writeOnly: bool
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -706,7 +721,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
-     *     arrayItemTypeNames: list<string>
+     *     arrayItemTypeNames: list<string>,
+     *     writeOnly: bool
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -743,14 +759,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 className: $className,
                 type: is_string($type) ? $type : 'mixed',
             );
-            $nullable = $row['nullable'] ?? null;
-            $allowsNull = is_bool($nullable) ? $nullable : true;
+            $allowsNull = ($row['nullable'] ?? false) === true;
             $metadata = $row['metadata'] ?? [];
             $outputName = $aliasesByProperty[$propertyName] ?? $propertyName;
 
             if (is_array($metadata) && is_string($metadata['openApiName'] ?? null) && $metadata['openApiName'] !== '') {
                 $outputName = $metadata['openApiName'];
             }
+
+            $writeOnly = is_array($metadata) && ($metadata['writeOnly'] ?? false) === true;
 
             $getters[] = [
                 'methodName' => $methodName,
@@ -759,6 +776,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'allowsNull' => $allowsNull,
                 'typeNames' => $typeNames,
                 'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
+                'writeOnly' => $writeOnly,
             ];
         }
 
@@ -781,7 +799,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
-     *     arrayItemTypeNames: list<string>
+     *     arrayItemTypeNames: list<string>,
+     *     writeOnly: bool
      *   }>,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
@@ -811,6 +830,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'allowsNull' => true,
                 'typeNames' => ['mixed'],
                 'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
+                'writeOnly' => false,
             ];
         }
 
@@ -861,7 +881,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return [];
         }
 
-        if (!preg_match('/@return\s+([^\n\r*]+)/', $docComment, $matches)) {
+        if (preg_match('/@return\s+([^\n\r*]+)/', $docComment, $matches) !== 1) {
             return [];
         }
 

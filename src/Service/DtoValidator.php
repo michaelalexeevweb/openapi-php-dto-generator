@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
 use JsonException;
@@ -26,8 +27,21 @@ final class DtoValidator implements DtoValidatorInterface
      */
     public function validate(string $subject, mixed $value, array $constraints): array
     {
-        if ($constraints === [] || $value === null) {
+        if ($constraints === []) {
             return [];
+        }
+
+        if ($value === null) {
+            $nullable = ($constraints['nullable'] ?? false) === true;
+            $typeConstraint = $constraints['type'] ?? null;
+            if (
+                $nullable
+                || $typeConstraint === 'null'
+                || (is_array($typeConstraint) && in_array('null', $typeConstraint, true))
+            ) {
+                return [];
+            }
+            // null not explicitly allowed: fall through so type/union checks can report errors
         }
 
         $value = $this->normalizeTemporalValueForValidation($value, $constraints);
@@ -45,7 +59,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (array_key_exists('oneOf', $constraints) && is_array($constraints['oneOf'])) {
-            return [...$errors, ...$this->validateUnionBranches(
+            $errors = [...$errors, ...$this->validateUnionBranches(
                 subject: $subject,
                 value: $value,
                 branches: $constraints['oneOf'],
@@ -54,7 +68,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (array_key_exists('anyOf', $constraints) && is_array($constraints['anyOf'])) {
-            return [...$errors, ...$this->validateUnionBranches(
+            $errors = [...$errors, ...$this->validateUnionBranches(
                 subject: $subject,
                 value: $value,
                 branches: $constraints['anyOf'],
@@ -66,7 +80,10 @@ final class DtoValidator implements DtoValidatorInterface
         if (array_key_exists('enum', $constraints) && is_array($constraints['enum'])) {
             if (!in_array($value, $constraints['enum'], true)) {
                 $allowed = implode(', ', array_map(
-                    static fn(mixed $v): string => json_encode($v) ?: var_export($v, true),
+                    static function (mixed $v): string {
+                        $json = json_encode($v);
+                        return $json !== false ? $json : var_export($v, true);
+                    },
                     $constraints['enum'],
                 ));
                 $errors[] = "{$subject} must be one of: {$allowed}";
@@ -76,10 +93,11 @@ final class DtoValidator implements DtoValidatorInterface
         // const: value must be strictly equal to the given constant.
         if (array_key_exists('const', $constraints)) {
             if ($value !== $constraints['const']) {
+                $constJson = json_encode($constraints['const']);
                 $errors[] = sprintf(
                     '%s must equal %s',
                     $subject,
-                    json_encode($constraints['const']) ?: var_export($constraints['const'], true),
+                    $constJson !== false ? $constJson : var_export($constraints['const'], true),
                 );
             }
         }
@@ -91,10 +109,42 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
+        // if/then/else: conditional schema application.
+        if (array_key_exists('if', $constraints) && is_array($constraints['if'])) {
+            if ($this->validate(subject: $subject, value: $value, constraints: $constraints['if']) === []) {
+                if (array_key_exists('then', $constraints) && is_array($constraints['then'])) {
+                    $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $constraints['then'])];
+                }
+            } else {
+                if (array_key_exists('else', $constraints) && is_array($constraints['else'])) {
+                    $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $constraints['else'])];
+                }
+            }
+        }
+
         // type: value must match the declared OpenAPI type.
-        if (array_key_exists('type', $constraints) && is_string($constraints['type'])) {
-            if (!$this->matchesOpenApiType(value: $value, type: $constraints['type'])) {
-                $errors[] = "{$subject} must be of type {$constraints['type']}";
+        if (array_key_exists('type', $constraints)) {
+            $typeConstraint = $constraints['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiType(value: $value, type: $typeConstraint)) {
+                    $errors[] = "{$subject} must be of type {$typeConstraint}";
+                }
+            } elseif (is_array($typeConstraint)) {
+                // OpenAPI 3.1: type: [string, null] — value must match at least one listed type
+                $typeMatched = false;
+                foreach ($typeConstraint as $t) {
+                    if (is_string($t) && $this->matchesOpenApiType(value: $value, type: $t)) {
+                        $typeMatched = true;
+                        break;
+                    }
+                }
+                if (!$typeMatched) {
+                    $errors[] = sprintf(
+                        '%s must be of type %s',
+                        $subject,
+                        implode('|', array_filter($typeConstraint, 'is_string')),
+                    );
+                }
             }
         }
 
@@ -106,13 +156,19 @@ final class DtoValidator implements DtoValidatorInterface
             $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
         }
 
-        if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items')) {
+        if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items', 'contains', 'minContains', 'maxContains', 'prefixItems')) {
             $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)];
         }
 
-        if (array_key_exists('format', $constraints) && $constraints['format'] === 'binary' && !is_string(
+        if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas')) {
+            $errors = [...$errors, ...$this->validateObjectConstraints(subject: $subject, value: $value, constraints: $constraints)];
+        }
+
+        if (
+            array_key_exists('format', $constraints) && $constraints['format'] === 'binary' && !is_string(
                 $value,
-            ) && !$value instanceof File) {
+            ) && !$value instanceof File
+        ) {
             $errors[] = "{$subject} expects binary data, got {$this->typeToOpenApi($value)}";
         }
 
@@ -159,10 +215,8 @@ final class DtoValidator implements DtoValidatorInterface
             }
 
             $matched++;
-            $branchConstraints = $branch;
-            unset($branchConstraints['oneOf'], $branchConstraints['anyOf']);
 
-            $branchErrors = $this->validate(subject: $subject, value: $value, constraints: $branchConstraints);
+            $branchErrors = $this->validate(subject: $subject, value: $value, constraints: $branch);
             if ($branchErrors === []) {
                 $validBranches++;
                 if (!$isOneOf) {
@@ -181,12 +235,8 @@ final class DtoValidator implements DtoValidatorInterface
 
             if ($validBranches > 1) {
                 return [
-                    "{$subject} matches more than one allowed oneOf branch"
+                    "{$subject} matches more than one allowed oneOf branch",
                 ];
-            }
-        } else {
-            if ($matched > 0 && $errors === []) {
-                return [];
             }
         }
 
@@ -196,7 +246,7 @@ final class DtoValidator implements DtoValidatorInterface
 
         $kind = $isOneOf ? 'oneOf' : 'anyOf';
         return [
-            "{$subject} does not match any {$kind} branch"
+            "{$subject} does not match any {$kind} branch",
         ];
     }
 
@@ -207,9 +257,9 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return match ($type) {
-            'integer' => is_int($value) || ($value instanceof \BackedEnum && is_int($value->value)),
-            'number' => is_int($value) || is_float($value) || ($value instanceof \BackedEnum && is_int($value->value)),
-            'string' => is_string($value) || ($value instanceof \BackedEnum && is_string($value->value)),
+            'integer' => is_int($value) || ($value instanceof BackedEnum && is_int($value->value)),
+            'number' => is_int($value) || is_float($value) || ($value instanceof BackedEnum && is_int($value->value)),
+            'string' => is_string($value) || ($value instanceof BackedEnum && is_string($value->value)),
             'boolean' => is_bool($value),
             'array' => is_array($value) && array_is_list($value),
             'object' => (is_array($value) && !array_is_list($value)) || is_object($value),
@@ -307,6 +357,107 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * @param array<array-key, mixed> $value
+     * @param array<string, mixed> $constraints
+     * @return array<string>
+     */
+    private function validateObjectConstraints(string $subject, array $value, array $constraints): array
+    {
+        $errors = [];
+        $count = count($value);
+
+        if (($minProperties = $this->toIntOrNull($constraints['minProperties'] ?? null)) !== null && $count < $minProperties) {
+            $errors[] = "{$subject} must have at least {$minProperties} " . ($minProperties === 1 ? 'property' : 'properties');
+        }
+
+        if (($maxProperties = $this->toIntOrNull($constraints['maxProperties'] ?? null)) !== null && $count > $maxProperties) {
+            $errors[] = "{$subject} must have at most {$maxProperties} " . ($maxProperties === 1 ? 'property' : 'properties');
+        }
+
+        $definedPropertyNames = null;
+        if (is_array($constraints['properties'] ?? null)) {
+            $definedPropertyNames = [];
+            foreach ($constraints['properties'] as $propName => $propSchema) {
+                if (!is_string($propName) || !is_array($propSchema)) {
+                    continue;
+                }
+                $definedPropertyNames[] = $propName;
+                if (!array_key_exists($propName, $value)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validate(
+                        subject: sprintf('%s.%s', $subject, $propName),
+                        value: $value[$propName],
+                        constraints: $propSchema,
+                    ),
+                ];
+            }
+        }
+
+        if (is_array($constraints['required'] ?? null)) {
+            foreach ($constraints['required'] as $requiredProp) {
+                if (!is_string($requiredProp)) {
+                    continue;
+                }
+                if (!array_key_exists($requiredProp, $value)) {
+                    $errors[] = sprintf('%s.%s is required', $subject, $requiredProp);
+                }
+            }
+        }
+
+        $additionalProperties = $constraints['additionalProperties'] ?? null;
+
+        if ($additionalProperties === false && $definedPropertyNames !== null) {
+            foreach (array_keys($value) as $key) {
+                if (!in_array((string)$key, $definedPropertyNames, true)) {
+                    $errors[] = "{$subject} has additional property \"{$key}\" which is not allowed";
+                }
+            }
+        } elseif (is_array($additionalProperties) && $additionalProperties !== []) {
+            $knownKeys = $definedPropertyNames ?? [];
+            foreach ($value as $key => $itemValue) {
+                if (in_array((string)$key, $knownKeys, true)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validate(
+                        subject: sprintf('%s.%s', $subject, (string)$key),
+                        value: $itemValue,
+                        constraints: $additionalProperties,
+                    ),
+                ];
+            }
+        }
+
+        if (array_key_exists('dependentRequired', $constraints) && is_array($constraints['dependentRequired'])) {
+            foreach ($constraints['dependentRequired'] as $ifProp => $deps) {
+                if (!is_string($ifProp) || !is_array($deps) || !array_key_exists($ifProp, $value)) {
+                    continue;
+                }
+                foreach ($deps as $dep) {
+                    if (is_string($dep) && !array_key_exists($dep, $value)) {
+                        $errors[] = sprintf('%s.%s is required when %s is present', $subject, $dep, $ifProp);
+                    }
+                }
+            }
+        }
+
+        if (array_key_exists('dependentSchemas', $constraints) && is_array($constraints['dependentSchemas'])) {
+            foreach ($constraints['dependentSchemas'] as $ifProp => $schema) {
+                if (!is_string($ifProp) || !is_array($schema) || !array_key_exists($ifProp, $value)) {
+                    continue;
+                }
+                $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $schema)];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
      * @param array<mixed> $value
      * @param array<string, mixed> $constraints
      * @return array<string>
@@ -363,6 +514,43 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
+        $containsSchema = $constraints['contains'] ?? null;
+        if (is_array($containsSchema) && $containsSchema !== []) {
+            $matchCount = 0;
+            foreach ($value as $itemValue) {
+                if ($this->validate(subject: $subject, value: $itemValue, constraints: $containsSchema) === []) {
+                    $matchCount++;
+                }
+            }
+
+            $minContains = $this->toIntOrNull($constraints['minContains'] ?? null) ?? 1;
+            $maxContains = $this->toIntOrNull($constraints['maxContains'] ?? null);
+
+            if ($matchCount < $minContains) {
+                $errors[] = "{$subject} must contain at least {$minContains} item(s) matching the 'contains' schema";
+            }
+
+            if ($maxContains !== null && $matchCount > $maxContains) {
+                $errors[] = "{$subject} must contain at most {$maxContains} item(s) matching the 'contains' schema";
+            }
+        }
+
+        if (array_key_exists('prefixItems', $constraints) && is_array($constraints['prefixItems'])) {
+            foreach ($constraints['prefixItems'] as $index => $itemSchema) {
+                if (!is_array($itemSchema) || !array_key_exists($index, $value)) {
+                    break;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validate(
+                        subject: sprintf('%s.%s', $subject, (string)$index),
+                        value: $value[$index],
+                        constraints: $itemSchema,
+                    ),
+                ];
+            }
+        }
+
         return $errors;
     }
 
@@ -373,7 +561,7 @@ final class DtoValidator implements DtoValidatorInterface
             'date-time', 'datetime' => $this->isValidDateTimeFormat(value: $value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
             'uuid' => preg_match(
-                pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
+                pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
                 subject: $value,
             ) === 1,
             'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
@@ -404,6 +592,12 @@ final class DtoValidator implements DtoValidatorInterface
     private function isValidDateTimeFormat(string $value): bool
     {
         if ($value === '') {
+            return false;
+        }
+
+        // Reject structural mismatches (trailing garbage, wrong separator) before createFromFormat.
+        // createFromFormat silently accepts trailing characters, so a pre-check is required.
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1) {
             return false;
         }
 
@@ -442,7 +636,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
     }
 
-    private function toFloatOrNull(mixed $value): float|null
+    private function toFloatOrNull(mixed $value): ?float
     {
         if (!is_numeric($value)) {
             return null;
@@ -451,9 +645,14 @@ final class DtoValidator implements DtoValidatorInterface
         return (float)$value;
     }
 
-    private function toIntOrNull(mixed $value): int|null
+    private function toIntOrNull(mixed $value): ?int
     {
         if (!is_numeric($value)) {
+            return null;
+        }
+
+        $asFloat = (float)$value;
+        if ($asFloat !== (float)(int)$asFloat) {
             return null;
         }
 

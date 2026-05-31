@@ -60,6 +60,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     allowsAssociativeArray: bool,
      *     temporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
+     *     readOnly: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
@@ -72,9 +73,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * Enum cases cache to avoid repeated reflection per castToEnum call.
      * Key: enum class-string → list of UnitEnum cases
      *
-     * @var array<class-string, list<\UnitEnum>>
+     * @var array<class-string, list<UnitEnum>>
      */
     private static array $enumCasesCache = [];
+
+    /** @var array<class-string, array<string, array<string, mixed>>> */
+    private static array $constraintsCache = [];
+
+    /** @var array<class-string, array<string, string>> */
+    private static array $aliasesCache = [];
 
     // -----------------------------------------------------------------------
     // Instance cache: last parsed request body (avoids re-parsing the same
@@ -86,7 +93,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /** @var array<string, mixed> */
     private array $bodyDataCacheValue = [];
 
-    private(set) DtoValidatorInterface $constraintValidator;
+    public private(set) DtoValidatorInterface $constraintValidator;
 
     public function __construct(
         ?DtoValidatorInterface $constraintValidator = null,
@@ -141,6 +148,21 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 wasProvided: $rawWasProvided,
                 source: $rawSource,
             );
+
+            if ($paramMeta['readOnly']) {
+                if ($paramMeta['hasDefaultValue']) {
+                    $args[] = $paramMeta['defaultValue'];
+                } elseif ($paramMeta['allowsNull']) {
+                    $args[] = null;
+                } else {
+                    $errors[] = sprintf(
+                        'Parameter "%s" is readOnly and non-nullable with no default value.',
+                        $requestFieldName,
+                    );
+                    $args[] = null;
+                }
+                continue;
+            }
 
             if (!$rawWasProvided && $paramMeta['hasDefaultValue']) {
                 $args[] = $paramMeta['defaultValue'];
@@ -268,6 +290,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     allowsAssociativeArray: bool,
      *     temporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
+     *     readOnly: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
@@ -382,6 +405,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'allowsAssociativeArray' => $allowsAssociativeArray,
                 'temporalFormat' => $temporalFormat,
                 'fieldConstraints' => $fieldConstraints,
+                'readOnly' => ($fieldConstraints['readOnly'] ?? false) === true,
             ];
         }
 
@@ -685,10 +709,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
         return null;
     }
 
-
     private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
     {
-        $parts = preg_split('/[^A-Za-z0-9]+/', $propertyName) ?: [];
+        $split = preg_split('/[^A-Za-z0-9]+/', $propertyName);
+        $parts = $split !== false ? $split : [];
         $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {
@@ -882,7 +906,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($typeName === 'array') {
-            $arrayValue = is_array($value) ? $value : [$value];
+            if (!is_array($value)) {
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value),
+                );
+            }
+            $arrayValue = $value;
 
             if ($arrayItemType === null) {
                 return $arrayValue;
@@ -1001,6 +1030,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
+        if ($arrayItemType === UploadedFile::class) {
+            if (!$itemValue instanceof UploadedFile) {
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'UploadedFile', value: $itemValue),
+                );
+            }
+            return $itemValue;
+        }
+
         if (enum_exists($arrayItemType)) {
             return $this->castToEnum(value: $itemValue, enumClass: $arrayItemType, paramPath: $itemPath);
         }
@@ -1015,9 +1053,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             }
 
+            // resolveDiscriminatorTargetClass already uses $itemPath in its messages — don't re-wrap
+            $targetClass = $this->resolveDiscriminatorTargetClass($arrayItemType, $itemValue, $itemPath) ?? $arrayItemType;
+            if (!class_exists($targetClass)) {
+                throw new RuntimeException(
+                    "Discriminator mapping for \"{$itemPath}\" points to unknown class \"{$targetClass}\".",
+                );
+            }
+
             try {
                 $nestedRequest = $this->createRequestFromArray($itemValue);
-                return $this->deserialize(request: $nestedRequest, dtoClass: $arrayItemType);
+                /** @var class-string<object> $targetClass */
+                return $this->deserialize(request: $nestedRequest, dtoClass: $targetClass);
             } catch (RuntimeException $e) {
                 throw new RuntimeException(
                     $this->prependParamPath(message: $e->getMessage(), prefix: $itemPath),
@@ -1026,20 +1073,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        return $itemValue;
+        throw new RuntimeException(
+            "Cannot deserialize array item at \"{$itemPath}\": unknown type \"{$arrayItemType}\".",
+        );
     }
 
     private function prependParamPath(string $message, string $prefix): string
     {
-        if (preg_match('/^param "([^"]+)"\s+expects\s+/', $message, $matches) === 1) {
-            return str_replace(
-                sprintf('param "%s"', $matches[1]),
-                sprintf('param "%s.%s"', $prefix, $matches[1]),
-                $message,
-            );
-        }
-
-        return $message;
+        return preg_replace_callback(
+            '/param "([^"]+)"/',
+            static fn(array $m): string => sprintf('param "%s.%s"', $prefix, $m[1]),
+            $message,
+        ) ?? $message;
     }
 
     /**
@@ -1057,7 +1102,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         // date format: only Y-m-d
         if ($temporalFormat === 'Y-m-d') {
-            $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+            $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value);
             if ($dt === false || $dt->format('Y-m-d') !== $value) {
                 throw new RuntimeException(
                     "param \"{$paramPath}\" expects a date in Y-m-d format (e.g. 2026-03-10), got \"{$value}\"",
@@ -1066,26 +1111,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $dt;
         }
 
-        // date-time / datetime: RFC3339 / ISO8601 — must have at least date+time
-        if ($temporalFormat !== null) {
-            $dt = false;
-            foreach (self::DATE_TIME_FORMATS as $format) {
-                $dt = DateTimeImmutable::createFromFormat($format, $value);
-                if ($dt !== false) {
-                    break;
-                }
-            }
-
-            if ($dt === false) {
-                throw new RuntimeException(
-                    "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
-                );
-            }
-
-            return $dt;
+        // Reject structural mismatches before createFromFormat: it silently accepts trailing characters.
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1) {
+            throw new RuntimeException(
+                "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
+            );
         }
 
-        // No format hint — try known formats only; rejects relative strings like "now", "+1 year".
+        // date-time: try known RFC3339/ISO8601 formats; rejects relative strings like "now", "+1 year".
         foreach (self::DATE_TIME_FORMATS as $format) {
             $dt = DateTimeImmutable::createFromFormat($format, $value);
             if ($dt !== false) {
@@ -1094,7 +1127,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         throw new RuntimeException(
-            "param \"{$paramPath}\" expects a valid date/time, got \"{$value}\"",
+            "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
         );
     }
 
@@ -1122,7 +1155,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($openApiFormat === 'date-time' || $openApiFormat === 'datetime') {
-            return 'c';
+            return null;
         }
 
         $getterName = 'get' . ucfirst($paramName);
@@ -1135,7 +1168,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        if (preg_match('/Expected format:\s*(.+)/i', $docComment, $matches)) {
+        if (preg_match('/Expected format:\s*(.+)/i', $docComment, $matches) === 1) {
             return trim($matches[1]);
         }
 
@@ -1163,8 +1196,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $constraints = $this->resolveOpenApiConstraints($reflection);
         $fieldConstraints = $constraints[$paramName] ?? null;
-        if (is_array($fieldConstraints) && array_key_exists('nullable', $fieldConstraints)) {
-            return $fieldConstraints['nullable'] === true;
+        if (is_array($fieldConstraints)) {
+            if (array_key_exists('nullable', $fieldConstraints)) {
+                return $fieldConstraints['nullable'] === true;
+            }
+            // OpenAPI 3.1: type: [string, null]
+            $typeConstraint = $fieldConstraints['type'] ?? null;
+            if (is_array($typeConstraint) && in_array('null', $typeConstraint, true)) {
+                return true;
+            }
         }
 
         $requiredMethodName = 'is' . ucfirst($paramName) . 'Required';
@@ -1196,13 +1236,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        $rawType = ltrim($matches[1], '?');
+        $rawType = ltrim($matches[1], '?\\');
         if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
             return $rawType;
         }
 
         if (str_contains($rawType, '\\')) {
             return $rawType;
+        }
+
+        // Resolve via file-level use imports (e.g. short name imported at top of file)
+        $fileImports = $this->resolveFileImports($reflection);
+        if (array_key_exists($rawType, $fileImports)) {
+            return $fileImports[$rawType];
         }
 
         return $reflection->getNamespaceName() !== ''
@@ -1238,7 +1284,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * @return UnitEnum
      */
     private function castToEnum(mixed $value, string $enumClass, ?string $paramPath = null): UnitEnum
     {
@@ -1321,19 +1366,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private function resolveOpenApiConstraints(ReflectionClass $reflection): array
     {
         $className = $reflection->getName();
-
-        static $constraintsCache = [];
-        if (array_key_exists($className, $constraintsCache)) {
-            return $constraintsCache[$className];
+        if (array_key_exists($className, self::$constraintsCache)) {
+            return self::$constraintsCache[$className];
         }
 
         $method = $this->resolveMetadataMethod(className: $className, candidateMethods: ['getConstraints']);
         if ($method === null) {
-            return $constraintsCache[$className] = [];
+            return self::$constraintsCache[$className] = [];
         }
 
         $constraints = call_user_func($method);
-        return $constraintsCache[$className] = is_array($constraints) ? $constraints : [];
+        return self::$constraintsCache[$className] = is_array($constraints) ? $constraints : [];
     }
 
     /**
@@ -1343,20 +1386,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private function resolveOpenApiPropertyAliases(ReflectionClass $reflection): array
     {
         $className = $reflection->getName();
-
-        static $aliasesCache = [];
-        if (array_key_exists($className, $aliasesCache)) {
-            return $aliasesCache[$className];
+        if (array_key_exists($className, self::$aliasesCache)) {
+            return self::$aliasesCache[$className];
         }
 
         $method = $this->resolveMetadataMethod(className: $className, candidateMethods: ['getAliases']);
         if ($method === null) {
-            return $aliasesCache[$className] = [];
+            return self::$aliasesCache[$className] = [];
         }
 
         $aliases = call_user_func($method);
         if (!is_array($aliases)) {
-            return $aliasesCache[$className] = [];
+            return self::$aliasesCache[$className] = [];
         }
 
         $result = [];
@@ -1367,7 +1408,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $result[$propertyName] = $openApiName;
         }
 
-        return $aliasesCache[$className] = $result;
+        return self::$aliasesCache[$className] = $result;
     }
 
     /**
@@ -1384,9 +1425,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     /**
      * @param array<int, string> $candidateMethods
-     * @return callable|null
      */
-    private function resolveMetadataMethod(string $className, array $candidateMethods): callable|null
+    private function resolveMetadataMethod(string $className, array $candidateMethods): ?callable
     {
         foreach ($candidateMethods as $methodName) {
             $callable = [$className, $methodName];
@@ -1408,19 +1448,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         /** @var class-string $baseClass */
-        if (!method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists(
+        if (
+            !method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists(
                 $baseClass,
                 'getDiscriminatorMapping',
-            )) {
+            )
+        ) {
             return null;
         }
 
         $discriminatorProperty = $baseClass::getDiscriminatorPropertyName();
         $mapping = $baseClass::getDiscriminatorMapping();
 
-        if (!is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array(
+        if (
+            !is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array(
                 $mapping,
-            ) || $mapping === []) {
+            ) || $mapping === []
+        ) {
             throw new RuntimeException(
                 "DTO {$baseClass} has invalid discriminator metadata.",
             );
@@ -1515,5 +1559,45 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return preg_match('/^[+-]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][+-]?\d+)?$/', $value) === 1;
+    }
+
+    /**
+     * Parses file-level `use` imports so short class names in docblocks can be resolved
+     * without relying on the class namespace alone.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, string> map of short name → FQCN
+     */
+    private function resolveFileImports(ReflectionClass $reflection): array
+    {
+        $filename = $reflection->getFileName();
+        if ($filename === false) {
+            return [];
+        }
+
+        $content = file_get_contents($filename);
+        if ($content === false) {
+            return [];
+        }
+
+        $result = preg_match_all(
+            '/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?;/m',
+            $content,
+            $matches,
+            PREG_SET_ORDER,
+        );
+        if ($result === false || $result === 0) {
+            return [];
+        }
+
+        $imports = [];
+        foreach ($matches as $match) {
+            $fqcn = $match[1];
+            $alias = $match[2] ?? '';
+            $shortName = $alias !== '' ? $alias : substr($fqcn, (int)strrpos($fqcn, '\\') + 1);
+            $imports[$shortName] = $fqcn;
+        }
+
+        return $imports;
     }
 }
