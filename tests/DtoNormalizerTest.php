@@ -456,6 +456,22 @@ final class DtoNormalizerTest extends TestCase
         $this->assertSame('Alice', $result['name']);
         $this->assertArrayNotHasKey('password', $result);
     }
+
+    public function testNestedDtoWhoseToArrayThrowsNotProvided_fallsBackToReflectionNotJsonSerialize(): void
+    {
+        // Nested DTO's toArray() throws "wasn't provided in request".
+        // jsonSerialize() in generated DTOs delegates to toArray() and would re-throw uncaught.
+        // normalizeValue must fall through to reflection-based dtoToArray(), not JsonSerializable.
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerOuterWithThrowingInnerDto(
+            inner: new NormalizerInnerThrowingToArrayDto(label: 'kept'),
+        );
+
+        $result = $normalizer->validateAndNormalizeToArray($dto);
+
+        $this->assertArrayHasKey('inner', $result);
+        $this->assertSame(['label' => 'kept'], $result['inner']);
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -1922,6 +1938,119 @@ final class NormalizerEmptyMapDto implements GeneratedDtoInterface
     {
         return [];
     }
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+/**
+ * Inner DTO whose toArray() throws the "wasn't provided in request" sentinel,
+ * and whose jsonSerialize() delegates to toArray() (as generated DTOs do).
+ * Reflection getter getLabel() still works for the dtoToArray() fallback.
+ */
+final class NormalizerInnerThrowingToArrayDto implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly string $label,
+    ) {
+    }
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        throw new LogicException("Field wasn't provided in request");
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'label' => [
+                'getter' => 'getLabel',
+                'type' => 'string',
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'label'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerOuterWithThrowingInnerDto implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly NormalizerInnerThrowingToArrayDto $inner,
+    ) {
+    }
+
+    public function getInner(): NormalizerInnerThrowingToArrayDto
+    {
+        return $this->inner;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['inner' => $this->inner];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'inner' => [
+                'getter' => 'getInner',
+                'type' => NormalizerInnerThrowingToArrayDto::class,
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'inner'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
     public static function getConstraints(): array
     {
         return [];

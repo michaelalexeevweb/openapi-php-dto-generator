@@ -415,6 +415,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $this->normalizeFileValue($value);
         }
 
+        $toArrayUnavailable = false;
         if (is_object($value) && method_exists($value, 'toArray')) {
             try {
                 $arrayValue = $value->toArray();
@@ -425,10 +426,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 if (!str_contains($e->getMessage(), "wasn't provided in request")) {
                     throw $e;
                 }
+                // toArray() unusable for this value — skip JsonSerializable (jsonSerialize() in
+                // generated DTOs delegates to toArray() and would re-throw). Fall through to the
+                // reflection-based dtoToArray() path below, which skips not-provided fields.
+                $toArrayUnavailable = true;
             }
         }
 
-        if ($value instanceof JsonSerializable) {
+        if (!$toArrayUnavailable && $value instanceof JsonSerializable) {
             return $this->normalizeValue($value->jsonSerialize());
         }
 
