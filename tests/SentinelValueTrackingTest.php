@@ -136,7 +136,7 @@ final class SentinelNullableDto
 
     public function __construct(
         private readonly string $required,
-        string|null|UnsetValue $optional = UnsetValue::UNSET,
+        string|UnsetValue|null $optional = UnsetValue::UNSET,
     ) {
         $this->optional = ($optional !== UnsetValue::UNSET) ? $optional : null;
     }

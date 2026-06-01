@@ -6,8 +6,8 @@ namespace OpenapiPhpDtoGenerator\Tests;
 
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
-use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -43,7 +43,7 @@ final class PerformanceTest extends TestCase
     protected function setUp(): void
     {
         $this->deserializer = new DtoDeserializer();
-        $this->normalizer   = new DtoNormalizer();
+        $this->normalizer = new DtoNormalizer();
     }
 
     // -----------------------------------------------------------------------
@@ -68,7 +68,7 @@ final class PerformanceTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / self::ITERATIONS;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
 
         writePerfLine(sprintf(
             "\n  [Perf] deserialize: %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -105,7 +105,7 @@ final class PerformanceTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / self::ITERATIONS;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
 
         writePerfLine(sprintf(
             "\n  [Perf] deserialize (cached): %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -135,7 +135,7 @@ final class PerformanceTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / self::ITERATIONS;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
 
         writePerfLine(sprintf(
             "\n  [Perf] normalize: %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -161,7 +161,7 @@ final class PerformanceTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / self::ITERATIONS;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
 
         writePerfLine(sprintf(
             "\n  [Perf] validate+normalize: %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -232,7 +232,7 @@ final class PerformanceTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / self::ITERATIONS;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
 
         writePerfLine(sprintf(
             "\n  [Perf] round-trip: %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -251,12 +251,12 @@ final class PerformanceTest extends TestCase
     public function testGeneratedStyleDtoDeserializationPerformance(): void
     {
         $json = json_encode([
-            'user-id'   => 7,
+            'user-id' => 7,
             'user-name' => 'alice',
-            'email'     => 'alice@example.com',
-            'score'     => 75.5,
-            'active'    => true,
-            'role'      => 'admin',
+            'email' => 'alice@example.com',
+            'score' => 75.5,
+            'active' => true,
+            'role' => 'admin',
         ], JSON_THROW_ON_ERROR);
 
         // warm-up
@@ -273,7 +273,7 @@ final class PerformanceTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / self::ITERATIONS;
+        $perOpMs = $elapsedMs / self::ITERATIONS;
 
         writePerfLine(sprintf(
             "\n  [Perf] generated-style DTO deserialize: %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -459,20 +459,20 @@ final class PerformanceTest extends TestCase
     private function buildPerfPayload(): array
     {
         return [
-            'userId'      => 42,
-            'username'    => 'john_doe',
-            'email'       => 'john@example.com',
-            'score'       => 98.6,
-            'active'      => true,
-            'role'        => 'editor',
-            'createdAt'   => '2024-06-01T12:00:00+00:00',
+            'userId' => 42,
+            'username' => 'john_doe',
+            'email' => 'john@example.com',
+            'score' => 98.6,
+            'active' => true,
+            'role' => 'editor',
+            'createdAt' => '2024-06-01T12:00:00+00:00',
             'description' => 'A test user description',
-            'address'     => [
-                'street'  => '123 Main St',
-                'city'    => 'Springfield',
+            'address' => [
+                'street' => '123 Main St',
+                'city' => 'Springfield',
                 'country' => 'US',
             ],
-            'tags'        => [
+            'tags' => [
                 ['id' => 1, 'label' => 'php'],
                 ['id' => 2, 'label' => 'openapi'],
                 ['id' => 3, 'label' => 'performance'],
@@ -528,12 +528,12 @@ final class PerformanceTest extends TestCase
  */
 final class PerfGeneratedStyleDto
 {
-    private bool $userIdInRequest   = false;
+    private bool $userIdInRequest = false;
     private bool $usernameInRequest = false;
-    private bool $emailInRequest    = false;
-    private bool $scoreInRequest    = false;
-    private bool $activeInRequest   = false;
-    private bool $roleInRequest     = false;
+    private bool $emailInRequest = false;
+    private bool $scoreInRequest = false;
+    private bool $activeInRequest = false;
+    private bool $roleInRequest = false;
 
     public function __construct(
         private int $userId,
@@ -545,42 +545,132 @@ final class PerfGeneratedStyleDto
     ) {
     }
 
-    public function getUserId(): int { return $this->userId; }
-    public function isUserIdRequired(): bool { return true; }
-    public function isUserIdInPath(): bool { return false; }
-    public function isUserIdInQuery(): bool { return false; }
-    public function isUserIdInRequest(): bool { return $this->userIdInRequest; }
+    public function getUserId(): int
+    {
+        return $this->userId;
+    }
+    public function isUserIdRequired(): bool
+    {
+        return true;
+    }
+    public function isUserIdInPath(): bool
+    {
+        return false;
+    }
+    public function isUserIdInQuery(): bool
+    {
+        return false;
+    }
+    public function isUserIdInRequest(): bool
+    {
+        return $this->userIdInRequest;
+    }
 
-    public function getUsername(): string { return $this->username; }
-    public function isUsernameRequired(): bool { return true; }
-    public function isUsernameInPath(): bool { return false; }
-    public function isUsernameInQuery(): bool { return false; }
-    public function isUsernameInRequest(): bool { return $this->usernameInRequest; }
+    public function getUsername(): string
+    {
+        return $this->username;
+    }
+    public function isUsernameRequired(): bool
+    {
+        return true;
+    }
+    public function isUsernameInPath(): bool
+    {
+        return false;
+    }
+    public function isUsernameInQuery(): bool
+    {
+        return false;
+    }
+    public function isUsernameInRequest(): bool
+    {
+        return $this->usernameInRequest;
+    }
 
-    public function getEmail(): string { return $this->email; }
-    public function isEmailRequired(): bool { return true; }
-    public function isEmailInPath(): bool { return false; }
-    public function isEmailInQuery(): bool { return false; }
-    public function isEmailInRequest(): bool { return $this->emailInRequest; }
+    public function getEmail(): string
+    {
+        return $this->email;
+    }
+    public function isEmailRequired(): bool
+    {
+        return true;
+    }
+    public function isEmailInPath(): bool
+    {
+        return false;
+    }
+    public function isEmailInQuery(): bool
+    {
+        return false;
+    }
+    public function isEmailInRequest(): bool
+    {
+        return $this->emailInRequest;
+    }
 
-    public function getScore(): float { return $this->score; }
-    public function isScoreRequired(): bool { return true; }
-    public function isScoreInPath(): bool { return false; }
-    public function isScoreInQuery(): bool { return false; }
-    public function isScoreInRequest(): bool { return $this->scoreInRequest; }
+    public function getScore(): float
+    {
+        return $this->score;
+    }
+    public function isScoreRequired(): bool
+    {
+        return true;
+    }
+    public function isScoreInPath(): bool
+    {
+        return false;
+    }
+    public function isScoreInQuery(): bool
+    {
+        return false;
+    }
+    public function isScoreInRequest(): bool
+    {
+        return $this->scoreInRequest;
+    }
 
-    public function isActive(): bool { return $this->active; }
-    public function isActiveRequired(): bool { return true; }
-    public function isActiveInPath(): bool { return false; }
-    public function isActiveInQuery(): bool { return false; }
-    public function isActiveInRequest(): bool { return $this->activeInRequest; }
+    public function isActive(): bool
+    {
+        return $this->active;
+    }
+    public function isActiveRequired(): bool
+    {
+        return true;
+    }
+    public function isActiveInPath(): bool
+    {
+        return false;
+    }
+    public function isActiveInQuery(): bool
+    {
+        return false;
+    }
+    public function isActiveInRequest(): bool
+    {
+        return $this->activeInRequest;
+    }
 
-    public function getRole(): ?string { return $this->role; }
+    public function getRole(): ?string
+    {
+        return $this->role;
+    }
     /** nullable + required → schema has nullable:true */
-    public function isRoleRequired(): bool { return true; }
-    public function isRoleInPath(): bool { return false; }
-    public function isRoleInQuery(): bool { return false; }
-    public function isRoleInRequest(): bool { return $this->roleInRequest; }
+    public function isRoleRequired(): bool
+    {
+        return true;
+    }
+    public function isRoleInPath(): bool
+    {
+        return false;
+    }
+    public function isRoleInQuery(): bool
+    {
+        return false;
+    }
+    public function isRoleInRequest(): bool
+    {
+        return $this->roleInRequest;
+    }
 
     /** @return array<string, array<string, mixed>> */
     public static function getConstraints(): array
@@ -604,12 +694,12 @@ final class PerformanceTest_GeneratedStyleTest extends TestCase
     {
         $deserializer = new DtoDeserializer();
         $json = json_encode([
-            'user-id'   => 7,
+            'user-id' => 7,
             'user-name' => 'alice',
-            'email'     => 'alice@example.com',
-            'score'     => 75.5,
-            'active'    => true,
-            'role'      => 'admin',
+            'email' => 'alice@example.com',
+            'score' => 75.5,
+            'active' => true,
+            'role' => 'admin',
         ], JSON_THROW_ON_ERROR);
 
         // warm-up
@@ -627,7 +717,7 @@ final class PerformanceTest_GeneratedStyleTest extends TestCase
         }
 
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
-        $perOpMs   = $elapsedMs / $iterations;
+        $perOpMs = $elapsedMs / $iterations;
 
         writePerfLine(sprintf(
             "\n  [Perf] generated-style DTO deserialize: %d iterations → %.1f ms total (%.3f ms/op)\n",
@@ -643,7 +733,7 @@ final class PerformanceTest_GeneratedStyleTest extends TestCase
 
 enum PerfRoleEnum: string
 {
-    case ADMIN  = 'admin';
+    case ADMIN = 'admin';
     case EDITOR = 'editor';
     case VIEWER = 'viewer';
 }

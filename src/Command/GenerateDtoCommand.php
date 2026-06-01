@@ -28,7 +28,10 @@ use Twig\Loader\FilesystemLoader;
  *   temporalFormat?: string|null,
  *   inPath?: bool,
  *   inQuery?: bool,
- *   constraints?: array<string, mixed>
+ *   constraints?: array<string, mixed>,
+ *   readOnly?: bool,
+ *   writeOnly?: bool,
+ *   deprecated?: bool
  * }
  * @phpstan-type SchemaMetadata array{
  *   properties: array<int, SchemaProperty>,
@@ -40,49 +43,49 @@ use Twig\Loader\FilesystemLoader;
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
 final class GenerateDtoCommand extends Command
 {
-    private(set) ?Environment $twig = null;
+    public private(set) ?Environment $twig = null;
 
     /** @var array<string, array<mixed>> */
-    private(set) array $dtoSchemas = [];
+    public private(set) array $dtoSchemas = [];
 
     /** @var array<string, array{type: string, values: array<int, string|int>}> */
-    private(set) array $enumSchemas = [];
+    public private(set) array $enumSchemas = [];
 
     /** @var array<string, true> */
-    private(set) array $parentClasses = [];
+    public private(set) array $parentClasses = [];
 
     /** @var array<string, array<int, string>> */
-    private(set) array $unionInterfacesByClass = [];
+    public private(set) array $unionInterfacesByClass = [];
 
     /** @var array<string, array{propertyName: string, mapping: array<string, string>}> */
-    private(set) array $discriminatorSchemas = [];
+    public private(set) array $discriminatorSchemas = [];
 
     /** @var array<string, string|null> */
-    private(set) array $schemaSourceFiles = [];
+    public private(set) array $schemaSourceFiles = [];
 
     /** @var array<string, string> */
-    private(set) array $schemaNamespaces = [];
+    public private(set) array $schemaNamespaces = [];
 
     /** @var array<string, string> */
-    private(set) array $schemaOutputDirectories = [];
+    public private(set) array $schemaOutputDirectories = [];
 
     /** @var array<string, string|null> */
-    private(set) array $enumSourceFiles = [];
+    public private(set) array $enumSourceFiles = [];
 
     /** @var array<string, string> */
-    private(set) array $enumNamespaces = [];
+    public private(set) array $enumNamespaces = [];
 
     /** @var array<string, string> */
-    private(set) array $enumOutputDirectories = [];
+    public private(set) array $enumOutputDirectories = [];
 
     /** @var array<string, true> */
-    private(set) array $loadedExternalFiles = [];
+    public private(set) array $loadedExternalFiles = [];
 
-    private(set) ?string $rootSpecFile = null;
-    private(set) string $baseOutputDirectory = '';
-    private(set) string $baseNamespace = '';
-    private(set) string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
-    private(set) string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
+    public private(set) ?string $rootSpecFile = null;
+    public private(set) string $baseOutputDirectory = '';
+    public private(set) string $baseNamespace = '';
+    public private(set) string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+    public private(set) string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
 
     protected function configure(): void
     {
@@ -261,7 +264,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            $className = $this->normalizeClassName((string)$schemaName);
+            $className = $this->normalizeClassName($schemaName);
             $this->registerSchema(className: $className, schemaDefinition: $schemaDefinition, sourceFile: null);
         }
 
@@ -277,16 +280,19 @@ final class GenerateDtoCommand extends Command
         $dtoGeneratorDirectory ??= 'Common';
 
         // If dtoGeneratorDirectory is a relative path, calculate it from current directory
-        if (str_starts_with($dtoGeneratorDirectory, '/') || (strlen(
-                    $dtoGeneratorDirectory,
-                ) > 1 && $dtoGeneratorDirectory[1] === ':')) {
+        if (
+            str_starts_with($dtoGeneratorDirectory, '/') || (strlen(
+                $dtoGeneratorDirectory,
+            ) > 1 && $dtoGeneratorDirectory[1] === ':')
+        ) {
             $commonDir = rtrim($dtoGeneratorDirectory, '/');
         } elseif ($dtoGeneratorDirectory === 'Common') {
             // Special case: if default 'Common' value is used,
             // maintain backward compatibility and copy it inside $outputDirectory
             $commonDir = rtrim($outputDirectory, '/') . '/Common';
         } else {
-            $workingDirectory = getcwd() ?: '.';
+            $cwd = getcwd();
+            $workingDirectory = $cwd !== false ? $cwd : '.';
             $commonDir = rtrim($workingDirectory . '/' . ltrim($dtoGeneratorDirectory, '/'), '/');
         }
 
@@ -332,6 +338,13 @@ final class GenerateDtoCommand extends Command
             $content = preg_replace(
                 '/use OpenapiPhpDtoGenerator\\\\(Contract|Service)\\\\/',
                 'use ' . $targetNamespace . '\\',
+                $content,
+            ) ?? $content;
+
+            // Remove self-namespace imports (same namespace as target)
+            $content = preg_replace(
+                '/^use ' . preg_quote($targetNamespace, '/') . '\\\\[^;]+;\n/m',
+                '',
                 $content,
             ) ?? $content;
 
@@ -445,7 +458,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            $className = $this->normalizeClassName((string)$schemaName);
+            $className = $this->normalizeClassName($schemaName);
             $this->registerSchema(className: $className, schemaDefinition: $schemaDefinition, sourceFile: $sourceFile);
         }
     }
@@ -483,7 +496,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists($className, $this->dtoSchemas)) {
-            if ($this->dtoSchemas[$className] != $schemaDefinition) {
+            if ($this->dtoSchemas[$className] !== $schemaDefinition) {
                 throw new RuntimeException(sprintf('DTO schema name collision for %s.', $className));
             }
 
@@ -550,10 +563,10 @@ final class GenerateDtoCommand extends Command
         }
 
         return rtrim($this->baseOutputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . str_replace(
-                '/',
-                DIRECTORY_SEPARATOR,
-                $relativeDirectory,
-            );
+            '/',
+            DIRECTORY_SEPARATOR,
+            $relativeDirectory,
+        );
     }
 
     private function resolveRelativeSpecDirectory(string $sourceFile): string
@@ -960,7 +973,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            $className = $this->normalizeClassName((string)$schemaName);
+            $className = $this->normalizeClassName($schemaName);
 
             foreach (
                 $this->collectUnionTypes(
@@ -985,7 +998,6 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * @param mixed $variants
      * @return array<int, string>
      */
     private function collectUnionTypes(string $ownerClassName, mixed $variants, string $keyword): array
@@ -1230,6 +1242,9 @@ final class GenerateDtoCommand extends Command
                 'inPath' => $isInPath,
                 'inQuery' => $isInQuery,
                 'constraints' => $constraints,
+                'readOnly' => (bool)($propertySchema['readOnly'] ?? false),
+                'writeOnly' => (bool)($propertySchema['writeOnly'] ?? false),
+                'deprecated' => (bool)($propertySchema['deprecated'] ?? false),
             ];
         }
 
@@ -1260,8 +1275,14 @@ final class GenerateDtoCommand extends Command
             'maxItems',
             'uniqueItems',
             'items',
+            'contains',
+            'minContains',
+            'maxContains',
             'oneOf',
             'anyOf',
+            'if',
+            'then',
+            'else',
         ];
 
         $constraints = [];
@@ -1290,6 +1311,24 @@ final class GenerateDtoCommand extends Command
 
             if ($branchConstraints !== []) {
                 $constraints[$unionKey] = $branchConstraints;
+            }
+        }
+
+        if (($propertySchema['readOnly'] ?? false) === true) {
+            $constraints['readOnly'] = true;
+        }
+
+        // OpenAPI 3.1: type: [string, null] → normalize to type: string, nullable: true
+        if (array_key_exists('type', $constraints) && is_array($constraints['type'])) {
+            $nonNullTypes = array_values(
+                array_filter($constraints['type'], static fn(mixed $t): bool => is_string($t) && $t !== 'null'),
+            );
+            if (count($nonNullTypes) < count($constraints['type'])) {
+                $constraints['nullable'] = true;
+            }
+            $constraints['type'] = count($nonNullTypes) === 1 ? $nonNullTypes[0] : $nonNullTypes;
+            if ($constraints['type'] === []) {
+                unset($constraints['type']);
             }
         }
 
@@ -1399,13 +1438,15 @@ final class GenerateDtoCommand extends Command
                     ref: $propertySchema['$ref'],
                     currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
                 ),
-                $nullable
+                $nullable,
             ];
         }
 
-        if (array_key_exists('enum', $propertySchema) && is_array(
+        if (
+            array_key_exists('enum', $propertySchema) && is_array(
                 $propertySchema['enum'],
-            ) && $propertySchema['enum'] !== []) {
+            ) && $propertySchema['enum'] !== []
+        ) {
             $parentEnumType = $this->resolveParentEnumTypeForOverride($ownerClassName, $propertyName, $propertySchema);
             if ($parentEnumType !== null) {
                 return [$parentEnumType, $nullable];
@@ -1512,7 +1553,7 @@ final class GenerateDtoCommand extends Command
                         ref: $items['$ref'],
                         currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
                     ) . '>',
-                    $nullable
+                    $nullable,
                 ];
             }
 
@@ -1566,7 +1607,7 @@ final class GenerateDtoCommand extends Command
                 'boolean' => 'bool',
                 default => 'mixed',
             },
-            $nullable
+            $nullable,
         ];
     }
 
@@ -2063,8 +2104,10 @@ final class GenerateDtoCommand extends Command
                 'className' => $className,
                 'unionMembers' => implode(
                     '|',
-                    array_map(fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                        $unionTypes),
+                    array_map(
+                        fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+                        $unionTypes,
+                    ),
                 ),
                 'signature' => null,
                 'implementedInterfaces' => [],
@@ -2081,14 +2124,19 @@ final class GenerateDtoCommand extends Command
         }
 
         $classModifiers = array_key_exists($className, $this->parentClasses) ? '' : 'final ';
-        $useStatements[] = $this->generatedDtoInterfaceImportFqcn;
+        $fqcnNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
+        if ($fqcnNamespace !== $namespace) {
+            $useStatements[] = $this->generatedDtoInterfaceImportFqcn;
+        }
+        $useStatements[] = 'JsonException';
+        $useStatements[] = 'Stringable';
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
 
         $implementedInterfaces = array_values(array_unique([
             ...($this->unionInterfacesByClass[$className] ?? []),
             'GeneratedDtoInterface',
-            '\\Stringable',
+            'Stringable',
         ]));
         $implementedInterfaces = array_map(
             fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
@@ -2127,6 +2175,7 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        $privateProperties = [];
         foreach ($ownProperties as $ownProperty) {
             if (array_key_exists($ownProperty['name'], $parentByName)) {
                 continue;
@@ -2134,8 +2183,6 @@ final class GenerateDtoCommand extends Command
 
             $privateProperties[] = $this->resolvePropertyDeclarationData($ownProperty, $namespace);
         }
-
-        $privateProperties = $privateProperties ?? [];
 
         $allConstructorParams = [];
 
@@ -2153,12 +2200,11 @@ final class GenerateDtoCommand extends Command
             $allConstructorParams[] = $ownProperty;
         }
 
+        $constructorParams = [];
         foreach ($allConstructorParams as $property) {
             $tracksArgPresence = !array_key_exists($property['name'], $parentByName);
             $constructorParams[] = $this->resolveConstructorParameterData($property, $namespace, $tracksArgPresence);
         }
-
-        $constructorParams = $constructorParams ?? [];
         $requiredConstructorParams = [];
         $optionalConstructorParams = [];
 
@@ -2186,6 +2232,7 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        $assignments = [];
         foreach ($ownProperties as $ownProperty) {
             if (array_key_exists($ownProperty['name'], $parentByName)) {
                 continue;
@@ -2193,16 +2240,14 @@ final class GenerateDtoCommand extends Command
             $assignments[] = $ownProperty['name'];
         }
 
-        $assignments = $assignments ?? [];
-
         $allProperties = [];
+        $methodProperties = [];
         foreach ($ownProperties as $property) {
             if (array_key_exists($property['name'], $parentByName)) {
                 continue;
             }
             $methodProperties[] = $this->resolveMethodPropertyData($property, $namespace);
         }
-        $methodProperties = $methodProperties ?? [];
 
         $discriminatorData = $discriminator !== null
             ? $this->resolveDiscriminatorRenderData($discriminator, $namespace)
@@ -2338,7 +2383,7 @@ final class GenerateDtoCommand extends Command
             } else {
                 $type = $type . '|null|UnsetValue';
             }
-        } elseif ($defaultValue === '' && !$property['required'] && (bool)$property['nullable']) {
+        } elseif ($defaultValue === '' && !$property['required'] && $property['nullable']) {
             $defaultValue = ' = null';
         }
 
@@ -2422,10 +2467,10 @@ final class GenerateDtoCommand extends Command
 
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
-            $returnType = (bool)$property['nullable'] || $usesUnsetSentinel ? '?string' : 'string';
+            $returnType = $property['nullable'] || $usesUnsetSentinel ? '?string' : 'string';
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
-            $isNullableTemporal = (bool)$property['nullable'] || $usesUnsetSentinel;
+            $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
         } elseif ($phpType !== $phpDocType) {
             $docReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
         }
@@ -2455,12 +2500,15 @@ final class GenerateDtoCommand extends Command
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'presenceFlagName' => $this->resolvePresenceFlagName($property),
-            'hasArrayAdder' => str_starts_with((string)$property['type'], 'array'),
+            'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
             'arrayAdderItemNullable' => str_starts_with($this->resolveArrayItemPhpType($property['type']), '?'),
-            'nullableArray' => (bool)$property['nullable'],
+            'nullableArray' => $property['nullable'],
             'usesUnsetSentinel' => $usesUnsetSentinel,
+            'readOnly' => $property['readOnly'] ?? false,
+            'writeOnly' => $property['writeOnly'] ?? false,
+            'deprecated' => $property['deprecated'] ?? false,
         ];
     }
 
@@ -2572,7 +2620,6 @@ final class GenerateDtoCommand extends Command
         return $this->getTwig()->render($templateName, $context);
     }
 
-
     private function getTwig(): Environment
     {
         if ($this->twig instanceof Environment) {
@@ -2626,7 +2673,7 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach ($properties as $property) {
-            foreach ($this->extractReferencedClassNamesFromType((string)$property['type']) as $typeClass) {
+            foreach ($this->extractReferencedClassNamesFromType($property['type']) as $typeClass) {
                 $this->appendImportForClass(
                     imports: $imports,
                     className: $typeClass,
@@ -2675,16 +2722,19 @@ final class GenerateDtoCommand extends Command
     private function extractReferencedClassNamesFromType(string $type): array
     {
         $normalized = str_replace(['array<', '>', '?'], ['', '', ''], $type);
-        $parts = preg_split('/\|/', $normalized) ?: [];
+        $splitResult = preg_split('/\|/', $normalized);
+        $parts = $splitResult !== false ? $splitResult : [];
         $result = [];
 
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '' || in_array(
+            if (
+                $part === '' || in_array(
                     $part,
                     ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'],
                     true,
-                )) {
+                )
+            ) {
                 continue;
             }
 
@@ -2705,16 +2755,19 @@ final class GenerateDtoCommand extends Command
 
     private function formatPhpTypeForNamespace(string $type, string $currentNamespace): string
     {
-        $parts = preg_split('/\|/', $type) ?: [];
+        $splitResult = preg_split('/\|/', $type);
+        $parts = $splitResult !== false ? $splitResult : [];
         $formatted = [];
 
         foreach ($parts as $part) {
             $part = trim($part);
-            if ($part === '' || in_array(
+            if (
+                $part === '' || in_array(
                     $part,
                     ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'],
                     true,
-                )) {
+                )
+            ) {
                 $formatted[] = $part;
                 continue;
             }
@@ -2795,8 +2848,14 @@ final class GenerateDtoCommand extends Command
             'minItems',
             'maxItems',
             'uniqueItems',
+            'contains',
+            'minContains',
+            'maxContains',
             'oneOf',
             'anyOf',
+            'if',
+            'then',
+            'else',
         ];
 
         $parts = [];
@@ -2880,6 +2939,12 @@ final class GenerateDtoCommand extends Command
             'minItems',
             'maxItems',
             'uniqueItems',
+            'contains',
+            'minContains',
+            'maxContains',
+            'if',
+            'then',
+            'else',
         ];
 
         $parts = [];
@@ -2909,7 +2974,6 @@ final class GenerateDtoCommand extends Command
         return implode(', ', $parts);
     }
 
-
     private function resolveArrayItemPhpType(string $fullType): string
     {
         if (!str_starts_with($fullType, 'array<')) {
@@ -2933,7 +2997,7 @@ final class GenerateDtoCommand extends Command
     private function needsDateTimeImmutableImport(array $properties): bool
     {
         foreach ($properties as $property) {
-            $type = (string)$property['type'];
+            $type = $property['type'];
             if ($type === 'DateTimeImmutable' || str_contains($type, 'DateTimeImmutable')) {
                 return true;
             }
@@ -3100,8 +3164,8 @@ final class GenerateDtoCommand extends Command
     private function normalizeClassName(string $name): string
     {
         $name = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $name) ?? $name;
-        $parts = preg_split('/[^A-Za-z0-9]+/', $name) ?: [];
-        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+        $splitResult = preg_split('/[^A-Za-z0-9]+/', $name);
+        $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {
             return 'GeneratedDto';
@@ -3113,7 +3177,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_numeric($normalized[0])) {
-            return '_' . $normalized;
+            return 'Value' . $normalized;
         }
 
         return $normalized;
@@ -3129,8 +3193,8 @@ final class GenerateDtoCommand extends Command
         // Split camelCase/PascalCase and keep arbitrary separators from OpenAPI keys.
         $normalized = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $normalized) ?? $normalized;
         $normalized = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1 $2', $normalized) ?? $normalized;
-        $parts = preg_split('/[^A-Za-z0-9]+/', $normalized) ?: [];
-        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+        $splitResult = preg_split('/[^A-Za-z0-9]+/', $normalized);
+        $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {
             return 'value';
@@ -3144,7 +3208,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_numeric($propertyName[0])) {
-            return '_' . $propertyName;
+            return 'value' . $propertyName;
         }
 
         return $propertyName;
@@ -3167,8 +3231,8 @@ final class GenerateDtoCommand extends Command
 
     private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
     {
-        $parts = preg_split('/[^A-Za-z0-9]+/', $propertyName) ?: [];
-        $parts = array_values(array_filter($parts, static fn(string $part): bool => $part !== ''));
+        $splitResult = preg_split('/[^A-Za-z0-9]+/', $propertyName);
+        $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {
             $camel = 'value';
@@ -3183,7 +3247,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_numeric($camel[0])) {
-            $camel = '_' . $camel;
+            $camel = 'value' . $camel;
         }
 
         return $camel . $suffix;
@@ -3196,7 +3260,7 @@ final class GenerateDtoCommand extends Command
             return;
         }
 
-        if (!mkdir($outputDirectory, 0775, true) && !is_dir($outputDirectory)) {
+        if (!mkdir($outputDirectory, 0o775, true) && !is_dir($outputDirectory)) {
             throw new RuntimeException(sprintf('Cannot create directory: %s', $outputDirectory));
         }
     }
@@ -3207,7 +3271,7 @@ final class GenerateDtoCommand extends Command
             return;
         }
 
-        if (!mkdir($directory, 0775, true) && !is_dir($directory)) {
+        if (!mkdir($directory, 0o775, true) && !is_dir($directory)) {
             throw new RuntimeException(sprintf('Cannot create directory: %s', $directory));
         }
     }
@@ -3370,7 +3434,8 @@ final class GenerateDtoCommand extends Command
     private function normalizePathForSchemaName(string $path): string
     {
         $pathPart = trim($path, '/');
-        $segments = preg_split('/[\/\-_]+/', $pathPart) ?: [];
+        $splitResult = preg_split('/[\/\-_]+/', $pathPart);
+        $segments = $splitResult !== false ? $splitResult : [];
 
         $normalizedPath = '';
         foreach ($segments as $segment) {
@@ -3379,7 +3444,7 @@ final class GenerateDtoCommand extends Command
             }
 
             // Skip path parameter placeholders like {id}, {userId}, etc.
-            if (preg_match('/^\{[^}]+\}$/', $segment)) {
+            if (preg_match('/^\{[^}]+\}$/', $segment) === 1) {
                 continue;
             }
 
@@ -3587,11 +3652,13 @@ final class GenerateDtoCommand extends Command
         }
 
         // Handle enum types - need to use the enum case
-        if (!str_contains($phpType, '|') && !in_array(
+        if (
+            !str_contains($phpType, '|') && !in_array(
                 $phpType,
                 ['int', 'float', 'string', 'bool', 'array', 'mixed'],
                 true,
-            )) {
+            )
+        ) {
             // It's an enum or custom type
             if (is_string($defaultValue)) {
                 $usedNames = [];
@@ -3615,7 +3682,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if ($phpType === 'bool') {
-            return $defaultValue ? ' = true' : ' = false';
+            return $defaultValue === true ? ' = true' : ' = false';
         }
 
         if ($phpType === 'string') {
@@ -3822,7 +3889,8 @@ final class GenerateDtoCommand extends Command
             return rtrim($normalized, '/');
         }
 
-        $workingDirectory = getcwd() ?: '.';
+        $cwd = getcwd();
+        $workingDirectory = $cwd !== false ? $cwd : '.';
         return rtrim($workingDirectory . '/' . ltrim($normalized, '/'), '/');
     }
 
@@ -3846,7 +3914,8 @@ final class GenerateDtoCommand extends Command
 
     private function normalizeNamespaceSegment(string $segment): string
     {
-        $parts = preg_split('/[^A-Za-z0-9]+/', $segment) ?: [];
+        $splitResult = preg_split('/[^A-Za-z0-9]+/', $segment);
+        $parts = $splitResult !== false ? $splitResult : [];
         $normalized = implode(
             '',
             array_map(static fn(string $part): string => ucfirst(strtolower($part)), array_filter($parts)),
@@ -3857,7 +3926,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_numeric($normalized[0])) {
-            return '_' . $normalized;
+            return 'Value' . $normalized;
         }
 
         return $normalized;

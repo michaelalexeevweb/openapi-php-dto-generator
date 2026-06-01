@@ -10,6 +10,8 @@ use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -40,7 +42,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['amount' => 9]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must be greater than or equal to 10');
 
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
@@ -60,7 +62,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 5]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must be greater than 5');
 
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
@@ -80,7 +82,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6, 'limit' => 101]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must be less than or equal to 100');
 
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
@@ -100,7 +102,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['amount' => 10, 'multiplier' => 7]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must be a multiple of 3');
 
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
@@ -124,7 +126,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['username' => 'hi', 'code' => 'abc123']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('length must be at least 5 characters');
 
         $this->deserializer->deserialize($request, StringConstraintsDto::class);
@@ -144,7 +146,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['username' => 'hello', 'code' => 'toolongvalue']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('length must be at most 6 characters');
 
         $this->deserializer->deserialize($request, StringConstraintsDto::class);
@@ -154,7 +156,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['username' => 'hello', 'code' => 'abc']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must match pattern');
 
         $this->deserializer->deserialize($request, StringConstraintsDto::class);
@@ -178,7 +180,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['email' => 'not-an-email']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must match format email');
 
         $this->deserializer->deserialize($request, EmailFormatDto::class);
@@ -198,7 +200,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['uuid' => 'not-a-uuid']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must match format uuid');
 
         $this->deserializer->deserialize($request, UuidFormatDto::class);
@@ -219,7 +221,7 @@ final class DtoFeaturesTest extends TestCase
         // 2024-13-01 is invalid (month 13)
         $request = $this->jsonRequest(['dateStr' => '2024-13-01']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must match format date');
 
         $this->deserializer->deserialize($request, DateFormatDto::class);
@@ -239,7 +241,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['dateTimeStr' => 'not-a-datetime']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must match format date-time');
 
         $this->deserializer->deserialize($request, DateTimeFormatDto::class);
@@ -263,7 +265,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['tags' => ['a']]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must contain at least 2 items');
 
         $this->deserializer->deserialize($request, ArrayConstraintsDto::class);
@@ -283,7 +285,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['tags' => ['a', 'b', 'c', 'd', 'e', 'f']]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must contain at most 5 items');
 
         $this->deserializer->deserialize($request, ArrayConstraintsDto::class);
@@ -293,7 +295,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['tags' => ['a', 'a']]);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must contain unique items');
 
         $this->deserializer->deserialize($request, ArrayConstraintsDto::class);
@@ -345,7 +347,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = new Request(['itemIds' => ['x']], [], [], [], [], []);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "itemIds.0" expects int, got string');
 
         $this->deserializer->deserialize($request, QueryIntArrayDto::class);
@@ -364,7 +366,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = new Request(['scores' => ['bad']], [], [], [], [], []);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "scores.0" expects float, got string');
 
         $this->deserializer->deserialize($request, QueryFloatArrayDto::class);
@@ -401,7 +403,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = new Request(['modes' => ['unknown']], [], [], [], [], []);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "modes.0" expects enum');
 
         $this->deserializer->deserialize($request, QueryEnumArrayDto::class);
@@ -411,7 +413,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = new Request(['levels' => ['unknown']], [], [], [], [], []);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "levels.0" expects enum');
 
         $this->deserializer->deserialize($request, QueryOptionalEnumArrayDto::class);
@@ -421,7 +423,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = new Request(['tokens' => ['bad-uuid']], [], [], [], [], []);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "tokens".0 must match format uuid');
 
         $this->deserializer->deserialize($request, QueryUuidArrayDto::class);
@@ -534,7 +536,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['dateField' => 'not-a-date']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('"dateField"');
 
         $this->deserializer->deserialize($request, DateDeserializeDto::class);
@@ -544,7 +546,7 @@ final class DtoFeaturesTest extends TestCase
     {
         $request = $this->jsonRequest(['dateField' => '']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('got empty string');
 
         $this->deserializer->deserialize($request, DateDeserializeDto::class);
@@ -583,7 +585,7 @@ final class DtoFeaturesTest extends TestCase
         // No file provided, field is required
         $request = new Request([], [], [], [], [], []);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('"document"');
 
         $this->deserializer->deserialize($request, FileUploadDto::class);
@@ -615,7 +617,7 @@ final class DtoFeaturesTest extends TestCase
 
     private function jsonRequest(array $data): Request
     {
-        $request = new Request([], [], [], [], [], [], json_encode($data ?: new \stdClass()));
+        $request = new Request([], [], [], [], [], [], json_encode($data ?: new stdClass()));
         $request->headers->set('Content-Type', 'application/json');
         return $request;
     }
@@ -1219,11 +1221,11 @@ enum QueryLevelEnum: string
 final class QueryOptionalEnumArrayDto
 {
     /** @var array<QueryLevelEnum>|null */
-    private array|null $levels;
+    private ?array $levels;
 
     /** @param array<QueryLevelEnum>|null|UnsetValue $levels */
     public function __construct(
-        array|null|UnsetValue $levels = UnsetValue::UNSET,
+        array|UnsetValue|null $levels = UnsetValue::UNSET,
     ) {
         $this->levels = is_array($levels) ? $levels : null;
     }

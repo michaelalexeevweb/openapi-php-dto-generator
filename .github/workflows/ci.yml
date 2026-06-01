@@ -36,6 +36,12 @@ jobs:
       - name: Run PHPStan
         run: composer phpstan
 
+      - name: Run PHP CodeSniffer
+        run: composer cs
+
+      - name: Run PHP CS Fixer
+        run: composer cs-fixer
+
       - name: Run PHPUnit
         run: vendor/bin/phpunit --no-coverage
 

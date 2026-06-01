@@ -6,8 +6,10 @@ namespace OpenapiPhpDtoGenerator\Tests;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Yaml\Yaml;
+use RuntimeException;
+use stdClass;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Yaml\Yaml;
 
 final class GenerateDtoCommandTest extends TestCase
 {
@@ -20,7 +22,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->outputDirectory = __DIR__ . '/output';
 
         if (!is_dir($this->outputDirectory)) {
-            mkdir($this->outputDirectory, 0755, true);
+            mkdir($this->outputDirectory, 0o755, true);
         }
     }
 
@@ -345,7 +347,7 @@ final class GenerateDtoCommandTest extends TestCase
                         'properties' => [
                             'payload' => [
                                 'type' => 'array',
-                                'items' => new \stdClass(),
+                                'items' => new stdClass(),
                             ],
                         ],
                     ],
@@ -675,7 +677,7 @@ final class GenerateDtoCommandTest extends TestCase
                             'success' => ['type' => 'boolean'],
                             'payload' => [
                                 'type' => 'array',
-                                'items' => new \stdClass(),
+                                'items' => new stdClass(),
                                 'example' => [],
                             ],
                         ],
@@ -960,7 +962,7 @@ final class GenerateDtoCommandTest extends TestCase
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/discriminator-duplicate-mapping.yaml');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('duplicate target "DogAnimal"');
 
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
@@ -1031,7 +1033,7 @@ final class GenerateDtoCommandTest extends TestCase
         $outputDir = $baseDir . '/generated';
 
         if (!is_dir($outputDir)) {
-            mkdir($outputDir, 0755, true);
+            mkdir($outputDir, 0o755, true);
         }
 
         try {
@@ -1069,7 +1071,7 @@ final class GenerateDtoCommandTest extends TestCase
         $outputDir = $baseDir . '/generated';
 
         if (!is_dir($outputDir)) {
-            mkdir($outputDir, 0755, true);
+            mkdir($outputDir, 0o755, true);
         }
 
         try {
@@ -1107,47 +1109,47 @@ final class GenerateDtoCommandTest extends TestCase
         $commonDir = $baseDir . '/common';
         $outputDir = $baseDir . '/Generated/Module/Schemas';
 
-        mkdir($specDir, 0755, true);
-        mkdir($commonDir, 0755, true);
+        mkdir($specDir, 0o755, true);
+        mkdir($commonDir, 0o755, true);
 
         file_put_contents(
             $specDir . '/module.yml',
             <<<'YAML'
-openapi: 3.0.0
-info:
-  title: Module
-  version: 1.0.0
-paths: { }
-components:
-  schemas:
-    ModuleResponse:
-      type: object
-      required:
-        - response
-      properties:
-        response:
-          $ref: '../common/common_response.yml#/components/schemas/TestResponse'
-YAML,
+                openapi: 3.0.0
+                info:
+                  title: Module
+                  version: 1.0.0
+                paths: { }
+                components:
+                  schemas:
+                    ModuleResponse:
+                      type: object
+                      required:
+                        - response
+                      properties:
+                        response:
+                          $ref: '../common/common_response.yml#/components/schemas/TestResponse'
+                YAML,
         );
 
         file_put_contents(
             $commonDir . '/common_response.yml',
             <<<'YAML'
-openapi: 3.0.0
-info:
-  title: TestResponse
-  version: 1.0.0
-paths: { }
-components:
-  schemas:
-    TestResponse:
-      type: object
-      required:
-        - success
-      properties:
-        success:
-          type: boolean
-YAML,
+                openapi: 3.0.0
+                info:
+                  title: TestResponse
+                  version: 1.0.0
+                paths: { }
+                components:
+                  schemas:
+                    TestResponse:
+                      type: object
+                      required:
+                        - success
+                      properties:
+                        success:
+                          type: boolean
+                YAML,
         );
 
         try {
@@ -1185,49 +1187,49 @@ YAML,
         $commonDir = $baseDir . '/common';
         $outputDir = $baseDir . '/Generated/Module/Schemas';
 
-        mkdir($specDir, 0755, true);
-        mkdir($commonDir, 0755, true);
+        mkdir($specDir, 0o755, true);
+        mkdir($commonDir, 0o755, true);
 
         file_put_contents(
             $specDir . '/module.yml',
             <<<'YAML'
-openapi: 3.0.0
-info:
-  title: Module
-  version: 1.0.0
-paths: { }
-components:
-  schemas:
-    TestResponse:
-      $ref: '../common/common_response.yml#/components/schemas/TestResponse'
-    ModuleResponse:
-      type: object
-      required:
-        - response
-      properties:
-        response:
-          $ref: '#/components/schemas/TestResponse'
-YAML,
+                openapi: 3.0.0
+                info:
+                  title: Module
+                  version: 1.0.0
+                paths: { }
+                components:
+                  schemas:
+                    TestResponse:
+                      $ref: '../common/common_response.yml#/components/schemas/TestResponse'
+                    ModuleResponse:
+                      type: object
+                      required:
+                        - response
+                      properties:
+                        response:
+                          $ref: '#/components/schemas/TestResponse'
+                YAML,
         );
 
         file_put_contents(
             $commonDir . '/common_response.yml',
             <<<'YAML'
-openapi: 3.0.0
-info:
-  title: TestResponse
-  version: 1.0.0
-paths: { }
-components:
-  schemas:
-    TestResponse:
-      type: object
-      required:
-        - success
-      properties:
-        success:
-          type: boolean
-YAML,
+                openapi: 3.0.0
+                info:
+                  title: TestResponse
+                  version: 1.0.0
+                paths: { }
+                components:
+                  schemas:
+                    TestResponse:
+                      type: object
+                      required:
+                        - success
+                      properties:
+                        success:
+                          type: boolean
+                YAML,
         );
 
         try {
@@ -1470,7 +1472,7 @@ YAML,
             ],
         ];
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Property name collision in CollisionModel');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
     }
@@ -1504,7 +1506,7 @@ YAML,
             'components' => ['schemas' => []],
         ];
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Property name collision in ItemsGetQueryParams');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
     }
@@ -1568,10 +1570,10 @@ YAML,
         $this->assertFileExists($file);
         $content = file_get_contents($file);
 
-        $this->assertStringContainsString('private readonly string $_1', $content);
-        $this->assertStringContainsString('private readonly string $_8', $content);
-        $this->assertStringContainsString("\$aliases['_1'] = '1';", $content);
-        $this->assertStringContainsString("\$aliases['_8'] = '8';", $content);
+        $this->assertStringContainsString('private readonly string $value1', $content);
+        $this->assertStringContainsString('private readonly string $value8', $content);
+        $this->assertStringContainsString("\$aliases['value1'] = '1';", $content);
+        $this->assertStringContainsString("\$aliases['value8'] = '8';", $content);
     }
 
     public function testAdditionalPropertiesRefObjectMapGeneratesArrayOfDto(): void
@@ -1986,9 +1988,9 @@ YAML,
             $this->assertStringNotContainsString('namespace OpenapiPhpDtoGenerator\\', $content);
         }
 
-        // Check that interfaces and services are now in the same namespace and refer to each other correctly
+        // Self-namespace imports must be removed — same-namespace classes need no use statement
         $serviceContent = (string)file_get_contents($commonDir . '/DtoDeserializer.php');
-        $this->assertStringContainsString('use MyApp\\Generated\\Common\\DtoDeserializerInterface;', $serviceContent);
+        $this->assertStringNotContainsString('use MyApp\\Generated\\Common\\DtoDeserializerInterface;', $serviceContent);
         $this->assertStringNotContainsString('use OpenapiPhpDtoGenerator\\Contract\\DtoDeserializerInterface;', $serviceContent);
     }
 
@@ -2017,8 +2019,8 @@ YAML,
 
             // Check namespace change
             $this->assertStringContainsString('namespace MyApp\\Shared\\Infrastructure;', $content);
-            // Check use statements change
-            $this->assertStringContainsString('use MyApp\\Shared\\Infrastructure\\DtoDeserializerInterface;', $content);
+            // Self-namespace imports removed — same-namespace classes need no use statement
+            $this->assertStringNotContainsString('use MyApp\\Shared\\Infrastructure\\DtoDeserializerInterface;', $content);
         } finally {
             $this->deleteDirectory($customDir);
             $this->deleteDirectory(dirname($customDir)); // Shared
@@ -2062,27 +2064,27 @@ YAML,
         $specFile = $baseDir . '/spec.yaml';
         $commonDir = $baseDir . '/shared/common';
 
-        mkdir($outputDir, 0755, true);
-        mkdir($commonDir, 0755, true);
+        mkdir($outputDir, 0o755, true);
+        mkdir($commonDir, 0o755, true);
 
         file_put_contents(
             $specFile,
             <<<'YAML'
-openapi: 3.0.0
-info:
-  title: CLI import test
-  version: 1.0.0
-paths: { }
-components:
-  schemas:
-    SampleResponse:
-      type: object
-      required:
-        - id
-      properties:
-        id:
-          type: integer
-YAML,
+                openapi: 3.0.0
+                info:
+                  title: CLI import test
+                  version: 1.0.0
+                paths: { }
+                components:
+                  schemas:
+                    SampleResponse:
+                      type: object
+                      required:
+                        - id
+                      properties:
+                        id:
+                          type: integer
+                YAML,
         );
 
         try {
@@ -2146,10 +2148,10 @@ YAML,
     {
         $namespace = 'MyApp\\Generated';
         $commonDir = $this->outputDirectory . '/Common';
-        
+
         // Ensure directory exists and has some "old" files
         if (!is_dir($commonDir)) {
-            mkdir($commonDir, 0775, true);
+            mkdir($commonDir, 0o775, true);
         }
         $oldFile = $commonDir . '/OldUnusedFile.php';
         file_put_contents($oldFile, '<?php echo "I should be deleted";');
@@ -2164,5 +2166,191 @@ YAML,
 
         // Check that old file is deleted
         $this->assertFileDoesNotExist($oldFile);
+    }
+
+    public function testDeprecatedPropertyGeneratesDeprecatedPhpDoc(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'DeprecatedModel' => [
+                        'type' => 'object',
+                        'required' => ['name', 'legacyId'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                            'legacyId' => ['type' => 'integer', 'deprecated' => true],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/DeprecatedModel.php');
+        $this->assertStringContainsString('@deprecated', $content);
+        // non-deprecated field must NOT have @deprecated
+        $nameGetterPos = strpos($content, 'function getName');
+        $legacyGetterPos = strpos($content, 'function getLegacyId');
+        $deprecatedPos = strpos($content, '@deprecated');
+        $this->assertNotFalse($nameGetterPos);
+        $this->assertNotFalse($legacyGetterPos);
+        $this->assertNotFalse($deprecatedPos);
+        // @deprecated appears after getName (i.e. belongs to getLegacyId block)
+        $this->assertGreaterThan($nameGetterPos, $deprecatedPos);
+    }
+
+    public function testWriteOnlyPropertyExcludedFromGeneratedToArray(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'WriteOnlyModel' => [
+                        'type' => 'object',
+                        'required' => ['name', 'password'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                            'password' => ['type' => 'string', 'writeOnly' => true],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/WriteOnlyModel.php');
+        // toArray() must not include writeOnly field
+        $toArrayStart = strpos($content, 'function toArray');
+        $toArrayEnd = strpos($content, 'return $result;', (int)$toArrayStart);
+        $toArrayBody = substr($content, (int)$toArrayStart, (int)$toArrayEnd - (int)$toArrayStart);
+        $this->assertStringNotContainsString("'password'", $toArrayBody);
+        $this->assertStringContainsString("'name'", $toArrayBody);
+        // writeOnly=true must appear in normalization map metadata
+        $this->assertStringContainsString("'writeOnly' => true", $content);
+    }
+
+    public function testReadOnlyPropertyHasReadOnlyInConstraintsAndNormalizationMapMetadata(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ReadOnlyModel' => [
+                        'type' => 'object',
+                        'required' => ['name', 'id'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                            'id' => ['type' => 'integer', 'readOnly' => true],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/ReadOnlyModel.php');
+        // readOnly constraint must appear in getConstraints()
+        $this->assertStringContainsString("'readOnly' => true", $content);
+        // readOnly=true must appear in normalization map metadata
+        $this->assertStringContainsString("'readOnly' => true", $content);
+    }
+
+    public function testIfThenElseConstraintGeneratedFromSpec(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ConditionalModel' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'score' => [
+                                'type' => 'integer',
+                                'if' => ['minimum' => 0],
+                                'then' => ['maximum' => 100],
+                                'else' => ['maximum' => 0],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/ConditionalModel.php');
+        $this->assertStringContainsString("'if'", $content);
+        $this->assertStringContainsString("'then'", $content);
+        $this->assertStringContainsString("'else'", $content);
+    }
+
+    public function testOas31ArrayTypeNullable_generatesNullableProperty(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'NullableModel' => [
+                        'type' => 'object',
+                        'required' => ['label'],
+                        'properties' => [
+                            'label' => ['type' => ['string', 'null']],
+                            'count' => ['type' => ['integer', 'null']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/NullableModel.php');
+        // PHP property must be nullable
+        $this->assertStringContainsString('?string', $content);
+        $this->assertStringContainsString('?int', $content);
+        // Constraints must contain nullable: true (normalized from array type)
+        $this->assertStringContainsString("'nullable' => true", $content);
+        // Constraints must not contain raw PHP array type representation
+        $this->assertStringNotContainsString("'null'", $content);
+    }
+
+    public function testContainsConstraintGeneratedFromSpec(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ContainsModel' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'tags' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string'],
+                                'contains' => ['type' => 'integer'],
+                                'minContains' => 1,
+                                'maxContains' => 3,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/ContainsModel.php');
+        $this->assertStringContainsString("'contains'", $content);
+        $this->assertStringContainsString("'minContains'", $content);
+        $this->assertStringContainsString("'maxContains'", $content);
     }
 }

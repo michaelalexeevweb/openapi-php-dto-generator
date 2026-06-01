@@ -39,4 +39,3 @@ interface DtoNormalizerInterface
      */
     public function validateAndNormalizeToJson(GeneratedDtoInterface $dto): string;
 }
-

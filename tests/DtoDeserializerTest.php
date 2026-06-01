@@ -7,6 +7,8 @@ namespace OpenapiPhpDtoGenerator\Tests;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
 final class DtoDeserializerTest extends TestCase
@@ -31,6 +33,20 @@ final class DtoDeserializerTest extends TestCase
         $this->assertInstanceOf(SimpleTestDto::class, $dto);
         $this->assertSame(123, $dto->id);
         $this->assertSame('Test User', $dto->name);
+    }
+
+    public function testDeserializeJsonBodyWithCharsetInContentType(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'héllo wörld 🌍',
+        ]));
+        $request->headers->set('Content-Type', 'application/json; charset=utf-8');
+
+        $dto = $this->deserializer->deserialize($request, SimpleTestDto::class);
+
+        $this->assertSame(1, $dto->id);
+        $this->assertSame('héllo wörld 🌍', $dto->name);
     }
 
     public function testDeserializeWithQueryParameters(): void
@@ -94,10 +110,79 @@ final class DtoDeserializerTest extends TestCase
             try {
                 $this->deserializer->deserialize($request, DateTimeDto::class);
                 $this->fail("Expected exception for relative date string '{$relative}' but none thrown");
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 $this->assertStringContainsString('createdAt', $e->getMessage());
             }
         }
+    }
+
+    public function testDeserializeDateTimeRejectsEmptyString(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'createdAt' => '',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('createdAt');
+        $this->expectExceptionMessage('empty string');
+
+        $this->deserializer->deserialize($request, DateTimeDto::class);
+    }
+
+    public function testDeserializeDateTimeRejectsGarbage(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'createdAt' => 'not-a-date',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('createdAt');
+
+        $this->deserializer->deserialize($request, DateTimeDto::class);
+    }
+
+    public function testDeserializeDateOnlyFormat_acceptsValidDate(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'date' => '2024-06-15',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DateOnlyDto::class);
+
+        $this->assertSame('2024-06-15', $dto->date->format('Y-m-d'));
+    }
+
+    public function testDeserializeDateOnlyFormat_rejectsDateTime(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'date' => '2024-06-15T12:00:00+00:00',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('date');
+        $this->expectExceptionMessage('Y-m-d format');
+
+        $this->deserializer->deserialize($request, DateOnlyDto::class);
+    }
+
+    public function testDeserializeDateOnlyFormat_rejectsInvalidDate(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'date' => '2024-13-45',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('date');
+        $this->expectExceptionMessage('Y-m-d format');
+
+        $this->deserializer->deserialize($request, DateOnlyDto::class);
     }
 
     public function testDeserializeWithNullableField(): void
@@ -150,7 +235,7 @@ final class DtoDeserializerTest extends TestCase
     {
         $request = new Request(['enabled' => 'oops', 'verified' => 'false']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/expects bool/');
         $this->deserializer->deserialize($request, BooleanDto::class);
     }
@@ -163,7 +248,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "id" expects int, got string');
 
         $this->deserializer->deserialize($request, SimpleTestDto::class);
@@ -176,7 +261,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Required parameter "id" not found in request');
 
         $this->deserializer->deserialize($request, SimpleTestDto::class);
@@ -233,7 +318,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "tags" expects array, got object');
 
         $this->deserializer->deserialize($request, NestedArrayDto::class);
@@ -252,12 +337,74 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage(
             "param \"tags.1.id\" expects int, got string\nparam \"tags.2.name\" expects string, got int",
         );
 
         $this->deserializer->deserialize($request, NestedArrayDto::class);
+    }
+
+    public function testDeserializeThrowsExceptionForInvalidNestedArrayAtDepth3(): void
+    {
+        // depth: OuterDto.items[0].tags[0].id — path must be fully qualified
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'items' => [
+                [
+                    'tags' => [
+                        ['id' => 'bad', 'label' => 'ok'],
+                    ],
+                ],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('param "items.0.tags.0.id" expects int, got string');
+
+        $this->deserializer->deserialize($request, DepthOuterDto::class);
+    }
+
+    public function testDeserializeAllErrorPathsQualifiedForMultipleFieldsInDepth3Item(): void
+    {
+        // Single depth-3 item with TWO invalid fields — both paths must get full prefix.
+        // Old prependParamPath (str_replace on first match) would leave second path un-prefixed.
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'items' => [
+                [
+                    'tags' => [
+                        ['id' => 'bad', 'label' => 999],
+                    ],
+                ],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        try {
+            $this->deserializer->deserialize($request, DepthOuterDto::class);
+            $this->fail('Expected RuntimeException');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('param "items.0.tags.0.id" expects int', $e->getMessage());
+            $this->assertStringContainsString('param "items.0.tags.0.label" expects string', $e->getMessage());
+        }
+    }
+
+    public function testDeserializeDepth3AcceptsValidData(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'items' => [
+                ['tags' => [['id' => 1, 'label' => 'a'], ['id' => 2, 'label' => 'b']]],
+                ['tags' => [['id' => 3, 'label' => 'c']]],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DepthOuterDto::class);
+
+        $this->assertCount(2, $dto->getItems());
+        $this->assertCount(2, $dto->getItems()[0]->getTags());
+        $this->assertSame(1, $dto->getItems()[0]->getTags()[0]->id);
+        $this->assertSame('c', $dto->getItems()[1]->getTags()[0]->label);
     }
 
     public function testDeserializeResolvesDiscriminatorSubtype(): void
@@ -286,12 +433,79 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage(
             'param "animal.animalType" has invalid discriminator value "bird". Allowed: dog, cat',
         );
 
         $this->deserializer->deserialize($request, DiscriminatorWrapperDto::class);
+    }
+
+    public function testDeserializeResolvesDiscriminatorSubtypeInArrayItems(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'animals' => [
+                ['animalType' => 'dog', 'bark' => 'woof'],
+                ['animalType' => 'cat', 'meow' => 'purr'],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DiscriminatorArrayWrapperDto::class);
+
+        $this->assertCount(2, $dto->getAnimals());
+        $this->assertInstanceOf(DiscriminatorDogDto::class, $dto->getAnimals()[0]);
+        $this->assertInstanceOf(DiscriminatorCatDto::class, $dto->getAnimals()[1]);
+        $this->assertSame('dog', $dto->getAnimals()[0]->getAnimalType()->value);
+        $this->assertSame('cat', $dto->getAnimals()[1]->getAnimalType()->value);
+    }
+
+    public function testDeserializeDiscriminatorArrayAllSameSubtype(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'animals' => [
+                ['animalType' => 'dog', 'bark' => 'woof'],
+                ['animalType' => 'dog', 'bark' => 'arf'],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, DiscriminatorArrayWrapperDto::class);
+
+        $this->assertCount(2, $dto->getAnimals());
+        $this->assertInstanceOf(DiscriminatorDogDto::class, $dto->getAnimals()[0]);
+        $this->assertInstanceOf(DiscriminatorDogDto::class, $dto->getAnimals()[1]);
+    }
+
+    public function testDeserializeThrowsExceptionForInvalidDiscriminatorValueInArrayItem(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'animals' => [
+                ['animalType' => 'dog', 'bark' => 'woof'],
+                ['animalType' => 'bird'],
+            ],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'param "animals.1.animalType" has invalid discriminator value "bird". Allowed: dog, cat',
+        );
+
+        $this->deserializer->deserialize($request, DiscriminatorArrayWrapperDto::class);
+    }
+
+    public function testDeserializeThrowsExceptionForUnknownArrayItemType(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'items' => [['foo' => 'bar']],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('unknown type');
+
+        $this->deserializer->deserialize($request, UnknownItemTypeDto::class);
     }
 
     public function testDeserializeThrowsExceptionForInvalidEnumValue(): void
@@ -301,7 +515,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "animalType" expects enum');
 
         $this->deserializer->deserialize($request, EnumOnlyAnimalDto::class);
@@ -317,7 +531,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage(
             "param \"amount\" must be greater than 1\nparam \"amount\" must be a multiple of 2.5\nparam \"email\" must match format email\nparam \"code\" length must be at least 3 characters\nparam \"code\" must match pattern ^\\d{3}-\\d{2}-\\d{4}$\nparam \"tags\" must contain unique items",
         );
@@ -434,7 +648,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "id" expects string, got bool');
 
         $this->deserializer->deserialize($request, UnionIdDto::class);
@@ -462,7 +676,7 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "price" expects float, got string');
 
         $this->deserializer->deserialize($request, FloatFieldDto::class);
@@ -474,7 +688,7 @@ final class DtoDeserializerTest extends TestCase
         $request = new Request([], [], [], [], [], [], json_encode(['score' => 100]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must be less than 100');
 
         $this->deserializer->deserialize($request, ExclusiveMaxDto::class);
@@ -486,7 +700,7 @@ final class DtoDeserializerTest extends TestCase
         $request = new Request([], [], [], [], [], [], json_encode(['rating' => 5]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('must be less than 5');
 
         $this->deserializer->deserialize($request, ExclusiveMaxBoolDto::class);
@@ -512,10 +726,31 @@ final class DtoDeserializerTest extends TestCase
         ]));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('param "id" expects int, got null');
 
         $this->deserializer->deserialize($request, SimpleTestDto::class);
+    }
+
+    public function testDeserializeOas31ArrayTypeNullable_acceptsExplicitNull(): void
+    {
+        // OpenAPI 3.1: type: [string, null] in getConstraints() — no 'nullable' key
+        $request = new Request([], [], [], [], [], [], json_encode(['name' => null]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, Oas31NullableDto::class);
+
+        $this->assertNull($dto->getName());
+    }
+
+    public function testDeserializeOas31ArrayTypeNullable_acceptsStringValue(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode(['name' => 'hello']));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, Oas31NullableDto::class);
+
+        $this->assertSame('hello', $dto->getName());
     }
 
     public function testDeserializeFromFormData(): void
@@ -590,6 +825,163 @@ final class DtoDeserializerTest extends TestCase
 
         $this->assertNull($dto->getTitle());
         $this->assertFalse($dto->isTitleInRequest());
+    }
+
+    public function testDeserializeFloatFromQueryString(): void
+    {
+        $request = new Request(['price' => '9.99', 'discount' => '2.0']);
+
+        $dto = $this->deserializer->deserialize($request, FloatFieldDto::class);
+
+        $this->assertSame(9.99, $dto->price);
+        $this->assertSame(2.0, $dto->discount);
+    }
+
+    public function testDeserializeFloatIntegerStringFromQueryString(): void
+    {
+        // Query string "2" → float field → (float)"2" = 2.0
+        $request = new Request(['price' => '3', 'discount' => '1']);
+
+        $dto = $this->deserializer->deserialize($request, FloatFieldDto::class);
+
+        $this->assertSame(3.0, $dto->price);
+        $this->assertSame(1.0, $dto->discount);
+    }
+
+    public function testDeserializeEmptyJsonBodyWithAllOptionalFields(): void
+    {
+        $request = new Request([], [], [], [], [], [], '{}');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, AllOptionalDto::class);
+
+        $this->assertNull($dto->name);
+        $this->assertNull($dto->score);
+    }
+
+    public function testDeserializePathParamTakesPriorityOverJsonBody(): void
+    {
+        // Path param 'userId' must win over JSON body key 'userId'
+        $request = new Request([], [], ['userId' => '99'], [], [], [], json_encode(['userId' => 1, 'name' => 'Alice']));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, PathBodyConflictDto::class);
+
+        $this->assertSame(99, $dto->userId);
+        $this->assertSame('Alice', $dto->name);
+    }
+
+    public function testDeserializeScalarForArrayQueryParam_throwsException(): void
+    {
+        // Symfony returns scalar string for ?tags=only-one — deserializer must reject, not wrap
+        $request = new Request(['tags' => 'only-one']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('tags');
+        $this->expectExceptionMessage('array');
+
+        $this->deserializer->deserialize($request, ScalarAsArrayDto::class);
+    }
+
+    public function testDeserializeArrayQueryParam_acceptsActualArray(): void
+    {
+        // Symfony returns array for ?tags[]=a&tags[]=b
+        $request = new Request(['tags' => ['a', 'b']]);
+
+        $dto = $this->deserializer->deserialize($request, ScalarAsArrayDto::class);
+
+        $this->assertSame(['a', 'b'], $dto->tags);
+    }
+
+    public function testDeserializeValidatesObjectConstraintsViaValidator(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'meta' => ['name' => 'Alice', 'extra' => 'forbidden'],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('"extra"');
+        $this->expectExceptionMessage('not allowed');
+
+        $this->deserializer->deserialize($request, ObjectConstraintsDto::class);
+    }
+
+    public function testDeserializeValidatesMinMaxPropertiesViaValidator(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'meta' => [],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('must have at least 1 property');
+
+        $this->deserializer->deserialize($request, MinPropertiesDto::class);
+    }
+
+    public function testDeserializeIgnoresReadOnlyFieldFromRequest(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'name' => 'Alice',
+            'id' => 999,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, ReadOnlyFieldDto::class);
+
+        $this->assertSame('Alice', $dto->name);
+        // readOnly field — not read from request, uses default
+        $this->assertNull($dto->id);
+    }
+
+    public function testDeserializeReadOnlyFieldUsesDefaultWhenProvided(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'name' => 'Bob',
+            'id' => 42,
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, ReadOnlyFieldWithDefaultDto::class);
+
+        $this->assertSame('Bob', $dto->name);
+        // readOnly field — client cannot override it, default value preserved
+        $this->assertSame(0, $dto->id);
+    }
+
+    public function testDeserializeMultipartArrayOfFiles(): void
+    {
+        $tmp1 = tempnam(sys_get_temp_dir(), 'dto_file_');
+        $tmp2 = tempnam(sys_get_temp_dir(), 'dto_file_');
+        $this->assertNotFalse($tmp1);
+        $this->assertNotFalse($tmp2);
+
+        try {
+            $file1 = new UploadedFile($tmp1, 'photo1.jpg', 'image/jpeg', null, true);
+            $file2 = new UploadedFile($tmp2, 'photo2.jpg', 'image/jpeg', null, true);
+
+            $request = new Request([], [], [], [], ['photos' => [$file1, $file2]]);
+
+            $dto = $this->deserializer->deserialize($request, MultipartFilesDto::class);
+
+            $this->assertCount(2, $dto->getPhotos());
+            $this->assertSame($file1, $dto->getPhotos()[0]);
+            $this->assertSame($file2, $dto->getPhotos()[1]);
+        } finally {
+            @unlink($tmp1);
+            @unlink($tmp2);
+        }
+    }
+
+    public function testDeserializeMultipartArrayOfFiles_rejectsNonUploadedFile(): void
+    {
+        $request = new Request([], [], [], [], ['photos' => ['not-a-file', 'also-not']]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('photos.0');
+
+        $this->deserializer->deserialize($request, MultipartFilesDto::class);
     }
 }
 
@@ -666,6 +1058,19 @@ final class DateTimeDto
         public int $id,
         public DateTimeImmutable $createdAt,
     ) {
+    }
+}
+
+final class DateOnlyDto
+{
+    public function __construct(
+        public DateTimeImmutable $date,
+    ) {
+    }
+
+    public static function getConstraints(): array
+    {
+        return ['date' => ['format' => 'date']];
     }
 }
 
@@ -974,6 +1379,24 @@ final class DiscriminatorWrapperDto
     public function __construct(
         public DiscriminatorAnimalDto $animal,
     ) {
+    }
+}
+
+final class DiscriminatorArrayWrapperDto
+{
+    /** @var array<DiscriminatorAnimalDto> */
+    private array $animals;
+
+    /** @param array<DiscriminatorAnimalDto> $animals */
+    public function __construct(array $animals)
+    {
+        $this->animals = $animals;
+    }
+
+    /** @return array<DiscriminatorAnimalDto> */
+    public function getAnimals(): array
+    {
+        return $this->animals;
     }
 }
 
@@ -1344,5 +1767,210 @@ final class RequiredFlagDeadBranchFalsePositiveDto
             return true;
         }
         return false;
+    }
+}
+
+final readonly class AllOptionalDto
+{
+    public function __construct(
+        public ?string $name = null,
+        public ?int $score = null,
+    ) {
+    }
+}
+
+final readonly class PathBodyConflictDto
+{
+    public function __construct(
+        public int $userId,
+        public string $name,
+    ) {
+    }
+}
+
+final readonly class ScalarAsArrayDto
+{
+    /** @param array<string> $tags */
+    public function __construct(
+        public array $tags,
+    ) {
+    }
+}
+
+final readonly class ObjectConstraintsDto
+{
+    /** @param array<string, mixed> $meta */
+    public function __construct(
+        public array $meta,
+    ) {
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'meta' => [
+                'type' => 'object',
+                'properties' => [
+                    'name' => ['type' => 'string'],
+                ],
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+}
+
+final readonly class MinPropertiesDto
+{
+    /** @param array<string, mixed> $meta */
+    public function __construct(
+        public array $meta,
+    ) {
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'meta' => [
+                'type' => 'object',
+                'minProperties' => 1,
+            ],
+        ];
+    }
+}
+
+// Depth-3 nested array DTOs
+final readonly class DepthInnerDto
+{
+    public function __construct(
+        public int $id,
+        public string $label,
+    ) {
+    }
+}
+
+final class DepthMiddleDto
+{
+    /** @var array<DepthInnerDto> */
+    private array $tags;
+
+    /** @param array<DepthInnerDto> $tags */
+    public function __construct(array $tags)
+    {
+        $this->tags = $tags;
+    }
+
+    /** @return array<DepthInnerDto> */
+    public function getTags(): array
+    {
+        return $this->tags;
+    }
+}
+
+final class DepthOuterDto
+{
+    /** @var array<DepthMiddleDto> */
+    private array $items;
+
+    /** @param array<DepthMiddleDto> $items */
+    public function __construct(array $items)
+    {
+        $this->items = $items;
+    }
+
+    /** @return array<DepthMiddleDto> */
+    public function getItems(): array
+    {
+        return $this->items;
+    }
+}
+
+final class ReadOnlyFieldDto
+{
+    public function __construct(
+        public string $name,
+        public ?int $id = null,
+    ) {
+    }
+
+    public static function getConstraints(): array
+    {
+        return [
+            'id' => ['readOnly' => true],
+        ];
+    }
+}
+
+final class UnknownItemTypeDto
+{
+    public function __construct(
+        /** @var array<NonExistentClass> */
+        private array $items,
+    ) {
+    }
+
+    public function getItems(): array
+    {
+        return $this->items;
+    }
+}
+
+final class ReadOnlyFieldWithDefaultDto
+{
+    public function __construct(
+        public string $name,
+        public int $id = 0,
+    ) {
+    }
+
+    public static function getConstraints(): array
+    {
+        return [
+            'id' => ['readOnly' => true],
+        ];
+    }
+}
+
+final class MultipartFilesDto
+{
+    public function __construct(
+        /** @var array<UploadedFile> */
+        private array $photos,
+    ) {
+    }
+
+    public function getPhotos(): array
+    {
+        return $this->photos;
+    }
+}
+
+/** OpenAPI 3.1: type: [string, null] via getConstraints (no nullable key) */
+final class Oas31NullableDto
+{
+    private ?string $name;
+
+    public function __construct(?string $name)
+    {
+        $this->name = $name;
+    }
+
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    public function isNameRequired(): bool
+    {
+        return true;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'name' => ['type' => ['string', 'null']],
+        ];
     }
 }
