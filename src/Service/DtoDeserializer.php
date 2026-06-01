@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use ReflectionClass;
+use ReflectionException;
 use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionUnionType;
@@ -16,7 +17,6 @@ use RuntimeException;
 use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
-use Throwable;
 use UnitEnum;
 
 final class DtoDeserializer implements DtoDeserializerInterface
@@ -445,7 +445,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $method = $reflection->getMethod($methodName);
             $instance = $method->isStatic() ? null : $reflection->newInstanceWithoutConstructor();
             return (bool)$method->invoke($instance);
-        } catch (Throwable) {
+        } catch (ReflectionException) {
+            // Reflection itself failed (missing method, uninstantiable class) → fall back to PHP type inference.
+            // Exceptions thrown from inside the isXRequired() body propagate so genuine bugs surface.
             return null;
         }
     }
@@ -965,13 +967,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $value,
                     $paramPath,
                 ) ?? $typeName;
-                // Recursively deserialize nested DTO
+                // Recursively deserialize nested DTO.
+                // $targetDtoClass existence already guaranteed: resolveDiscriminatorTargetClass()
+                // either throws on unknown class, or returns null and we fall back to $typeName
+                // (already validated by the class_exists($typeName) check above).
                 $nestedRequest = $this->createRequestFromArray($value);
-                if (!class_exists($targetDtoClass)) {
-                    throw new RuntimeException(
-                        "Discriminator mapping for \"{$paramPath}\" points to unknown class \"{$targetDtoClass}\".",
-                    );
-                }
 
                 /** @var class-string<object> $targetDtoClass */
                 return $this->deserialize(request: $nestedRequest, dtoClass: $targetDtoClass);

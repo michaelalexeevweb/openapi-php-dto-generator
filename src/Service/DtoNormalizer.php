@@ -127,7 +127,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         try {
             $result = $dto->toArray();
         } catch (LogicException $e) {
-            if (!str_contains($e->getMessage(), "wasn't provided in request")) {
+            if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                 throw $e;
             }
             return null;
@@ -152,7 +152,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         try {
             $serialized = $dto->jsonSerialize();
         } catch (LogicException $e) {
-            if (!str_contains($e->getMessage(), "wasn't provided in request")) {
+            if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                 throw $e;
             }
             return null;
@@ -294,7 +294,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     ];
                 }
             } catch (LogicException $exception) {
-                if (str_contains($exception->getMessage(), "wasn't provided in request")) {
+                if (str_contains($exception->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                     continue;
                 }
                 $errors[] = "Failed to call $methodName(): " . $exception->getMessage();
@@ -326,7 +326,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             try {
                 $rawValue = $this->invokeGetter($dto, $getterMeta['methodName']);
             } catch (LogicException $exception) {
-                if (!str_contains($exception->getMessage(), "wasn't provided in request")) {
+                if (!str_contains($exception->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                     throw $exception;
                 }
                 continue;
@@ -423,7 +423,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     return $this->normalizeArrayPayload($arrayValue);
                 }
             } catch (LogicException $e) {
-                if (!str_contains($e->getMessage(), "wasn't provided in request")) {
+                if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                     throw $e;
                 }
                 // toArray() unusable for this value — skip JsonSerializable (jsonSerialize() in

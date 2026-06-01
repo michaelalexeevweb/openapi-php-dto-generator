@@ -17,6 +17,13 @@ interface DtoNormalizerInterface
     public function toArray(GeneratedDtoInterface $dto): array;
 
     /**
+     * Returns a list of validation error messages (empty array = valid). Does not normalize.
+     *
+     * @return array<string>
+     */
+    public function validate(GeneratedDtoInterface $dto): array;
+
+    /**
      * Validates the DTO against its OpenAPI constraints, then converts it to a plain array.
      *
      * @return array<string, mixed>

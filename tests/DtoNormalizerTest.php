@@ -1964,7 +1964,7 @@ final class NormalizerInnerThrowingToArrayDto implements GeneratedDtoInterface
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        throw new LogicException("Field wasn't provided in request");
+        throw new LogicException('Field ' . GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE);
     }
 
     public function jsonSerialize(): mixed
