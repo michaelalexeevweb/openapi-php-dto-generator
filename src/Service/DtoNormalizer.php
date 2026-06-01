@@ -151,7 +151,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
         try {
             $serialized = $dto->jsonSerialize();
-        } catch (Throwable) {
+        } catch (LogicException $e) {
+            if (!str_contains($e->getMessage(), "wasn't provided in request")) {
+                throw $e;
+            }
             return null;
         }
 
@@ -349,11 +352,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     private function invokeGetter(object $dto, string $methodName): mixed
     {
-        if (!method_exists($dto, $methodName)) {
-            throw new LogicException(sprintf('Getter %s::%s() does not exist.', $dto::class, $methodName));
+        $callable = [$dto, $methodName];
+        if (!is_callable($callable)) {
+            throw new LogicException(sprintf('Getter %s::%s() is not callable.', $dto::class, $methodName));
         }
 
-        return new ReflectionMethod($dto, $methodName)->invoke($dto);
+        return call_user_func($callable);
     }
 
     /**
