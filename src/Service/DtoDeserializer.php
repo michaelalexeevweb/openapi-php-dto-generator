@@ -6,7 +6,6 @@ namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
 use DateTimeImmutable;
-use InvalidArgumentException;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use ReflectionClass;
@@ -600,11 +599,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $decoded = json_decode($content, false);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new InvalidArgumentException('Json is not valid: ' . json_last_error_msg());
+            throw new RuntimeException('Json is not valid: ' . json_last_error_msg());
         }
 
         if (!$decoded instanceof stdClass) {
-            throw new InvalidArgumentException(
+            throw new RuntimeException(
                 'JSON body must be an object, got ' . gettype($decoded),
             );
         }

@@ -254,6 +254,31 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, SimpleTestDto::class);
     }
 
+    public function testDeserializeThrowsRuntimeExceptionForMalformedJson(): void
+    {
+        // Malformed JSON is user-controlled input → must be RuntimeException (→ 400), not
+        // InvalidArgumentException (extends LogicException → would escape RuntimeException catch → 500).
+        $request = new Request([], [], [], [], [], [], '{ bad json');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Json is not valid');
+
+        $this->deserializer->deserialize($request, SimpleTestDto::class);
+    }
+
+    public function testDeserializeThrowsRuntimeExceptionForJsonArrayBody(): void
+    {
+        // JSON array (not object) as body root — user-controlled → RuntimeException, not 500.
+        $request = new Request([], [], [], [], [], [], json_encode([1, 2, 3]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('JSON body must be an object');
+
+        $this->deserializer->deserialize($request, SimpleTestDto::class);
+    }
+
     public function testDeserializeThrowsExceptionForMissingRequiredParameter(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
