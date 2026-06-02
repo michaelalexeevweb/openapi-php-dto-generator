@@ -1723,4 +1723,132 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('t.0', $errors[0]);
         $this->assertStringContainsString('t.1', $errors[1]);
     }
+
+    // =========================================================================
+    // Numeric formats: int32 / int64 range (GAP-3)
+    // =========================================================================
+
+    public function testInt32Format_acceptsValueInRange(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', 100, ['type' => 'integer', 'format' => 'int32']));
+        $this->assertSame([], $this->validator->validate('f', 2147483647, ['type' => 'integer', 'format' => 'int32']));
+        $this->assertSame([], $this->validator->validate('f', -2147483648, ['type' => 'integer', 'format' => 'int32']));
+    }
+
+    public function testInt32Format_rejectsOverflow(): void
+    {
+        $errors = $this->validator->validate('f', 2147483648, ['type' => 'integer', 'format' => 'int32']);
+        $this->assertContains('f must be within int32 range (-2147483648 to 2147483647)', $errors);
+
+        $errors = $this->validator->validate('f', -2147483649, ['type' => 'integer', 'format' => 'int32']);
+        $this->assertContains('f must be within int32 range (-2147483648 to 2147483647)', $errors);
+    }
+
+    public function testInt32Format_rejectsFractionalValue(): void
+    {
+        $errors = $this->validator->validate('f', 2.5, ['type' => 'number', 'format' => 'int32']);
+        $this->assertContains('f must be an integer (int32)', $errors);
+    }
+
+    public function testInt64Format_acceptsNativeIntButRejectsFloatOverflow(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', 9000000000, ['type' => 'integer', 'format' => 'int64']));
+
+        $errors = $this->validator->validate('f', 1.0e30, ['type' => 'number', 'format' => 'int64']);
+        $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
+    }
+
+    public function testFloatAndDoubleFormats_carryNoExtraRange(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'float']));
+        $this->assertSame([], $this->validator->validate('f', 1.5e300, ['type' => 'number', 'format' => 'double']));
+    }
+
+    // =========================================================================
+    // UUID format: nil / max special cases (GAP-4)
+    // =========================================================================
+
+    public function testUuidFormat_acceptsRegularV4(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', '550e8400-e29b-41d4-a716-446655440000', ['format' => 'uuid']));
+    }
+
+    public function testUuidFormat_acceptsNilAndMaxUuid(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', '00000000-0000-0000-0000-000000000000', ['format' => 'uuid']));
+        $this->assertSame([], $this->validator->validate('f', 'ffffffff-ffff-ffff-ffff-ffffffffffff', ['format' => 'uuid']));
+        $this->assertSame([], $this->validator->validate('f', 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF', ['format' => 'uuid']));
+    }
+
+    public function testUuidFormat_rejectsGarbage(): void
+    {
+        $errors = $this->validator->validate('f', 'not-a-uuid', ['format' => 'uuid']);
+        $this->assertContains('f must match format uuid', $errors);
+    }
+
+    // =========================================================================
+    // pattern: single-compile invalid vs no-match (PERF-6)
+    // =========================================================================
+
+    public function testInvalidSchemaPatternReportsDistinctError(): void
+    {
+        // Unbalanced group → invalid regex pattern in schema.
+        $errors = $this->validator->validate('f', 'abc', ['pattern' => '(']);
+        $this->assertContains('f has invalid regex pattern in schema: (', $errors);
+    }
+
+    public function testValidPatternNoMatchReportsMustMatch(): void
+    {
+        $errors = $this->validator->validate('f', 'abc', ['pattern' => '^[0-9]+$']);
+        $this->assertContains('f must match pattern ^[0-9]+$', $errors);
+    }
+
+    public function testValidPatternMatchPasses(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', '123', ['pattern' => '^[0-9]+$']));
+    }
+
+    // =========================================================================
+    // Union branch selection: oneOf / anyOf incl. 3.1 type-array (GAP-9)
+    // =========================================================================
+
+    public function testOneOfExactlyOneBranchMatches(): void
+    {
+        $constraints = ['oneOf' => [
+            ['type' => 'string', 'maxLength' => 3],
+            ['type' => 'string', 'minLength' => 5],
+        ]];
+        $this->assertSame([], $this->validator->validate('f', 'ab', $constraints));
+        $this->assertNotSame([], $this->validator->validate('f', 'abcd', $constraints));
+    }
+
+    public function testOneOfOverlappingBranchesFail(): void
+    {
+        // 50 satisfies both branches → oneOf requires exactly one.
+        $errors = $this->validator->validate('f', 50, ['oneOf' => [
+            ['type' => 'integer', 'minimum' => 0],
+            ['type' => 'integer', 'maximum' => 100],
+        ]]);
+        $this->assertContains('f matches more than one allowed oneOf branch', $errors);
+    }
+
+    public function testAnyOfMatchesAtLeastOneBranch(): void
+    {
+        $constraints = ['anyOf' => [['type' => 'string'], ['type' => 'integer']]];
+        $this->assertSame([], $this->validator->validate('f', 5, $constraints));
+        $this->assertSame([], $this->validator->validate('f', 'x', $constraints));
+        $this->assertNotSame([], $this->validator->validate('f', true, $constraints));
+    }
+
+    public function testOneOfWithTypeArrayBranchSelectsByType(): void
+    {
+        // OpenAPI 3.1 nullable branch: type [string, null].
+        $constraints = ['oneOf' => [
+            ['type' => ['string', 'null']],
+            ['type' => 'integer'],
+        ]];
+        $this->assertSame([], $this->validator->validate('f', 'x', $constraints));
+        $this->assertSame([], $this->validator->validate('f', null, $constraints));
+        $this->assertSame([], $this->validator->validate('f', 42, $constraints));
+    }
 }

@@ -54,7 +54,7 @@ final class DtoValidator implements DtoValidatorInterface
                 if (!is_array($branch)) {
                     continue;
                 }
-                $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $branch)];
+                array_push($errors, ...$this->validate(subject: $subject, value: $value, constraints: $branch));
             }
         }
 
@@ -152,6 +152,10 @@ final class DtoValidator implements DtoValidatorInterface
             $errors = [...$errors, ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)];
         }
 
+        if ((is_int($value) || is_float($value)) && is_string($constraints['format'] ?? null)) {
+            $errors = [...$errors, ...$this->validateNumericFormat(subject: $subject, value: $value, format: $constraints['format'])];
+        }
+
         if (is_string($value) && $this->constraintsHave($constraints, 'minLength', 'maxLength', 'pattern', 'format')) {
             $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
         }
@@ -201,7 +205,6 @@ final class DtoValidator implements DtoValidatorInterface
      */
     private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf): array
     {
-        $matched = 0;
         $validBranches = 0;
         $errors = [];
 
@@ -210,11 +213,11 @@ final class DtoValidator implements DtoValidatorInterface
                 continue;
             }
 
+            // Type-gate: a branch whose declared type can't match the value would fail its
+            // own type check anyway, so skip it. Branches without a type are always evaluated.
             if (!$this->matchesOpenApiType(value: $value, type: $branch['type'] ?? null)) {
                 continue;
             }
-
-            $matched++;
 
             $branchErrors = $this->validate(subject: $subject, value: $value, constraints: $branch);
             if ($branchErrors === []) {
@@ -225,7 +228,7 @@ final class DtoValidator implements DtoValidatorInterface
                 continue;
             }
 
-            $errors = [...$errors, ...$branchErrors];
+            array_push($errors, ...$branchErrors);
         }
 
         if ($isOneOf) {
@@ -252,6 +255,22 @@ final class DtoValidator implements DtoValidatorInterface
 
     private function matchesOpenApiType(mixed $value, mixed $type): bool
     {
+        // OpenAPI 3.1: type may be a list (e.g. [string, null]) — match any listed type.
+        // An empty list / non-string places no type constraint.
+        if (is_array($type)) {
+            if ($type === []) {
+                return true;
+            }
+
+            foreach ($type as $candidate) {
+                if (is_string($candidate) && $candidate !== '' && $this->matchesOpenApiType($value, $candidate)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         if (!is_string($type) || $type === '') {
             return true;
         }
@@ -323,6 +342,39 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * Enforces the integer range implied by OpenAPI numeric formats. `int32`/`int64`
+     * must hold whole numbers inside their respective signed ranges; a value that
+     * overflows int32 (or is fractional) is rejected. `float`/`double` map to PHP's
+     * native double and carry no extra bound, so they are accepted as-is.
+     *
+     * @return array<string>
+     */
+    private function validateNumericFormat(string $subject, int|float $value, string $format): array
+    {
+        return match ($format) {
+            'int32' => $this->validateIntegerFormat($subject, $value, -2147483648, 2147483647, 'int32'),
+            'int64' => $this->validateIntegerFormat($subject, $value, PHP_INT_MIN, PHP_INT_MAX, 'int64'),
+            default => [],
+        };
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function validateIntegerFormat(string $subject, int|float $value, int $min, int $max, string $format): array
+    {
+        if (is_float($value) && (is_nan($value) || is_infinite($value) || floor($value) !== $value)) {
+            return ["{$subject} must be an integer ({$format})"];
+        }
+
+        if ($value < $min || $value > $max) {
+            return ["{$subject} must be within {$format} range ({$min} to {$max})"];
+        }
+
+        return [];
+    }
+
+    /**
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
@@ -341,9 +393,18 @@ final class DtoValidator implements DtoValidatorInterface
 
         if (is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
             $regex = '#' . str_replace('#', '\\#', $pattern) . '#u';
-            if (!$this->isValidRegex($regex)) {
+            // Single compile: preg_match returns false for an invalid pattern (warning
+            // suppressed), 1 on match, 0 on no-match — distinguishing both error cases.
+            set_error_handler(static fn(): bool => true);
+            try {
+                $match = preg_match($regex, $value);
+            } finally {
+                restore_error_handler();
+            }
+
+            if ($match === false) {
                 $errors[] = "{$subject} has invalid regex pattern in schema: {$pattern}";
-            } elseif (preg_match($regex, $value) !== 1) {
+            } elseif ($match !== 1) {
                 $errors[] = "{$subject} must match pattern {$pattern}";
             }
         }
@@ -385,14 +446,14 @@ final class DtoValidator implements DtoValidatorInterface
                 if (!array_key_exists($propName, $value)) {
                     continue;
                 }
-                $errors = [
-                    ...$errors,
+                array_push(
+                    $errors,
                     ...$this->validate(
                         subject: sprintf('%s.%s', $subject, $propName),
                         value: $value[$propName],
                         constraints: $propSchema,
                     ),
-                ];
+                );
             }
         }
 
@@ -421,14 +482,14 @@ final class DtoValidator implements DtoValidatorInterface
                 if (in_array((string)$key, $knownKeys, true)) {
                     continue;
                 }
-                $errors = [
-                    ...$errors,
+                array_push(
+                    $errors,
                     ...$this->validate(
                         subject: sprintf('%s.%s', $subject, (string)$key),
                         value: $itemValue,
                         constraints: $additionalProperties,
                     ),
-                ];
+                );
             }
         }
 
@@ -450,7 +511,7 @@ final class DtoValidator implements DtoValidatorInterface
                 if (!is_string($ifProp) || !is_array($schema) || !array_key_exists($ifProp, $value)) {
                     continue;
                 }
-                $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $schema)];
+                array_push($errors, ...$this->validate(subject: $subject, value: $value, constraints: $schema));
             }
         }
 
@@ -503,14 +564,14 @@ final class DtoValidator implements DtoValidatorInterface
         $itemConstraints = $constraints['items'] ?? null;
         if (is_array($itemConstraints) && $itemConstraints !== []) {
             foreach ($value as $index => $itemValue) {
-                $errors = [
-                    ...$errors,
+                array_push(
+                    $errors,
                     ...$this->validate(
                         subject: sprintf('%s.%s', $subject, (string)$index),
                         value: $itemValue,
                         constraints: $itemConstraints,
                     ),
-                ];
+                );
             }
         }
 
@@ -540,14 +601,14 @@ final class DtoValidator implements DtoValidatorInterface
                 if (!is_array($itemSchema) || !array_key_exists($index, $value)) {
                     break;
                 }
-                $errors = [
-                    ...$errors,
+                array_push(
+                    $errors,
                     ...$this->validate(
                         subject: sprintf('%s.%s', $subject, (string)$index),
                         value: $value[$index],
                         constraints: $itemSchema,
                     ),
-                ];
+                );
             }
         }
 
@@ -560,10 +621,7 @@ final class DtoValidator implements DtoValidatorInterface
             'date' => $this->isValidDateFormat(value: $value),
             'date-time', 'datetime' => $this->isValidDateTimeFormat(value: $value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
-            'uuid' => preg_match(
-                pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
-                subject: $value,
-            ) === 1,
+            'uuid' => $this->isValidUuid(value: $value),
             'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
             'hostname' => filter_var($value, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false,
             'ipv4' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false,
@@ -573,6 +631,24 @@ final class DtoValidator implements DtoValidatorInterface
             'binary' => true,
             default => true,
         };
+    }
+
+    private function isValidUuid(string $value): bool
+    {
+        // RFC 9562 special-case UUIDs: the nil UUID (all zeros) and the max UUID (all
+        // ones) carry version/variant nibbles that the general pattern rejects, but both
+        // are valid and common in real data (e.g. default/sentinel identifiers).
+        if (
+            $value === '00000000-0000-0000-0000-000000000000'
+            || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+        ) {
+            return true;
+        }
+
+        return preg_match(
+            pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
+            subject: $value,
+        ) === 1;
     }
 
     private function isValidDateFormat(string $value): bool
@@ -625,17 +701,6 @@ final class DtoValidator implements DtoValidatorInterface
         return $decoded !== false;
     }
 
-    private function isValidRegex(string $regex): bool
-    {
-        set_error_handler(static fn(): bool => true);
-
-        try {
-            return preg_match($regex, '') !== false;
-        } finally {
-            restore_error_handler();
-        }
-    }
-
     private function toFloatOrNull(mixed $value): ?float
     {
         if (!is_numeric($value)) {
@@ -686,6 +751,14 @@ final class DtoValidator implements DtoValidatorInterface
      */
     private function constraintsHave(array $constraints, string ...$keys): bool
     {
-        return array_any($keys, static fn(string $key): bool => array_key_exists($key, $constraints));
+        // Plain foreach avoids allocating a closure on every call (this runs on the
+        // numeric/string/array/object type-gate of every validated value).
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $constraints)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

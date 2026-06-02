@@ -1278,12 +1278,30 @@ final class GenerateDtoCommand extends Command
             'contains',
             'minContains',
             'maxContains',
+            'prefixItems',
             'oneOf',
             'anyOf',
+            'const',
             'if',
             'then',
             'else',
+            // Object-level constraints. DtoValidator enforces these against inline
+            // objects / map types (additionalProperties: {schema}) that are NOT
+            // materialized into a dedicated nested DTO.
+            'required',
+            'properties',
+            'additionalProperties',
+            'minProperties',
+            'maxProperties',
+            'dependentRequired',
+            'dependentSchemas',
         ];
+
+        // NOTE: 'enum' is intentionally NOT forwarded. A property-level enum is
+        // materialized into a PHP backed enum and the value is cast to an enum
+        // instance before constraint validation; DtoValidator's enum check uses a
+        // strict in_array() against scalar values, so forwarding it would always
+        // false-positive on the cast enum instance.
 
         $constraints = [];
         foreach ($allowedKeys as $key) {
@@ -1311,6 +1329,38 @@ final class GenerateDtoCommand extends Command
 
             if ($branchConstraints !== []) {
                 $constraints[$unionKey] = $branchConstraints;
+            }
+        }
+
+        // allOf: every branch must pass. Branches are usually `$ref`s the validator
+        // cannot resolve, so recurse and keep only branches that carry actionable
+        // constraints; a fully-unresolvable allOf is dropped entirely (no-op noise).
+        $allOf = $propertySchema['allOf'] ?? null;
+        if (is_array($allOf) && $allOf !== []) {
+            $branches = [];
+            foreach ($allOf as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $extracted = $this->extractValidationConstraints($branch);
+                if ($extracted !== []) {
+                    $branches[] = $extracted;
+                }
+            }
+            if ($branches !== []) {
+                $constraints['allOf'] = $branches;
+            }
+        }
+
+        // not: value must NOT match the subschema. Forwarded only when the recursively
+        // extracted subschema has actionable constraints — a `$ref`-only `not` would
+        // extract to an empty schema that every value vacuously satisfies, making the
+        // validator's "must not match" check fire a false positive on every value.
+        $not = $propertySchema['not'] ?? null;
+        if (is_array($not)) {
+            $extractedNot = $this->extractValidationConstraints($not);
+            if ($extractedNot !== []) {
+                $constraints['not'] = $extractedNot;
             }
         }
 

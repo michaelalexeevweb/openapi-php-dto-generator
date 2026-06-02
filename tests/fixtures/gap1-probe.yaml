@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: GAP-1 probe
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    ProbeModel:
+      type: object
+      required:
+        - constField
+        - mapField
+      properties:
+        constField:
+          type: string
+          const: locked
+        notField:
+          type: string
+          not:
+            const: forbidden
+        mapField:
+          type: object
+          minProperties: 1
+          maxProperties: 3
+          additionalProperties:
+            type: integer
+            minimum: 0
+        strictMap:
+          type: object
+          properties:
+            known:
+              type: string
+          additionalProperties: false
+        depReqMap:
+          type: object
+          dependentRequired:
+            credit_card:
+              - billing_address
+        depSchemaMap:
+          type: object
+          dependentSchemas:
+            credit_card:
+              required:
+                - billing_address
+        tupleField:
+          type: array
+          prefixItems:
+            - type: string
+            - type: integer
+        intersection:
+          allOf:
+            - minLength: 2
+            - maxLength: 5

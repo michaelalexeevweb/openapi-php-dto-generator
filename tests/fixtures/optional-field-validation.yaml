@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: Optional field validation
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    OptionalFieldModel:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+        note:
+          type: string
+          minLength: 3
+        count:
+          type: integer

@@ -46,9 +46,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
+     *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
-     *     writeOnly: bool
+     *     writeOnly: bool,
+     *     required: bool,
+     *     inRequestFlagGetter: string|null,
+     *     inPathFlagGetter: string|null,
+     *     inQueryFlagGetter: string|null
      *   }>,
+     *   hasWriteOnly: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }>
@@ -172,6 +178,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private function applyWriteOnlyFilter(object $dto, array $normalized): array
     {
         $meta = $this->getClassMeta($dto);
+        if (!$meta['hasWriteOnly']) {
+            return $normalized;
+        }
+
         foreach ($meta['getters'] as $getter) {
             if ($getter['writeOnly']) {
                 unset($normalized[$getter['outputName']]);
@@ -231,13 +241,21 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $fieldName = $getterMeta['outputName'];
             $scopedFieldName = $pathPrefix === '' ? $fieldName : $pathPrefix . '.' . $fieldName;
 
+            // Skip optional fields that were never provided in the request. Their getter
+            // returns null (sentinel → null), which would otherwise be checked against a
+            // non-nullable type constraint and produce a false "must be of type X" error.
+            // Required fields are always validated so genuinely missing data is reported.
+            if (!$getterMeta['required'] && !$this->fieldWasProvided($dto, $getterMeta)) {
+                continue;
+            }
+
             try {
                 $value = $this->invokeGetter($dto, $methodName);
                 $value = $this->coerceEmptyStringToNull($value, $getterMeta, $meta);
 
                 $error = $this->validateValueAgainstTypes(
                     $value,
-                    $getterMeta['typeNames'],
+                    $getterMeta['nonNullTypeNames'],
                     $getterMeta['allowsNull'],
                     $methodName,
                 );
@@ -246,52 +264,52 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 }
 
                 if (is_array($value) && $getterMeta['arrayItemTypeNames'] !== []) {
-                    $errors = [
-                        ...$errors,
+                    array_push(
+                        $errors,
                         ...$this->validateArrayItemsAgainstTypes(
                             value: $value,
                             fieldName: $scopedFieldName,
                             expectedItemTypes: $getterMeta['arrayItemTypeNames'],
                         ),
-                    ];
+                    );
                 }
 
                 if ($value instanceof GeneratedDtoInterface) {
-                    $errors = [
-                        ...$errors,
+                    array_push(
+                        $errors,
                         ...$this->validateDtoRecursive(
                             dto: $value,
                             pathPrefix: $scopedFieldName,
                             visited: $visited,
                         ),
-                    ];
+                    );
                 } elseif (is_array($value)) {
                     foreach ($value as $index => $itemValue) {
                         if (!$itemValue instanceof GeneratedDtoInterface) {
                             continue;
                         }
 
-                        $errors = [
-                            ...$errors,
+                        array_push(
+                            $errors,
                             ...$this->validateDtoRecursive(
                                 dto: $itemValue,
                                 pathPrefix: $scopedFieldName . '.' . (string)$index,
                                 visited: $visited,
                             ),
-                        ];
+                        );
                     }
                 }
 
                 $constraints = $meta['constraintsByField'][$propertyName] ?? null;
                 if (is_array($constraints) && $constraints !== []) {
-                    $errors = [
-                        ...$errors,
+                    array_push(
+                        $errors,
                         ...$this->constraintValidator->validate(
                             subject: sprintf('field "%s"', $scopedFieldName),
                             value: $value,
                             constraints: $constraints,
                         ),
-                    ];
+                    );
                 }
             } catch (LogicException $exception) {
                 if (str_contains($exception->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
@@ -304,6 +322,60 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         return $errors;
+    }
+
+    /**
+     * Reads a presence-tracking flag getter name from normalization-map metadata.
+     *
+     * @param array<string, mixed> $metadata
+     */
+    private function flagGetterName(array $metadata, string $key): ?string
+    {
+        $name = $metadata[$key] ?? null;
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    /**
+     * Returns whether the field backing this getter was provided in the request, based
+     * on the generated inRequest/inPath/inQuery flags. When no usable flag getter exists
+     * (e.g. the public-getter fallback path) the field is treated as provided so it is
+     * still validated.
+     *
+     * @param array{
+     *   inRequestFlagGetter: string|null,
+     *   inPathFlagGetter: string|null,
+     *   inQueryFlagGetter: string|null,
+     *   ...
+     * } $getterMeta
+     */
+    private function fieldWasProvided(object $dto, array $getterMeta): bool
+    {
+        $flagGetters = [
+            $getterMeta['inRequestFlagGetter'],
+            $getterMeta['inPathFlagGetter'],
+            $getterMeta['inQueryFlagGetter'],
+        ];
+
+        $sawUsableFlag = false;
+        foreach ($flagGetters as $flagGetter) {
+            $callable = $flagGetter !== null ? [$dto, $flagGetter] : null;
+            if ($callable === null || !is_callable($callable)) {
+                continue;
+            }
+
+            $sawUsableFlag = true;
+            try {
+                if (call_user_func($callable) === true) {
+                    return true;
+                }
+            } catch (Throwable) {
+                // Can't determine provenance → don't skip, let validation run.
+                return true;
+            }
+        }
+
+        return !$sawUsableFlag;
     }
 
     /**
@@ -400,7 +472,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         if (is_array($value)) {
-            return array_map(fn($item) => $this->normalizeValue($item), $value);
+            $result = [];
+            foreach ($value as $key => $item) {
+                $result[$key] = $this->normalizeValue($item);
+            }
+            return $result;
         }
 
         if ($value instanceof BackedEnum) {
@@ -509,16 +585,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
-     * @param array<int, string> $expectedTypes
+     */
+    /**
+     * @param list<string> $nonNullTypes type names with 'null' already stripped by the caller
      */
     private function validateValueAgainstTypes(
         mixed $value,
-        array $expectedTypes,
+        array $nonNullTypes,
         bool $allowsNull,
         string $methodName,
     ): ?string {
-        $filtered = array_values(array_filter($expectedTypes, static fn(string $t): bool => $t !== 'null'));
-
         if ($value === null) {
             if ($allowsNull) {
                 return null;
@@ -527,16 +603,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return sprintf(
                 'Method %s() returned null but type is non-nullable %s.',
                 $methodName,
-                implode('|', $filtered),
+                implode('|', $nonNullTypes),
             );
         }
 
-        if ($filtered === []) {
+        if ($nonNullTypes === []) {
             return null;
         }
 
         $errors = [];
-        foreach ($filtered as $type) {
+        foreach ($nonNullTypes as $type) {
             $error = $this->validateValue($value, $type, $methodName);
             if ($error === null) {
                 return null;
@@ -571,11 +647,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $errors = [];
         $allowsNull = in_array('null', $expectedItemTypes, true);
+        // Strip 'null' once, not per item.
+        $nonNullItemTypes = array_values(array_filter($expectedItemTypes, static fn(string $t): bool => $t !== 'null'));
 
         foreach ($value as $index => $itemValue) {
             $error = $this->validateValueAgainstTypes(
                 value: $itemValue,
-                expectedTypes: $expectedItemTypes,
+                nonNullTypes: $nonNullItemTypes,
                 allowsNull: $allowsNull,
                 methodName: sprintf('%s.%s', $fieldName, (string)$index),
             );
@@ -700,9 +778,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
+     *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
-     *     writeOnly: bool
+     *     writeOnly: bool,
+     *     required: bool,
+     *     inRequestFlagGetter: string|null,
+     *     inPathFlagGetter: string|null,
+     *     inQueryFlagGetter: string|null
      *   }>,
+     *   hasWriteOnly: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }
@@ -730,9 +814,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
+     *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
-     *     writeOnly: bool
+     *     writeOnly: bool,
+     *     required: bool,
+     *     inRequestFlagGetter: string|null,
+     *     inPathFlagGetter: string|null,
+     *     inQueryFlagGetter: string|null
      *   }>,
+     *   hasWriteOnly: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }|null
@@ -776,7 +866,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 $outputName = $metadata['openApiName'];
             }
 
-            $writeOnly = is_array($metadata) && ($metadata['writeOnly'] ?? false) === true;
+            $metadataArr = is_array($metadata) ? $metadata : [];
+            $writeOnly = ($metadataArr['writeOnly'] ?? false) === true;
 
             $getters[] = [
                 'methodName' => $methodName,
@@ -784,8 +875,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'outputName' => $outputName,
                 'allowsNull' => $allowsNull,
                 'typeNames' => $typeNames,
+                'nonNullTypeNames' => array_values(array_filter($typeNames, static fn(string $t): bool => $t !== 'null')),
                 'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
                 'writeOnly' => $writeOnly,
+                'required' => ($metadataArr['required'] ?? false) === true,
+                'inRequestFlagGetter' => $this->flagGetterName($metadataArr, 'inRequestFlagGetter'),
+                'inPathFlagGetter' => $this->flagGetterName($metadataArr, 'inPathFlagGetter'),
+                'inQueryFlagGetter' => $this->flagGetterName($metadataArr, 'inQueryFlagGetter'),
             ];
         }
 
@@ -793,8 +889,17 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
+        $hasWriteOnly = false;
+        foreach ($getters as $getter) {
+            if ($getter['writeOnly']) {
+                $hasWriteOnly = true;
+                break;
+            }
+        }
+
         return [
             'getters' => $getters,
+            'hasWriteOnly' => $hasWriteOnly,
             'aliasesByProperty' => $aliasesByProperty,
             'constraintsByField' => $constraintsByField,
         ];
@@ -808,9 +913,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     outputName: string,
      *     allowsNull: bool,
      *     typeNames: list<string>,
+     *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
-     *     writeOnly: bool
+     *     writeOnly: bool,
+     *     required: bool,
+     *     inRequestFlagGetter: string|null,
+     *     inPathFlagGetter: string|null,
+     *     inQueryFlagGetter: string|null
      *   }>,
+     *   hasWriteOnly: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }
@@ -838,13 +949,22 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'outputName' => $aliasesByProperty[$propertyName] ?? $propertyName,
                 'allowsNull' => true,
                 'typeNames' => ['mixed'],
+                'nonNullTypeNames' => ['mixed'],
                 'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
                 'writeOnly' => false,
+                // No normalization map → no provenance metadata. Treat every getter as
+                // required so validation never silently skips a field on this fallback path.
+                'required' => true,
+                'inRequestFlagGetter' => null,
+                'inPathFlagGetter' => null,
+                'inQueryFlagGetter' => null,
             ];
         }
 
         return [
             'getters' => $getters,
+            // Public-getter fallback never marks writeOnly, so the filter is always a no-op.
+            'hasWriteOnly' => false,
             'aliasesByProperty' => $aliasesByProperty,
             'constraintsByField' => $constraintsByField,
         ];

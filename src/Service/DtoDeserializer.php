@@ -82,6 +82,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /** @var array<class-string, array<string, string>> */
     private static array $aliasesCache = [];
 
+    /**
+     * Maps a declared type name to its cast "kind", computed once per type name per
+     * process. Avoids enum_exists()/class_exists() calls on every cast value/element.
+     *
+     * @var array<string, string>
+     */
+    private static array $typeKindCache = [];
+
     // -----------------------------------------------------------------------
     // Instance cache: last parsed request body (avoids re-parsing the same
     // JSON content multiple times within a single deserialization call, since
@@ -107,6 +115,60 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     public function deserialize(Request $request, string $dtoClass): object
     {
+        // Pre-fetch all request data sources once — avoids N per-parameter array allocations.
+        /** @var T $dto */
+        $dto = $this->deserializeInternal(
+            dtoClass: $dtoClass,
+            bodyData: $this->getBodyData($request),
+            queryData: $request->query->all(),
+            formData: $request->request->all(),
+            request: $request,
+        );
+
+        return $dto;
+    }
+
+    /**
+     * Deserializes a nested DTO directly from a decoded JSON array, bypassing the
+     * Symfony Request entirely. Nested objects only ever come from the JSON body, so
+     * there are no path/query/form/file sources to consider — this avoids allocating a
+     * fresh Request + initialize() for every nested object.
+     *
+     * @template T of object
+     * @param array<string, mixed> $data
+     * @param class-string<T> $dtoClass
+     * @return T
+     */
+    private function deserializeFromArray(array $data, string $dtoClass): object
+    {
+        /** @var T $dto */
+        $dto = $this->deserializeInternal(
+            dtoClass: $dtoClass,
+            bodyData: $data,
+            queryData: [],
+            formData: [],
+            request: null,
+        );
+
+        return $dto;
+    }
+
+    /**
+     * Shared deserialization core. `$request` is null for nested array deserialization
+     * (no path attributes or uploaded files in that case).
+     *
+     * @param array<string, mixed> $bodyData
+     * @param array<string, mixed> $queryData
+     * @param array<string, mixed> $formData
+     * @param class-string $dtoClass
+     */
+    private function deserializeInternal(
+        string $dtoClass,
+        array $bodyData,
+        array $queryData,
+        array $formData,
+        ?Request $request,
+    ): object {
         // Use cached ReflectionClass – avoids repeated object instantiation.
         $reflection = self::$reflectionCache[$dtoClass] ??= new ReflectionClass($dtoClass);
 
@@ -123,11 +185,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 "DTO {$dtoClass} has no constructor.",
             );
         }
-
-        // Pre-fetch all request data sources once — avoids N per-parameter array allocations.
-        $bodyData = $this->getBodyData($request);
-        $queryData = $request->query->all();
-        $formData = $request->request->all();
 
         $args = [];
         $providedParamSources = [];
@@ -246,7 +303,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var T $dto */
         $dto = $reflection->newInstanceArgs($args);
 
         // Set tracking flags: all to false first, then mark provided sources.
@@ -461,7 +517,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @param array<string, mixed> $formData
      */
     private function resolveRawRequestValue(
-        Request $request,
+        ?Request $request,
         string $paramName,
         array $bodyData,
         array $queryData,
@@ -471,7 +527,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
     ): mixed {
         // Path attributes carry router-verified values and must take highest precedence
         // to prevent a malicious request body from overriding trusted path parameters.
-        if ($request->attributes->has($paramName)) {
+        // ($request is null for nested array deserialization — JSON body only.)
+        if ($request !== null && $request->attributes->has($paramName)) {
             $wasProvided = true;
             $source = 'path';
             return $request->attributes->get($paramName);
@@ -489,7 +546,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $queryData[$paramName];
         }
 
-        if ($request->files->has($paramName)) {
+        if ($request !== null && $request->files->has($paramName)) {
             $wasProvided = true;
             $source = 'files';
             return $request->files->get($paramName);
@@ -752,6 +809,27 @@ final class DtoDeserializer implements DtoDeserializerInterface
         return $arr;
     }
 
+    /**
+     * Resolves (and memoizes) the cast "kind" for a declared type name.
+     * One of: int, float, string, bool, array, mixed, datetime, file, enum, dto, unknown.
+     */
+    private function resolveTypeKind(string $typeName): string
+    {
+        return self::$typeKindCache[$typeName] ??= match ($typeName) {
+            'int' => 'int',
+            'float' => 'float',
+            'string' => 'string',
+            'bool' => 'bool',
+            'array' => 'array',
+            'mixed' => 'mixed',
+            DateTimeImmutable::class => 'datetime',
+            UploadedFile::class => 'file',
+            default => enum_exists($typeName)
+                ? 'enum'
+                : (class_exists($typeName) ? 'dto' : 'unknown'),
+        };
+    }
+
     private function castValue(
         mixed $value,
         string $paramName,
@@ -926,8 +1004,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        // Handle DateTimeImmutable
-        if ($typeName === DateTimeImmutable::class) {
+        // Object/class kinds: resolved once per type (cached), avoiding enum_exists()/
+        // class_exists() on every value. Scalars are already handled above.
+        $kind = $this->resolveTypeKind($typeName);
+
+        if ($kind === 'datetime') {
             if ($value instanceof DateTimeImmutable) {
                 return $value;
             }
@@ -943,21 +1024,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        // Handle UploadedFile
-        if ($typeName === UploadedFile::class) {
+        if ($kind === 'file') {
             if ($value instanceof UploadedFile) {
                 return $value;
             }
             throw new RuntimeException('Expected UploadedFile but got something else.');
         }
 
-        // Handle enums (PHP 8.1+)
-        if (enum_exists($typeName)) {
+        if ($kind === 'enum') {
             return $this->castToEnum(value: $value, enumClass: $typeName, paramPath: $paramPath);
         }
 
-        // Handle nested DTOs
-        if (class_exists($typeName)) {
+        if ($kind === 'dto') {
             if ($value instanceof stdClass) {
                 $value = $this->stdClassToArray($value);
             }
@@ -970,11 +1048,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // Recursively deserialize nested DTO.
                 // $targetDtoClass existence already guaranteed: resolveDiscriminatorTargetClass()
                 // either throws on unknown class, or returns null and we fall back to $typeName
-                // (already validated by the class_exists($typeName) check above).
-                $nestedRequest = $this->createRequestFromArray($value);
-
+                // (already validated by the 'dto' kind resolution above).
                 /** @var class-string<object> $targetDtoClass */
-                return $this->deserialize(request: $nestedRequest, dtoClass: $targetDtoClass);
+                return $this->deserializeFromArray(data: $value, dtoClass: $targetDtoClass);
             }
             throw new RuntimeException(
                 "Cannot deserialize nested DTO {$typeName} from non-array value.",
@@ -1017,7 +1093,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     private function castArrayItemValue(mixed $itemValue, string $arrayItemType, string $itemPath, string $source): mixed
     {
-        if (in_array($arrayItemType, ['int', 'float', 'string', 'bool', 'array'], true)) {
+        // Type kind resolved once per type (cached) instead of enum_exists()/class_exists()
+        // per array element.
+        $kind = $this->resolveTypeKind($arrayItemType);
+
+        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array'], true)) {
             return $this->castValue(
                 value: $itemValue,
                 paramName: $itemPath,
@@ -1029,7 +1109,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        if ($arrayItemType === UploadedFile::class) {
+        if ($kind === 'file') {
             if (!$itemValue instanceof UploadedFile) {
                 throw new RuntimeException(
                     $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'UploadedFile', value: $itemValue),
@@ -1038,11 +1118,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $itemValue;
         }
 
-        if (enum_exists($arrayItemType)) {
+        if ($kind === 'enum') {
             return $this->castToEnum(value: $itemValue, enumClass: $arrayItemType, paramPath: $itemPath);
         }
 
-        if (class_exists($arrayItemType)) {
+        // 'datetime' is a class type too — preserved on the nested-class path to match the
+        // prior class_exists() branch (array items are not date-parsed).
+        if ($kind === 'dto' || $kind === 'datetime') {
             if ($itemValue instanceof stdClass) {
                 $itemValue = $this->stdClassToArray($itemValue);
             }
@@ -1061,9 +1143,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             try {
-                $nestedRequest = $this->createRequestFromArray($itemValue);
                 /** @var class-string<object> $targetClass */
-                return $this->deserialize(request: $nestedRequest, dtoClass: $targetClass);
+                return $this->deserializeFromArray(data: $itemValue, dtoClass: $targetClass);
             } catch (RuntimeException $e) {
                 throw new RuntimeException(
                     $this->prependParamPath(message: $e->getMessage(), prefix: $itemPath),
@@ -1506,19 +1587,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return $targetClass;
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function createRequestFromArray(array $data): Request
-    {
-        // Create a minimal request from array data without JSON re-encode/re-decode.
-        $request = new Request();
-        $request->initialize();
-        $request->headers->set('Content-Type', 'application/json');
-        $request->attributes->set(self::PREDECODED_BODY_ATTRIBUTE, $data);
-        return $request;
     }
 
     private function expectsTypeMessage(string $paramPath, string $expectedType, mixed $value): string
