@@ -1122,9 +1122,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $this->castToEnum(value: $itemValue, enumClass: $arrayItemType, paramPath: $itemPath);
         }
 
-        // 'datetime' is a class type too — preserved on the nested-class path to match the
-        // prior class_exists() branch (array items are not date-parsed).
-        if ($kind === 'dto' || $kind === 'datetime') {
+        if ($kind === 'datetime') {
+            if ($itemValue instanceof DateTimeImmutable) {
+                return $itemValue;
+            }
+            if (!is_string($itemValue)) {
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'date string', value: $itemValue),
+                );
+            }
+            // Array items carry no per-item temporal format hint → parse as date-time.
+            return $this->parseDateTimeStrict(value: $itemValue, paramPath: $itemPath, temporalFormat: null);
+        }
+
+        if ($kind === 'dto') {
             if ($itemValue instanceof stdClass) {
                 $itemValue = $this->stdClassToArray($itemValue);
             }
@@ -1661,7 +1672,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         foreach ($matches as $match) {
             $fqcn = $match[1];
             $alias = $match[2] ?? '';
-            $shortName = $alias !== '' ? $alias : substr($fqcn, (int)strrpos($fqcn, '\\') + 1);
+            $backslashPos = strrpos($fqcn, '\\');
+            // No namespace separator → the FQCN is already the short name. (Guard against
+            // strrpos() returning false, which (int)-casts to 0 and would drop the first char.)
+            $shortName = $alias !== ''
+                ? $alias
+                : ($backslashPos === false ? $fqcn : substr($fqcn, $backslashPos + 1));
             $imports[$shortName] = $fqcn;
         }
 

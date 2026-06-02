@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: oneOf with a $ref variant
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Detailed:
+      type: object
+      required:
+        - note
+      properties:
+        note:
+          type: string
+    Holder:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          oneOf:
+            - $ref: '#/components/schemas/Detailed'
+            - type: string
+              minLength: 3

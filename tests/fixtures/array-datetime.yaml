@@ -1,0 +1,17 @@
+openapi: 3.0.3
+info:
+  title: Array of date-time
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    EventModel:
+      type: object
+      required:
+        - dates
+      properties:
+        dates:
+          type: array
+          items:
+            type: string
+            format: date-time

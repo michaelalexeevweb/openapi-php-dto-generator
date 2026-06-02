@@ -1279,8 +1279,6 @@ final class GenerateDtoCommand extends Command
             'minContains',
             'maxContains',
             'prefixItems',
-            'oneOf',
-            'anyOf',
             'const',
             'if',
             'then',
@@ -1295,6 +1293,8 @@ final class GenerateDtoCommand extends Command
             'maxProperties',
             'dependentRequired',
             'dependentSchemas',
+            'patternProperties',
+            'propertyNames',
         ];
 
         // NOTE: 'enum' is intentionally NOT forwarded. A property-level enum is
@@ -1318,16 +1318,26 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
+            // If any variant extracts to [] (e.g. a bare $ref the validator can't resolve),
+            // the oneOf/anyOf match count can't be enforced soundly — an empty branch is
+            // vacuously satisfied, which would over-count oneOf (false "more than one") and
+            // make anyOf always pass. In that case drop the whole keyword.
             $branchConstraints = [];
+            $hasUnvalidatableBranch = false;
             foreach ($variants as $variant) {
                 if (!is_array($variant)) {
                     continue;
                 }
 
-                $branchConstraints[] = $this->extractValidationConstraints($variant);
+                $extracted = $this->extractValidationConstraints($variant);
+                if ($extracted === []) {
+                    $hasUnvalidatableBranch = true;
+                    break;
+                }
+                $branchConstraints[] = $extracted;
             }
 
-            if ($branchConstraints !== []) {
+            if (!$hasUnvalidatableBranch && $branchConstraints !== []) {
                 $constraints[$unionKey] = $branchConstraints;
             }
         }

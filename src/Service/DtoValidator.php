@@ -164,7 +164,7 @@ final class DtoValidator implements DtoValidatorInterface
             $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)];
         }
 
-        if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas')) {
+        if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas', 'patternProperties', 'propertyNames')) {
             $errors = [...$errors, ...$this->validateObjectConstraints(subject: $subject, value: $value, constraints: $constraints)];
         }
 
@@ -367,6 +367,12 @@ final class DtoValidator implements DtoValidatorInterface
             return ["{$subject} must be an integer ({$format})"];
         }
 
+        // A float can't represent the int64 boundary: (float)PHP_INT_MAX rounds up to 2^63,
+        // so `$value > $max` misses an overflowing float. Reject any float at/beyond 2^63.
+        if (is_float($value) && $value >= 9223372036854775808.0) {
+            return ["{$subject} must be within {$format} range ({$min} to {$max})"];
+        }
+
         if ($value < $min || $value > $max) {
             return ["{$subject} must be within {$format} range ({$min} to {$max})"];
         }
@@ -468,18 +474,70 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
-        $additionalProperties = $constraints['additionalProperties'] ?? null;
+        // patternProperties: every key matching a pattern is validated against its schema.
+        $patternSchemas = [];
+        if (is_array($constraints['patternProperties'] ?? null)) {
+            foreach ($constraints['patternProperties'] as $pattern => $schema) {
+                if (!is_string($pattern) || !is_array($schema)) {
+                    continue;
+                }
+                $patternSchemas[$pattern] = $schema;
+                foreach ($value as $key => $itemValue) {
+                    if ($this->keyMatchesPattern((string)$key, $pattern)) {
+                        array_push(
+                            $errors,
+                            ...$this->validate(
+                                subject: sprintf('%s.%s', $subject, (string)$key),
+                                value: $itemValue,
+                                constraints: $schema,
+                            ),
+                        );
+                    }
+                }
+            }
+        }
 
-        if ($additionalProperties === false && $definedPropertyNames !== null) {
+        // propertyNames: every key (as a string) must validate against the schema.
+        if (is_array($constraints['propertyNames'] ?? null)) {
             foreach (array_keys($value) as $key) {
-                if (!in_array((string)$key, $definedPropertyNames, true)) {
+                array_push(
+                    $errors,
+                    ...$this->validate(
+                        subject: sprintf('%s key "%s"', $subject, (string)$key),
+                        value: (string)$key,
+                        constraints: $constraints['propertyNames'],
+                    ),
+                );
+            }
+        }
+
+        $additionalProperties = $constraints['additionalProperties'] ?? null;
+        // A key is "additional" only if it is neither a declared property nor matched by
+        // any patternProperties entry (JSON Schema semantics).
+        $isKnownKey = function (string $key) use ($definedPropertyNames, $patternSchemas): bool {
+            if ($definedPropertyNames !== null && in_array($key, $definedPropertyNames, true)) {
+                return true;
+            }
+            foreach (array_keys($patternSchemas) as $pattern) {
+                if ($this->keyMatchesPattern($key, $pattern)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        if ($additionalProperties === false) {
+            // No guard on $definedPropertyNames: a schema with only patternProperties (or
+            // a bare additionalProperties:false) must still reject unknown keys.
+            foreach (array_keys($value) as $key) {
+                if (!$isKnownKey((string)$key)) {
                     $errors[] = "{$subject} has additional property \"{$key}\" which is not allowed";
                 }
             }
         } elseif (is_array($additionalProperties) && $additionalProperties !== []) {
-            $knownKeys = $definedPropertyNames ?? [];
             foreach ($value as $key => $itemValue) {
-                if (in_array((string)$key, $knownKeys, true)) {
+                if ($isKnownKey((string)$key)) {
                     continue;
                 }
                 array_push(
@@ -620,6 +678,7 @@ final class DtoValidator implements DtoValidatorInterface
         return match ($format) {
             'date' => $this->isValidDateFormat(value: $value),
             'date-time', 'datetime' => $this->isValidDateTimeFormat(value: $value),
+            'time' => $this->isValidTimeFormat(value: $value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
             'uuid' => $this->isValidUuid(value: $value),
             'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
@@ -631,6 +690,27 @@ final class DtoValidator implements DtoValidatorInterface
             'binary' => true,
             default => true,
         };
+    }
+
+    private function keyMatchesPattern(string $key, string $pattern): bool
+    {
+        $regex = '#' . str_replace('#', '\\#', $pattern) . '#u';
+        // Suppress warnings from an invalid schema pattern → treat as no match.
+        set_error_handler(static fn(): bool => true);
+        try {
+            return preg_match($regex, $key) === 1;
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    private function isValidTimeFormat(string $value): bool
+    {
+        // RFC 3339 full-time: HH:MM:SS[.frac] with required Z or numeric offset.
+        return preg_match(
+            pattern: '/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/',
+            subject: $value,
+        ) === 1;
     }
 
     private function isValidUuid(string $value): bool

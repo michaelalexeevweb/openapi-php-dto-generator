@@ -1201,11 +1201,10 @@ final class DtoValidatorTest extends TestCase
 
     public function testAdditionalProperties_false_withoutProperties_allowsNothing(): void
     {
-        // additionalProperties: false without properties defined → no defined keys → all are additional
-        // But $definedPropertyNames stays null when 'properties' key absent → no check applied
-        // Verify: no error (guard requires 'properties' to be present)
+        // additionalProperties: false without 'properties' → no defined keys → every key is
+        // additional and must be rejected (previously skipped due to a null-guard bug).
         $errors = $this->validator->validate('obj', ['key' => 'value'], ['additionalProperties' => false]);
-        $this->assertSame([], $errors);
+        $this->assertContains('obj has additional property "key" which is not allowed', $errors);
     }
 
     public function testAdditionalProperties_asSchema_validatesExtraPropertyValues(): void
@@ -1850,5 +1849,92 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', 'x', $constraints));
         $this->assertSame([], $this->validator->validate('f', null, $constraints));
         $this->assertSame([], $this->validator->validate('f', 42, $constraints));
+    }
+
+    // =========================================================================
+    // format: time (GAP-5)
+    // =========================================================================
+
+    public function testTimeFormat_acceptsValidTimes(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', '23:59:59Z', ['format' => 'time']));
+        $this->assertSame([], $this->validator->validate('f', '08:30:00+02:00', ['format' => 'time']));
+        $this->assertSame([], $this->validator->validate('f', '08:30:00.123-05:00', ['format' => 'time']));
+    }
+
+    public function testTimeFormat_rejectsInvalid(): void
+    {
+        // Missing offset, bad hour, not a time.
+        $this->assertContains('f must match format time', $this->validator->validate('f', '08:30:00', ['format' => 'time']));
+        $this->assertContains('f must match format time', $this->validator->validate('f', '24:00:00Z', ['format' => 'time']));
+        $this->assertContains('f must match format time', $this->validator->validate('f', 'noon', ['format' => 'time']));
+    }
+
+    // =========================================================================
+    // patternProperties / propertyNames (GAP-6)
+    // =========================================================================
+
+    public function testPatternPropertiesValidatesMatchingKeys(): void
+    {
+        $constraints = ['type' => 'object', 'patternProperties' => [
+            '^x-' => ['type' => 'integer'],
+        ]];
+        $this->assertSame([], $this->validator->validate('f', ['x-count' => 5, 'other' => 'free'], $constraints));
+
+        $errors = $this->validator->validate('f', ['x-count' => 'not-int'], $constraints);
+        $this->assertContains('f.x-count must be of type integer', $errors);
+    }
+
+    public function testPropertyNamesValidatesEveryKey(): void
+    {
+        $constraints = ['type' => 'object', 'propertyNames' => ['pattern' => '^[a-z]+$']];
+        $this->assertSame([], $this->validator->validate('f', ['foo' => 1, 'bar' => 2], $constraints));
+
+        $errors = $this->validator->validate('f', ['Foo1' => 1], $constraints);
+        $this->assertContains('f key "Foo1" must match pattern ^[a-z]+$', $errors);
+    }
+
+    public function testAdditionalPropertiesFalseAllowsPatternMatchedKeys(): void
+    {
+        // 'x-foo' matches patternProperties → not flagged as additional; 'other' is.
+        $constraints = [
+            'type' => 'object',
+            'properties' => ['id' => ['type' => 'integer']],
+            'patternProperties' => ['^x-' => ['type' => 'string']],
+            'additionalProperties' => false,
+        ];
+        $this->assertSame([], $this->validator->validate('f', ['id' => 1, 'x-foo' => 'ok'], $constraints));
+
+        $errors = $this->validator->validate('f', ['id' => 1, 'other' => 'no'], $constraints);
+        $this->assertContains('f has additional property "other" which is not allowed', $errors);
+    }
+
+    public function testAdditionalPropertiesFalseWithoutPropertiesRejectsAnyKey(): void
+    {
+        // Bare additionalProperties:false (no 'properties') must still reject every key.
+        $errors = $this->validator->validate('o', ['bad' => 1], ['type' => 'object', 'additionalProperties' => false]);
+        $this->assertContains('o has additional property "bad" which is not allowed', $errors);
+    }
+
+    public function testAdditionalPropertiesFalseWithOnlyPatternPropertiesRejectsUnmatched(): void
+    {
+        $constraints = ['type' => 'object', 'patternProperties' => ['^x-' => ['type' => 'string']], 'additionalProperties' => false];
+        $this->assertSame([], $this->validator->validate('o', ['x-a' => 'ok'], $constraints));
+        $this->assertContains(
+            'o has additional property "bad" which is not allowed',
+            $this->validator->validate('o', ['bad' => 1], $constraints),
+        );
+    }
+
+    public function testInt64Format_rejectsFloatBeyondBoundary(): void
+    {
+        // (float)PHP_INT_MAX rounds to 2^63 = PHP_INT_MAX + 1 — must be rejected.
+        $errors = $this->validator->validate('f', 9223372036854775808.0, ['format' => 'int64']);
+        $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
+    }
+
+    public function testInt64Format_acceptsLargeValidInteger(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', 9000000000000000000, ['format' => 'int64']));
     }
 }

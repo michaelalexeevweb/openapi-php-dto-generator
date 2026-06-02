@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests;
 
+use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
+use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Yaml\Yaml;
@@ -113,9 +116,142 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return $fqcn;
     }
 
+    /**
+     * @return class-string<GeneratedDtoInterface>
+     */
+    private function generateEventModel(string $namespace): string
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/array-datetime.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, $namespace);
+
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $fqcn */
+        $fqcn = '\\' . $namespace . '\\EventModel';
+        return $fqcn;
+    }
+
     private function jsonPostRequest(string $body): Request
     {
         return Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+    }
+
+    public function testArrayOfDateTimeItemsAreParsedThroughGeneratedDto(): void
+    {
+        // Regression: array<DateTimeImmutable> items used to fail deserialization —
+        // (1) resolveFileImports dropped the first char of imported short names, and
+        // (2) castArrayItemValue routed datetime items through the nested-DTO branch.
+        $cls = $this->generateEventModel('GapArrDt');
+
+        $dto = new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"dates":["2026-01-15T12:00:00+00:00","2026-02-20T08:30:00+00:00"]}'),
+            $cls,
+        );
+
+        $dates = $dto->getDates();
+        $this->assertCount(2, $dates);
+        $this->assertInstanceOf(DateTimeImmutable::class, $dates[0]);
+        $this->assertSame('2026-01-15T12:00:00+00:00', $dates[0]->format('c'));
+    }
+
+    public function testArrayOfDateTimeRejectsNonStringItem(): void
+    {
+        $cls = $this->generateEventModel('GapArrDtBad');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('dates.0" expects date string');
+        new DtoDeserializer()->deserialize($this->jsonPostRequest('{"dates":[123]}'), $cls);
+    }
+
+    public function testResolveFileImportsKeepsFirstCharOfImportedNames(): void
+    {
+        // Direct lock for the resolveFileImports off-by-one: imported names without a
+        // namespace separator (e.g. the global `use DateTimeImmutable;`) must keep their
+        // first character. The bug produced 'ateTimeImmutable' => 'DateTimeImmutable'.
+        $this->generateEventModel('GapImports');
+
+        $deserializer = new DtoDeserializer();
+        $method = new ReflectionMethod($deserializer, 'resolveFileImports');
+        /** @var array<string, string> $imports */
+        $imports = $method->invoke($deserializer, new ReflectionClass('\\GapImports\\EventModel'));
+
+        $this->assertArrayHasKey('DateTimeImmutable', $imports);
+        $this->assertSame('DateTimeImmutable', $imports['DateTimeImmutable']);
+        $this->assertArrayNotHasKey('ateTimeImmutable', $imports);
+    }
+
+    /**
+     * @return class-string<GeneratedDtoInterface>
+     */
+    private function generateBoxModel(string $namespace): string
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/array-enum-dto.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, $namespace);
+
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $fqcn */
+        $fqcn = '\\' . $namespace . '\\Box';
+        return $fqcn;
+    }
+
+    public function testArrayOfEnumsAndNestedDtosDeserialize(): void
+    {
+        $cls = $this->generateBoxModel('GapBox');
+
+        $dto = new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"colors":["red","blue"],"tags":[{"name":"a"},{"name":"b"}]}'),
+            $cls,
+        );
+
+        $colors = $dto->getColors();
+        $this->assertCount(2, $colors);
+        $this->assertSame('red', $colors[0]->value);
+
+        $tags = $dto->getTags();
+        $this->assertCount(2, $tags);
+        $this->assertSame('a', $tags[0]->getName());
+    }
+
+    public function testArrayOfEnumsRejectsInvalidMember(): void
+    {
+        $cls = $this->generateBoxModel('GapBoxBad');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('colors.0');
+        new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"colors":["magenta"],"tags":[]}'),
+            $cls,
+        );
+    }
+
+    public function testOneOfWithRefVariantDoesNotEmitUnvalidatableConstraint(): void
+    {
+        // Regression: a oneOf with a $ref variant extracted an empty branch that the
+        // validator treated as always-matching → false "matches more than one oneOf
+        // branch". The unvalidatable union must be dropped from getConstraints().
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/oneof-ref.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapOneOfRef');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GapOneOfRef\\Holder';
+        $constraints = $cls::getConstraints();
+        // The whole unvalidatable oneOf is dropped → no 'oneOf' (the 'value' entry may be absent entirely).
+        $this->assertArrayNotHasKey('oneOf', $constraints['value'] ?? []);
+
+        // A value matching the inline string branch must validate cleanly (no false positive).
+        $dto = new DtoDeserializer()->deserialize($this->jsonPostRequest('{"value":"hello"}'), $cls);
+        $this->assertSame([], new DtoNormalizer()->validate($dto));
     }
 
     public function testInt32FormatRangeIsEnforcedThroughGeneratedDto(): void
