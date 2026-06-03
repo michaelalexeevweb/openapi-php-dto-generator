@@ -23,35 +23,29 @@ final class DtoValidator implements DtoValidatorInterface
 
     private const int MAX_VALIDATION_DEPTH = 256;
 
-    private int $validationDepth = 0;
-
     /**
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
     public function validate(string $subject, mixed $value, array $constraints): array
     {
-        // Guard against pathologically nested schemas (allOf/oneOf/properties/items recursion)
-        // exhausting the stack. The counter wraps the whole recursion (helpers call back into
-        // validate()), so no per-method depth threading is needed.
-        if ($this->validationDepth >= self::MAX_VALIDATION_DEPTH) {
-            return [sprintf('%s: schema nesting exceeds %d levels', $subject, self::MAX_VALIDATION_DEPTH)];
-        }
-
-        $this->validationDepth++;
-        try {
-            return $this->validateConstraints($subject, $value, $constraints);
-        } finally {
-            $this->validationDepth--;
-        }
+        return $this->validateConstraints($subject, $value, $constraints, 0);
     }
 
     /**
+     * Recursion depth is threaded as a parameter (not stored on the instance) so a single
+     * shared validator is safe under concurrency (Swoole/RoadRunner/FrankenPHP coroutines).
+     *
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
-    private function validateConstraints(string $subject, mixed $value, array $constraints): array
+    private function validateConstraints(string $subject, mixed $value, array $constraints, int $depth): array
     {
+        // Guard against pathologically nested schemas exhausting the stack.
+        if ($depth >= self::MAX_VALIDATION_DEPTH) {
+            return [sprintf('%s: schema nesting exceeds %d levels', $subject, self::MAX_VALIDATION_DEPTH)];
+        }
+
         if ($constraints === []) {
             return [];
         }
@@ -79,7 +73,7 @@ final class DtoValidator implements DtoValidatorInterface
                 if (!is_array($branch)) {
                     continue;
                 }
-                array_push($errors, ...$this->validate(subject: $subject, value: $value, constraints: $branch));
+                array_push($errors, ...$this->validateConstraints($subject, $value, $branch, $depth + 1));
             }
         }
 
@@ -89,6 +83,7 @@ final class DtoValidator implements DtoValidatorInterface
                 value: $value,
                 branches: $constraints['oneOf'],
                 isOneOf: true,
+                depth: $depth,
             )];
         }
 
@@ -98,6 +93,7 @@ final class DtoValidator implements DtoValidatorInterface
                 value: $value,
                 branches: $constraints['anyOf'],
                 isOneOf: false,
+                depth: $depth,
             )];
         }
 
@@ -129,20 +125,20 @@ final class DtoValidator implements DtoValidatorInterface
 
         // not: value must NOT satisfy the given schema.
         if (array_key_exists('not', $constraints) && is_array($constraints['not'])) {
-            if ($this->validate(subject: $subject, value: $value, constraints: $constraints['not']) === []) {
+            if ($this->validateConstraints($subject, $value, $constraints['not'], $depth + 1) === []) {
                 $errors[] = "{$subject} must not match the 'not' schema";
             }
         }
 
         // if/then/else: conditional schema application.
         if (array_key_exists('if', $constraints) && is_array($constraints['if'])) {
-            if ($this->validate(subject: $subject, value: $value, constraints: $constraints['if']) === []) {
+            if ($this->validateConstraints($subject, $value, $constraints['if'], $depth + 1) === []) {
                 if (array_key_exists('then', $constraints) && is_array($constraints['then'])) {
-                    $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $constraints['then'])];
+                    $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['then'], $depth + 1)];
                 }
             } else {
                 if (array_key_exists('else', $constraints) && is_array($constraints['else'])) {
-                    $errors = [...$errors, ...$this->validate(subject: $subject, value: $value, constraints: $constraints['else'])];
+                    $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['else'], $depth + 1)];
                 }
             }
         }
@@ -186,11 +182,11 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items', 'contains', 'minContains', 'maxContains', 'prefixItems')) {
-            $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints)];
+            $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
         }
 
         if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas', 'patternProperties', 'propertyNames')) {
-            $errors = [...$errors, ...$this->validateObjectConstraints(subject: $subject, value: $value, constraints: $constraints)];
+            $errors = [...$errors, ...$this->validateObjectConstraints(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
         }
 
         if (
@@ -228,7 +224,7 @@ final class DtoValidator implements DtoValidatorInterface
      * @param array<int, mixed> $branches
      * @return array<string>
      */
-    private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf): array
+    private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf, int $depth): array
     {
         $validBranches = 0;
         $errors = [];
@@ -244,7 +240,7 @@ final class DtoValidator implements DtoValidatorInterface
                 continue;
             }
 
-            $branchErrors = $this->validate(subject: $subject, value: $value, constraints: $branch);
+            $branchErrors = $this->validateConstraints($subject, $value, $branch, $depth + 1);
             if ($branchErrors === []) {
                 $validBranches++;
                 if (!$isOneOf) {
@@ -453,7 +449,7 @@ final class DtoValidator implements DtoValidatorInterface
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
-    private function validateObjectConstraints(string $subject, array $value, array $constraints): array
+    private function validateObjectConstraints(string $subject, array $value, array $constraints, int $depth): array
     {
         $errors = [];
         $count = count($value);
@@ -479,10 +475,11 @@ final class DtoValidator implements DtoValidatorInterface
                 }
                 array_push(
                     $errors,
-                    ...$this->validate(
-                        subject: sprintf('%s.%s', $subject, $propName),
-                        value: $value[$propName],
-                        constraints: $propSchema,
+                    ...$this->validateConstraints(
+                        sprintf('%s.%s', $subject, $propName),
+                        $value[$propName],
+                        $propSchema,
+                        $depth + 1,
                     ),
                 );
             }
@@ -511,10 +508,11 @@ final class DtoValidator implements DtoValidatorInterface
                     if ($this->keyMatchesPattern((string)$key, $pattern)) {
                         array_push(
                             $errors,
-                            ...$this->validate(
-                                subject: sprintf('%s.%s', $subject, (string)$key),
-                                value: $itemValue,
-                                constraints: $schema,
+                            ...$this->validateConstraints(
+                                sprintf('%s.%s', $subject, (string)$key),
+                                $itemValue,
+                                $schema,
+                                $depth + 1,
                             ),
                         );
                     }
@@ -527,10 +525,11 @@ final class DtoValidator implements DtoValidatorInterface
             foreach (array_keys($value) as $key) {
                 array_push(
                     $errors,
-                    ...$this->validate(
-                        subject: sprintf('%s key "%s"', $subject, (string)$key),
-                        value: (string)$key,
-                        constraints: $constraints['propertyNames'],
+                    ...$this->validateConstraints(
+                        sprintf('%s key "%s"', $subject, (string)$key),
+                        (string)$key,
+                        $constraints['propertyNames'],
+                        $depth + 1,
                     ),
                 );
             }
@@ -567,10 +566,11 @@ final class DtoValidator implements DtoValidatorInterface
                 }
                 array_push(
                     $errors,
-                    ...$this->validate(
-                        subject: sprintf('%s.%s', $subject, (string)$key),
-                        value: $itemValue,
-                        constraints: $additionalProperties,
+                    ...$this->validateConstraints(
+                        sprintf('%s.%s', $subject, (string)$key),
+                        $itemValue,
+                        $additionalProperties,
+                        $depth + 1,
                     ),
                 );
             }
@@ -594,7 +594,7 @@ final class DtoValidator implements DtoValidatorInterface
                 if (!is_string($ifProp) || !is_array($schema) || !array_key_exists($ifProp, $value)) {
                     continue;
                 }
-                array_push($errors, ...$this->validate(subject: $subject, value: $value, constraints: $schema));
+                array_push($errors, ...$this->validateConstraints($subject, $value, $schema, $depth + 1));
             }
         }
 
@@ -606,7 +606,7 @@ final class DtoValidator implements DtoValidatorInterface
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
-    private function validateArray(string $subject, array $value, array $constraints): array
+    private function validateArray(string $subject, array $value, array $constraints, int $depth): array
     {
         $errors = [];
         $count = count($value);
@@ -649,10 +649,11 @@ final class DtoValidator implements DtoValidatorInterface
             foreach ($value as $index => $itemValue) {
                 array_push(
                     $errors,
-                    ...$this->validate(
-                        subject: sprintf('%s.%s', $subject, (string)$index),
-                        value: $itemValue,
-                        constraints: $itemConstraints,
+                    ...$this->validateConstraints(
+                        sprintf('%s.%s', $subject, (string)$index),
+                        $itemValue,
+                        $itemConstraints,
+                        $depth + 1,
                     ),
                 );
             }
@@ -662,7 +663,7 @@ final class DtoValidator implements DtoValidatorInterface
         if (is_array($containsSchema) && $containsSchema !== []) {
             $matchCount = 0;
             foreach ($value as $itemValue) {
-                if ($this->validate(subject: $subject, value: $itemValue, constraints: $containsSchema) === []) {
+                if ($this->validateConstraints($subject, $itemValue, $containsSchema, $depth + 1) === []) {
                     $matchCount++;
                 }
             }
@@ -686,10 +687,11 @@ final class DtoValidator implements DtoValidatorInterface
                 }
                 array_push(
                     $errors,
-                    ...$this->validate(
-                        subject: sprintf('%s.%s', $subject, (string)$index),
-                        value: $value[$index],
-                        constraints: $itemSchema,
+                    ...$this->validateConstraints(
+                        sprintf('%s.%s', $subject, (string)$index),
+                        $value[$index],
+                        $itemSchema,
+                        $depth + 1,
                     ),
                 );
             }
