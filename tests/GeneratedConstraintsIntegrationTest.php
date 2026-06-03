@@ -320,6 +320,33 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame([null], $array['children'][0]['children']);
     }
 
+    public function testCyclicDtoGraphIsReportedByValidateAndRejectedByValidateAndNormalize(): void
+    {
+        // Serialization cuts a cycle to null; validation must AGREE (report the cycle) so a
+        // caller of validateAndNormalizeToArray() isn't told "valid" alongside corrupted output.
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapCycleValidate');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapCycleValidate\\Node';
+        $a = new $cls('A');
+        $b = new $cls('B');
+        $a->addItemToChildren($b);
+        $b->addItemToChildren($a);
+
+        $normalizer = new DtoNormalizer();
+        $errors = $normalizer->validate($a);
+        $this->assertNotSame([], $errors);
+        $this->assertStringContainsString('circular reference', implode(' | ', $errors));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('circular reference');
+        $normalizer->validateAndNormalizeToArray($a);
+    }
+
     public function testSelfReferentialRootSerializesWithoutInfiniteRecursion(): void
     {
         // Root node that contains itself — the root is marked in $visited (parity with

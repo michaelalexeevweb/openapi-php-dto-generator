@@ -230,7 +230,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $dtoId = spl_object_id($dto);
         if (array_key_exists($dtoId, $visited)) {
-            return [];
+            // Re-visiting an ancestor = a true cycle (siblings/DAG reuse get fresh $visited
+            // copies). Report it so validation and serialization agree: serialization cuts the
+            // cycle to null, and without this validate() would falsely pass on corrupted output.
+            $subject = $pathPrefix === '' ? 'root' : $pathPrefix;
+            return ["{$subject} contains a circular reference"];
         }
         $visited[$dtoId] = true;
 

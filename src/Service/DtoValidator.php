@@ -750,6 +750,9 @@ final class DtoValidator implements DtoValidatorInterface
             return true;
         }
 
+        // Variant nibble [89abABcCdD] deliberately accepts the legacy Microsoft/COM variant
+        // (c/d), not only the strict RFC 4122 10xx variant ([89ab]). This is intentional:
+        // real-world payloads from .NET/Windows carry variant-2 GUIDs and must not be rejected.
         return preg_match(
             pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
             subject: $value,
