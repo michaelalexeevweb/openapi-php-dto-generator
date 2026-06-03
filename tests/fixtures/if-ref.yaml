@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info:
+  title: property-level if with a $ref condition
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Premium:
+      type: object
+      required:
+        - tier
+      properties:
+        tier:
+          type: string
+    Account:
+      type: object
+      required:
+        - profile
+      properties:
+        profile:
+          type: object
+          if:
+            $ref: '#/components/schemas/Premium'
+          then:
+            required:
+              - discountCode
+          items:
+            $ref: '#/components/schemas/Premium'

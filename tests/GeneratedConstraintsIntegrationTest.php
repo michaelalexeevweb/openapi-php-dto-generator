@@ -231,6 +231,105 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
     }
 
+    public function testIntBackedEnumAcceptsQueryStringValue(): void
+    {
+        // Regression: int-backed enum case (value 1) never strict-equalled the incoming "1"
+        // from a query parameter (Symfony delivers query/path/form as strings).
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/int-enum-query.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapIntEnum');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapIntEnum\\Filter';
+        // status arrives from the query bag as the string "2"; body is empty.
+        $request = Request::create('/?status=2', 'GET');
+        $dto = new DtoDeserializer()->deserialize($request, $cls);
+        $this->assertSame(2, $dto->getStatus()->value);
+    }
+
+    public function testIntOverflowStringFromQueryIsRejected(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/int-enum-query.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapIntOverflow');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapIntOverflow\\Filter';
+        // count = 23 nines: (int) cast would saturate to PHP_INT_MAX — must be rejected instead.
+        $this->expectException(RuntimeException::class);
+        new DtoDeserializer()->deserialize(Request::create('/?status=1&count=99999999999999999999999', 'GET'), $cls);
+    }
+
+    public function testIfWithRefConditionDoesNotForceThen(): void
+    {
+        // Regression: if:{$ref} extracted to an empty (vacuously-true) schema, so `then`
+        // (discountCode required) was applied to EVERY value. The unvalidatable if/then is dropped.
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/if-ref.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapIfRef');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapIfRef\\Account';
+        $profile = $cls::getConstraints()['profile'] ?? [];
+        // The $ref `if` extracted to empty and must be dropped — otherwise it is vacuously true
+        // and `then` applies to every value. (`then` may remain but is inert without `if`.)
+        $this->assertArrayNotHasKey('if', $profile);
+        // items:{$ref} likewise extracts to empty and is dropped (would otherwise silently skip).
+        $this->assertArrayNotHasKey('items', $profile);
+    }
+
+    public function testCyclicDtoGraphSerializesWithoutInfiniteRecursion(): void
+    {
+        // Regression: toArray()/normalizeValue had no cycle guard (unlike validate()).
+        // Mutual references built via array adders used to recurse until stack exhaustion.
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapCycle');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapCycle\\Node';
+        $a = new $cls('A');
+        $b = new $cls('B');
+        $a->addItemToChildren($b);
+        $b->addItemToChildren($a); // A → B → A cycle
+
+        $array = new DtoNormalizer()->toArray($a);
+
+        // Terminates; A is seeded in the cycle guard, so the back-reference to A inside B is
+        // cut (null) instead of recursing forever.
+        $this->assertSame('A', $array['name']);
+        $this->assertSame('B', $array['children'][0]['name']);
+        $this->assertSame([null], $array['children'][0]['children']);
+    }
+
+    public function testSelfReferentialRootSerializesWithoutInfiniteRecursion(): void
+    {
+        // Root node that contains itself — the root is marked in $visited (parity with
+        // validateDtoRecursive) so the self-reference is cut at one level.
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapSelfRef');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapSelfRef\\Node';
+        $node = new $cls('root');
+        $node->addItemToChildren($node);
+
+        $array = new DtoNormalizer()->toArray($node);
+        $this->assertSame('root', $array['name']);
+        $this->assertSame([null], $array['children']);
+    }
+
     public function testOneOfWithRefVariantDoesNotEmitUnvalidatableConstraint(): void
     {
         // Regression: a oneOf with a $ref variant extracted an empty branch that the

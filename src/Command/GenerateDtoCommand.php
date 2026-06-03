@@ -1107,6 +1107,11 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
+            // Multiple merged branches can declare the same property with conflicting types.
+            // The inheritance path rejects such conflicts; the merge path must too, instead of
+            // silently keeping whichever branch happens to be last.
+            $this->assertMergedPropertiesCompatible($allProperties, $className);
+
             return [
                 'properties' => $allProperties,
                 'extends' => $extends,
@@ -1374,6 +1379,12 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        // Recursively scrub subschema-bearing keys: a $ref (or any unvalidatable subschema)
+        // extracts to [], which the validator can't resolve. Forwarding it verbatim is unsafe
+        // — most dangerously `if: {$ref}` would extract to a vacuously-true schema and apply
+        // `then` to every value. Drop what becomes empty (same guard as oneOf/anyOf/allOf/not).
+        $constraints = $this->scrubUnvalidatableSubschemas($constraints);
+
         if (($propertySchema['readOnly'] ?? false) === true) {
             $constraints['readOnly'] = true;
         }
@@ -1390,6 +1401,74 @@ final class GenerateDtoCommand extends Command
             if ($constraints['type'] === []) {
                 unset($constraints['type']);
             }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * Recursively re-extracts subschema-bearing constraint keys so that $ref-only / otherwise
+     * unvalidatable subschemas don't survive verbatim into the generated constraints (the
+     * validator can't resolve $ref and would either silently skip or — for `if` — falsely match).
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function scrubUnvalidatableSubschemas(array $constraints): array
+    {
+        // Single-subschema keys: drop the key entirely when it extracts to nothing.
+        foreach (['items', 'contains', 'propertyNames', 'if', 'then', 'else'] as $key) {
+            if (!array_key_exists($key, $constraints) || !is_array($constraints[$key])) {
+                continue;
+            }
+            $extracted = $this->extractValidationConstraints($constraints[$key]);
+            if ($extracted === []) {
+                unset($constraints[$key]);
+            } else {
+                $constraints[$key] = $extracted;
+            }
+        }
+
+        // additionalProperties may be a bool (keep) or a schema (scrub).
+        if (array_key_exists('additionalProperties', $constraints) && is_array($constraints['additionalProperties'])) {
+            $extracted = $this->extractValidationConstraints($constraints['additionalProperties']);
+            if ($extracted === []) {
+                unset($constraints['additionalProperties']);
+            } else {
+                $constraints['additionalProperties'] = $extracted;
+            }
+        }
+
+        // Schema-map keys: scrub each value, drop empties; drop the whole key if none remain.
+        foreach (['properties', 'patternProperties', 'dependentSchemas'] as $key) {
+            if (!array_key_exists($key, $constraints) || !is_array($constraints[$key])) {
+                continue;
+            }
+            $scrubbed = [];
+            foreach ($constraints[$key] as $name => $subSchema) {
+                if (!is_array($subSchema)) {
+                    continue;
+                }
+                $extracted = $this->extractValidationConstraints($subSchema);
+                if ($extracted !== []) {
+                    $scrubbed[$name] = $extracted;
+                }
+            }
+            if ($scrubbed === []) {
+                unset($constraints[$key]);
+            } else {
+                $constraints[$key] = $scrubbed;
+            }
+        }
+
+        // prefixItems is positional — keep an empty slot as [] (a no-op constraint) rather than
+        // shifting indices.
+        if (array_key_exists('prefixItems', $constraints) && is_array($constraints['prefixItems'])) {
+            $scrubbed = [];
+            foreach ($constraints['prefixItems'] as $subSchema) {
+                $scrubbed[] = is_array($subSchema) ? $this->extractValidationConstraints($subSchema) : [];
+            }
+            $constraints['prefixItems'] = $scrubbed;
         }
 
         return $constraints;
@@ -3120,6 +3199,29 @@ final class GenerateDtoCommand extends Command
         }
 
         return $result;
+    }
+
+    /**
+     * Rejects merged allOf branches that declare the same property with conflicting PHP types.
+     *
+     * @param array<int, SchemaProperty> $properties
+     */
+    private function assertMergedPropertiesCompatible(array $properties, string $className): void
+    {
+        $byName = [];
+        foreach ($properties as $property) {
+            $name = $property['name'];
+            if (array_key_exists($name, $byName) && $byName[$name]['type'] !== $property['type']) {
+                throw new RuntimeException(sprintf(
+                    'Property merge conflict in %s for $%s: type %s vs %s.',
+                    $className,
+                    $name,
+                    $this->describePropertyType($byName[$name]),
+                    $this->describePropertyType($property),
+                ));
+            }
+            $byName[$name] = $property;
+        }
     }
 
     /**

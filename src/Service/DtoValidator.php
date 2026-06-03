@@ -16,16 +16,41 @@ final class DtoValidator implements DtoValidatorInterface
     /** @var list<string> */
     private const array DATE_TIME_FORMATS = [
         'Y-m-d\TH:i:sp',
-        'Y-m-d\TH:i:s.vp',
+        'Y-m-d\TH:i:s.up',
         'Y-m-d H:i:s',
         'Y-m-d\TH:i:s',
     ];
+
+    private const int MAX_VALIDATION_DEPTH = 256;
+
+    private int $validationDepth = 0;
 
     /**
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
     public function validate(string $subject, mixed $value, array $constraints): array
+    {
+        // Guard against pathologically nested schemas (allOf/oneOf/properties/items recursion)
+        // exhausting the stack. The counter wraps the whole recursion (helpers call back into
+        // validate()), so no per-method depth threading is needed.
+        if ($this->validationDepth >= self::MAX_VALIDATION_DEPTH) {
+            return [sprintf('%s: schema nesting exceeds %d levels', $subject, self::MAX_VALIDATION_DEPTH)];
+        }
+
+        $this->validationDepth++;
+        try {
+            return $this->validateConstraints($subject, $value, $constraints);
+        } finally {
+            $this->validationDepth--;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $constraints
+     * @return array<string>
+     */
+    private function validateConstraints(string $subject, mixed $value, array $constraints): array
     {
         if ($constraints === []) {
             return [];
@@ -759,7 +784,12 @@ final class DtoValidator implements DtoValidatorInterface
 
         // Accept same formats as DtoDeserializer::DATE_TIME_FORMATS — including Z suffix (lowercase p).
         foreach (self::DATE_TIME_FORMATS as $format) {
-            if (DateTimeImmutable::createFromFormat($format, $value) instanceof DateTimeImmutable) {
+            $dt = DateTimeImmutable::createFromFormat($format, $value);
+            // Reject calendar-invalid values that createFromFormat rolls over (e.g. Feb 30);
+            // such overflows are reported only as warnings.
+            $errors = DateTimeImmutable::getLastErrors();
+            $hasWarnings = $errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
+            if ($dt instanceof DateTimeImmutable && !$hasWarnings) {
                 return true;
             }
         }

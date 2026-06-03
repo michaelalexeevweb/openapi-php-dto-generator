@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Tests;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
@@ -164,17 +165,23 @@ final class DtoDeserializerCoverageTest extends TestCase
         $this->deserializer->deserialize($request, CovNoTypeHintDto::class);
     }
 
-    public function testDeserializeMixedParameterIsUnsupported(): void
+    public function testDeserializeMixedParameterPassesValueThrough(): void
     {
-        // A `mixed` type resolves to typeKind 'mixed', which has no scalar/object handler
-        // and falls through to the "Unsupported type" throw.
+        // A `mixed` type (schema-less / free-form property) accepts any non-null value as-is.
         $request = new Request([], [], [], [], [], [], json_encode(['value' => 'anything']));
         $request->headers->set('Content-Type', 'application/json');
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Unsupported type: mixed');
+        $dto = $this->deserializer->deserialize($request, CovUntypedParamDto::class);
+        $this->assertSame('anything', $dto->value);
+    }
 
-        $this->deserializer->deserialize($request, CovUntypedParamDto::class);
+    public function testCastArrayItemValueAcceptsMixedItemType(): void
+    {
+        // array<mixed>: resolveArrayItemType whitelists 'mixed'; castArrayItemValue must accept
+        // it (pass through) rather than throwing "unknown type" (resolver/caster parity).
+        $method = new ReflectionMethod($this->deserializer, 'castArrayItemValue');
+        $this->assertSame('x', $method->invoke($this->deserializer, 'x', 'mixed', 'p.0', 'json'));
+        $this->assertSame(42, $method->invoke($this->deserializer, 42, 'mixed', 'p.1', 'json'));
     }
 
     public function testRequiredMethodThrowingReflectionFallsBackToTypeInference(): void

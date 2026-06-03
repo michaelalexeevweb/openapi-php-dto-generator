@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info:
+  title: Self-referential node
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Node:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'

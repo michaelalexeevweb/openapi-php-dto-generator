@@ -1272,6 +1272,27 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringNotContainsString('private readonly int $value', $content);
     }
 
+    public function testMultiRefAllOfMergeRejectsConflictingPropertyTypes(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'merge conflict', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'A' => ['type' => 'object', 'properties' => ['id' => ['type' => 'integer']]],
+                'B' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string']]],
+                'Merged' => ['allOf' => [
+                    ['$ref' => '#/components/schemas/A'],
+                    ['$ref' => '#/components/schemas/B'],
+                ]],
+            ]],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Property merge conflict in Merged for $id');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+    }
+
     public function testQueryParametersWithDefaults(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');

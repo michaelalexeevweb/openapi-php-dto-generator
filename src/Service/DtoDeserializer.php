@@ -26,7 +26,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /** @var list<string> */
     private const array DATE_TIME_FORMATS = [
         'Y-m-d\TH:i:sp',
-        'Y-m-d\TH:i:s.vp',
+        'Y-m-d\TH:i:s.up',
         'Y-m-d H:i:s',
         'Y-m-d\TH:i:s',
     ];
@@ -860,6 +860,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
+        // Free-form value (schema-less property → `mixed`): accept any non-null value as-is.
+        if ($typeName === 'mixed') {
+            return $value instanceof stdClass ? $this->stdClassToArray($value) : $value;
+        }
+
         // JSON should stay strict: no implicit scalar conversions.
         if ($source === 'json') {
             if ($typeName === 'int') {
@@ -1032,7 +1037,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($kind === 'enum') {
-            return $this->castToEnum(value: $value, enumClass: $typeName, paramPath: $paramPath);
+            return $this->castToEnum(value: $value, enumClass: $typeName, paramPath: $paramPath, source: $source);
         }
 
         if ($kind === 'dto') {
@@ -1097,7 +1102,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // per array element.
         $kind = $this->resolveTypeKind($arrayItemType);
 
-        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array'], true)) {
+        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
             return $this->castValue(
                 value: $itemValue,
                 paramName: $itemPath,
@@ -1119,7 +1124,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($kind === 'enum') {
-            return $this->castToEnum(value: $itemValue, enumClass: $arrayItemType, paramPath: $itemPath);
+            return $this->castToEnum(value: $itemValue, enumClass: $arrayItemType, paramPath: $itemPath, source: $source);
         }
 
         if ($kind === 'datetime') {
@@ -1212,7 +1217,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // date-time: try known RFC3339/ISO8601 formats; rejects relative strings like "now", "+1 year".
         foreach (self::DATE_TIME_FORMATS as $format) {
             $dt = DateTimeImmutable::createFromFormat($format, $value);
-            if ($dt !== false) {
+            // createFromFormat rolls overflowing components forward (e.g. Feb 30 → Mar 2) and
+            // only flags it via warnings — reject those so invalid calendar dates aren't
+            // silently accepted/mutated.
+            $errors = DateTimeImmutable::getLastErrors();
+            $hasWarnings = $errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
+            if ($dt !== false && !$hasWarnings) {
                 return $dt;
             }
         }
@@ -1376,7 +1386,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     /**
      */
-    private function castToEnum(mixed $value, string $enumClass, ?string $paramPath = null): UnitEnum
+    private function castToEnum(mixed $value, string $enumClass, ?string $paramPath = null, string $source = 'json'): UnitEnum
     {
         if (!enum_exists($enumClass)) {
             throw new RuntimeException(
@@ -1398,6 +1408,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         foreach ($cases as $case) {
             if ($case instanceof BackedEnum) {
                 if ($case->value === $value) {
+                    return $case;
+                }
+                // Non-JSON sources (query/path/form) deliver every value as a string, so an
+                // int-backed enum case (value 1) never strict-equals the incoming "1". Allow a
+                // string<->scalar match for those sources; JSON stays strict.
+                if ($source !== 'json' && is_scalar($value) && (string)$case->value === (string)$value) {
                     return $case;
                 }
                 $allowed[] = (string)$case->value;
@@ -1623,7 +1639,30 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return false;
         }
 
-        return preg_match('/^[+-]?\d+$/', $value) === 1;
+        if (preg_match('/^[+-]?\d+$/', $value) !== 1) {
+            return false;
+        }
+
+        // Reject magnitudes outside PHP's int range: (int) cast would silently saturate to
+        // PHP_INT_MAX/MIN, corrupting the value (and then passing int64 range validation).
+        return $this->intStringInRange($value);
+    }
+
+    private function intStringInRange(string $value): bool
+    {
+        $negative = $value[0] === '-';
+        $digits = ltrim(ltrim($value, '+-'), '0');
+        if ($digits === '') {
+            return true; // value is zero (any number of leading zeros)
+        }
+
+        // |PHP_INT_MIN| = 9223372036854775808, |PHP_INT_MAX| = 9223372036854775807.
+        $bound = $negative ? '9223372036854775808' : '9223372036854775807';
+        if (strlen($digits) !== strlen($bound)) {
+            return strlen($digits) < strlen($bound);
+        }
+
+        return strcmp($digits, $bound) <= 0;
     }
 
     private function isStrictFloatValue(mixed $value): bool

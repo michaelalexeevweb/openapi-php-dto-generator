@@ -1937,4 +1937,33 @@ final class DtoValidatorTest extends TestCase
     {
         $this->assertSame([], $this->validator->validate('f', 9000000000000000000, ['format' => 'int64']));
     }
+
+    public function testDateTimeFormat_rejectsRolloverCalendarDates(): void
+    {
+        // createFromFormat silently rolls Feb 30 → Mar 2; these must be rejected, not accepted.
+        $this->assertContains('f must match format date-time', $this->validator->validate('f', '2026-02-30T12:00:00Z', ['format' => 'date-time']));
+        $this->assertContains('f must match format date-time', $this->validator->validate('f', '2026-13-01T12:00:00Z', ['format' => 'date-time']));
+        // A real date still validates.
+        $this->assertSame([], $this->validator->validate('f', '2026-03-30T12:00:00Z', ['format' => 'date-time']));
+    }
+
+    public function testDateTimeFormat_acceptsMicrosecondPrecision(): void
+    {
+        // RFC3339 allows arbitrary fractional digits; previously only 1-3 (milliseconds) parsed.
+        $this->assertSame([], $this->validator->validate('f', '2026-03-10T12:00:00.123456Z', ['format' => 'date-time']));
+        $this->assertSame([], $this->validator->validate('f', '2026-03-10T12:00:00.123Z', ['format' => 'date-time']));
+    }
+
+    public function testDeeplyNestedSchemaIsRejectedNotStackOverflowed(): void
+    {
+        // 300 nested allOf levels would exhaust the stack without the depth guard.
+        $constraints = ['minLength' => 1];
+        for ($i = 0; $i < 300; $i++) {
+            $constraints = ['allOf' => [$constraints]];
+        }
+
+        $errors = $this->validator->validate('f', 'x', $constraints);
+        $this->assertNotSame([], $errors);
+        $this->assertStringContainsString('schema nesting exceeds 256 levels', implode(' | ', $errors));
+    }
 }

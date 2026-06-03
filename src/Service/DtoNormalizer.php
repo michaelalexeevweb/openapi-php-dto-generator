@@ -143,7 +143,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($result));
+        // Seed the cycle guard with this root so a self-reference in its own payload is caught.
+        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
     }
 
     /**
@@ -168,7 +169,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($serialized));
+        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
     }
 
     /**
@@ -192,13 +193,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     /**
      * @param array<string, mixed> $payload
+     * @param array<int, true> $visited
      * @return array<string, mixed>
      */
-    private function normalizeArrayPayload(array $payload): array
+    private function normalizeArrayPayload(array $payload, array $visited = []): array
     {
         $result = [];
         foreach ($payload as $key => $value) {
-            $result[$key] = $this->normalizeValue($value);
+            $result[$key] = $this->normalizeValue($value, $visited);
         }
 
         return $result;
@@ -379,10 +381,17 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
+     * @param array<int, true> $visited object ids already being serialized (cycle guard)
      * @return array<string, mixed>
      */
-    private function dtoToArray(object $dto): array
+    private function dtoToArray(object $dto, array $visited = []): array
     {
+        // Mark $dto so a self-reference deeper in the graph is caught (parity with
+        // validateDtoRecursive, which marks its root). Cycle DETECTION lives in
+        // normalizeValue — dtoToArray must only MARK, never early-return here, or it would
+        // short-circuit the legitimate first expansion when normalizeValue already marked $dto.
+        $visited[spl_object_id($dto)] = true;
+
         $result = [];
         $meta = $this->getClassMeta($dto);
 
@@ -407,7 +416,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $value = $this->coerceEmptyStringToNull($rawValue, $getterMeta, $meta);
 
             try {
-                $result[$getterMeta['outputName']] = $this->normalizeValue($value);
+                $result[$getterMeta['outputName']] = $this->normalizeValue($value, $visited);
             } catch (Throwable $e) {
                 if (!$rawValue instanceof File) {
                     throw $e;
@@ -465,7 +474,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
         return array_key_exists($outputName, self::INTERNAL_OUTPUT_FIELDS);
     }
 
-    private function normalizeValue(mixed $value): mixed
+    /**
+     * @param array<int, true> $visited object ids already being serialized (cycle guard)
+     */
+    private function normalizeValue(mixed $value, array $visited = []): mixed
     {
         if ($value === null) {
             return null;
@@ -474,7 +486,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         if (is_array($value)) {
             $result = [];
             foreach ($value as $key => $item) {
-                $result[$key] = $this->normalizeValue($item);
+                $result[$key] = $this->normalizeValue($item, $visited);
             }
             return $result;
         }
@@ -491,12 +503,27 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $this->normalizeFileValue($value);
         }
 
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('c');
+        }
+
+        // Cycle guard for expandable objects (mirrors validateDtoRecursive's $visited):
+        // a DTO graph with mutual references (built via array adders) would otherwise
+        // recurse until the call stack is exhausted.
+        if (is_object($value)) {
+            $objectId = spl_object_id($value);
+            if (array_key_exists($objectId, $visited)) {
+                return null;
+            }
+            $visited[$objectId] = true;
+        }
+
         $toArrayUnavailable = false;
         if (is_object($value) && method_exists($value, 'toArray')) {
             try {
                 $arrayValue = $value->toArray();
                 if (is_array($arrayValue)) {
-                    return $this->normalizeArrayPayload($arrayValue);
+                    return $this->normalizeArrayPayload($arrayValue, $visited);
                 }
             } catch (LogicException $e) {
                 if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
@@ -510,17 +537,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         if (!$toArrayUnavailable && $value instanceof JsonSerializable) {
-            return $this->normalizeValue($value->jsonSerialize());
-        }
-
-        if ($value instanceof DateTimeInterface) {
-            return $value->format('c');
+            return $this->normalizeValue($value->jsonSerialize(), $visited);
         }
 
         if (is_object($value)) {
             $meta = $this->getClassMeta($value);
             if ($meta['getters'] !== []) {
-                return $this->dtoToArray($value);
+                return $this->dtoToArray($value, $visited);
             }
 
             if (method_exists($value, '__toString')) {
@@ -584,8 +607,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
         return $result;
     }
 
-    /**
-     */
     /**
      * @param list<string> $nonNullTypes type names with 'null' already stripped by the caller
      */
