@@ -484,6 +484,16 @@ final class DtoNormalizerTest extends TestCase
         $this->assertNotSame([], $errors);
         $this->assertStringContainsString('must return int', implode(' | ', $errors));
     }
+
+    public function testEmptyArrayItemTypeInMapSuppressesReflection(): void
+    {
+        // The getter HAS a "@return array<int>" docblock, but the map carries arrayItemType ''
+        // (a non-array field shape). Presence of the key means the map is authoritative, so the
+        // docblock is NOT reflected — a string item is therefore NOT type-checked/rejected.
+        $normalizer = new DtoNormalizer();
+
+        $this->assertSame([], $normalizer->validate(new NormalizerEmptyItemTypeDto(['x'])));
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -2112,6 +2122,67 @@ final class NormalizerMapItemTypeDto implements GeneratedDtoInterface
                     'writeOnly' => false,
                     'readOnly' => false,
                     'arrayItemType' => 'array<int>',
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerEmptyItemTypeDto implements GeneratedDtoInterface
+{
+    /** @param array<int, string> $items */
+    public function __construct(private array $items)
+    {
+    }
+
+    /** @return array<int> */
+    public function getItems(): array
+    {
+        return $this->items;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['items' => $this->items];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'items' => [
+                'getter' => 'getItems',
+                'type' => 'array',
+                'nullable' => false,
+                'metadata' => [
+                    'openApiName' => 'items',
+                    'required' => true,
+                    'writeOnly' => false,
+                    'readOnly' => false,
+                    'arrayItemType' => '',
                 ],
             ],
         ];
