@@ -476,10 +476,10 @@ final class DtoValidator implements DtoValidatorInterface
                 array_push(
                     $errors,
                     ...$this->validateConstraints(
-                        sprintf('%s.%s', $subject, $propName),
-                        $value[$propName],
-                        $propSchema,
-                        $depth + 1,
+                        subject: sprintf('%s.%s', $subject, $propName),
+                        value: $value[$propName],
+                        constraints: $propSchema,
+                        depth: $depth + 1,
                     ),
                 );
             }
@@ -509,10 +509,10 @@ final class DtoValidator implements DtoValidatorInterface
                         array_push(
                             $errors,
                             ...$this->validateConstraints(
-                                sprintf('%s.%s', $subject, (string)$key),
-                                $itemValue,
-                                $schema,
-                                $depth + 1,
+                                subject: sprintf('%s.%s', $subject, (string)$key),
+                                value: $itemValue,
+                                constraints: $schema,
+                                depth: $depth + 1,
                             ),
                         );
                     }
@@ -526,10 +526,10 @@ final class DtoValidator implements DtoValidatorInterface
                 array_push(
                     $errors,
                     ...$this->validateConstraints(
-                        sprintf('%s key "%s"', $subject, (string)$key),
-                        (string)$key,
-                        $constraints['propertyNames'],
-                        $depth + 1,
+                        subject: sprintf('%s key "%s"', $subject, (string)$key),
+                        value: (string)$key,
+                        constraints: $constraints['propertyNames'],
+                        depth: $depth + 1,
                     ),
                 );
             }

@@ -1,0 +1,25 @@
+openapi: 3.0.3
+info:
+  title: Nested write-only field
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Child:
+      type: object
+      required:
+        - name
+        - secret
+      properties:
+        name:
+          type: string
+        secret:
+          type: string
+          writeOnly: true
+    Wrap:
+      type: object
+      required:
+        - child
+      properties:
+        child:
+          $ref: '#/components/schemas/Child'

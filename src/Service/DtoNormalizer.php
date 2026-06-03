@@ -527,7 +527,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
             try {
                 $arrayValue = $value->toArray();
                 if (is_array($arrayValue)) {
-                    return $this->normalizeArrayPayload($arrayValue, $visited);
+                    // Strip write-only fields of the nested DTO too (mirrors the root path in
+                    // tryFastArray). Generated toArray() already omits them, so this is a
+                    // belt-and-suspenders guard against an inconsistent hand-written toArray().
+                    return $this->applyWriteOnlyFilter($value, $this->normalizeArrayPayload($arrayValue, $visited));
                 }
             } catch (LogicException $e) {
                 if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {

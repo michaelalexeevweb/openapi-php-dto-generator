@@ -294,6 +294,27 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame('array<Tag>', $map['tags']['metadata']['arrayItemType']);
     }
 
+    public function testNestedDtoWriteOnlyFieldIsNotSerialized(): void
+    {
+        // write-only fields of a NESTED DTO must not leak into the parent's serialized output.
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nested-writeonly.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapNestedWo');
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        $cls = '\\GapNestedWo\\Wrap';
+        $dto = new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"child":{"name":"Bob","secret":"sekret"}}'),
+            $cls,
+        );
+
+        $array = new DtoNormalizer()->toArray($dto);
+        $this->assertSame('Bob', $array['child']['name']);
+        $this->assertArrayNotHasKey('secret', $array['child']);
+    }
+
     public function testCyclicDtoGraphSerializesWithoutInfiniteRecursion(): void
     {
         // Regression: toArray()/normalizeValue had no cycle guard (unlike validate()).
