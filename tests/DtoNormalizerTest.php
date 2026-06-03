@@ -472,6 +472,18 @@ final class DtoNormalizerTest extends TestCase
         $this->assertArrayHasKey('inner', $result);
         $this->assertSame(['label' => 'kept'], $result['inner']);
     }
+
+    public function testArrayItemTypeResolvedFromMapWithoutGetterDocblock(): void
+    {
+        // The getter has NO @return docblock, so reflection yields no item type — the
+        // normalizer must take it from the map's metadata.arrayItemType ('array<int>') and
+        // still type-check the items. A string item must therefore be rejected.
+        $normalizer = new DtoNormalizer();
+
+        $errors = $normalizer->validate(new NormalizerMapItemTypeDto(['ok' => 1, 'bad' => 'x']));
+        $this->assertNotSame([], $errors);
+        $this->assertStringContainsString('must return int', implode(' | ', $errors));
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -2040,6 +2052,67 @@ final class NormalizerOuterWithThrowingInnerDto implements GeneratedDtoInterface
                 'type' => NormalizerInnerThrowingToArrayDto::class,
                 'nullable' => false,
                 'metadata' => ['openApiName' => 'inner'],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerMapItemTypeDto implements GeneratedDtoInterface
+{
+    /** @param array<string, int> $items */
+    public function __construct(private array $items)
+    {
+    }
+
+    // Intentionally NO @return docblock: the array item type must come from the map.
+    public function getItems(): array
+    {
+        return $this->items;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['items' => $this->items];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'items' => [
+                'getter' => 'getItems',
+                'type' => 'array',
+                'nullable' => false,
+                'metadata' => [
+                    'openApiName' => 'items',
+                    'required' => true,
+                    'writeOnly' => false,
+                    'readOnly' => false,
+                    'arrayItemType' => 'array<int>',
+                ],
             ],
         ];
     }

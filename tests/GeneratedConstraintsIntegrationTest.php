@@ -284,6 +284,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertArrayNotHasKey('items', $profile);
     }
 
+    public function testGeneratedNormalizationMapCarriesArrayItemType(): void
+    {
+        // The map must carry the array item type so DtoNormalizer needn't reflect getter docblocks.
+        $cls = $this->generateBoxModel('GapMapItemType');
+        $map = $cls::getNormalizationMap();
+
+        $this->assertSame('array<Color>', $map['colors']['metadata']['arrayItemType']);
+        $this->assertSame('array<Tag>', $map['tags']['metadata']['arrayItemType']);
+    }
+
     public function testCyclicDtoGraphSerializesWithoutInfiniteRecursion(): void
     {
         // Regression: toArray()/normalizeValue had no cycle guard (unlike validate()).

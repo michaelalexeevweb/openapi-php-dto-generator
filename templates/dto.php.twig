@@ -316,6 +316,7 @@ interface {{ className }}
                     'constraints' => $constraints['{{ property.name }}'] ?? [],
                     'writeOnly' => {{ property.writeOnly ? 'true' : 'false' }},
                     'readOnly' => {{ property.readOnly ? 'true' : 'false' }},
+                    'arrayItemType' => '{{ property.docReturnType is not null ? property.docReturnType|replace({'\\':'\\\\','\'':'\\\''}) : '' }}',
                 ],
             ],
 {% endfor %}

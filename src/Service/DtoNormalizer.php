@@ -890,6 +890,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $metadataArr = is_array($metadata) ? $metadata : [];
             $writeOnly = ($metadataArr['writeOnly'] ?? false) === true;
 
+            // Prefer the array item type carried by the normalization map (reflection-free);
+            // fall back to the getter docblock only for DTOs generated before the map carried it.
+            $itemTypeFromMap = $metadataArr['arrayItemType'] ?? null;
+            $arrayItemTypeNames = is_string($itemTypeFromMap) && $itemTypeFromMap !== ''
+                ? $this->extractArrayItemTypeNames($className, $itemTypeFromMap)
+                : $this->resolveArrayItemTypeNames($className, $methodName);
+
             $getters[] = [
                 'methodName' => $methodName,
                 'propertyName' => $propertyName,
@@ -897,7 +904,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'allowsNull' => $allowsNull,
                 'typeNames' => $typeNames,
                 'nonNullTypeNames' => array_values(array_filter($typeNames, static fn(string $t): bool => $t !== 'null')),
-                'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
+                'arrayItemTypeNames' => $arrayItemTypeNames,
                 'writeOnly' => $writeOnly,
                 'required' => ($metadataArr['required'] ?? false) === true,
                 'inRequestFlagGetter' => $this->flagGetterName($metadataArr, 'inRequestFlagGetter'),
@@ -1017,6 +1024,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
+     * Reflection fallback: reads the getter's @return docblock. Used only when the
+     * normalization map does not carry the array item type (older generated DTOs, or the
+     * public-getter path). Reflection-free callers pass the type string to
+     * extractArrayItemTypeNames() directly.
+     *
      * @return list<string>
      */
     private function resolveArrayItemTypeNames(string $className, string $methodName): array
@@ -1035,12 +1047,23 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return [];
         }
 
-        $returnType = trim($matches[1]);
-        if ($returnType === '') {
+        return $this->extractArrayItemTypeNames($className, trim($matches[1]));
+    }
+
+    /**
+     * Parses an array/list generic type string (e.g. "array<Access>" or "array<string, Foo>")
+     * into resolved item type names. Reflection-free — the type string comes either from the
+     * normalization map (preferred) or from a getter docblock.
+     *
+     * @return list<string>
+     */
+    private function extractArrayItemTypeNames(string $className, string $typeString): array
+    {
+        if ($typeString === '') {
             return [];
         }
 
-        preg_match_all('/(?:array|list)\s*<([^>]+)>/i', $returnType, $genericMatches);
+        preg_match_all('/(?:array|list)\s*<([^>]+)>/i', $typeString, $genericMatches);
         $genericParts = $genericMatches[1];
         if ($genericParts === []) {
             return [];
