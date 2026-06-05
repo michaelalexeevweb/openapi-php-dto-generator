@@ -2514,16 +2514,18 @@ final class GenerateDtoCommand extends Command
 
         // Use UnsetValue enum for optional parameters that track presence and have no explicit default
         $usesUnsetSentinel = false;
-        if ($tracksArgPresence && !$property['required'] && $defaultValue === '') {
-            $usesUnsetSentinel = true;
-            // Add union type with null and UnsetValue - remove ? prefix if present
-            if (strpos($type, '?') === 0) {
-                $type = substr($type, 1) . '|null|UnsetValue';
-            } else {
-                $type = $type . '|null|UnsetValue';
+        if (!$property['required'] && $defaultValue === '') {
+            if ($tracksArgPresence) {
+                $usesUnsetSentinel = true;
+                // Add union type with null and UnsetValue - remove ? prefix if present
+                if (strpos($type, '?') === 0) {
+                    $type = substr($type, 1) . '|null|UnsetValue';
+                } else {
+                    $type = $type . '|null|UnsetValue';
+                }
+            } elseif ($property['nullable']) {
+                $defaultValue = ' = null';
             }
-        } elseif ($defaultValue === '' && !$property['required'] && $property['nullable']) {
-            $defaultValue = ' = null';
         }
 
         $description = $property['description'] ?? null;

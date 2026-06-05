@@ -234,11 +234,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             // Cast the pre-resolved raw value to the declared type.
             try {
                 if (count($paramMeta['typeNames']) === 1) {
+                    // Optional missing params were already handled above, so a missing
+                    // value here always belongs to a required parameter — even when the
+                    // PHP type is nullable (required + nullable means the key must be
+                    // present, its value may be null).
                     if (!$rawWasProvided) {
-                        if ($paramMeta['allowsNull']) {
-                            $args[] = null;
-                            continue;
-                        }
                         throw new RuntimeException(
                             "Required parameter \"{$requestFieldName}\" not found in request.",
                         );
@@ -260,7 +260,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $value = $this->castUnionValue(
                         paramName: $requestFieldName,
                         typeNames: $paramMeta['typeNames'],
-                        allowsNull: $paramMeta['allowsNull'],
                         rawValue: $rawValue,
                         rawWasProvided: $rawWasProvided,
                         rawSource: $rawSource,
@@ -572,7 +571,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private function castUnionValue(
         string $paramName,
         array $typeNames,
-        bool $allowsNull,
         mixed $rawValue,
         bool $rawWasProvided,
         string $rawSource,
@@ -582,11 +580,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
     ): mixed {
+        // A missing value here always belongs to a required parameter: optional
+        // missing params are short-circuited in deserialize() before this call,
+        // so nullability must not suppress the error (required + nullable means
+        // the key must be present, its value may be null).
         if (!$rawWasProvided) {
-            if ($allowsNull) {
-                return null;
-            }
-
             throw new RuntimeException(
                 "Required parameter \"{$paramName}\" not found in request.",
             );

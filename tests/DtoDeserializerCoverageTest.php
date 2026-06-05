@@ -129,6 +129,19 @@ final class DtoDeserializerCoverageTest extends TestCase
         $this->deserializer->deserialize($request, CovUnionDateTimeDto::class);
     }
 
+    public function testDeserializeRequiredNullableUnionMissingThrows(): void
+    {
+        // Union type is PHP-nullable, but isValueRequired() = true → omitting the key
+        // must throw; nullability only allows an explicit null value, not absence.
+        $request = new Request([], [], [], [], [], [], '{}');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "value" not found in request');
+
+        $this->deserializer->deserialize($request, CovRequiredNullableUnionDto::class);
+    }
+
     public function testDeserializeNullableSingleTypeMissingReturnsNull(): void
     {
         // Single type, nullable, NOT required, no default → resolveRawRequestValue missing,
@@ -926,6 +939,19 @@ final class CovNullableUnionDto
     public function __construct(
         public DateTimeImmutable|int|null $value = null,
     ) {
+    }
+}
+
+final class CovRequiredNullableUnionDto
+{
+    public function __construct(
+        public DateTimeImmutable|int|null $value,
+    ) {
+    }
+
+    public function isValueRequired(): bool
+    {
+        return true;
     }
 }
 

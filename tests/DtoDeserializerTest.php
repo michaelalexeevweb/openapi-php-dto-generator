@@ -744,6 +744,19 @@ final class DtoDeserializerTest extends TestCase
         $this->assertNull($dto->getName());
     }
 
+    public function testDeserializeThrowsWhenRequiredNullableFieldIsOmitted(): void
+    {
+        // nullable: true in schema + isXxxRequired() = true → the key MUST be present;
+        // omitting it entirely is an error even though the PHP type is nullable.
+        $request = new Request([], [], [], [], [], [], '{}');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "name" not found in request');
+
+        $this->deserializer->deserialize($request, SchemaNullableDto::class);
+    }
+
     public function testDeserializeRejectsExplicitNullForNonNullableJsonField(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
