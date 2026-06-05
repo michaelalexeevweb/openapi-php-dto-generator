@@ -1802,6 +1802,15 @@ final class DtoValidatorTest extends TestCase
         $this->assertContains('f must match pattern ^[0-9]+$', $errors);
     }
 
+    public function testInvalidUtf8SubjectBlamesInputNotSchema(): void
+    {
+        // preg_match with `u` returns false for invalid UTF-8 in the subject too
+        // (e.g. raw bytes from a query param) — must not blame the schema pattern.
+        $errors = $this->validator->validate('f', "\xFF\xFE", ['pattern' => '^[0-9]+$']);
+        $this->assertContains('f contains invalid UTF-8 characters', $errors);
+        $this->assertNotContains('f has invalid regex pattern in schema: ^[0-9]+$', $errors);
+    }
+
     public function testValidPatternMatchPasses(): void
     {
         $this->assertSame([], $this->validator->validate('f', '123', ['pattern' => '^[0-9]+$']));

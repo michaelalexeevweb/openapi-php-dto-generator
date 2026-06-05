@@ -430,7 +430,13 @@ final class DtoValidator implements DtoValidatorInterface
             }
 
             if ($match === false) {
-                $errors[] = "{$subject} has invalid regex pattern in schema: {$pattern}";
+                // preg_match() fails both for a broken schema pattern and for invalid
+                // UTF-8 in the subject (the `u` modifier) — blame the right side.
+                if (preg_last_error() === PREG_BAD_UTF8_ERROR) {
+                    $errors[] = "{$subject} contains invalid UTF-8 characters";
+                } else {
+                    $errors[] = "{$subject} has invalid regex pattern in schema: {$pattern}";
+                }
             } elseif ($match !== 1) {
                 $errors[] = "{$subject} must match pattern {$pattern}";
             }
