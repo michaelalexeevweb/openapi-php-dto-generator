@@ -9,18 +9,11 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Symfony\Component\HttpFoundation\File\File;
 
 final class DtoValidator implements DtoValidatorInterface
 {
-    /** @var list<string> */
-    private const array DATE_TIME_FORMATS = [
-        'Y-m-d\TH:i:sp',
-        'Y-m-d\TH:i:s.up',
-        'Y-m-d H:i:s',
-        'Y-m-d\TH:i:s',
-    ];
-
     private const int MAX_VALIDATION_DEPTH = 256;
 
     /**
@@ -855,8 +848,8 @@ final class DtoValidator implements DtoValidatorInterface
             return false;
         }
 
-        // Accept same formats as DtoDeserializer::DATE_TIME_FORMATS — including Z suffix (lowercase p).
-        foreach (self::DATE_TIME_FORMATS as $format) {
+        // Shared with the deserializer via GeneratedDtoInterface — including Z suffix (lowercase p).
+        foreach (GeneratedDtoInterface::DATE_TIME_FORMATS as $format) {
             $dt = DateTimeImmutable::createFromFormat($format, $value);
             // Reject calendar-invalid values that createFromFormat rolls over (e.g. Feb 30);
             // such overflows are reported only as warnings.

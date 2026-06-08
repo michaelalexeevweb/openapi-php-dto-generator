@@ -18,6 +18,20 @@ interface GeneratedDtoInterface extends JsonSerializable
     public const string FIELD_NOT_PROVIDED_MESSAGE = "wasn't provided in request";
 
     /**
+     * Accepted date-time input formats, shared by the deserializer (parsing) and the
+     * validator (format check) so the two never drift out of sync. Includes the RFC 3339
+     * `T` separator with offset/`Z`, fractional seconds, and the space-separated variant.
+     *
+     * @var list<string>
+     */
+    public const array DATE_TIME_FORMATS = [
+        'Y-m-d\TH:i:sp',
+        'Y-m-d\TH:i:s.up',
+        'Y-m-d H:i:s',
+        'Y-m-d\TH:i:s',
+    ];
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array;

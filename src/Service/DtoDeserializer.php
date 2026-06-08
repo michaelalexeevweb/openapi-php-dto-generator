@@ -8,6 +8,7 @@ use BackedEnum;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionNamedType;
@@ -22,14 +23,6 @@ use UnitEnum;
 final class DtoDeserializer implements DtoDeserializerInterface
 {
     private const string PREDECODED_BODY_ATTRIBUTE = '__opg_predecoded_body_data';
-
-    /** @var list<string> */
-    private const array DATE_TIME_FORMATS = [
-        'Y-m-d\TH:i:sp',
-        'Y-m-d\TH:i:s.up',
-        'Y-m-d H:i:s',
-        'Y-m-d\TH:i:s',
-    ];
 
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
@@ -1471,7 +1464,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         // date-time: try known RFC3339/ISO8601 formats; rejects relative strings like "now", "+1 year".
-        foreach (self::DATE_TIME_FORMATS as $format) {
+        foreach (GeneratedDtoInterface::DATE_TIME_FORMATS as $format) {
             $dt = DateTimeImmutable::createFromFormat($format, $value);
             // createFromFormat rolls overflowing components forward (e.g. Feb 30 → Mar 2) and
             // only flags it via warnings — reject those so invalid calendar dates aren't
