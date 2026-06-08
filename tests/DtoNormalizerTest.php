@@ -494,6 +494,19 @@ final class DtoNormalizerTest extends TestCase
 
         $this->assertSame([], $normalizer->validate(new NormalizerEmptyItemTypeDto(['x'])));
     }
+
+    public function testNormalizerExcludesParameterBoundFieldsFromOutput(): void
+    {
+        // The DTO's own toArray() still emits the header param (simulating a hand-written
+        // or pre-feature DTO); the normalizer must drop it via getParameterSources/isParameter
+        // metadata while keeping genuine body fields.
+        $normalizer = new DtoNormalizer();
+
+        $result = $normalizer->toArray(new NormalizerParamMixedDto('hello', 'secret-token'));
+
+        $this->assertSame(['name' => 'hello'], $result);
+        $this->assertArrayNotHasKey('token', $result);
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -2198,5 +2211,85 @@ final class NormalizerEmptyItemTypeDto implements GeneratedDtoInterface
     public static function getConstraints(): array
     {
         return [];
+    }
+}
+
+/**
+ * Body field `name` plus a header-bound `token`. Its own toArray() deliberately emits
+ * both (as a pre-feature DTO would); the normalizer must exclude the parameter-bound
+ * `token` from output via the isParameter metadata.
+ */
+final class NormalizerParamMixedDto implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly string $name,
+        private readonly string $token,
+    ) {
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getToken(): string
+    {
+        return $this->token;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return [
+            'name' => $this->name,
+            'token' => $this->token,
+        ];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'name' => [
+                'getter' => 'getName',
+                'type' => 'string',
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'name'],
+            ],
+            'token' => [
+                'getter' => 'getToken',
+                'type' => 'string',
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'token', 'isParameter' => true],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return ['token' => 'header'];
     }
 }

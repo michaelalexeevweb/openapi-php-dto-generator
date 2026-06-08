@@ -60,10 +60,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     temporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
      *     readOnly: bool,
+     *     sourceConstraint: string|null,
+     *     arrayDelimiter: non-empty-string|null,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
      *   inQueryProperties: array<string, ReflectionProperty|null>,
+     *   inHeaderProperties: array<string, ReflectionProperty|null>,
+     *   inCookieProperties: array<string, ReflectionProperty|null>,
      * }>
      */
     private static array $dtoMetaCache = [];
@@ -201,9 +205,35 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 bodyData: $bodyData,
                 queryData: $queryData,
                 formData: $formData,
+                sourceConstraint: $paramMeta['sourceConstraint'],
                 wasProvided: $rawWasProvided,
                 source: $rawSource,
             );
+
+            // OpenAPI delimited-array serialization: a single query/header/cookie string
+            // (e.g. "1,2,3" or "1 2 3") is split into elements per the parameter's style.
+            // Already-arrayified values (form+explode repeated keys, deepObject brackets)
+            // skip this and are cast as-is.
+            if (
+                $rawWasProvided
+                && $paramMeta['arrayDelimiter'] !== null
+                && is_string($rawValue)
+            ) {
+                $rawValue = $rawValue === ''
+                    ? []
+                    : explode($paramMeta['arrayDelimiter'], $rawValue);
+
+                // For non-string scalar item types, whitespace around delimiters (e.g.
+                // "1, 2, 3") is insignificant — trim so strict int/float/bool/enum casts
+                // accept it. String items are left untouched (their whitespace is data).
+                $itemType = $paramMeta['arrayItemType'];
+                if (
+                    $itemType !== null
+                    && in_array($this->resolveTypeKind($itemType), ['int', 'float', 'bool', 'enum'], true)
+                ) {
+                    $rawValue = array_map(trim(...), $rawValue);
+                }
+            }
 
             if ($paramMeta['readOnly']) {
                 if ($paramMeta['hasDefaultValue']) {
@@ -318,6 +348,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if (($prop = $classMeta['inQueryProperties'][$paramName] ?? null) !== null) {
                 $prop->setValue($dto, $source === 'query');
             }
+            if (($prop = $classMeta['inHeaderProperties'][$paramName] ?? null) !== null) {
+                $prop->setValue($dto, $source === 'header');
+            }
+            if (($prop = $classMeta['inCookieProperties'][$paramName] ?? null) !== null) {
+                $prop->setValue($dto, $source === 'cookie');
+            }
         }
 
         return $dto;
@@ -345,10 +381,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     temporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
      *     readOnly: bool,
+     *     sourceConstraint: string|null,
+     *     arrayDelimiter: non-empty-string|null,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
      *   inQueryProperties: array<string, ReflectionProperty|null>,
+     *   inHeaderProperties: array<string, ReflectionProperty|null>,
+     *   inCookieProperties: array<string, ReflectionProperty|null>,
      * }
      */
     private function buildDtoMeta(ReflectionClass $reflection, string $dtoClass): array
@@ -361,16 +401,27 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'inRequestProperties' => [],
                 'inPathProperties' => [],
                 'inQueryProperties' => [],
+                'inHeaderProperties' => [],
+                'inCookieProperties' => [],
             ];
         }
 
         $aliases = $this->resolveOpenApiPropertyAliases($reflection);
         $constraints = $this->resolveOpenApiConstraints($reflection);
+        // Per-property OpenAPI source binding (path/query/header/cookie). Properties
+        // absent from the map — request-body and plain component-schema fields — keep
+        // the permissive waterfall. Null when the DTO predates this metadata.
+        $parameterSources = $this->resolveParameterSources($reflection) ?? [];
+        // Per-property OpenAPI serialization style/explode — drives delimited-array
+        // splitting for query/header/cookie params. Empty for legacy DTOs.
+        $parameterStyles = $this->resolveParameterStyles($reflection);
 
         $params = [];
         $inRequestProperties = [];
         $inPathProperties = [];
         $inQueryProperties = [];
+        $inHeaderProperties = [];
+        $inCookieProperties = [];
 
         foreach ($constructor->getParameters() as $param) {
             $paramName = $param->getName();
@@ -444,6 +495,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 reflection: $reflection,
                 propName: $this->resolveInQueryFlagPropertyName(reflection: $reflection, paramName: $paramName),
             );
+            $inHeaderProperties[$paramName] = $this->resolveReflectionProperty(
+                reflection: $reflection,
+                propName: $this->resolveInHeaderFlagPropertyName(reflection: $reflection, paramName: $paramName),
+            );
+            $inCookieProperties[$paramName] = $this->resolveReflectionProperty(
+                reflection: $reflection,
+                propName: $this->resolveInCookieFlagPropertyName(reflection: $reflection, paramName: $paramName),
+            );
+
+            $sourceConstraint = $parameterSources[$paramName] ?? null;
+            $styleEntry = $parameterStyles[$paramName] ?? null;
+            $arrayDelimiter = $arrayItemType !== null && $styleEntry !== null
+                ? $this->resolveStyleDelimiter($styleEntry['style'], $styleEntry['explode'])
+                : null;
 
             $params[] = [
                 'name' => $paramName,
@@ -460,6 +525,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'temporalFormat' => $temporalFormat,
                 'fieldConstraints' => $fieldConstraints,
                 'readOnly' => ($fieldConstraints['readOnly'] ?? false) === true,
+                'sourceConstraint' => $sourceConstraint,
+                'arrayDelimiter' => $arrayDelimiter,
             ];
         }
 
@@ -469,7 +536,102 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'inRequestProperties' => $inRequestProperties,
             'inPathProperties' => $inPathProperties,
             'inQueryProperties' => $inQueryProperties,
+            'inHeaderProperties' => $inHeaderProperties,
+            'inCookieProperties' => $inCookieProperties,
         ];
+    }
+
+    /**
+     * Reads the optional getParameterSources() metadata that binds properties to a
+     * single OpenAPI request source. Returns null when the DTO does not declare it
+     * (legacy / hand-written DTOs) so callers can fall back to the permissive waterfall.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, string>|null
+     */
+    private function resolveParameterSources(ReflectionClass $reflection): ?array
+    {
+        $method = $this->resolveMetadataMethod(
+            className: $reflection->getName(),
+            candidateMethods: ['getParameterSources'],
+        );
+        if ($method === null) {
+            return null;
+        }
+
+        $sources = call_user_func($method);
+        if (!is_array($sources)) {
+            return null;
+        }
+
+        $result = [];
+        foreach ($sources as $propertyName => $source) {
+            if (is_string($propertyName) && is_string($source)) {
+                $result[$propertyName] = $source;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Reads the optional getParameterStyles() metadata describing each parameter's
+     * OpenAPI serialization style/explode. Returns an empty map when the DTO does not
+     * declare it (legacy / hand-written DTOs) so no array splitting is attempted.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    private function resolveParameterStyles(ReflectionClass $reflection): array
+    {
+        $method = $this->resolveMetadataMethod(
+            className: $reflection->getName(),
+            candidateMethods: ['getParameterStyles'],
+        );
+        if ($method === null) {
+            return [];
+        }
+
+        $styles = call_user_func($method);
+        if (!is_array($styles)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($styles as $propertyName => $entry) {
+            if (!is_string($propertyName) || !is_array($entry)) {
+                continue;
+            }
+            $style = $entry['style'] ?? null;
+            $explode = $entry['explode'] ?? null;
+            if (is_string($style) && is_bool($explode)) {
+                $result[$propertyName] = ['style' => $style, 'explode' => $explode];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolves the delimiter used to split a single string into array elements for the
+     * given OpenAPI style/explode, or null when no splitting applies (the value is
+     * already an array from Symfony query parsing, or the style is object-shaped).
+     *
+     * @return non-empty-string|null
+     */
+    private function resolveStyleDelimiter(?string $style, ?bool $explode): ?string
+    {
+        return match ($style) {
+            // simple (header default): comma-separated regardless of explode.
+            'simple' => ',',
+            'spaceDelimited' => ' ',
+            'pipeDelimited' => '|',
+            // form with explode=true arrives as repeated keys (Symfony already
+            // arrayifies); only the non-exploded form uses comma separation.
+            'form' => $explode === true ? null : ',',
+            // deepObject and unknown styles: no scalar splitting.
+            default => null,
+        };
     }
 
     /**
@@ -508,8 +670,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * Resolves the raw value for a single parameter from all request sources using pre-fetched data.
-     * Sets $wasProvided and $source by reference.
+     * Resolves the raw value for a single parameter from the request, honouring the
+     * declared OpenAPI source when one is known. Sets $wasProvided and $source by reference.
+     *
+     * Resolution modes:
+     *  - $sourceConstraint !== null: the property is bound to one OpenAPI source (path/
+     *    query/header/cookie) and is read ONLY from there — a same-named body field cannot
+     *    shadow it, and header/cookie are never consulted for any other property.
+     *  - otherwise (request-body / plain component-schema field): the permissive waterfall
+     *    path → JSON → query → files → form (preserves pre-existing behaviour). Header and
+     *    cookie are intentionally absent here so they only ever feed their bound params.
      *
      * @param array<string, mixed> $bodyData
      * @param array<string, mixed> $queryData
@@ -521,9 +691,21 @@ final class DtoDeserializer implements DtoDeserializerInterface
         array $bodyData,
         array $queryData,
         array $formData,
+        ?string $sourceConstraint,
         bool &$wasProvided,
         string &$source,
     ): mixed {
+        if ($sourceConstraint !== null) {
+            return $this->resolveFromBoundSource(
+                request: $request,
+                paramName: $paramName,
+                sourceConstraint: $sourceConstraint,
+                queryData: $queryData,
+                wasProvided: $wasProvided,
+                source: $source,
+            );
+        }
+
         // Path attributes carry router-verified values and must take highest precedence
         // to prevent a malicious request body from overriding trusted path parameters.
         // ($request is null for nested array deserialization — JSON body only.)
@@ -555,6 +737,58 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $wasProvided = true;
             $source = 'form';
             return $formData[$paramName];
+        }
+
+        $wasProvided = false;
+        $source = '';
+        return null;
+    }
+
+    /**
+     * Reads a parameter strictly from its declared OpenAPI source.
+     * ($request is null for nested array deserialization, where only body data exists,
+     * so path/query/header/cookie-bound params are simply absent.)
+     *
+     * @param array<string, mixed> $queryData
+     */
+    private function resolveFromBoundSource(
+        ?Request $request,
+        string $paramName,
+        string $sourceConstraint,
+        array $queryData,
+        bool &$wasProvided,
+        string &$source,
+    ): mixed {
+        if ($sourceConstraint === 'query') {
+            if (array_key_exists($paramName, $queryData)) {
+                $wasProvided = true;
+                $source = 'query';
+                return $queryData[$paramName];
+            }
+
+            $wasProvided = false;
+            $source = '';
+            return null;
+        }
+
+        if ($request !== null) {
+            if ($sourceConstraint === 'path' && $request->attributes->has($paramName)) {
+                $wasProvided = true;
+                $source = 'path';
+                return $request->attributes->get($paramName);
+            }
+
+            if ($sourceConstraint === 'header' && $request->headers->has($paramName)) {
+                $wasProvided = true;
+                $source = 'header';
+                return $request->headers->get($paramName);
+            }
+
+            if ($sourceConstraint === 'cookie' && $request->cookies->has($paramName)) {
+                $wasProvided = true;
+                $source = 'cookie';
+                return $request->cookies->get($paramName);
+            }
         }
 
         $wasProvided = false;
@@ -738,6 +972,30 @@ final class DtoDeserializer implements DtoDeserializerInterface
             reflection: $reflection,
             paramName: $paramName,
             suffixes: ['InQuery'],
+        );
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveInHeaderFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
+    {
+        return $this->resolveTrackingFlagPropertyName(
+            reflection: $reflection,
+            paramName: $paramName,
+            suffixes: ['InHeader'],
+        );
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveInCookieFlagPropertyName(ReflectionClass $reflection, string $paramName): ?string
+    {
+        return $this->resolveTrackingFlagPropertyName(
+            reflection: $reflection,
+            paramName: $paramName,
+            suffixes: ['InCookie'],
         );
     }
 

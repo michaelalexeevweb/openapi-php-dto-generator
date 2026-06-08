@@ -95,10 +95,84 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('$this->pageInQuery = true;', $content);
         $this->assertStringContainsString('$this->limitInQuery = $limit !== UnsetValue::UNSET;', $content);
         $this->assertStringNotContainsString('$this->limitInRequest = $limit !== UnsetValue::UNSET;', $content);
+        // Parameter-bound fields (path/query/header/cookie) are request transport, not
+        // response payload — they must not appear in toArray() output at all.
+        $this->assertStringNotContainsString("\$result['limit']", $content);
+        $this->assertStringNotContainsString("\$result['userId']", $content);
+        $this->assertStringContainsString("\$sources['limit'] = 'query';", $content);
+        $this->assertStringContainsString("\$sources['userId'] = 'path';", $content);
+    }
+
+    public function testParameterStyleMetadataIsEmitted(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/parameter-style.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'StyleNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/SearchGetQueryParams.php');
+
+        $this->assertStringContainsString('public static function getParameterStyles(): array', $content);
+        $this->assertStringContainsString("\$styles['tags'] = ['style' => 'form', 'explode' => false];", $content);
         $this->assertStringContainsString(
-            'if ($this->limitInRequest || $this->limitInPath || $this->limitInQuery) {',
+            "\$styles['codes'] = ['style' => 'spaceDelimited', 'explode' => false];",
             $content,
         );
+        $this->assertStringContainsString("\$styles['ids'] = ['style' => 'pipeDelimited', 'explode' => false];", $content);
+        // explode defaults to true for the form style when omitted.
+        $this->assertStringContainsString("\$styles['exploded'] = ['style' => 'form', 'explode' => true];", $content);
+    }
+
+    public function testGeneratesFromJsonSpecFile(): void
+    {
+        $json = json_encode([
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'J', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Widget' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $specFile = $this->outputDirectory . '/openapi.json';
+        file_put_contents($specFile, $json);
+
+        $this->generator->generateFromFile($specFile, $this->outputDirectory, 'JsonSpecNamespace');
+
+        $widget = $this->outputDirectory . '/Widget.php';
+        $this->assertFileExists($widget);
+        $content = (string)file_get_contents($widget);
+        $this->assertStringContainsString('class Widget', $content);
+        $this->assertStringContainsString('private readonly int $id', $content);
+    }
+
+    public function testInvalidJsonSpecThrowsClearError(): void
+    {
+        $specFile = $this->outputDirectory . '/broken.json';
+        file_put_contents($specFile, '{"openapi":"3.0.3",');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid JSON in');
+
+        $this->generator->generateFromFile($specFile, $this->outputDirectory, 'BrokenNamespace');
+    }
+
+    public function testJsonDistSuffixTakesJsonPath(): void
+    {
+        // openapi.json.dist must be parsed as JSON (strict errors), not silently as YAML.
+        $specFile = $this->outputDirectory . '/openapi.json.dist';
+        file_put_contents($specFile, '{"openapi":"3.0.3",');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid JSON in');
+
+        $this->generator->generateFromFile($specFile, $this->outputDirectory, 'DistNamespace');
     }
 
     public function testRequestBodyPostGeneration(): void

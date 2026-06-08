@@ -49,12 +49,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
+     *     isParameter: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
-     *     inQueryFlagGetter: string|null
+     *     inQueryFlagGetter: string|null,
+     *     inHeaderFlagGetter: string|null,
+     *     inCookieFlagGetter: string|null
      *   }>,
-     *   hasWriteOnly: bool,
+     *   hasExcludedFromOutput: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }>
@@ -144,7 +147,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         // Seed the cycle guard with this root so a self-reference in its own payload is caught.
-        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
+        return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
     }
 
     /**
@@ -169,22 +172,24 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return $this->applyWriteOnlyFilter($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
+        return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
     }
 
     /**
      * @param array<string, mixed> $normalized
      * @return array<string, mixed>
      */
-    private function applyWriteOnlyFilter(object $dto, array $normalized): array
+    private function applyOutputExclusions(object $dto, array $normalized): array
     {
         $meta = $this->getClassMeta($dto);
-        if (!$meta['hasWriteOnly']) {
+        if (!$meta['hasExcludedFromOutput']) {
             return $normalized;
         }
 
         foreach ($meta['getters'] as $getter) {
-            if ($getter['writeOnly']) {
+            // writeOnly fields and OpenAPI parameter-bound fields (path/query/header/
+            // cookie) are request-only — never part of the serialized response payload.
+            if ($getter['writeOnly'] || $getter['isParameter']) {
                 unset($normalized[$getter['outputName']]);
             }
         }
@@ -344,14 +349,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     /**
      * Returns whether the field backing this getter was provided in the request, based
-     * on the generated inRequest/inPath/inQuery flags. When no usable flag getter exists
-     * (e.g. the public-getter fallback path) the field is treated as provided so it is
-     * still validated.
+     * on the generated inRequest/inPath/inQuery/inHeader/inCookie flags. When no usable
+     * flag getter exists (e.g. the public-getter fallback path) the field is treated as
+     * provided so it is still validated.
      *
      * @param array{
      *   inRequestFlagGetter: string|null,
      *   inPathFlagGetter: string|null,
      *   inQueryFlagGetter: string|null,
+     *   inHeaderFlagGetter?: string|null,
+     *   inCookieFlagGetter?: string|null,
      *   ...
      * } $getterMeta
      */
@@ -361,6 +368,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $getterMeta['inRequestFlagGetter'],
             $getterMeta['inPathFlagGetter'],
             $getterMeta['inQueryFlagGetter'],
+            $getterMeta['inHeaderFlagGetter'] ?? null,
+            $getterMeta['inCookieFlagGetter'] ?? null,
         ];
 
         $sawUsableFlag = false;
@@ -404,7 +413,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 continue;
             }
 
-            if ($getterMeta['writeOnly']) {
+            if ($getterMeta['writeOnly'] || $getterMeta['isParameter']) {
                 continue;
             }
 
@@ -530,7 +539,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     // Strip write-only fields of the nested DTO too (mirrors the root path in
                     // tryFastArray). Generated toArray() already omits them, so this is a
                     // belt-and-suspenders guard against an inconsistent hand-written toArray().
-                    return $this->applyWriteOnlyFilter($value, $this->normalizeArrayPayload($arrayValue, $visited));
+                    return $this->applyOutputExclusions($value, $this->normalizeArrayPayload($arrayValue, $visited));
                 }
             } catch (LogicException $e) {
                 if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
@@ -809,12 +818,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
+     *     isParameter: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
-     *     inQueryFlagGetter: string|null
+     *     inQueryFlagGetter: string|null,
+     *     inHeaderFlagGetter: string|null,
+     *     inCookieFlagGetter: string|null
      *   }>,
-     *   hasWriteOnly: bool,
+     *   hasExcludedFromOutput: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }
@@ -845,12 +857,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
+     *     isParameter: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
-     *     inQueryFlagGetter: string|null
+     *     inQueryFlagGetter: string|null,
+     *     inHeaderFlagGetter: string|null,
+     *     inCookieFlagGetter: string|null
      *   }>,
-     *   hasWriteOnly: bool,
+     *   hasExcludedFromOutput: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }|null
@@ -896,6 +911,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
             $metadataArr = is_array($metadata) ? $metadata : [];
             $writeOnly = ($metadataArr['writeOnly'] ?? false) === true;
+            $isParameter = ($metadataArr['isParameter'] ?? false) === true;
 
             // The array item type is carried by the normalization map (reflection-free) for any
             // DTO generated by this version — presence of the key means the map is authoritative.
@@ -914,10 +930,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'nonNullTypeNames' => array_values(array_filter($typeNames, static fn(string $t): bool => $t !== 'null')),
                 'arrayItemTypeNames' => $arrayItemTypeNames,
                 'writeOnly' => $writeOnly,
+                'isParameter' => $isParameter,
                 'required' => ($metadataArr['required'] ?? false) === true,
                 'inRequestFlagGetter' => $this->flagGetterName($metadataArr, 'inRequestFlagGetter'),
                 'inPathFlagGetter' => $this->flagGetterName($metadataArr, 'inPathFlagGetter'),
                 'inQueryFlagGetter' => $this->flagGetterName($metadataArr, 'inQueryFlagGetter'),
+                'inHeaderFlagGetter' => $this->flagGetterName($metadataArr, 'inHeaderFlagGetter'),
+                'inCookieFlagGetter' => $this->flagGetterName($metadataArr, 'inCookieFlagGetter'),
             ];
         }
 
@@ -925,17 +944,17 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        $hasWriteOnly = false;
+        $hasExcludedFromOutput = false;
         foreach ($getters as $getter) {
-            if ($getter['writeOnly']) {
-                $hasWriteOnly = true;
+            if ($getter['writeOnly'] || $getter['isParameter']) {
+                $hasExcludedFromOutput = true;
                 break;
             }
         }
 
         return [
             'getters' => $getters,
-            'hasWriteOnly' => $hasWriteOnly,
+            'hasExcludedFromOutput' => $hasExcludedFromOutput,
             'aliasesByProperty' => $aliasesByProperty,
             'constraintsByField' => $constraintsByField,
         ];
@@ -952,12 +971,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     nonNullTypeNames: list<string>,
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
+     *     isParameter: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
-     *     inQueryFlagGetter: string|null
+     *     inQueryFlagGetter: string|null,
+     *     inHeaderFlagGetter: string|null,
+     *     inCookieFlagGetter: string|null
      *   }>,
-     *   hasWriteOnly: bool,
+     *   hasExcludedFromOutput: bool,
      *   aliasesByProperty: array<string, string>,
      *   constraintsByField: array<string, array<string, mixed>>
      * }
@@ -988,19 +1010,22 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'nonNullTypeNames' => ['mixed'],
                 'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
                 'writeOnly' => false,
+                'isParameter' => false,
                 // No normalization map → no provenance metadata. Treat every getter as
                 // required so validation never silently skips a field on this fallback path.
                 'required' => true,
                 'inRequestFlagGetter' => null,
                 'inPathFlagGetter' => null,
                 'inQueryFlagGetter' => null,
+                'inHeaderFlagGetter' => null,
+                'inCookieFlagGetter' => null,
             ];
         }
 
         return [
             'getters' => $getters,
             // Public-getter fallback never marks writeOnly, so the filter is always a no-op.
-            'hasWriteOnly' => false,
+            'hasExcludedFromOutput' => false,
             'aliasesByProperty' => $aliasesByProperty,
             'constraintsByField' => $constraintsByField,
         ];

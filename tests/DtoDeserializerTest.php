@@ -323,6 +323,124 @@ final class DtoDeserializerTest extends TestCase
         $this->assertFalse($dto->isLimitInQuery());
     }
 
+    public function testDeserializeReadsHeaderAndCookieBoundParams(): void
+    {
+        // token → header, session → cookie, page → query (per getParameterSources()).
+        $request = new Request(
+            query: ['page' => '5'],
+            request: [],
+            attributes: [],
+            cookies: ['session' => 'sess-1'],
+            files: [],
+            server: ['HTTP_TOKEN' => 'tok-1'],
+        );
+
+        $dto = $this->deserializer->deserialize($request, SourceBoundDto::class);
+
+        $this->assertSame('tok-1', $dto->getToken());
+        $this->assertSame('sess-1', $dto->getSession());
+        $this->assertSame(5, $dto->getPage());
+        $this->assertTrue($dto->isTokenInHeader());
+        $this->assertTrue($dto->isSessionInCookie());
+        $this->assertTrue($dto->isPageInQuery());
+        $this->assertFalse($dto->isTokenInQuery());
+    }
+
+    public function testHeaderBoundParamIsNotSatisfiedByBody(): void
+    {
+        // token is bound to the header source; supplying it in the JSON body must NOT
+        // satisfy it — the missing header surfaces as a required-parameter error.
+        $request = new Request(
+            query: ['page' => '5'],
+            request: [],
+            attributes: [],
+            cookies: ['session' => 'sess-1'],
+            files: [],
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"token":"from-body"}',
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "token" not found in request');
+
+        $this->deserializer->deserialize($request, SourceBoundDto::class);
+    }
+
+    public function testCookieBoundParamIsNotSatisfiedByQuery(): void
+    {
+        // session is bound to the cookie source; a same-named query param must not shadow it.
+        $request = new Request(
+            query: ['page' => '5', 'session' => 'from-query'],
+            request: [],
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: ['HTTP_TOKEN' => 'tok-1'],
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "session" not found in request');
+
+        $this->deserializer->deserialize($request, SourceBoundDto::class);
+    }
+
+    public function testDeserializeSplitsDelimitedArrayParamsByStyle(): void
+    {
+        // csv: form/explode=false (comma), spaced: spaceDelimited, piped: pipeDelimited,
+        // all query; headerList: header/simple (comma); exploded: form/explode=true so it
+        // arrives as a repeated-key array from Symfony and must NOT be re-split.
+        $request = new Request(
+            query: [
+                'csv' => 'a,b,c',
+                'spaced' => 'x y z',
+                'piped' => '1|2|3',
+                'exploded' => ['p', 'q'],
+            ],
+            request: [],
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: ['HTTP_HEADERLIST' => 'r,s,t'],
+        );
+
+        $dto = $this->deserializer->deserialize($request, StyledArrayDto::class);
+
+        $this->assertSame(['a', 'b', 'c'], $dto->getCsv());
+        $this->assertSame(['x', 'y', 'z'], $dto->getSpaced());
+        $this->assertSame(['1', '2', '3'], $dto->getPiped());
+        $this->assertSame(['r', 's', 't'], $dto->getHeaderList());
+        $this->assertSame(['p', 'q'], $dto->getExploded());
+    }
+
+    public function testDeserializeSplitsSingleElementDelimitedArray(): void
+    {
+        // A value with no delimiter still becomes a single-element array.
+        $request = new Request(
+            query: ['csv' => 'solo', 'spaced' => 'one', 'piped' => 'only', 'exploded' => ['z']],
+            request: [],
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: ['HTTP_HEADERLIST' => 'alone'],
+        );
+
+        $dto = $this->deserializer->deserialize($request, StyledArrayDto::class);
+
+        $this->assertSame(['solo'], $dto->getCsv());
+        $this->assertSame(['alone'], $dto->getHeaderList());
+    }
+
+    public function testDeserializeTrimsWhitespaceInDelimitedNumericArray(): void
+    {
+        // "1, 2, 3" (form/explode=false) → whitespace around the comma is insignificant for
+        // int items; the strict int cast must still accept each element.
+        $request = new Request(query: ['nums' => '1, 2, 3']);
+
+        $dto = $this->deserializer->deserialize($request, StyledIntArrayDto::class);
+
+        $this->assertSame([1, 2, 3], $dto->getNums());
+    }
+
     public function testDeserializeUsesPHPDefaultForMissingNullableField(): void
     {
         $request = new Request(['page' => '5'], [], ['userId' => '10'], [], [], []);
@@ -2010,5 +2128,191 @@ final class Oas31NullableDto
         return [
             'name' => ['type' => ['string', 'null']],
         ];
+    }
+}
+
+/**
+ * Mirrors generated output for a DTO whose properties are bound to explicit OpenAPI
+ * sources via getParameterSources(): token→header, session→cookie, page→query.
+ */
+final class SourceBoundDto
+{
+    private bool $tokenInHeader = false;
+    private bool $tokenInQuery = false;
+    private bool $tokenInRequest = false;
+    private bool $sessionInCookie = false;
+    private bool $sessionInRequest = false;
+    private bool $pageInQuery = false;
+    private bool $pageInRequest = false;
+
+    public function __construct(
+        private readonly string $token,
+        private readonly string $session,
+        private readonly int $page,
+    ) {
+    }
+
+    public function getToken(): string
+    {
+        return $this->token;
+    }
+
+    public function getSession(): string
+    {
+        return $this->session;
+    }
+
+    public function getPage(): int
+    {
+        return $this->page;
+    }
+
+    public function isTokenInHeader(): bool
+    {
+        return $this->tokenInHeader;
+    }
+
+    public function isTokenInQuery(): bool
+    {
+        return $this->tokenInQuery;
+    }
+
+    public function isSessionInCookie(): bool
+    {
+        return $this->sessionInCookie;
+    }
+
+    public function isPageInQuery(): bool
+    {
+        return $this->pageInQuery;
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return [
+            'token' => 'header',
+            'session' => 'cookie',
+            'page' => 'query',
+        ];
+    }
+}
+
+final class StyledArrayDto
+{
+    /** @var array<string> */
+    private readonly array $csv;
+    /** @var array<string> */
+    private readonly array $spaced;
+    /** @var array<string> */
+    private readonly array $piped;
+    /** @var array<string> */
+    private readonly array $headerList;
+    /** @var array<string> */
+    private readonly array $exploded;
+
+    /**
+     * @param array<string> $csv
+     * @param array<string> $spaced
+     * @param array<string> $piped
+     * @param array<string> $headerList
+     * @param array<string> $exploded
+     */
+    public function __construct(
+        array $csv,
+        array $spaced,
+        array $piped,
+        array $headerList,
+        array $exploded,
+    ) {
+        $this->csv = $csv;
+        $this->spaced = $spaced;
+        $this->piped = $piped;
+        $this->headerList = $headerList;
+        $this->exploded = $exploded;
+    }
+
+    /** @return array<string> */
+    public function getCsv(): array
+    {
+        return $this->csv;
+    }
+
+    /** @return array<string> */
+    public function getSpaced(): array
+    {
+        return $this->spaced;
+    }
+
+    /** @return array<string> */
+    public function getPiped(): array
+    {
+        return $this->piped;
+    }
+
+    /** @return array<string> */
+    public function getHeaderList(): array
+    {
+        return $this->headerList;
+    }
+
+    /** @return array<string> */
+    public function getExploded(): array
+    {
+        return $this->exploded;
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return [
+            'csv' => 'query',
+            'spaced' => 'query',
+            'piped' => 'query',
+            'headerList' => 'header',
+            'exploded' => 'query',
+        ];
+    }
+
+    /** @return array<string, array{style: string, explode: bool}> */
+    public static function getParameterStyles(): array
+    {
+        return [
+            'csv' => ['style' => 'form', 'explode' => false],
+            'spaced' => ['style' => 'spaceDelimited', 'explode' => false],
+            'piped' => ['style' => 'pipeDelimited', 'explode' => false],
+            'headerList' => ['style' => 'simple', 'explode' => false],
+            'exploded' => ['style' => 'form', 'explode' => true],
+        ];
+    }
+}
+
+final class StyledIntArrayDto
+{
+    /** @var array<int> */
+    private readonly array $nums;
+
+    /** @param array<int> $nums */
+    public function __construct(array $nums)
+    {
+        $this->nums = $nums;
+    }
+
+    /** @return array<int> */
+    public function getNums(): array
+    {
+        return $this->nums;
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return ['nums' => 'query'];
+    }
+
+    /** @return array<string, array{style: string, explode: bool}> */
+    public static function getParameterStyles(): array
+    {
+        return ['nums' => ['style' => 'form', 'explode' => false]];
     }
 }

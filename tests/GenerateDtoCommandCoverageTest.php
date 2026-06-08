@@ -813,6 +813,11 @@ final class GenerateDtoCommandCoverageTest extends TestCase
 
         $this->assertStringContainsString('private readonly string $id', $content);
         $this->assertStringContainsString('$verbose', $content);
-        $this->assertStringNotContainsString('ignoredHeader', $content);
+        // Header parameters are now supported and bound to the 'header' source.
+        $this->assertStringContainsString('$ignoredHeader', $content);
+        $this->assertStringContainsString('public function isIgnoredHeaderInHeader(): bool', $content);
+        $this->assertStringContainsString("\$sources['ignoredHeader'] = 'header';", $content);
+        $this->assertStringContainsString("\$sources['id'] = 'path';", $content);
+        $this->assertStringContainsString("\$sources['verbose'] = 'query';", $content);
     }
 }

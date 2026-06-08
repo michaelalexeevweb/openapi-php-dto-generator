@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: Parameter sources (path/query/header/cookie)
+  version: 1.0.0
+paths:
+  /items/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: token
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: sid
+          in: cookie
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+components:
+  schemas: { }

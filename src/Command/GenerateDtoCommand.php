@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command;
 
+use JsonException;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -28,6 +29,10 @@ use Twig\Loader\FilesystemLoader;
  *   temporalFormat?: string|null,
  *   inPath?: bool,
  *   inQuery?: bool,
+ *   inHeader?: bool,
+ *   inCookie?: bool,
+ *   parameterStyle?: string|null,
+ *   parameterExplode?: bool|null,
  *   constraints?: array<string, mixed>,
  *   readOnly?: bool,
  *   writeOnly?: bool,
@@ -220,7 +225,7 @@ final class GenerateDtoCommand extends Command
             throw new RuntimeException(sprintf('File not found: %s', $filePath));
         }
 
-        $data = Yaml::parseFile($filePath);
+        $data = $this->parseSpecFile($filePath);
         if (!is_array($data)) {
             throw new RuntimeException('OpenAPI root must be an object/array.');
         }
@@ -239,6 +244,37 @@ final class GenerateDtoCommand extends Command
         $this->scanExternalSchemaRefs(node: $data, currentSourceFile: $realFilePath);
 
         return $this->finalizeGeneration();
+    }
+
+    /**
+     * Parses an OpenAPI document from disk. A `.json` spec is decoded with json_decode
+     * for strict, fast parsing and clear JSON error messages; every other extension is
+     * parsed as YAML (which also accepts JSON, so unknown extensions still work).
+     */
+    private function parseSpecFile(string $filePath): mixed
+    {
+        // Strip common env/sample suffixes so `openapi.json.dist` still takes the JSON path.
+        $effectivePath = preg_replace('/\.(dist|example|local|sample)$/i', '', $filePath) ?? $filePath;
+
+        if (strtolower(pathinfo($effectivePath, PATHINFO_EXTENSION)) === 'json') {
+            $contents = file_get_contents($filePath);
+            if ($contents === false) {
+                throw new RuntimeException(sprintf('Cannot read file: %s', $filePath));
+            }
+
+            try {
+                // Depth well above JSON's default 512: deeply nested (but valid) specs must
+                // not be misreported as malformed JSON.
+                return json_decode($contents, associative: true, depth: 4096, flags: JSON_THROW_ON_ERROR);
+            } catch (JsonException $e) {
+                throw new RuntimeException(
+                    sprintf('Invalid JSON in %s: %s', $filePath, $e->getMessage()),
+                    previous: $e,
+                );
+            }
+        }
+
+        return Yaml::parseFile($filePath);
     }
 
     /**
@@ -792,7 +828,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $this->loadedExternalFiles[$filePath] = true;
-        $data = Yaml::parseFile($filePath);
+        $data = $this->parseSpecFile($filePath);
         if (!is_array($data)) {
             throw new RuntimeException(sprintf('OpenAPI root must be an object/array in %s.', $filePath));
         }
@@ -1220,6 +1256,14 @@ final class GenerateDtoCommand extends Command
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
             $isInPath = $paramIn === 'path';
             $isInQuery = $paramIn === 'query';
+            $isInHeader = $paramIn === 'header';
+            $isInCookie = $paramIn === 'cookie';
+            $parameterStyle = is_string($propertySchema['x-parameter-style'] ?? null)
+                ? $propertySchema['x-parameter-style']
+                : null;
+            $parameterExplode = is_bool($propertySchema['x-parameter-explode'] ?? null)
+                ? $propertySchema['x-parameter-explode']
+                : null;
 
             $normalizedName = $this->normalizePropertyName($openApiPropertyName);
             $alreadyMappedOpenApiName = $normalizedToOpenApiName[$normalizedName] ?? null;
@@ -1246,6 +1290,10 @@ final class GenerateDtoCommand extends Command
                 'temporalFormat' => $temporalFormat,
                 'inPath' => $isInPath,
                 'inQuery' => $isInQuery,
+                'inHeader' => $isInHeader,
+                'inCookie' => $isInCookie,
+                'parameterStyle' => $parameterStyle,
+                'parameterExplode' => $parameterExplode,
                 'constraints' => $constraints,
                 'readOnly' => (bool)($propertySchema['readOnly'] ?? false),
                 'writeOnly' => (bool)($propertySchema['writeOnly'] ?? false),
@@ -2259,6 +2307,7 @@ final class GenerateDtoCommand extends Command
                 'extends' => null,
                 'constraintAssignments' => [],
                 'aliasAssignments' => [],
+                'parameterSourceAssignments' => [],
             ]);
         }
 
@@ -2394,6 +2443,8 @@ final class GenerateDtoCommand extends Command
 
         $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
         $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
+        $parameterSourceAssignments = $this->resolveParameterSourceAssignments($ownProperties);
+        $parameterStyleAssignments = $this->resolveParameterStyleAssignments($ownProperties);
 
         $needsUnsetValueImport = array_any(
             $constructorParams,
@@ -2422,12 +2473,14 @@ final class GenerateDtoCommand extends Command
             'extends' => $extends,
             'constraintAssignments' => $constraintAssignments,
             'aliasAssignments' => $aliasAssignments,
+            'parameterSourceAssignments' => $parameterSourceAssignments,
+            'parameterStyleAssignments' => $parameterStyleAssignments,
         ]);
     }
 
     /**
      * @param SchemaProperty $property
-     * @return array{description: ?string, example: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, isArray: bool, usesUnsetSentinel: bool}
+     * @return array{description: ?string, example: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, isArray: bool, usesUnsetSentinel: bool}
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
     {
@@ -2467,6 +2520,8 @@ final class GenerateDtoCommand extends Command
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
+            'inHeaderFlagName' => $this->normalizeInHeaderFlagName($property['name']),
+            'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
             'isArray' => $isArray,
             'usesUnsetSentinel' => !$property['required'] && $property['default'] === null,
         ];
@@ -2566,7 +2621,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, isParameter: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -2604,7 +2659,9 @@ final class GenerateDtoCommand extends Command
         $usesUnsetSentinel = !$property['required'] && $property['default'] === null;
         $needsInRequestGuard = !$property['required']
             && !($property['inPath'] ?? false)
-            && !($property['inQuery'] ?? false);
+            && !($property['inQuery'] ?? false)
+            && !($property['inHeader'] ?? false)
+            && !($property['inCookie'] ?? false);
 
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
@@ -2639,6 +2696,8 @@ final class GenerateDtoCommand extends Command
             'requiredLiteral' => $property['required'] ? 'true' : 'false',
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
+            'inHeaderFlagName' => $this->normalizeInHeaderFlagName($property['name']),
+            'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'presenceFlagName' => $this->resolvePresenceFlagName($property),
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
@@ -2650,6 +2709,12 @@ final class GenerateDtoCommand extends Command
             'readOnly' => $property['readOnly'] ?? false,
             'writeOnly' => $property['writeOnly'] ?? false,
             'deprecated' => $property['deprecated'] ?? false,
+            // A property bound to an OpenAPI parameter source (path/query/header/cookie)
+            // is request transport, not response payload — excluded from serialization.
+            'isParameter' => ($property['inPath'] ?? false)
+                || ($property['inQuery'] ?? false)
+                || ($property['inHeader'] ?? false)
+                || ($property['inCookie'] ?? false),
         ];
     }
 
@@ -2664,6 +2729,14 @@ final class GenerateDtoCommand extends Command
 
         if (($property['inQuery'] ?? false) === true) {
             return $this->normalizeInQueryFlagName($property['name']);
+        }
+
+        if (($property['inHeader'] ?? false) === true) {
+            return $this->normalizeInHeaderFlagName($property['name']);
+        }
+
+        if (($property['inCookie'] ?? false) === true) {
+            return $this->normalizeInCookieFlagName($property['name']);
         }
 
         return $this->normalizeInRequestFlagName($property['name']);
@@ -2700,6 +2773,77 @@ final class GenerateDtoCommand extends Command
             'propertyName' => str_replace(['\\', "'"], ['\\\\', "\\'"], $discriminator['propertyName']),
             'mappingEntries' => $mappingEntries,
         ];
+    }
+
+    /**
+     * Builds the property → request-source map emitted as getParameterSources().
+     * Only properties bound to an explicit OpenAPI `in:` (path/query/header/cookie)
+     * appear; body properties are omitted and fall back to the body waterfall.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, array{name: string, source: string}>
+     */
+    private function resolveParameterSourceAssignments(array $properties): array
+    {
+        $result = [];
+
+        foreach ($properties as $property) {
+            $source = match (true) {
+                ($property['inPath'] ?? false) === true => 'path',
+                ($property['inQuery'] ?? false) === true => 'query',
+                ($property['inHeader'] ?? false) === true => 'header',
+                ($property['inCookie'] ?? false) === true => 'cookie',
+                default => null,
+            };
+
+            if ($source === null) {
+                continue;
+            }
+
+            $result[] = [
+                'name' => $property['name'],
+                'source' => $source,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Builds the property → {style, explode} map emitted as getParameterStyles().
+     * Only parameter-bound properties (path/query/header/cookie) carry serialization
+     * style; the deserializer uses it to split delimited array values.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, array{name: string, style: string, explode: string}>
+     */
+    private function resolveParameterStyleAssignments(array $properties): array
+    {
+        $result = [];
+
+        foreach ($properties as $property) {
+            $isParameter = ($property['inPath'] ?? false) === true
+                || ($property['inQuery'] ?? false) === true
+                || ($property['inHeader'] ?? false) === true
+                || ($property['inCookie'] ?? false) === true;
+            if (!$isParameter) {
+                continue;
+            }
+
+            $style = $property['parameterStyle'] ?? null;
+            $explode = $property['parameterExplode'] ?? null;
+            if (!is_string($style) || !is_bool($explode)) {
+                continue;
+            }
+
+            $result[] = [
+                'name' => $property['name'],
+                'style' => $style,
+                'explode' => $explode ? 'true' : 'false',
+            ];
+        }
+
+        return $result;
     }
 
     /**
@@ -3393,6 +3537,16 @@ final class GenerateDtoCommand extends Command
         return $this->normalizeTrackingFlagName($propertyName, 'InQuery');
     }
 
+    private function normalizeInHeaderFlagName(string $propertyName): string
+    {
+        return $this->normalizeTrackingFlagName($propertyName, 'InHeader');
+    }
+
+    private function normalizeInCookieFlagName(string $propertyName): string
+    {
+        return $this->normalizeTrackingFlagName($propertyName, 'InCookie');
+    }
+
     private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
     {
         $splitResult = preg_split('/[^A-Za-z0-9]+/', $propertyName);
@@ -3970,7 +4124,7 @@ final class GenerateDtoCommand extends Command
             }
 
             $paramIn = $parameter['in'] ?? null;
-            if ($paramIn === 'path' || $paramIn === 'query') {
+            if (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
                 $filtered[] = $parameter;
             }
         }
@@ -4005,8 +4159,13 @@ final class GenerateDtoCommand extends Command
             }
 
             $paramIn = $parameter['in'] ?? null;
-            if ($paramIn === 'path' || $paramIn === 'query') {
+            if (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
                 $schema['x-parameter-in'] = $paramIn;
+                $schema['x-parameter-style'] = $this->resolveParameterStyle($parameter, $paramIn);
+                $schema['x-parameter-explode'] = $this->resolveParameterExplode(
+                    $parameter,
+                    $schema['x-parameter-style'],
+                );
             }
 
             $properties[$name] = $schema;
@@ -4025,6 +4184,37 @@ final class GenerateDtoCommand extends Command
             'properties' => $properties,
             'required' => array_values(array_unique($required)),
         ];
+    }
+
+    /**
+     * Resolves the OpenAPI serialization `style` for a parameter, applying the
+     * spec defaults when absent: `form` for query/cookie, `simple` for path/header.
+     *
+     * @param array<string, mixed> $parameter
+     */
+    private function resolveParameterStyle(array $parameter, string $paramIn): string
+    {
+        $style = $parameter['style'] ?? null;
+        if (is_string($style) && $style !== '') {
+            return $style;
+        }
+
+        return in_array($paramIn, ['query', 'cookie'], true) ? 'form' : 'simple';
+    }
+
+    /**
+     * Resolves the OpenAPI `explode` flag. The spec default is `true` only when the
+     * style is `form`, and `false` for every other style.
+     *
+     * @param array<string, mixed> $parameter
+     */
+    private function resolveParameterExplode(array $parameter, string $style): bool
+    {
+        if (array_key_exists('explode', $parameter)) {
+            return $this->toBoolean($parameter['explode']);
+        }
+
+        return $style === 'form';
     }
 
     private function toBoolean(mixed $value): bool

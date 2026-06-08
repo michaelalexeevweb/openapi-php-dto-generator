@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: Parameter serialization style/explode
+  version: 1.0.0
+paths:
+  /search:
+    get:
+      parameters:
+        - name: tags
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: codes
+          in: query
+          style: spaceDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: ids
+          in: query
+          style: pipeDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: exploded
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: OK
+components:
+  schemas: { }

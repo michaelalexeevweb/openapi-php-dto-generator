@@ -542,4 +542,115 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $valid = $normalizer->validate(new $cls('locked', ['a' => 1], tupleField: ['ok', 7]));
         $this->assertNotContains('field "tupleField".0 must be of type string', $valid);
     }
+
+    public function testHeaderAndCookieParamsAreDeserializedThroughGeneratedDto(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/source-params.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapSrc');
+
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        $this->assertNotEmpty($queryParamFiles);
+        foreach ($queryParamFiles === false ? [] : $queryParamFiles as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GapSrc\\' . basename((string)$queryParamFiles[0], '.php');
+
+        // The generator emitted the per-source binding map.
+        $this->assertSame(
+            ['id' => 'path', 'page' => 'query', 'token' => 'header', 'sid' => 'cookie'],
+            $cls::getParameterSources(),
+        );
+
+        // Each value arrives only from its declared source.
+        $request = new Request(
+            query: ['page' => '5'],
+            request: [],
+            attributes: ['id' => 'abc'],
+            cookies: ['sid' => 'cookie-1'],
+            files: [],
+            server: ['HTTP_TOKEN' => 'tok-1'],
+        );
+
+        $dto = new DtoDeserializer()->deserialize($request, $cls);
+
+        $this->assertSame('abc', $dto->getId());
+        $this->assertSame(5, $dto->getPage());
+        $this->assertSame('tok-1', $dto->getToken());
+        $this->assertSame('cookie-1', $dto->getSid());
+        $this->assertTrue($dto->isIdInPath());
+        $this->assertTrue($dto->isPageInQuery());
+        $this->assertTrue($dto->isTokenInHeader());
+        $this->assertTrue($dto->isSidInCookie());
+
+        // Parameter-bound fields are request transport, never serialized into the
+        // payload — neither via the DTO's own toArray() nor through the normalizer.
+        $this->assertSame([], $dto->toArray());
+        $this->assertSame([], new DtoNormalizer()->toArray($dto));
+    }
+
+    public function testRequiredHeaderParamMissingThrowsThroughGeneratedDto(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/source-params.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapSrcMissing');
+
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        foreach ($queryParamFiles === false ? [] : $queryParamFiles as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GapSrcMissing\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+
+        // token is a required header; omitting the header must fail even though a
+        // same-named body field is present (strict source binding).
+        $request = new Request(
+            query: ['page' => '5'],
+            request: [],
+            attributes: ['id' => 'abc'],
+            cookies: [],
+            files: [],
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"token":"from-body"}',
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "token" not found in request');
+
+        new DtoDeserializer()->deserialize($request, $cls);
+    }
+
+    public function testDelimitedArrayParamsSplitByStyleThroughGeneratedDto(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/parameter-style.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GenStyle');
+
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        foreach ($queryParamFiles === false ? [] : $queryParamFiles as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenStyle\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+
+        // form/explode=false → comma, spaceDelimited → space, pipeDelimited → pipe,
+        // form/explode=true → arrives as a repeated-key array (no re-splitting).
+        $request = new Request(
+            query: [
+                'tags' => 'a,b,c',
+                'codes' => 'x y z',
+                'ids' => '1|2|3',
+                'exploded' => ['p', 'q'],
+            ],
+        );
+
+        /** @var object{getTags: callable, getCodes: callable, getIds: callable, getExploded: callable} $dto */
+        $dto = new DtoDeserializer()->deserialize($request, $cls);
+
+        $this->assertSame(['a', 'b', 'c'], $dto->getTags());
+        $this->assertSame(['x', 'y', 'z'], $dto->getCodes());
+        $this->assertSame(['1', '2', '3'], $dto->getIds());
+        $this->assertSame(['p', 'q'], $dto->getExploded());
+    }
 }

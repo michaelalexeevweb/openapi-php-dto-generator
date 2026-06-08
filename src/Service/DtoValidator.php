@@ -713,8 +713,13 @@ final class DtoValidator implements DtoValidatorInterface
             'date-time', 'datetime' => $this->isValidDateTimeFormat(value: $value),
             'time' => $this->isValidTimeFormat(value: $value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
+            'idn-email' => filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false,
             'uuid' => $this->isValidUuid(value: $value),
             'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
+            'iri' => $this->isValidIri(value: $value),
+            'duration' => $this->isValidDuration(value: $value),
+            'json-pointer' => $this->isValidJsonPointer(value: $value),
+            'regex' => $this->isValidRegexFormat(value: $value),
             'hostname' => filter_var($value, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false,
             'ipv4' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false,
             'ipv6' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false,
@@ -744,6 +749,52 @@ final class DtoValidator implements DtoValidatorInterface
             pattern: '/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/',
             subject: $value,
         ) === 1;
+    }
+
+    private function isValidIri(string $value): bool
+    {
+        // RFC 3987 absolute IRI: a scheme is required and no whitespace/control chars are
+        // allowed. FILTER_VALIDATE_URL rejects non-ASCII, so it cannot be reused for IRIs;
+        // stricter structural validation of the Unicode path is impractical here.
+        if ($value === '' || preg_match('/[\s\x00-\x1F\x7F]/u', $value) === 1) {
+            return false;
+        }
+
+        // A scheme alone ("a:") is not a usable IRI — require at least one char after it.
+        return preg_match('/^[a-zA-Z][a-zA-Z0-9+.\-]*:.+/', $value) === 1;
+    }
+
+    private function isValidDuration(string $value): bool
+    {
+        // ISO 8601 / RFC 3339 duration. The week form (PnW) is mutually exclusive with the
+        // Y/M/D/T components, so it is a separate alternative; otherwise at least one date
+        // or time component is required, and a "T" must be followed by a time component.
+        return preg_match(
+            pattern: '/^P(?:\d+W|(?=\d|T)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?)$/',
+            subject: $value,
+        ) === 1;
+    }
+
+    private function isValidJsonPointer(string $value): bool
+    {
+        // RFC 6901: the empty string (whole document) or one-or-more "/"-prefixed tokens.
+        // Inside a token "~" is an escape and must be followed by "0" or "1".
+        return preg_match('#^(/(?:[^/~]|~[01])*)*$#u', $value) === 1;
+    }
+
+    private function isValidRegexFormat(string $value): bool
+    {
+        // The value itself must be a compilable regular expression. preg_match returns
+        // false (not 0) when the pattern fails to compile. No `u` modifier: `format: regex`
+        // only asks whether the pattern compiles, and forcing UTF-8 would reject otherwise
+        // valid byte-oriented patterns.
+        $regex = '#' . str_replace('#', '\\#', $value) . '#';
+        set_error_handler(static fn(): bool => true);
+        try {
+            return preg_match($regex, '') !== false;
+        } finally {
+            restore_error_handler();
+        }
     }
 
     private function isValidUuid(string $value): bool

@@ -31,7 +31,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.1.14
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.2.0
 ```
 
 ## Requirements
@@ -94,7 +94,7 @@ Parameters:
 
 | Option | Alias | Required | Description |
 |---|---|---|---|
-| `--file` | `-f` | ✅ | Path to OpenAPI YAML spec file |
+| `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON) |
 | `--directory` | `-d` | ✅ | Output directory for generated DTOs |
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | Copy runtime services into this directory (`Common` by default) |

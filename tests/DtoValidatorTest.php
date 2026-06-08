@@ -273,6 +273,128 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must match format byte', $errors[0]);
     }
 
+    public function testFormatIdnEmail_acceptsUnicodeLocalPart(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'email',
+            value: 'jöhn@example.com',
+            constraints: ['format' => 'idn-email'],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatIdnEmail_rejectsGarbage(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'email',
+            value: 'not-an-email',
+            constraints: ['format' => 'idn-email'],
+        );
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format idn-email', $errors[0]);
+    }
+
+    public function testFormatIri_acceptsUnicodeUri(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'iri',
+            value: 'https://example.com/ümlaut/路径',
+            constraints: ['format' => 'iri'],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatIri_rejectsSchemelessOrWhitespace(): void
+    {
+        // 'a:' is a scheme with no body — not a usable IRI.
+        foreach (['no-scheme/path', 'http://has space.com', 'a:'] as $bad) {
+            $errors = $this->validator->validate(subject: 'iri', value: $bad, constraints: ['format' => 'iri']);
+            $this->assertNotEmpty($errors, "expected rejection for '{$bad}'");
+        }
+    }
+
+    public function testFormatDuration_acceptsIso8601(): void
+    {
+        foreach (['P3Y6M4DT12H30M5S', 'PT15M', 'P1W', 'P1D', 'PT0.5S'] as $good) {
+            $errors = $this->validator->validate(
+                subject: 'dur',
+                value: $good,
+                constraints: ['format' => 'duration'],
+            );
+            $this->assertSame([], $errors, "expected accept for '{$good}'");
+        }
+    }
+
+    public function testFormatDuration_rejectsInvalid(): void
+    {
+        // Last three: the week form (PnW) is mutually exclusive with Y/M/D/T components.
+        foreach (['P', 'PT', '3Y', '1H', 'P1S', 'P1W2D', 'P1W1Y', 'P1WT1H'] as $bad) {
+            $errors = $this->validator->validate(
+                subject: 'dur',
+                value: $bad,
+                constraints: ['format' => 'duration'],
+            );
+            $this->assertNotEmpty($errors, "expected reject for '{$bad}'");
+        }
+    }
+
+    public function testFormatJsonPointer_acceptsValidPointers(): void
+    {
+        foreach (['', '/foo', '/foo/0', '/a~1b', '/m~0n'] as $good) {
+            $errors = $this->validator->validate(
+                subject: 'ptr',
+                value: $good,
+                constraints: ['format' => 'json-pointer'],
+            );
+            $this->assertSame([], $errors, "expected accept for '{$good}'");
+        }
+    }
+
+    public function testFormatJsonPointer_rejectsMissingLeadingSlashAndBadEscape(): void
+    {
+        foreach (['foo', '/foo~', '/foo~2'] as $bad) {
+            $errors = $this->validator->validate(
+                subject: 'ptr',
+                value: $bad,
+                constraints: ['format' => 'json-pointer'],
+            );
+            $this->assertNotEmpty($errors, "expected reject for '{$bad}'");
+        }
+    }
+
+    public function testFormatRegex_acceptsCompilablePattern(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'pat',
+            value: '^[a-z]+\d{2,4}$',
+            constraints: ['format' => 'regex'],
+        );
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatRegex_rejectsUncompilablePattern(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'pat',
+            value: '([unclosed',
+            constraints: ['format' => 'regex'],
+        );
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('must match format regex', $errors[0]);
+    }
+
+    public function testFormatRegex_acceptsByteOrientedPattern(): void
+    {
+        // A pattern with a lone high byte (invalid UTF-8) but a compilable byte-oriented
+        // PCRE must be accepted — the validator must not force the `u` modifier.
+        $errors = $this->validator->validate(
+            subject: 'pat',
+            value: "a\xFFb",
+            constraints: ['format' => 'regex'],
+        );
+        $this->assertSame([], $errors);
+    }
+
     public function testFormatBinary_acceptsStringValue(): void
     {
         $errors = $this->validator->validate(

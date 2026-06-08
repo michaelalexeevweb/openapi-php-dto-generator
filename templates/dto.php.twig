@@ -66,10 +66,14 @@ interface {{ className }}
     private bool ${{ property.inRequestFlagName }} = false;
     private bool ${{ property.inPathFlagName }} = false;
     private bool ${{ property.inQueryFlagName }} = false;
+    private bool ${{ property.inHeaderFlagName }} = false;
+    private bool ${{ property.inCookieFlagName }} = false;
 {% else %}
     private bool ${{ property.inRequestFlagName }} = false;
     private bool ${{ property.inPathFlagName }} = false;
     private bool ${{ property.inQueryFlagName }} = false;
+    private bool ${{ property.inHeaderFlagName }} = false;
+    private bool ${{ property.inCookieFlagName }} = false;
 {% endif %}
 {% endfor %}
 {% if privateProperties is not empty %}
@@ -202,6 +206,16 @@ interface {{ className }}
         return $this->{{ property.inQueryFlagName }};
     }
 
+    public function is{{ property.nameSuffix }}InHeader(): bool
+    {
+        return $this->{{ property.inHeaderFlagName }};
+    }
+
+    public function is{{ property.nameSuffix }}InCookie(): bool
+    {
+        return $this->{{ property.inCookieFlagName }};
+    }
+
     public function is{{ property.nameSuffix }}InRequest(): bool
     {
         return $this->{{ property.inRequestFlagName }};
@@ -260,11 +274,11 @@ interface {{ className }}
     {
         $result = [];
 {% for property in methodProperties %}
-{% if not property.writeOnly %}
+{% if not property.writeOnly and not property.isParameter %}
 {% if property.requiredLiteral == 'true' %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% else %}
-        if ($this->{{ property.inRequestFlagName }} || $this->{{ property.inPathFlagName }} || $this->{{ property.inQueryFlagName }}) {
+        if ($this->{{ property.inRequestFlagName }}) {
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
         }
 {% endif %}
@@ -312,10 +326,13 @@ interface {{ className }}
                     'required' => {{ property.requiredLiteral }},
                     'inPathFlagGetter' => 'is{{ property.nameSuffix }}InPath',
                     'inQueryFlagGetter' => 'is{{ property.nameSuffix }}InQuery',
+                    'inHeaderFlagGetter' => 'is{{ property.nameSuffix }}InHeader',
+                    'inCookieFlagGetter' => 'is{{ property.nameSuffix }}InCookie',
                     'inRequestFlagGetter' => 'is{{ property.nameSuffix }}InRequest',
                     'constraints' => $constraints['{{ property.name }}'] ?? [],
                     'writeOnly' => {{ property.writeOnly ? 'true' : 'false' }},
                     'readOnly' => {{ property.readOnly ? 'true' : 'false' }},
+                    'isParameter' => {{ property.isParameter ? 'true' : 'false' }},
                     'arrayItemType' => '{{ property.docReturnType is not null ? property.docReturnType|replace({'\\':'\\\\','\'':'\\\''}) : '' }}',
                 ],
             ],
@@ -355,6 +372,49 @@ interface {{ className }}
 {% endfor %}
 
         return $constraints;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+{% if extends is not null %}
+        $sources = parent::getParameterSources();
+{% else %}
+        $sources = [];
+{% endif %}
+{% for assignment in parameterSourceAssignments %}
+        $sources['{{ assignment.name }}'] = '{{ assignment.source }}';
+{% endfor %}
+
+        return $sources;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+{% if extends is not null %}
+        $styles = parent::getParameterStyles();
+{% else %}
+        $styles = [];
+{% endif %}
+{% for assignment in parameterStyleAssignments %}
+        $styles['{{ assignment.name }}'] = ['style' => '{{ assignment.style }}', 'explode' => {{ assignment.explode }}];
+{% endfor %}
+
+        return $styles;
     }
 }
 {% endif %}
