@@ -1845,6 +1845,36 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('t.1', $errors[1]);
     }
 
+    public function testPrefixItems_withItemsSuffix_doesNotApplyItemsToPrefixIndices(): void
+    {
+        // JSON Schema 2020-12 tuple-with-rest: prefixItems covers [0,1]; items (boolean)
+        // applies only to index >= 2. The string/int at 0/1 must NOT be checked against
+        // the boolean items schema, and the boolean at index 2 must pass.
+        $errors = $this->validator->validate('t', ['hello', 42, true], [
+            'prefixItems' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+            ],
+            'items' => ['type' => 'boolean'],
+        ]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testPrefixItems_withItemsSuffix_validatesOnlySuffixIndices(): void
+    {
+        // Suffix element at index 2 violates the items (boolean) schema → exactly one error,
+        // and it must reference index 2, not the prefix positions.
+        $errors = $this->validator->validate('t', ['hello', 42, 'not-bool'], [
+            'prefixItems' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+            ],
+            'items' => ['type' => 'boolean'],
+        ]);
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('t.2', $errors[0]);
+    }
+
     // =========================================================================
     // Numeric formats: int32 / int64 range (GAP-3)
     // =========================================================================

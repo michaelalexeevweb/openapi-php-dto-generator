@@ -652,7 +652,18 @@ final class DtoValidator implements DtoValidatorInterface
 
         $itemConstraints = $constraints['items'] ?? null;
         if (is_array($itemConstraints) && $itemConstraints !== []) {
+            // Per JSON Schema 2020-12, `items` is a suffix validator: when `prefixItems` is
+            // also present it applies only to indices ≥ count(prefixItems). The prefix
+            // positions are validated by their own `prefixItems` schemas below.
+            $prefixCount = (array_key_exists('prefixItems', $constraints) && is_array($constraints['prefixItems']))
+                ? count($constraints['prefixItems'])
+                : 0;
+
             foreach ($value as $index => $itemValue) {
+                if (is_int($index) && $index < $prefixCount) {
+                    continue;
+                }
+
                 array_push(
                     $errors,
                     ...$this->validateConstraints(
