@@ -182,12 +182,16 @@ interface {{ className }}
             return null;
         }
 
-        return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
+{% endif %}
+{% if property.phpDateFormat == 'c' %}
+        return $this->{{ property.name }}->format('u') === '000000'
+            ? $this->{{ property.name }}->format('c')
+            : $this->{{ property.name }}->format('Y-m-d\TH:i:s.uP');
 {% else %}
         return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
 {% endif %}
 {% else %}
-{% if property.usesUnsetSentinel %}
+{% if property.getterUsesSentinel %}
         return $this->{{ property.name }} !== UnsetValue::UNSET ? $this->{{ property.name }} : null;
 {% else %}
         return $this->{{ property.name }};

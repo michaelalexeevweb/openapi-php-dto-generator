@@ -441,6 +441,17 @@ final class DtoDeserializerTest extends TestCase
         $this->assertSame([1, 2, 3], $dto->getNums());
     }
 
+    public function testDeserializeOptionalNonNullableNoDefaultReportsValidationError(): void
+    {
+        // foo is optional (isFooRequired() → false), non-nullable, no default. When absent
+        // the deserializer must surface a clear validation error rather than pushing null
+        // into newInstanceArgs() and triggering an opaque TypeError.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Optional parameter "foo" is non-nullable with no default value');
+
+        $this->deserializer->deserialize(new Request(), OptionalNonNullableNoDefaultDto::class);
+    }
+
     public function testDeserializeUsesPHPDefaultForMissingNullableField(): void
     {
         $request = new Request(['page' => '5'], [], ['userId' => '10'], [], [], []);
@@ -2284,6 +2295,19 @@ final class StyledArrayDto
             'headerList' => ['style' => 'simple', 'explode' => false],
             'exploded' => ['style' => 'form', 'explode' => true],
         ];
+    }
+}
+
+final class OptionalNonNullableNoDefaultDto
+{
+    public function __construct(
+        public readonly string $foo,
+    ) {
+    }
+
+    public static function isFooRequired(): bool
+    {
+        return false;
     }
 }
 

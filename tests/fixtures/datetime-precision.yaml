@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info:
+  title: Date-time sub-second precision
+  version: 1.0.0
+components:
+  schemas:
+    Moment:
+      type: object
+      required: [at]
+      properties:
+        at:
+          type: string
+          format: date-time

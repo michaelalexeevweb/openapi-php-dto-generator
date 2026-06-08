@@ -2636,7 +2636,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, isParameter: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, isParameter: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -2695,6 +2695,11 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        // Array fields are stored in a dedicated `?array` property (the constructor maps the
+        // UnsetValue sentinel to null), so their getter must NOT emit the sentinel guard —
+        // the property is never UnsetValue at read time. Non-array sentinel getters still do.
+        $getterUsesSentinel = $usesUnsetSentinel && $phpType !== 'array';
+
         return [
             'name' => $property['name'],
             'openApiName' => $property['openApiName'],
@@ -2721,6 +2726,7 @@ final class GenerateDtoCommand extends Command
             'arrayAdderItemNullable' => str_starts_with($this->resolveArrayItemPhpType($property['type']), '?'),
             'nullableArray' => $property['nullable'],
             'usesUnsetSentinel' => $usesUnsetSentinel,
+            'getterUsesSentinel' => $getterUsesSentinel,
             'readOnly' => $property['readOnly'] ?? false,
             'writeOnly' => $property['writeOnly'] ?? false,
             'deprecated' => $property['deprecated'] ?? false,

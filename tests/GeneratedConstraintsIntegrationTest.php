@@ -702,4 +702,33 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
         $this->assertTrue($provided->isScopeInQuery());
     }
+
+    public function testDateTimeSubSecondPrecisionRoundTrips(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/datetime-precision.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GenMoment');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenMoment\\Moment';
+
+        // Microseconds are preserved on output (not silently dropped by 'c').
+        /** @var object{getAt: callable} $withMicros */
+        $withMicros = new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"at":"2026-01-01T12:00:00.123456+00:00"}'),
+            $cls,
+        );
+        $this->assertSame('2026-01-01T12:00:00.123456+00:00', $withMicros->getAt());
+
+        // Whole-second values keep the plain RFC 3339 ('c') form — no spurious fraction.
+        /** @var object{getAt: callable} $wholeSecond */
+        $wholeSecond = new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"at":"2026-01-01T12:00:00+00:00"}'),
+            $cls,
+        );
+        $this->assertSame('2026-01-01T12:00:00+00:00', $wholeSecond->getAt());
+    }
 }

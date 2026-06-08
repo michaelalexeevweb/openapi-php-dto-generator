@@ -251,6 +251,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             // Missing optional parameter should not raise an error.
             if (!$rawWasProvided && !$paramMeta['isRequired']) {
+                // A non-nullable optional param with no default cannot accept null —
+                // pushing null would make newInstanceArgs() throw an opaque TypeError, so
+                // surface a clear validation error instead.
+                if (!$paramMeta['allowsNull']) {
+                    $errors[] = sprintf(
+                        'Optional parameter "%s" is non-nullable with no default value and was not provided.',
+                        $requestFieldName,
+                    );
+                }
                 $args[] = null;
                 continue;
             }

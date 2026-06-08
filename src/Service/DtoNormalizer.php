@@ -517,7 +517,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         if ($value instanceof DateTimeInterface) {
-            return $value->format('c');
+            // Preserve sub-second precision when the value carries it; otherwise emit plain
+            // RFC 3339 ('c'). The deserializer accepts both, so the round-trip is lossless.
+            return $value->format('u') === '000000'
+                ? $value->format('c')
+                : $value->format('Y-m-d\TH:i:s.uP');
         }
 
         // Cycle guard for expandable objects (mirrors validateDtoRecursive's $visited):

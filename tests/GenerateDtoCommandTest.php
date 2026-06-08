@@ -178,6 +178,30 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromFile($specFile, $this->outputDirectory, 'DistNamespace');
     }
 
+    public function testOptionalArrayGetterOmitsDeadUnsetGuard(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'A', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Bag' => [
+                'type' => 'object',
+                'properties' => ['tags' => ['type' => 'array', 'items' => ['type' => 'string']]],
+            ]]],
+        ];
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ArrGetterNs');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Bag.php');
+
+        // Array fields store in a ?array property (never the UnsetValue sentinel), so the
+        // getter returns it plainly — no dead `!== UnsetValue::UNSET` guard.
+        $this->assertStringContainsString('public function getTags(): ?array', $content);
+        $this->assertStringContainsString('return $this->tags;', $content);
+        $this->assertStringNotContainsString(
+            'return $this->tags !== UnsetValue::UNSET',
+            $content,
+        );
+    }
+
     public function testRequestBodyPostGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
@@ -1851,7 +1875,9 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('use DateTimeImmutable;', $userContent);
         $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $userContent);
         $this->assertStringContainsString('public function getCreatedAt(): string', $userContent);
-        $this->assertStringContainsString('return $this->createdAt->format(\'c\');', $userContent);
+        // date-time getter preserves sub-second precision when present, else plain 'c'.
+        $this->assertStringContainsString('$this->createdAt->format(\'u\') === \'000000\'', $userContent);
+        $this->assertStringContainsString('$this->createdAt->format(\'Y-m-d\TH:i:s.uP\')', $userContent);
         $this->assertStringContainsString('Expected format: yyyy-MM-dd HH:mm:ss', $userContent);
 
         $user2File = $this->outputDirectory . '/User2.php';
@@ -1875,7 +1901,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('use DateTimeImmutable;', $aliasContent);
         $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $aliasContent);
         $this->assertStringContainsString('public function getCreatedAt(): string', $aliasContent);
-        $this->assertStringContainsString('return $this->createdAt->format(\'c\');', $aliasContent);
+        $this->assertStringContainsString('$this->createdAt->format(\'u\') === \'000000\'', $aliasContent);
+        $this->assertStringContainsString('$this->createdAt->format(\'Y-m-d\TH:i:s.uP\')', $aliasContent);
         $this->assertStringContainsString('Expected format: yyyy-MM-dd HH:mm:ss', $aliasContent);
     }
 
