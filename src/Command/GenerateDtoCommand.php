@@ -2543,7 +2543,8 @@ final class GenerateDtoCommand extends Command
      *   tracksArgPresence: bool,
      *   inRequestFlagName: string,
      *   presenceFlagName: string,
-     *   usesUnsetSentinel: bool
+     *   usesUnsetSentinel: bool,
+     *   presenceFromArgsOnly: bool
      * }
      */
     private function resolveConstructorParameterData(array $property, string $namespace, bool $tracksArgPresence): array
@@ -2601,6 +2602,19 @@ final class GenerateDtoCommand extends Command
             || $docType !== null;
         $presenceFlagName = $this->resolvePresenceFlagName($property);
 
+        // An optional, default-valued parameter (path/query/header/cookie) cannot prove it
+        // was "provided" from its constructor default, so its presence flag must start false
+        // — the deserializer flips it on via reflection when the value really came in. Body
+        // fields keep starting true so a hand-built DTO still serializes its default value.
+        $isParameter = ($property['inPath'] ?? false) === true
+            || ($property['inQuery'] ?? false) === true
+            || ($property['inHeader'] ?? false) === true
+            || ($property['inCookie'] ?? false) === true;
+        $presenceFromArgsOnly = $tracksArgPresence
+            && !$usesUnsetSentinel
+            && $isParameter
+            && !$property['required'];
+
         return [
             'type' => $type,
             'name' => $property['name'],
@@ -2616,6 +2630,7 @@ final class GenerateDtoCommand extends Command
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'presenceFlagName' => $presenceFlagName,
             'usesUnsetSentinel' => $usesUnsetSentinel,
+            'presenceFromArgsOnly' => $presenceFromArgsOnly,
         ];
     }
 

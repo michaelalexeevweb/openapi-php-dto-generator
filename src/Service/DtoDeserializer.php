@@ -55,6 +55,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     readOnly: bool,
      *     sourceConstraint: string|null,
      *     arrayDelimiter: non-empty-string|null,
+     *     arrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
@@ -278,6 +279,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         temporalFormat: $paramMeta['temporalFormat'],
                         openApiFormat: $paramMeta['openApiFormat'],
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                        arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                     );
                 } else {
                     $value = $this->castUnionValue(
@@ -291,6 +293,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         dtoReflection: $reflection,
                         openApiFormat: $paramMeta['openApiFormat'],
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                        arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                     );
                 }
             } catch (RuntimeException $e) {
@@ -376,6 +379,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     readOnly: bool,
      *     sourceConstraint: string|null,
      *     arrayDelimiter: non-empty-string|null,
+     *     arrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
@@ -466,6 +470,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $arrayItemType = in_array('array', $typeNames, true)
                 ? $this->resolveArrayItemType(reflection: $reflection, paramName: $paramName)
                 : null;
+            $arrayItemsNullable = $this->resolveArrayItemsNullable($fieldConstraints);
 
             // Pre-compute temporal format for DateTimeImmutable fields.
             $temporalFormat = in_array(DateTimeImmutable::class, $typeNames, true)
@@ -520,6 +525,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'readOnly' => ($fieldConstraints['readOnly'] ?? false) === true,
                 'sourceConstraint' => $sourceConstraint,
                 'arrayDelimiter' => $arrayDelimiter,
+                'arrayItemsNullable' => $arrayItemsNullable,
             ];
         }
 
@@ -806,6 +812,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ReflectionClass $dtoReflection,
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
+        bool $arrayItemsNullable = false,
     ): mixed {
         // A missing value here always belongs to a required parameter: optional
         // missing params are short-circuited in deserialize() before this call,
@@ -840,6 +847,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     temporalFormat: $temporalFormat,
                     openApiFormat: $openApiFormat,
                     allowsAssociativeArray: $allowsAssociativeArray,
+                    arrayItemsNullable: $arrayItemsNullable,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -1091,6 +1099,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $temporalFormat = null,
         ?string $openApiFormat = null,
         bool $allowsAssociativeArray = false,
+        bool $arrayItemsNullable = false,
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -1184,6 +1193,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     arrayItemType: $arrayItemType,
                     paramPath: $paramPath,
                     source: $source,
+                    itemsNullable: $arrayItemsNullable,
                 );
             }
         }
@@ -1255,6 +1265,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 arrayItemType: $arrayItemType,
                 paramPath: $paramPath,
                 source: $source,
+                itemsNullable: $arrayItemsNullable,
             );
         }
 
@@ -1320,8 +1331,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @param array<array-key, mixed> $items
      * @return array<array-key, mixed>
      */
-    private function castArrayItems(array $items, string $arrayItemType, string $paramPath, string $source): array
-    {
+    private function castArrayItems(
+        array $items,
+        string $arrayItemType,
+        string $paramPath,
+        string $source,
+        bool $itemsNullable = false,
+    ): array {
         $normalized = [];
         $errors = [];
         foreach ($items as $index => $itemValue) {
@@ -1332,6 +1348,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     arrayItemType: $arrayItemType,
                     itemPath: $itemPath,
                     source: $source,
+                    itemsNullable: $itemsNullable,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -1345,8 +1362,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
         return $normalized;
     }
 
-    private function castArrayItemValue(mixed $itemValue, string $arrayItemType, string $itemPath, string $source): mixed
-    {
+    private function castArrayItemValue(
+        mixed $itemValue,
+        string $arrayItemType,
+        string $itemPath,
+        string $source,
+        bool $itemsNullable = false,
+    ): mixed {
+        // A null element is accepted only when the items schema declares it nullable
+        // (items: {nullable: true} or type containing null); otherwise it falls through
+        // to the per-kind casts, which reject it with a clear type error.
+        if ($itemValue === null && $itemsNullable) {
+            return null;
+        }
+
         // Type kind resolved once per type (cached) instead of enum_exists()/class_exists()
         // per array element.
         $kind = $this->resolveTypeKind($arrayItemType);
@@ -1566,6 +1595,27 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // not required + PHP-nullable → just optional → null is NOT valid in JSON.
         return $this->invokeRequiredMethod($reflection, $requiredMethodName)
             ?? $phpAllowsNull;
+    }
+
+    /**
+     * Whether the array's items schema permits null elements (`items: {nullable: true}`
+     * or an OpenAPI 3.1 type array containing "null").
+     *
+     * @param array<string, mixed>|null $fieldConstraints
+     */
+    private function resolveArrayItemsNullable(?array $fieldConstraints): bool
+    {
+        $items = $fieldConstraints['items'] ?? null;
+        if (!is_array($items)) {
+            return false;
+        }
+
+        if (($items['nullable'] ?? false) === true) {
+            return true;
+        }
+
+        $type = $items['type'] ?? null;
+        return is_array($type) && in_array('null', $type, true);
     }
 
     /**

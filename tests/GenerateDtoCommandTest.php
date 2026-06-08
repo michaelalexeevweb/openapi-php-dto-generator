@@ -92,7 +92,10 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('return $this->pageInQuery;', $content);
         $this->assertStringContainsString('$this->userIdInPath = true;', $content);
         $this->assertStringContainsString('$this->postIdInPath = true;', $content);
-        $this->assertStringContainsString('$this->pageInQuery = true;', $content);
+        // page is an optional query param WITH a default — its presence cannot be inferred
+        // from the constructor default, so the flag starts false (deserializer sets it true
+        // when the value is actually present), not unconditionally true.
+        $this->assertStringContainsString('$this->pageInQuery = false;', $content);
         $this->assertStringContainsString('$this->limitInQuery = $limit !== UnsetValue::UNSET;', $content);
         $this->assertStringNotContainsString('$this->limitInRequest = $limit !== UnsetValue::UNSET;', $content);
         // Parameter-bound fields (path/query/header/cookie) are request transport, not

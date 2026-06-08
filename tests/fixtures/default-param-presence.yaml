@@ -1,0 +1,20 @@
+openapi: 3.0.3
+info:
+  title: Default-valued parameter presence
+  version: 1.0.0
+paths:
+  /things:
+    get:
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            default: all
+            enum: [all, active]
+      responses:
+        '200':
+          description: OK
+components:
+  schemas: { }

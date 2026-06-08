@@ -128,6 +128,10 @@ interface {{ className }}
 {% if param.usesUnsetSentinel %}
         // Track if parameter was explicitly passed
         $this->{{ param.presenceFlagName }} = ${{ param.name }} !== UnsetValue::UNSET;
+{% elseif param.presenceFromArgsOnly %}
+        // Default-valued parameter: presence cannot be inferred from the constructor
+        // default — the deserializer sets this when the value is actually present.
+        $this->{{ param.presenceFlagName }} = false;
 {% else %}
         $this->{{ param.presenceFlagName }} = true;
 {% endif %}

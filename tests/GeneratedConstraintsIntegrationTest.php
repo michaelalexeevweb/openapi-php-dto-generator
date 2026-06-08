@@ -653,4 +653,53 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame(['1', '2', '3'], $dto->getIds());
         $this->assertSame(['p', 'q'], $dto->getExploded());
     }
+
+    public function testNullableArrayItemsAreAcceptedThroughGeneratedDto(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-array-items.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GenNullItems');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenNullItems\\TagBag';
+
+        // items: {type: string, nullable: true} — a null element must be accepted, not rejected.
+        /** @var object{getTags: callable} $dto */
+        $dto = new DtoDeserializer()->deserialize(
+            $this->jsonPostRequest('{"tags":["a",null,"b"]}'),
+            $cls,
+        );
+
+        $this->assertSame(['a', null, 'b'], $dto->getTags());
+    }
+
+    public function testDefaultValuedParamPresenceFlagReflectsActualProvision(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/default-param-presence.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GenDefaultParam');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenDefaultParam\\' . basename((string)(($queryParamFiles ?: [])[0] ?? ''), '.php');
+
+        // Direct construction without scope → flag false (it was never "in the query").
+        /** @var object{isScopeInQuery: callable} $direct */
+        $direct = new $cls();
+        $this->assertFalse($direct->isScopeInQuery());
+
+        // Deserialize with scope actually present → flag flipped true via reflection.
+        /** @var object{isScopeInQuery: callable} $provided */
+        $provided = new DtoDeserializer()->deserialize(
+            Request::create('/things?scope=active', 'GET'),
+            $cls,
+        );
+        $this->assertTrue($provided->isScopeInQuery());
+    }
 }
