@@ -731,4 +731,25 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
         $this->assertSame('2026-01-01T12:00:00+00:00', $wholeSecond->getAt());
     }
+
+    public function testValidateAndNormalizeOmitsUnprovidedOptionalField(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/normalize-unprovided.yaml');
+        new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GenNormUnprov');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenNormUnprov\\GenericResponse';
+
+        // message is optional and not provided → must be omitted (not emitted as null),
+        // matching the DTO's own inRequest-gated toArray().
+        $dto = new $cls(true);
+        $normalizer = new DtoNormalizer();
+
+        $this->assertSame(['success' => true], $normalizer->validateAndNormalizeToArray($dto));
+        $this->assertSame('{"success":true}', $normalizer->validateAndNormalizeToJson($dto));
+    }
 }

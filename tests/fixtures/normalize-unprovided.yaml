@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: Normalize unprovided optional
+  version: 1.0.0
+components:
+  schemas:
+    GenericResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string

@@ -417,6 +417,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 continue;
             }
 
+            // An optional field that was never provided must be omitted, not emitted as
+            // null. Generated getters return null (not a LogicException) for unset optional
+            // values, so the provenance flags are the authoritative signal — same guard as
+            // validateDtoRecursive and the DTO's own inRequest-gated toArray().
+            if (!$getterMeta['required'] && !$this->fieldWasProvided($dto, $getterMeta)) {
+                continue;
+            }
+
             try {
                 $rawValue = $this->invokeGetter($dto, $getterMeta['methodName']);
             } catch (LogicException $exception) {
