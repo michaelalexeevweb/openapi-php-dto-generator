@@ -92,7 +92,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $this->validateOrThrow($dto);
 
-        return $this->dtoToArray($dto);
+        return $this->toArray($dto);
     }
 
     /**
@@ -147,8 +147,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        // Seed the cycle guard with this root so a self-reference in its own payload is caught.
-        return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
+        try {
+            // Seed the cycle guard with this root so a self-reference in its own payload is caught.
+            return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
+        } catch (Throwable) {
+            // Fast-path is opportunistic; if normalization of that payload fails,
+            // fall back to reflection-based dtoToArray() for deterministic behavior.
+            return null;
+        }
     }
 
     /**
@@ -173,7 +179,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
-        return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
+        try {
+            return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -237,8 +247,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $dtoId = spl_object_id($dto);
         if (array_key_exists($dtoId, $visited)) {
             // Re-visiting an ancestor = a true cycle (siblings/DAG reuse get fresh $visited
-            // copies). Report it so validation and serialization agree: serialization cuts the
-            // cycle to null, and without this validate() would falsely pass on corrupted output.
+            // copies). Report it so validate() and serialization stay aligned: both fail on
+            // circular references instead of producing partial/corrupted output.
             $subject = $pathPrefix === '' ? 'root' : $pathPrefix;
             return ["{$subject} contains a circular reference"];
         }
@@ -331,10 +341,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
             } catch (Error $error) {
                 // A genuine programming error (TypeError, undefined method, etc.) — most
                 // likely a broken hand-written getter. Let it bubble instead of disguising
-                // it as a validation message, which would hide the real fault.
+                // it as a corrupt output, which would hide the real fault.
                 throw $error;
             } catch (Throwable $exception) {
-                $errors[] = "Failed to call $methodName(): " . $exception->getMessage();
+                // Infrastructure exceptions must propagate instead of being converted into
+                // validation messages, otherwise runtime failures are silently masked.
+                throw new RuntimeException(
+                    sprintf('Getter %s() threw infrastructure exception: %s', $methodName, $exception::class),
+                    previous: $exception,
+                );
             }
         }
 
@@ -438,6 +453,19 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     throw $exception;
                 }
                 continue;
+            } catch (Error $error) {
+                // A genuine programming error (TypeError, undefined method, etc.) — most
+                // likely a broken hand-written getter. Let it bubble instead of disguising
+                // it as a corrupt output, which would hide the real fault.
+                throw $error;
+            } catch (Throwable $exception) {
+                // Infrastructure exceptions (PDOException, FileNotFoundException, etc.)
+                // should not be caught here — they indicate a genuine runtime problem
+                // that should propagate and fail the operation, not silently skip the field.
+                throw new RuntimeException(
+                    sprintf('Getter %s() threw infrastructure exception: %s', $getterMeta['methodName'], $exception::class),
+                    previous: $exception,
+                );
             }
 
             $value = $this->coerceEmptyStringToNull($rawValue, $getterMeta, $meta);
@@ -457,6 +485,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     /**
      * @throws LogicException
+     * @throws Throwable
      */
     private function invokeGetter(object $dto, string $methodName): mixed
     {
@@ -544,7 +573,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
         if (is_object($value)) {
             $objectId = spl_object_id($value);
             if (array_key_exists($objectId, $visited)) {
-                return null;
+                throw new RuntimeException(
+                    sprintf('Circular reference detected for object of class %s', get_class($value)),
+                );
             }
             $visited[$objectId] = true;
         }

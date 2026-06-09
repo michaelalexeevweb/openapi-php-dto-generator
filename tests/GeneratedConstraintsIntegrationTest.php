@@ -317,8 +317,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testCyclicDtoGraphSerializesWithoutInfiniteRecursion(): void
     {
-        // Regression: toArray()/normalizeValue had no cycle guard (unlike validate()).
-        // Mutual references built via array adders used to recurse until stack exhaustion.
+        // Cycles are now explicit serialization errors (instead of silent null truncation).
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
         new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapCycle');
         $files = glob($this->outputDirectory . '/*.php');
@@ -330,21 +329,17 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $a = new $cls('A');
         $b = new $cls('B');
         $a->addItemToChildren($b);
-        $b->addItemToChildren($a); // A → B → A cycle
+        $b->addItemToChildren($a); // A -> B -> A cycle
 
-        $array = new DtoNormalizer()->toArray($a);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Circular reference detected');
 
-        // Terminates; A is seeded in the cycle guard, so the back-reference to A inside B is
-        // cut (null) instead of recursing forever.
-        $this->assertSame('A', $array['name']);
-        $this->assertSame('B', $array['children'][0]['name']);
-        $this->assertSame([null], $array['children'][0]['children']);
+        new DtoNormalizer()->toArray($a);
     }
 
     public function testCyclicDtoGraphIsReportedByValidateAndRejectedByValidateAndNormalize(): void
     {
-        // Serialization cuts a cycle to null; validation must AGREE (report the cycle) so a
-        // caller of validateAndNormalizeToArray() isn't told "valid" alongside corrupted output.
+        // Validation must reject circular graphs, and validateAndNormalize* must fail too.
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
         new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapCycleValidate');
         $files = glob($this->outputDirectory . '/*.php');
@@ -370,8 +365,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testSelfReferentialRootSerializesWithoutInfiniteRecursion(): void
     {
-        // Root node that contains itself — the root is marked in $visited (parity with
-        // validateDtoRecursive) so the self-reference is cut at one level.
+        // Root self-reference is now an explicit serialization error.
         $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
         new GenerateDtoCommand()->generateFromArray($openApi, $this->outputDirectory, 'GapSelfRef');
         $files = glob($this->outputDirectory . '/*.php');
@@ -383,9 +377,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $node = new $cls('root');
         $node->addItemToChildren($node);
 
-        $array = new DtoNormalizer()->toArray($node);
-        $this->assertSame('root', $array['name']);
-        $this->assertSame([null], $array['children']);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Circular reference detected');
+
+        new DtoNormalizer()->toArray($node);
     }
 
     public function testOneOfWithRefVariantDoesNotEmitUnvalidatableConstraint(): void

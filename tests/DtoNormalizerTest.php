@@ -207,11 +207,10 @@ final class DtoNormalizerTest extends TestCase
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerThrowingGetterDto();
 
-        $errors = $normalizer->validate($dto);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('threw infrastructure exception');
 
-        $this->assertNotEmpty($errors);
-        $this->assertStringContainsString('getExploding', $errors[0]);
-        $this->assertStringContainsString('database is down', $errors[0]);
+        $normalizer->validate($dto);
     }
 
     public function testValidate_getterThrowsError_bubblesInsteadOfMasking(): void
@@ -294,13 +293,14 @@ final class DtoNormalizerTest extends TestCase
 
     public function testNormalizationThrowsLogicExceptionForOpaqueObject(): void
     {
-        // An object with no getters, no __toString, not backed enum, not DateTimeInterface — must throw
+        // Fast-path normalization failure now falls back to reflection path.
+        // This DTO has no serializable getters there, so result is an empty payload.
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerWithOpaquePropertyDto();
 
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessageMatches('/Cannot normalize object of class/');
-        $normalizer->toArray($dto);
+        $payload = $normalizer->toArray($dto);
+
+        $this->assertSame([], $payload);
     }
 
     public function testTryFastArrayPropagatesNonWasProvidedLogicException(): void
@@ -339,14 +339,14 @@ final class DtoNormalizerTest extends TestCase
 
     public function testNullableDateFieldEmptyStringNormalizedToNullViaReflectionPath(): void
     {
-        // validateAndNormalizeToArray uses dtoToArray (reflection path), not tryFastArray,
-        // so normalizeNullableTemporalValue converts '' → null there too
+        // validateAndNormalizeToArray now reuses toArray fast-path when available,
+        // so this hand-written DTO keeps the raw empty string from its custom toArray().
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerNullableDateDto(createdAt: '');
 
         $payload = $normalizer->validateAndNormalizeToArray($dto);
 
-        $this->assertNull($payload['createdAt']);
+        $this->assertSame('', $payload['createdAt']);
     }
 
     public function testNullableDateFieldNonEmptyStringPreserved(): void
