@@ -51,6 +51,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     openApiFormat: string|null,
      *     allowsAssociativeArray: bool,
      *     temporalFormat: string|null,
+     *     arrayItemTemporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
      *     readOnly: bool,
      *     sourceConstraint: string|null,
@@ -296,6 +297,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         openApiFormat: $paramMeta['openApiFormat'],
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
+                        arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                     );
                 } else {
                     $value = $this->castUnionValue(
@@ -310,6 +312,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         openApiFormat: $paramMeta['openApiFormat'],
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
+                        arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                     );
                 }
             } catch (RuntimeException $e) {
@@ -391,6 +394,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     openApiFormat: string|null,
      *     allowsAssociativeArray: bool,
      *     temporalFormat: string|null,
+     *     arrayItemTemporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
      *     readOnly: bool,
      *     sourceConstraint: string|null,
@@ -497,6 +501,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 )
                 : null;
 
+            // Pre-compute temporal format for DateTimeImmutable[] array items.
+            // The items schema (fieldConstraints['items']) may carry format: date, which must
+            // be propagated so date-only strings are accepted without a time component.
+            $itemsConstraints = is_array($fieldConstraints['items'] ?? null) ? $fieldConstraints['items'] : null;
+            $arrayItemTemporalFormat = ($arrayItemType === DateTimeImmutable::class)
+                ? $this->resolveTemporalFormat(
+                    reflection: $reflection,
+                    paramName: $paramName,
+                    openApiFormat: $this->resolveOpenApiFormat($itemsConstraints),
+                )
+                : null;
+
             $inRequestProperties[$paramName] = $this->resolveReflectionProperty(
                 reflection: $reflection,
                 propName: $this->resolveInRequestFlagPropertyName(reflection: $reflection, paramName: $paramName),
@@ -537,6 +553,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'openApiFormat' => $openApiFormat,
                 'allowsAssociativeArray' => $allowsAssociativeArray,
                 'temporalFormat' => $temporalFormat,
+                'arrayItemTemporalFormat' => $arrayItemTemporalFormat,
                 'fieldConstraints' => $fieldConstraints,
                 'readOnly' => ($fieldConstraints['readOnly'] ?? false) === true,
                 'sourceConstraint' => $sourceConstraint,
@@ -829,6 +846,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
         bool $arrayItemsNullable = false,
+        ?string $arrayItemTemporalFormat = null,
     ): mixed {
         // A missing value here always belongs to a required parameter: optional
         // missing params are short-circuited in deserialize() before this call,
@@ -864,6 +882,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     openApiFormat: $openApiFormat,
                     allowsAssociativeArray: $allowsAssociativeArray,
                     arrayItemsNullable: $arrayItemsNullable,
+                    arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -1116,6 +1135,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $openApiFormat = null,
         bool $allowsAssociativeArray = false,
         bool $arrayItemsNullable = false,
+        ?string $arrayItemTemporalFormat = null,
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -1210,6 +1230,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     paramPath: $paramPath,
                     source: $source,
                     itemsNullable: $arrayItemsNullable,
+                    arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 );
             }
         }
@@ -1282,6 +1303,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 paramPath: $paramPath,
                 source: $source,
                 itemsNullable: $arrayItemsNullable,
+                arrayItemTemporalFormat: $arrayItemTemporalFormat,
             );
         }
 
@@ -1353,6 +1375,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $paramPath,
         string $source,
         bool $itemsNullable = false,
+        ?string $arrayItemTemporalFormat = null,
     ): array {
         $normalized = [];
         $errors = [];
@@ -1365,6 +1388,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     itemPath: $itemPath,
                     source: $source,
                     itemsNullable: $itemsNullable,
+                    arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -1384,6 +1408,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $itemPath,
         string $source,
         bool $itemsNullable = false,
+        ?string $arrayItemTemporalFormat = null,
     ): mixed {
         // A null element is accepted only when the items schema declares it nullable
         // (items: {nullable: true} or type containing null); otherwise it falls through
@@ -1430,8 +1455,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'date string', value: $itemValue),
                 );
             }
-            // Array items carry no per-item temporal format hint → parse as date-time.
-            return $this->parseDateTimeStrict(value: $itemValue, paramPath: $itemPath, temporalFormat: null);
+            // Array items carry the temporal format resolved from the items schema
+            // (e.g. format: date → 'Y-m-d'); null means full date-time is expected.
+            return $this->parseDateTimeStrict(value: $itemValue, paramPath: $itemPath, temporalFormat: $arrayItemTemporalFormat);
         }
 
         if ($kind === 'dto') {

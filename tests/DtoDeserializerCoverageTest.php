@@ -197,6 +197,35 @@ final class DtoDeserializerCoverageTest extends TestCase
         $this->assertSame(42, $method->invoke($this->deserializer, 42, 'mixed', 'p.1', 'json'));
     }
 
+    public function testDateArrayItemsWithFormatDateAreDeserializedCorrectly(): void
+    {
+        // Regression: items: {format: date} must propagate to castArrayItemValue so that
+        // date-only strings like "2024-01-15" are accepted. Before the fix, parseDateTimeStrict
+        // received temporalFormat: null and always threw because "2024-01-15" has no time component.
+        $body = json_encode(['dates' => ['2024-01-15', '2025-06-09']]);
+        $request = new Request([], [], [], [], [], [], $body);
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, CovDateArrayDto::class);
+
+        $this->assertCount(2, $dto->dates);
+        $this->assertSame('2024-01-15', $dto->dates[0]->format('Y-m-d'));
+        $this->assertSame('2025-06-09', $dto->dates[1]->format('Y-m-d'));
+    }
+
+    public function testDateTimeArrayItemsWithoutFormatAreDeserializedCorrectly(): void
+    {
+        // Without items format, array<DateTimeImmutable> must still accept full date-time strings.
+        $body = json_encode(['dates' => ['2024-01-15T10:30:00+00:00']]);
+        $request = new Request([], [], [], [], [], [], $body);
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, CovDateTimeArrayDto::class);
+
+        $this->assertCount(1, $dto->dates);
+        $this->assertSame('2024-01-15T10:30:00+00:00', $dto->dates[0]->format('c'));
+    }
+
     public function testRequiredMethodThrowingReflectionFallsBackToTypeInference(): void
     {
         // is...Required is non-static and the class has required constructor args, so
@@ -1285,5 +1314,39 @@ final class CovMixedAliasesDto
             0 => 'numeric-key-skipped',
             'name' => 123,
         ];
+    }
+}
+
+final class CovDateArrayDto
+{
+    /**
+     * @var array<DateTimeImmutable>
+     */
+    public readonly array $dates;
+
+    public function __construct(array $dates)
+    {
+        $this->dates = $dates;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [
+            'dates' => ['items' => ['format' => 'date']],
+        ];
+    }
+}
+
+final class CovDateTimeArrayDto
+{
+    /**
+     * @var array<DateTimeImmutable>
+     */
+    public readonly array $dates;
+
+    public function __construct(array $dates)
+    {
+        $this->dates = $dates;
     }
 }
