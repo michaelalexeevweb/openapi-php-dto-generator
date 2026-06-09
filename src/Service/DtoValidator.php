@@ -141,7 +141,11 @@ final class DtoValidator implements DtoValidatorInterface
             $typeConstraint = $constraints['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiType(value: $value, type: $typeConstraint)) {
-                    $errors[] = "{$subject} must be of type {$typeConstraint}";
+                    // Clarify the common confusion: an associative PHP array is a JSON object,
+                    // not a JSON array (list), even though is_array() is true for both.
+                    $errors[] = $typeConstraint === 'array' && is_array($value)
+                        ? "{$subject} must be a JSON array (list with sequential keys), got an associative array"
+                        : "{$subject} must be of type {$typeConstraint}";
                 }
             } elseif (is_array($typeConstraint)) {
                 // OpenAPI 3.1: type: [string, null] — value must match at least one listed type

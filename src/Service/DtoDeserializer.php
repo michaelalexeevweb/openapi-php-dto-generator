@@ -88,6 +88,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private static array $typeKindCache = [];
 
+    /**
+     * Cache of `use` imports parsed from each DTO source file, keyed by absolute filename.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private static array $fileImportsCache = [];
+
     // -----------------------------------------------------------------------
     // Instance cache: last parsed request body (avoids re-parsing the same
     // JSON content multiple times within a single deserialization call, since
@@ -2000,9 +2007,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return [];
         }
 
+        // Cache parsed imports per file (like reflection/meta caches) — the DTO source never
+        // changes within a process, so the file_get_contents + preg_match_all runs once.
+        if (array_key_exists($filename, self::$fileImportsCache)) {
+            return self::$fileImportsCache[$filename];
+        }
+
         $content = file_get_contents($filename);
         if ($content === false) {
-            return [];
+            return self::$fileImportsCache[$filename] = [];
         }
 
         $result = preg_match_all(
@@ -2012,7 +2025,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             PREG_SET_ORDER,
         );
         if ($result === false || $result === 0) {
-            return [];
+            return self::$fileImportsCache[$filename] = [];
         }
 
         $imports = [];
@@ -2028,6 +2041,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $imports[$shortName] = $fqcn;
         }
 
-        return $imports;
+        return self::$fileImportsCache[$filename] = $imports;
     }
 }

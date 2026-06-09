@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use TypeError;
 
 final class DtoNormalizerTest extends TestCase
 {
@@ -211,6 +212,19 @@ final class DtoNormalizerTest extends TestCase
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('getExploding', $errors[0]);
         $this->assertStringContainsString('database is down', $errors[0]);
+    }
+
+    public function testValidate_getterThrowsError_bubblesInsteadOfMasking(): void
+    {
+        // A genuine programming error (TypeError) from a getter is a real fault — it must
+        // bubble, not be disguised as a validation error string (which would hide the bug).
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerErrorGetterDto();
+
+        $this->expectException(TypeError::class);
+        $this->expectExceptionMessage('boom');
+
+        $normalizer->validate($dto);
     }
 
     public function testValidate_anyOfConstraint_passesWhenOneBranchMatches(): void
@@ -1923,6 +1937,39 @@ final class NormalizerThrowingGetterDto implements GeneratedDtoInterface
     public function getExploding(): string
     {
         throw new RuntimeException('database is down');
+    }
+
+    public function toArray(): array
+    {
+        return [];
+    }
+    public function jsonSerialize(): mixed
+    {
+        return [];
+    }
+    public function toJson(): string
+    {
+        return '{}';
+    }
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+    public static function getAliases(): array
+    {
+        return [];
+    }
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerErrorGetterDto implements GeneratedDtoInterface
+{
+    public function getBroken(): string
+    {
+        throw new TypeError('boom');
     }
 
     public function toArray(): array

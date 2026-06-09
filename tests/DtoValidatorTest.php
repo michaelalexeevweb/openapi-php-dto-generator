@@ -111,6 +111,27 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
+    public function testTypeArray_rejectsAssociativeArrayWithClearMessage(): void
+    {
+        // An associative array is a JSON object, not a JSON array (list) — the message must
+        // explain that rather than the confusing bare "must be of type array".
+        $errors = $this->validator->validate(
+            subject: 'tags',
+            value: ['a' => 1, 'b' => 2],
+            constraints: ['type' => 'array'],
+        );
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('tags must be a JSON array (list', $errors[0]);
+    }
+
+    public function testTypeArray_acceptsList(): void
+    {
+        $errors = $this->validator->validate(subject: 'tags', value: ['a', 'b'], constraints: ['type' => 'array']);
+
+        $this->assertSame([], $errors);
+    }
+
     public function testEmptyConstraintsReturnNoErrors(): void
     {
         $errors = $this->validator->validate(subject: 'f', value: 'anything', constraints: []);

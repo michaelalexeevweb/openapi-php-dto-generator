@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
 use DateTimeInterface;
+use Error;
 use JsonException;
 use JsonSerializable;
 use LogicException;
@@ -327,6 +328,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     continue;
                 }
                 $errors[] = "Failed to call $methodName(): " . $exception->getMessage();
+            } catch (Error $error) {
+                // A genuine programming error (TypeError, undefined method, etc.) — most
+                // likely a broken hand-written getter. Let it bubble instead of disguising
+                // it as a validation message, which would hide the real fault.
+                throw $error;
             } catch (Throwable $exception) {
                 $errors[] = "Failed to call $methodName(): " . $exception->getMessage();
             }

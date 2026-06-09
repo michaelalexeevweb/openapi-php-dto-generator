@@ -31,7 +31,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.2.5
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.2.6
 ```
 
 ## Requirements
@@ -99,3 +99,10 @@ Parameters:
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | Copy runtime services into this directory (`Common` by default) |
 | `--dto-generator-namespace` | | | Explicit namespace for copied runtime services |
+
+## Validation Notes
+
+A few behaviours worth knowing when validating against the schema:
+
+- **`type: array` means a JSON array (list).** A value passes only when it is a PHP list (sequential integer keys from `0`). An associative array is treated as a JSON object, not an array — so a getter returning `array_filter(...)` (which may leave non-contiguous keys) should wrap the result in `array_values(...)`.
+- **`oneOf` / `anyOf` pick the first matching branch.** Branches are tried in declaration order and the first one that validates wins. When several branches accept the same input (e.g. `oneOf: [string, integer]` given `"123"`), order your schema branches from most specific to least specific.
