@@ -111,7 +111,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $this->validateOrThrow($dto);
 
-        return json_encode($this->dtoToArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->toArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     /**

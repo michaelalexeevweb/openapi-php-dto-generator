@@ -239,6 +239,19 @@ final class DtoNormalizerCoverageTest extends TestCase
         $this->assertSame('y', $result['value']);
     }
 
+    public function testValidateAndNormalizeToJsonUsesSameFastPathAsToJson(): void
+    {
+        $normalizer = new DtoNormalizer();
+        $dto = new CovNormMixedAliasesDto(value: 'y');
+
+        $toJsonPayload = json_decode($normalizer->toJson($dto), true, 512, JSON_THROW_ON_ERROR);
+        $validateJsonPayload = json_decode($normalizer->validateAndNormalizeToJson($dto), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame($toJsonPayload, $validateJsonPayload);
+        $this->assertArrayHasKey('value', $validateJsonPayload);
+        $this->assertSame('y', $validateJsonPayload['value']);
+    }
+
     public function testNormalizationMapRowSkippedWhenRowNotArray(): void
     {
         // A map row that is not an array is skipped (line 843); a valid row remains.
