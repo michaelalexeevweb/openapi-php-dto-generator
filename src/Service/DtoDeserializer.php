@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
 use DateTimeImmutable;
+use Error;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
@@ -694,9 +695,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $method = $reflection->getMethod($methodName);
             $instance = $method->isStatic() ? null : $reflection->newInstanceWithoutConstructor();
             return (bool)$method->invoke($instance);
-        } catch (ReflectionException) {
-            // Reflection itself failed (missing method, uninstantiable class) → fall back to PHP type inference.
-            // Exceptions thrown from inside the isXRequired() body propagate so genuine bugs surface.
+        } catch (ReflectionException | Error) {
+            // Fall back to PHP type inference when:
+            //  - reflection itself failed (missing method, uninstantiable class), or
+            //  - the method touched an uninitialized typed property on the constructor-less
+            //    instance (a PHP Error) — an artifact of newInstanceWithoutConstructor(), not
+            //    a user bug, so it must not bubble up as a 500.
+            // Genuine app-level exceptions (RuntimeException etc.) from the body still
+            // propagate so real logic faults surface.
             return null;
         }
     }

@@ -240,6 +240,19 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, BooleanDto::class);
     }
 
+    public function testDeserializeFallsBackWhenRequiredMethodTouchesUninitializedProperty(): void
+    {
+        // A non-static isXRequired() that reads an uninitialized typed property throws a PHP
+        // Error on the constructor-less instance used for reflection. That artifact must NOT
+        // surface as a 500 — the deserializer falls back to PHP type inference instead.
+        $request = new Request([], [], [], [], [], [], json_encode(['name' => 'Bob']));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, RequiredMethodTouchesUninitPropDto::class);
+
+        $this->assertSame('Bob', $dto->getName());
+    }
+
     public function testDeserializeBoolRejectsArrayValueFromNonJsonSource(): void
     {
         // A multi-value query/form field (enabled[]=1&enabled[]=2) arrives as an array on
@@ -2307,6 +2320,27 @@ final class StyledArrayDto
             'headerList' => ['style' => 'simple', 'explode' => false],
             'exploded' => ['style' => 'form', 'explode' => true],
         ];
+    }
+}
+
+final class RequiredMethodTouchesUninitPropDto
+{
+    private string $uninitialized;
+
+    public function __construct(
+        private readonly string $name,
+    ) {
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function isNameRequired(): bool
+    {
+        // Reading an uninitialized typed property throws Error on a constructor-less instance.
+        return $this->uninitialized === '';
     }
 }
 
