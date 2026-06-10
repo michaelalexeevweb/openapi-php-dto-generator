@@ -240,6 +240,18 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, BooleanDto::class);
     }
 
+    public function testDeserializeBoolRejectsArrayValueFromNonJsonSource(): void
+    {
+        // A multi-value query/form field (enabled[]=1&enabled[]=2) arrives as an array on
+        // the lenient non-JSON path — it is not a boolean and must be rejected, not silently
+        // coerced to true by (bool).
+        $request = new Request(['enabled' => [1, 2], 'verified' => 'false']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/expects bool/');
+        $this->deserializer->deserialize($request, BooleanDto::class);
+    }
+
     public function testDeserializeThrowsExceptionForInvalidJsonScalarTypes(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([

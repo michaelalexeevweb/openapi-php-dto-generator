@@ -1282,7 +1282,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
                 );
             }
-            return (bool)$value;
+            // Numeric scalars coerce (0/1 → bool) to match the lenient string handling above.
+            // Arrays, objects and other non-scalars are NOT booleans — reject instead of the
+            // silent (bool) cast, which would turn e.g. a multi-value form field into true.
+            if (is_int($value) || is_float($value)) {
+                return (bool)$value;
+            }
+            throw new RuntimeException(
+                $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
+            );
         }
 
         if ($typeName === 'array') {
