@@ -48,49 +48,49 @@ use Twig\Loader\FilesystemLoader;
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
 final class GenerateDtoCommand extends Command
 {
-    public private(set) ?Environment $twig = null;
+    public ?Environment $twig = null;
 
     /** @var array<string, array<mixed>> */
-    public private(set) array $dtoSchemas = [];
+    public array $dtoSchemas = [];
 
     /** @var array<string, array{type: string, values: array<int, string|int>}> */
-    public private(set) array $enumSchemas = [];
+    public array $enumSchemas = [];
 
     /** @var array<string, true> */
-    public private(set) array $parentClasses = [];
+    public array $parentClasses = [];
 
     /** @var array<string, array<int, string>> */
-    public private(set) array $unionInterfacesByClass = [];
+    public array $unionInterfacesByClass = [];
 
     /** @var array<string, array{propertyName: string, mapping: array<string, string>}> */
-    public private(set) array $discriminatorSchemas = [];
+    public array $discriminatorSchemas = [];
 
     /** @var array<string, string|null> */
-    public private(set) array $schemaSourceFiles = [];
+    public array $schemaSourceFiles = [];
 
     /** @var array<string, string> */
-    public private(set) array $schemaNamespaces = [];
+    public array $schemaNamespaces = [];
 
     /** @var array<string, string> */
-    public private(set) array $schemaOutputDirectories = [];
+    public array $schemaOutputDirectories = [];
 
     /** @var array<string, string|null> */
-    public private(set) array $enumSourceFiles = [];
+    public array $enumSourceFiles = [];
 
     /** @var array<string, string> */
-    public private(set) array $enumNamespaces = [];
+    public array $enumNamespaces = [];
 
     /** @var array<string, string> */
-    public private(set) array $enumOutputDirectories = [];
+    public array $enumOutputDirectories = [];
 
     /** @var array<string, true> */
-    public private(set) array $loadedExternalFiles = [];
+    public array $loadedExternalFiles = [];
 
-    public private(set) ?string $rootSpecFile = null;
-    public private(set) string $baseOutputDirectory = '';
-    public private(set) string $baseNamespace = '';
-    public private(set) string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
-    public private(set) string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
+    public ?string $rootSpecFile = null;
+    public string $baseOutputDirectory = '';
+    public string $baseNamespace = '';
+    public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
+    public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
 
     protected function configure(): void
     {
@@ -2446,10 +2446,10 @@ final class GenerateDtoCommand extends Command
         $parameterSourceAssignments = $this->resolveParameterSourceAssignments($ownProperties);
         $parameterStyleAssignments = $this->resolveParameterStyleAssignments($ownProperties);
 
-        $needsUnsetValueImport = array_any(
+        $needsUnsetValueImport = array_filter(
             $constructorParams,
             static fn(array $param): bool => $param['usesUnsetSentinel'],
-        );
+        ) !== [];
         if ($needsUnsetValueImport) {
             $useStatements[] = $this->unsetValueImportFqcn;
             $useStatements = array_values(array_unique($useStatements));
@@ -3434,10 +3434,7 @@ final class GenerateDtoCommand extends Command
      */
     private function getParentProperties(string $parentClassName): array
     {
-        $schemaDefinition = array_find(
-            $this->dtoSchemas,
-            fn(array $schema, string $schemaName): bool => $schemaName === $parentClassName,
-        );
+        $schemaDefinition = $this->dtoSchemas[$parentClassName] ?? null;
 
         return $schemaDefinition !== null ? $this->extractProperties($schemaDefinition, $parentClassName) : [];
     }
@@ -3759,10 +3756,7 @@ final class GenerateDtoCommand extends Command
 
     private function isHttpMethod(string $method): bool
     {
-        return array_any(
-            ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'],
-            static fn(string $allowed): bool => $allowed === strtolower($method),
-        );
+        return in_array(strtolower($method), ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'], true);
     }
 
     private function generateInlineRequestSchemaName(string $path, string $method): string

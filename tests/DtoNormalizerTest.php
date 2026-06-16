@@ -221,7 +221,7 @@ final class DtoNormalizerTest extends TestCase
     {
         // Asymmetric public read access was removed — the injected validator is fully private.
         $this->assertTrue(
-            new ReflectionProperty(DtoNormalizer::class, 'constraintValidator')->isPrivate(),
+            (new ReflectionProperty(DtoNormalizer::class, 'constraintValidator'))->isPrivate(),
         );
     }
 

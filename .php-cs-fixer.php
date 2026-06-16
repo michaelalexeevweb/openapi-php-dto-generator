@@ -9,7 +9,7 @@ return (new PhpCsFixer\Config())
     ->setRules([
         '@PER-CS' => true,
         '@PSR12' => true,
-        '@PHP84Migration' => true,
+        '@PHP83Migration' => true,
         'no_unused_imports' => true,
         'ordered_imports' => true,
         'trailing_comma_in_multiline' => [

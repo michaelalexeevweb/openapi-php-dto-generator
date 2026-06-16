@@ -8,7 +8,7 @@
 
 **Generate PHP DTOs from OpenAPI and validate incoming HTTP requests against OpenAPI schema.**
 
-Stop writing boilerplate PHP data transfer objects by hand. This library reads your OpenAPI 3.x YAML specification and automatically generates strictly-typed, immutable PHP 8.4 DTO classes. On top of that, it provides runtime services to **deserialize** Symfony `Request` objects into those DTOs, **validate HTTP requests** against the original OpenAPI schema rules (OpenAPI request validation), and **normalize** them back to arrays or JSON — all in one package.
+Stop writing boilerplate PHP data transfer objects by hand. This library reads your OpenAPI 3.x YAML specification and automatically generates strictly-typed, immutable PHP 8.3 DTO classes. On top of that, it provides runtime services to **deserialize** Symfony `Request` objects into those DTOs, **validate HTTP requests** against the original OpenAPI schema rules (OpenAPI request validation), and **normalize** them back to arrays or JSON — all in one package.
 
 ## Features
 
@@ -31,12 +31,12 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.2.13
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.3.0
 ```
 
 ## Requirements
 
-- PHP 8.4+
+- PHP 8.3+
 - Symfony 7.4 components (`console`, `http-foundation`, `mime`, `yaml`)
 
 ## Quick Start
