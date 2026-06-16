@@ -107,7 +107,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /** @var array<string, mixed> */
     private array $bodyDataCacheValue = [];
 
-    public private(set) DtoValidatorInterface $constraintValidator;
+    private DtoValidatorInterface $constraintValidator;
 
     public function __construct(
         ?DtoValidatorInterface $constraintValidator = null,

@@ -30,6 +30,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
         'getNormalizationMap' => true,
         'getDiscriminatorPropertyName' => true,
         'getDiscriminatorMapping' => true,
+        'getParameterSources' => true,
+        'getParameterStyles' => true,
     ];
 
     /** @var array<string, bool> */
@@ -37,7 +39,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         'modelName' => true,
     ];
 
-    public private(set) DtoValidatorInterface $constraintValidator;
+    private DtoValidatorInterface $constraintValidator;
 
     /**
      * @var array<class-string, array{

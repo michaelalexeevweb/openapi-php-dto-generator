@@ -10,6 +10,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -200,6 +201,28 @@ final class DtoNormalizerTest extends TestCase
         $result = $normalizer->toArray($dto);
 
         $this->assertSame([], $result);
+    }
+
+    public function testReflectionFallbackExcludesParameterMetadataGetters(): void
+    {
+        // A nested plain object (no getNormalizationMap) goes through the public-getter
+        // reflection fallback. getParameterSources()/getParameterStyles() are internal
+        // metadata, not data — they must NOT be serialised into the payload.
+        $normalizer = new DtoNormalizer();
+
+        $result = $normalizer->toArray(new NormalizerWrapsPlainParamObjectDto());
+
+        $this->assertSame(['inner' => ['name' => 'x']], $result);
+        $this->assertArrayNotHasKey('parameterSources', $result['inner']);
+        $this->assertArrayNotHasKey('parameterStyles', $result['inner']);
+    }
+
+    public function testConstraintValidatorIsNotPubliclyReadable(): void
+    {
+        // Asymmetric public read access was removed — the injected validator is fully private.
+        $this->assertTrue(
+            new ReflectionProperty(DtoNormalizer::class, 'constraintValidator')->isPrivate(),
+        );
     }
 
     public function testValidate_getterThrowsNonLogicException_returnsErrorInstead(): void
@@ -2338,5 +2361,67 @@ final class NormalizerParamMixedDto implements GeneratedDtoInterface
     public static function getParameterSources(): array
     {
         return ['token' => 'header'];
+    }
+}
+
+/**
+ * Plain object (no getNormalizationMap) that reaches the reflection fallback. It exposes
+ * a real data getter plus the internal getParameterSources()/getParameterStyles() methods,
+ * which must be filtered out of the serialized output.
+ */
+final class PlainObjectWithParamGetters
+{
+    public function getName(): string
+    {
+        return 'x';
+    }
+
+    /** @return array<string, string> */
+    public function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array{style: string, explode: bool}> */
+    public function getParameterStyles(): array
+    {
+        return [];
+    }
+}
+
+final class NormalizerWrapsPlainParamObjectDto implements GeneratedDtoInterface
+{
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['inner' => new PlainObjectWithParamGetters()];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
     }
 }
