@@ -152,7 +152,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
         } catch (Throwable) {
             // Fast-path is opportunistic; if normalization of that payload fails,
-            // fall back to reflection-based dtoToArray() for deterministic behavior.
+            // fall back to reflection-based dtoToArray() for deterministic behavior
+            // (e.g. the UploadedFile fallback applied there).
             return null;
         }
     }
