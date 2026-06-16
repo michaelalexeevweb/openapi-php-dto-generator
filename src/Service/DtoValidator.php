@@ -92,7 +92,10 @@ final class DtoValidator implements DtoValidatorInterface
 
         // enum: value must be strictly equal to one of the allowed values.
         if (array_key_exists('enum', $constraints) && is_array($constraints['enum'])) {
-            if (!in_array($value, $constraints['enum'], true)) {
+            // A backed enum getter returns the enum object; the schema's enum list holds raw
+            // scalars. Compare by ->value so a matching backed enum is not falsely rejected.
+            $enumComparable = $value instanceof BackedEnum ? $value->value : $value;
+            if (!in_array($enumComparable, $constraints['enum'], true)) {
                 $allowed = implode(', ', array_map(
                     static function (mixed $v): string {
                         $json = json_encode($v);

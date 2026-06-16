@@ -152,10 +152,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
         try {
             // Seed the cycle guard with this root so a self-reference in its own payload is caught.
             return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
-        } catch (Throwable) {
-            // Fast-path is opportunistic; if normalization of that payload fails,
-            // fall back to reflection-based dtoToArray() for deterministic behavior
-            // (e.g. the UploadedFile fallback applied there).
+        } catch (LogicException | RuntimeException) {
+            // Fast-path is opportunistic; on an EXPECTED normalization failure (a not-provided
+            // field, an unnormalizable value, or a circular reference) fall back to the
+            // reflection-based dtoToArray() — which is more robust (e.g. the UploadedFile
+            // fallback). A genuine Error (TypeError etc.) is NOT caught: it propagates, matching
+            // dtoToArray()'s behaviour instead of silently masking a bug behind the slow path.
             return null;
         }
     }
@@ -184,7 +186,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
         try {
             return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
-        } catch (Throwable) {
+        } catch (LogicException | RuntimeException) {
+            // Same as tryFastArray(): swallow only expected normalization failures and fall
+            // back; let a genuine Error propagate for consistency with the slow path.
             return null;
         }
     }

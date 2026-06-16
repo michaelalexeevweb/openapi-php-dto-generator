@@ -111,6 +111,34 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
+    public function testEnum_acceptsBackedEnumWhoseValueMatches(): void
+    {
+        // The getter returns a backed enum object; the schema enum holds raw scalars.
+        // The match must compare by ->value, not reject the object outright.
+        $this->assertSame([], $this->validator->validate(
+            subject: 'status',
+            value: TestStringBackedEnum::INTEGER,
+            constraints: ['enum' => ['integer', 'other']],
+        ));
+        $this->assertSame([], $this->validator->validate(
+            subject: 'priority',
+            value: TestIntBackedEnum::ONE,
+            constraints: ['enum' => [1, 2]],
+        ));
+    }
+
+    public function testEnum_rejectsBackedEnumWhoseValueIsNotAllowed(): void
+    {
+        $errors = $this->validator->validate(
+            subject: 'status',
+            value: TestStringBackedEnum::INTEGER,
+            constraints: ['enum' => ['active', 'inactive']],
+        );
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('status must be one of', $errors[0]);
+    }
+
     public function testTypeArray_rejectsAssociativeArrayWithClearMessage(): void
     {
         // An associative array is a JSON object, not a JSON array (list) — the message must
