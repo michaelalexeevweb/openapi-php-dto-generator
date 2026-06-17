@@ -79,7 +79,21 @@ $responseData = $normalizer->toArray(new UserViewResponse(name: 'John', surname:
 
 ### Generate DTO classes from YAML OpenAPI spec
 
-Use one canonical command:
+**Default — use the runtime services straight from the installed package.** Omit the
+`--dto-generator-*` options: the generated DTOs reference the runtime classes from
+`vendor/` (`OpenapiPhpDtoGenerator\Contract\…`), so nothing is copied and updates come
+through `composer update`:
+
+```bash
+composer openapi:generate-dto -- \
+  --file=OpenApiExamples/test.yaml \
+  --directory=generated/test \
+  --namespace=Generated\\Test
+```
+
+**Optional — vendor a private copy of the runtime services** into your project (e.g. to
+commit them or decouple from the package). Pass `--dto-generator-directory`; the generated
+DTOs then reference that copied namespace instead of `vendor/`:
 
 ```bash
 composer openapi:generate-dto -- \
@@ -97,8 +111,8 @@ Parameters:
 | `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON) |
 | `--directory` | `-d` | ✅ | Output directory for generated DTOs |
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
-| `--dto-generator-directory` | | | Copy runtime services into this directory (`Common` by default) |
-| `--dto-generator-namespace` | | | Explicit namespace for copied runtime services |
+| `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
+| `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
 
 ## Validation Notes
 
