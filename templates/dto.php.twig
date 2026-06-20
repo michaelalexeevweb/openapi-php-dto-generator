@@ -284,10 +284,18 @@ interface {{ className }}
 {% for property in methodProperties %}
 {% if not property.writeOnly and not property.isParameter %}
 {% if property.requiredLiteral == 'true' %}
+{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% else %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+{% endif %}
+{% else %}
         if ($this->{{ property.inRequestFlagName }}) {
+{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+{% else %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+{% endif %}
         }
 {% endif %}
 {% endif %}
@@ -296,9 +304,33 @@ interface {{ className }}
         return $result;
     }
 
-    public function jsonSerialize(): mixed
+    /**
+     * @return array<string, mixed>
+     */
+    public function jsonSerialize(): array
     {
-        return $this->toArray();
+        $result = [];
+{% for property in methodProperties %}
+{% if not property.writeOnly and not property.isParameter %}
+{% if property.requiredLiteral == 'true' %}
+{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+{% else %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+{% endif %}
+{% else %}
+        if ($this->{{ property.inRequestFlagName }}) {
+{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+{% else %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+{% endif %}
+        }
+{% endif %}
+{% endif %}
+{% endfor %}
+
+        return $result;
     }
 
     /**

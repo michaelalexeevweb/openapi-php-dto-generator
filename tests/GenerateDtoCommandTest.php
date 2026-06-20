@@ -2349,12 +2349,15 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $content = (string)file_get_contents($this->outputDirectory . '/WriteOnlyModel.php');
-        // toArray() must not include writeOnly field
-        $toArrayStart = strpos($content, 'function toArray');
-        $toArrayEnd = strpos($content, 'return $result;', (int)$toArrayStart);
-        $toArrayBody = substr($content, (int)$toArrayStart, (int)$toArrayEnd - (int)$toArrayStart);
-        $this->assertStringNotContainsString("'password'", $toArrayBody);
-        $this->assertStringContainsString("'name'", $toArrayBody);
+        // toArray() and jsonSerialize() each build the serialized array independently
+        // (bodies are duplicated, not delegated); neither must include the writeOnly field.
+        foreach (['function toArray', 'function jsonSerialize'] as $marker) {
+            $bodyStart = strpos($content, $marker);
+            $bodyEnd = strpos($content, 'return $result;', (int)$bodyStart);
+            $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
+            $this->assertStringNotContainsString("'password'", $body);
+            $this->assertStringContainsString("'name'", $body);
+        }
         // writeOnly=true must appear in normalization map metadata
         $this->assertStringContainsString("'writeOnly' => true", $content);
     }
