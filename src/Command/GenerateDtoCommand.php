@@ -2573,12 +2573,14 @@ final class GenerateDtoCommand extends Command
         if (!$property['required'] && $defaultValue === '') {
             if ($tracksArgPresence) {
                 $usesUnsetSentinel = true;
-                // Add union type with null and UnsetValue - remove ? prefix if present
-                if (strpos($type, '?') === 0) {
-                    $type = substr($type, 1) . '|null|UnsetValue';
-                } else {
-                    $type = $type . '|null|UnsetValue';
-                }
+                // Add union type with null and UnsetValue. Strip any existing nullability first
+                // (leading ? or a null union member) so the result never has a duplicate null.
+                $baseType = strpos($type, '?') === 0 ? substr($type, 1) : $type;
+                $members = array_filter(
+                    explode('|', $baseType),
+                    static fn(string $member): bool => $member !== '' && $member !== 'null',
+                );
+                $type = implode('|', $members) . '|null|UnsetValue';
             } elseif ($property['nullable']) {
                 $defaultValue = ' = null';
             }

@@ -147,6 +147,9 @@ interface {{ className }}
 {% endif %}
 {% endfor %}
     }
+{% if methodProperties is not empty %}
+
+{% endif %}
 {% for property in methodProperties %}
 {% set hasDoc = (property.docDescriptionLines is not empty) or (property.docReturnType is not null) or (property.expectedFormat is not null) or property.deprecated %}
 {% if hasDoc %}

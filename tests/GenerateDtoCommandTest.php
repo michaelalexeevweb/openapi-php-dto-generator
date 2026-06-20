@@ -2362,6 +2362,65 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString("'writeOnly' => true", $content);
     }
 
+    public function testOptionalNullableUnionDoesNotDuplicateNullInConstructorType(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Wrapper' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'payload' => [
+                                'nullable' => true,
+                                'oneOf' => [
+                                    ['$ref' => '#/components/schemas/A'],
+                                    ['$ref' => '#/components/schemas/B'],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'A' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']]],
+                    'B' => ['type' => 'object', 'properties' => ['y' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'UnionNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Wrapper.php');
+        // An optional, nullable union must not emit a duplicate null member in its type hint.
+        $this->assertStringNotContainsString('|null|null', $content);
+        $this->assertStringContainsString('A|B|null|UnsetValue $payload', $content);
+    }
+
+    public function testBlankLineSeparatesConstructorFromFirstMethod(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Spaced' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'success' => ['type' => 'boolean', 'nullable' => true],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'SpacedNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Spaced.php');
+        // The constructor's closing brace must be followed by a blank line before the first method,
+        // not glued directly to it.
+        $this->assertMatchesRegularExpression('/\}\n\n {4}public function getSuccess/', $content);
+        $this->assertDoesNotMatchRegularExpression('/\}\n {4}public function getSuccess/', $content);
+    }
+
     public function testReadOnlyPropertyHasReadOnlyInConstraintsAndNormalizationMapMetadata(): void
     {
         $openApi = [
