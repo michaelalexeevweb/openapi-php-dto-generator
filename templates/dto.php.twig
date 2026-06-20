@@ -278,14 +278,17 @@ interface {{ className }}
     }
 {% endif %}
 
+{% set serializableProperties = methodProperties|filter(property => not property.writeOnly and not property.isParameter) %}
     /**
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
+{% if serializableProperties is empty %}
+        return [];
+{% else %}
         $result = [];
-{% for property in methodProperties %}
-{% if not property.writeOnly and not property.isParameter %}
+{% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
@@ -301,10 +304,10 @@ interface {{ className }}
 {% endif %}
         }
 {% endif %}
-{% endif %}
 {% endfor %}
 
         return $result;
+{% endif %}
     }
 
     /**
@@ -312,9 +315,11 @@ interface {{ className }}
      */
     public function jsonSerialize(): array
     {
+{% if serializableProperties is empty %}
+        return [];
+{% else %}
         $result = [];
-{% for property in methodProperties %}
-{% if not property.writeOnly and not property.isParameter %}
+{% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
@@ -330,10 +335,10 @@ interface {{ className }}
 {% endif %}
         }
 {% endif %}
-{% endif %}
 {% endfor %}
 
         return $result;
+{% endif %}
     }
 
     /**
@@ -356,6 +361,9 @@ interface {{ className }}
      */
     public static function getNormalizationMap(): array
     {
+{% if methodProperties is empty %}
+        return [];
+{% else %}
         $constraints = self::getConstraints();
 
         return [
@@ -381,6 +389,7 @@ interface {{ className }}
             ],
 {% endfor %}
         ];
+{% endif %}
     }
 
     /**
@@ -388,6 +397,13 @@ interface {{ className }}
      */
     public static function getAliases(): array
     {
+{% if aliasAssignments is empty %}
+{% if extends is not null %}
+        return parent::getAliases();
+{% else %}
+        return [];
+{% endif %}
+{% else %}
 {% if extends is not null %}
         $aliases = parent::getAliases();
 {% else %}
@@ -398,6 +414,7 @@ interface {{ className }}
 {% endfor %}
 
         return $aliases;
+{% endif %}
     }
 
     /**
@@ -405,6 +422,13 @@ interface {{ className }}
      */
     public static function getConstraints(): array
     {
+{% if constraintAssignments is empty %}
+{% if extends is not null %}
+        return parent::getConstraints();
+{% else %}
+        return [];
+{% endif %}
+{% else %}
 {% if extends is not null %}
         $constraints = parent::getConstraints();
 {% else %}
@@ -415,6 +439,7 @@ interface {{ className }}
 {% endfor %}
 
         return $constraints;
+{% endif %}
     }
 
     /**
@@ -426,6 +451,13 @@ interface {{ className }}
      */
     public static function getParameterSources(): array
     {
+{% if parameterSourceAssignments is empty %}
+{% if extends is not null %}
+        return parent::getParameterSources();
+{% else %}
+        return [];
+{% endif %}
+{% else %}
 {% if extends is not null %}
         $sources = parent::getParameterSources();
 {% else %}
@@ -436,6 +468,7 @@ interface {{ className }}
 {% endfor %}
 
         return $sources;
+{% endif %}
     }
 
     /**
@@ -448,6 +481,13 @@ interface {{ className }}
      */
     public static function getParameterStyles(): array
     {
+{% if parameterStyleAssignments is empty %}
+{% if extends is not null %}
+        return parent::getParameterStyles();
+{% else %}
+        return [];
+{% endif %}
+{% else %}
 {% if extends is not null %}
         $styles = parent::getParameterStyles();
 {% else %}
@@ -458,6 +498,7 @@ interface {{ className }}
 {% endfor %}
 
         return $styles;
+{% endif %}
     }
 }
 {% endif %}

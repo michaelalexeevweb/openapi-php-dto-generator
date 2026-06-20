@@ -2573,14 +2573,16 @@ final class GenerateDtoCommand extends Command
         if (!$property['required'] && $defaultValue === '') {
             if ($tracksArgPresence) {
                 $usesUnsetSentinel = true;
-                // Add union type with null and UnsetValue. Strip any existing nullability first
+                // Add union type with UnsetValue and null. Strip any existing nullability first
                 // (leading ? or a null union member) so the result never has a duplicate null.
+                // null is emitted last to satisfy the ordered_types code-style rule
+                // (null_adjustment: always_last).
                 $baseType = strpos($type, '?') === 0 ? substr($type, 1) : $type;
                 $members = array_filter(
                     explode('|', $baseType),
                     static fn(string $member): bool => $member !== '' && $member !== 'null',
                 );
-                $type = implode('|', $members) . '|null|UnsetValue';
+                $type = implode('|', $members) . '|UnsetValue|null';
             } elseif ($property['nullable']) {
                 $defaultValue = ' = null';
             }
@@ -2596,8 +2598,12 @@ final class GenerateDtoCommand extends Command
             $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
         }
 
-        $normalizedDescription = is_string($description) && $description !== '' ? $description : null;
-        $normalizedExample = is_string($example) && $example !== '' ? $example : null;
+        $normalizedDescription = is_string($description) && $description !== ''
+            ? $this->stripDocAnnotationSentenceDot($description)
+            : null;
+        $normalizedExample = is_string($example) && $example !== ''
+            ? $this->stripDocAnnotationSentenceDot($example)
+            : null;
         $shouldDocument = $normalizedDescription !== null
             || $normalizedExample !== null
             || $constraintsLine !== null
@@ -3429,6 +3435,21 @@ final class GenerateDtoCommand extends Command
         }
 
         return '?' . $type;
+    }
+
+    /**
+     * Removes the trailing period from a single-sentence PHPDoc tag description so the
+     * generated @param line is already a fixed point of the php-cs-fixer
+     * phpdoc_annotation_without_dot rule (which strips that dot otherwise). Multi-sentence
+     * text (any internal period) is left untouched — the rule does not act on it either.
+     */
+    private function stripDocAnnotationSentenceDot(string $text): string
+    {
+        if (substr_count($text, '.') === 1 && str_ends_with($text, '.')) {
+            return substr($text, 0, -1);
+        }
+
+        return $text;
     }
 
     /**

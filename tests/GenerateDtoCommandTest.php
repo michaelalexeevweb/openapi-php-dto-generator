@@ -79,7 +79,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private readonly int $userId', $content);
         $this->assertStringContainsString('private readonly string $postId', $content);
         $this->assertStringContainsString('private readonly ?int $page', $content);
-        $this->assertStringContainsString('private readonly int|null|UnsetValue $limit', $content);
+        $this->assertStringContainsString('private readonly int|UnsetValue|null $limit', $content);
         $this->assertStringContainsString('public function getUserId(): int', $content);
         $this->assertStringContainsString('public function getPostId(): string', $content);
         $this->assertStringContainsString('public function getPage(): ?int', $content);
@@ -214,7 +214,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($postRequestFile);
         $this->assertStringContainsString('class ArticlesPostRequest', $content);
         $this->assertStringContainsString('private readonly string $title', $content);
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $content', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $content', $content);
     }
 
     public function testRequestBodyPatchGeneration(): void
@@ -228,8 +228,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($patchRequestFile);
         $this->assertStringContainsString('class ArticlesPatchRequest', $content);
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $title', $content);
-        $this->assertStringContainsString('private readonly bool|null|UnsetValue $published', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $title', $content);
+        $this->assertStringContainsString('private readonly bool|UnsetValue|null $published', $content);
     }
 
     public function testConstructorDocblockKeepsGenericArrayParamAndOmitsRedundantParams(): void
@@ -543,7 +543,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($file);
 
         $this->assertMatchesRegularExpression(
-            '/public function __construct\(\s*array \$payload,\s*private readonly string\|null\|UnsetValue \$message = UnsetValue::UNSET,/s',
+            '/public function __construct\(\s*array \$payload,\s*private readonly string\|UnsetValue\|null \$message = UnsetValue::UNSET,/s',
             $content,
         );
     }
@@ -635,28 +635,28 @@ final class GenerateDtoCommandTest extends TestCase
 
         // Optional $ref field should use promoted readonly sentinel pattern.
         $this->assertStringContainsString(
-            'private readonly CompanionPet|null|UnsetValue $companion = UnsetValue::UNSET',
+            'private readonly CompanionPet|UnsetValue|null $companion = UnsetValue::UNSET',
             $content,
         );
 
         // Optional scalar fields should also use promoted readonly sentinel pattern.
         $this->assertStringContainsString(
-            'private readonly int|null|UnsetValue $age = UnsetValue::UNSET',
+            'private readonly int|UnsetValue|null $age = UnsetValue::UNSET',
             $content,
         );
         $this->assertStringContainsString(
-            'private readonly float|null|UnsetValue $score = UnsetValue::UNSET',
+            'private readonly float|UnsetValue|null $score = UnsetValue::UNSET',
             $content,
         );
         $this->assertStringContainsString(
-            'private readonly bool|null|UnsetValue $active = UnsetValue::UNSET',
+            'private readonly bool|UnsetValue|null $active = UnsetValue::UNSET',
             $content,
         );
 
         // Guard against old broken pattern without constructor promotion.
-        $this->assertStringNotContainsString('private CompanionPet|null|UnsetValue $companion;', $content);
+        $this->assertStringNotContainsString('private CompanionPet|UnsetValue|null $companion;', $content);
         $this->assertStringNotContainsString('private ?CompanionPet $companion;', $content);
-        $this->assertStringNotContainsString('\n\t\tCompanionPet|null|UnsetValue $companion = UnsetValue::UNSET,', $content);
+        $this->assertStringNotContainsString('\n\t\tCompanionPet|UnsetValue|null $companion = UnsetValue::UNSET,', $content);
         $this->assertStringNotContainsString('$this->companion = $companion', $content);
         $this->assertStringNotContainsString('$this->age = $age', $content);
         $this->assertStringNotContainsString('$this->score = $score', $content);
@@ -692,8 +692,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($responseFile);
         $this->assertStringContainsString('class Status200', $content);
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $status', $content);
-        $this->assertStringContainsString('private readonly int|null|UnsetValue $timestamp', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $status', $content);
+        $this->assertStringContainsString('private readonly int|UnsetValue|null $timestamp', $content);
     }
 
     public function testDescriptionSupport(): void
@@ -924,8 +924,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = file_get_contents($metadataFile);
         $this->assertStringContainsString('class ArticleMetadata', $content);
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $createdAt', $content);
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $updatedAt', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $createdAt', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $updatedAt', $content);
 
         // Check array helper on Article.tags
         $articleFile = $this->outputDirectory . '/Article.php';
@@ -1460,7 +1460,7 @@ final class GenerateDtoCommandTest extends TestCase
 
         // Query required flags from malformed specs still map as required/non-nullable.
         $this->assertStringContainsString('private readonly int $page', $content);
-        $this->assertStringContainsString('private readonly int|null|UnsetValue $limit', $content);
+        $this->assertStringContainsString('private readonly int|UnsetValue|null $limit', $content);
         $this->assertStringContainsString('public function isPageInQuery(): bool', $content);
         $this->assertStringContainsString('public function isLimitInQuery(): bool', $content);
         $this->assertStringContainsString('return $this->pageInQuery;', $content);
@@ -1927,10 +1927,10 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringNotContainsString('private readonly ?int $id', $content);
 
         // nickname: type: [string, null]  →  nullable string
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $nickname', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $nickname', $content);
 
         // score: type: [number, null]  →  nullable float
-        $this->assertStringContainsString('private readonly float|null|UnsetValue $score', $content);
+        $this->assertStringContainsString('private readonly float|UnsetValue|null $score', $content);
     }
 
     /**
@@ -1946,7 +1946,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($file);
 
         // pet: oneOf: [$ref: SimplePet, type: null]  →  nullable SimplePet
-        $this->assertStringContainsString('private readonly SimplePet|null|UnsetValue $pet', $content);
+        $this->assertStringContainsString('private readonly SimplePet|UnsetValue|null $pet', $content);
     }
 
     /**
@@ -1963,7 +1963,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($file);
 
         // companion is typed as SimplePet
-        $this->assertStringContainsString('private readonly SimplePet|null|UnsetValue $companion', $content);
+        $this->assertStringContainsString('private readonly SimplePet|UnsetValue|null $companion', $content);
 
         // The sibling description must appear in the docblock
         $this->assertStringContainsString('The companion pet of this owner', $content);
@@ -2019,7 +2019,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($file);
 
         // value is nullable string (oneOf string | null)
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $value', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $value', $content);
     }
 
     /**
@@ -2038,7 +2038,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private readonly string $product', $content);
         $this->assertStringContainsString('private readonly int $quantity', $content);
         // note: type: [string, null]  →  nullable
-        $this->assertStringContainsString('private readonly string|null|UnsetValue $note', $content);
+        $this->assertStringContainsString('private readonly string|UnsetValue|null $note', $content);
     }
 
     public function testGeneratesQueryArrayItemConstraintsWithUuidFormat(): void
@@ -2392,7 +2392,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($this->outputDirectory . '/Wrapper.php');
         // An optional, nullable union must not emit a duplicate null member in its type hint.
         $this->assertStringNotContainsString('|null|null', $content);
-        $this->assertStringContainsString('A|B|null|UnsetValue $payload', $content);
+        $this->assertStringContainsString('A|B|UnsetValue|null $payload', $content);
     }
 
     public function testBlankLineSeparatesConstructorFromFirstMethod(): void
@@ -2419,6 +2419,99 @@ final class GenerateDtoCommandTest extends TestCase
         // not glued directly to it.
         $this->assertMatchesRegularExpression('/\}\n\n {4}public function getSuccess/', $content);
         $this->assertDoesNotMatchRegularExpression('/\}\n {4}public function getSuccess/', $content);
+    }
+
+    public function testSentinelUnionEmitsNullLastForOrderedTypes(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Ordered' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'success' => ['type' => 'boolean', 'nullable' => true],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'OrderedNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Ordered.php');
+        // ordered_types (null_adjustment: always_last) requires null to be the final union member.
+        $this->assertStringContainsString('bool|UnsetValue|null $success', $content);
+        $this->assertStringNotContainsString('bool|null|UnsetValue', $content);
+    }
+
+    public function testEmptyCollectionMethodsReturnArrayDirectlyWithoutTempVariable(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Blank' => ['type' => 'object'],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'BlankNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Blank.php');
+        // No-property DTO: collection methods must return the literal directly (no
+        // "$x = []; return $x;" that trips the return_assignment rule, and no multi-line
+        // empty array that trips no_whitespace_in_empty_array).
+        foreach (
+            [
+                'function toArray',
+                'function jsonSerialize',
+                'function getNormalizationMap',
+                'function getAliases',
+                'function getConstraints',
+                'function getParameterSources',
+                'function getParameterStyles',
+            ] as $marker
+        ) {
+            $start = strpos($content, $marker);
+            $this->assertNotFalse($start, "method not found: {$marker}");
+            $bodyStart = strpos($content, '{', (int)$start);
+            $bodyEnd = strpos($content, '}', (int)$bodyStart);
+            $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
+            $this->assertStringContainsString('return [];', $body, "method must return [] directly: {$marker}");
+            $this->assertStringNotContainsString(' = [];', $body, "method must not assign temp array: {$marker}");
+        }
+    }
+
+    public function testSingleSentenceParamDescriptionDropsTrailingDot(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Described' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'single' => ['type' => 'string', 'nullable' => true, 'description' => 'Some note about X.'],
+                            'multi' => ['type' => 'string', 'nullable' => true, 'description' => 'First sentence. Second one.'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'DescribedNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Described.php');
+        // Single-sentence @param description: trailing dot stripped (phpdoc_annotation_without_dot fixed point).
+        $this->assertStringContainsString('@param string|UnsetValue|null $single Some note about X' . "\n", $content);
+        // The dotted form must not survive on the @param line (the plain getter doc line may keep it).
+        $this->assertStringNotContainsString('$single Some note about X.', $content);
+        // Multi-sentence description is left intact (the rule does not act on it).
+        $this->assertStringContainsString('@param string|UnsetValue|null $multi First sentence. Second one.', $content);
     }
 
     public function testReadOnlyPropertyHasReadOnlyInConstraintsAndNormalizationMapMetadata(): void
