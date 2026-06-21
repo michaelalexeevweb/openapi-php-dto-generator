@@ -48,6 +48,15 @@ use Twig\Loader\FilesystemLoader;
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
 final class GenerateDtoCommand extends Command
 {
+    /** Generation mode backed by this library's runtime (DtoValidator/Normalizer/Deserializer). */
+    public const string ATTRIBUTE_MODE_RUNTIME = 'runtime';
+
+    /** Generation mode emitting Symfony Validator/Serializer attributes (no library runtime). */
+    public const string ATTRIBUTE_MODE_SYMFONY = 'symfony';
+
+    /** @var array<int, string> */
+    public const array ATTRIBUTE_MODES = [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_SYMFONY];
+
     public ?Environment $twig = null;
 
     /** @var array<string, array<mixed>> */
@@ -89,6 +98,14 @@ final class GenerateDtoCommand extends Command
     public ?string $rootSpecFile = null;
     public string $baseOutputDirectory = '';
     public string $baseNamespace = '';
+
+    /**
+     * Generation mode. 'runtime' (default) emits DTOs backed by this library's
+     * DtoValidator/DtoNormalizer/DtoDeserializer. 'symfony' emits plain data classes
+     * decorated with Symfony Validator/Serializer attributes, validated and mapped by
+     * Symfony itself (no copy-runtime).
+     */
+    public string $attributeMode = self::ATTRIBUTE_MODE_RUNTIME;
     public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
     public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
 
@@ -125,6 +142,13 @@ final class GenerateDtoCommand extends Command
             mode: InputOption::VALUE_REQUIRED,
             description: 'Custom namespace for DTO generator services',
         );
+        $this->addOption(
+            name: 'attributes',
+            shortcut: null,
+            mode: InputOption::VALUE_REQUIRED,
+            description: 'Generation mode: "runtime" (default, library runtime) or "symfony" (Symfony Validator/Serializer attributes)',
+            default: self::ATTRIBUTE_MODE_RUNTIME,
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -138,6 +162,15 @@ final class GenerateDtoCommand extends Command
         $directory = is_string($directoryOption) ? trim($directoryOption) : '';
         $namespaceOption = $input->getOption('namespace');
         $namespaceOption = is_string($namespaceOption) ? trim($namespaceOption) : '';
+        $attributesOption = $input->getOption('attributes');
+        $mode = is_string($attributesOption) && $attributesOption !== ''
+            ? $attributesOption
+            : self::ATTRIBUTE_MODE_RUNTIME;
+
+        if (!in_array($mode, self::ATTRIBUTE_MODES, true)) {
+            $io->error('Option --attributes must be "runtime" or "symfony".');
+            return Command::FAILURE;
+        }
 
         if ($file === '') {
             $io->error('Option --file is required. Example: --file=OpenApiExamples/test.yaml');
@@ -197,7 +230,7 @@ final class GenerateDtoCommand extends Command
         }
 
         try {
-            $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace);
+            $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace, mode: $mode);
 
             if ($dtoGeneratorDirectory !== null) {
                 $this->copyCommonServices(
@@ -219,8 +252,10 @@ final class GenerateDtoCommand extends Command
         return Command::SUCCESS;
     }
 
-    public function generateFromFile(string $filePath, string $outputDirectory, string $namespace): int
+    public function generateFromFile(string $filePath, string $outputDirectory, string $namespace, string $mode = self::ATTRIBUTE_MODE_RUNTIME): int
     {
+        $this->setAttributeMode($mode);
+
         if (!is_file($filePath)) {
             throw new RuntimeException(sprintf('File not found: %s', $filePath));
         }
@@ -280,8 +315,9 @@ final class GenerateDtoCommand extends Command
     /**
      * @param array<mixed> $openApi
      */
-    public function generateFromArray(array $openApi, string $outputDirectory, string $namespace): int
+    public function generateFromArray(array $openApi, string $outputDirectory, string $namespace, string $mode = self::ATTRIBUTE_MODE_RUNTIME): int
     {
+        $this->setAttributeMode($mode);
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
 
         $schemas = $this->extractSchemas($openApi);
@@ -305,6 +341,15 @@ final class GenerateDtoCommand extends Command
         }
 
         return $this->finalizeGeneration();
+    }
+
+    private function setAttributeMode(string $mode): void
+    {
+        if (!in_array($mode, self::ATTRIBUTE_MODES, true)) {
+            throw new RuntimeException(sprintf('Unknown generation mode: %s (expected "runtime" or "symfony").', $mode));
+        }
+
+        $this->attributeMode = $mode;
     }
 
     public function copyCommonServices(
@@ -2276,6 +2321,19 @@ final class GenerateDtoCommand extends Command
         $extends = $schemaMetadata['extends'];
         $unionTypes = $schemaMetadata['unionTypes'];
         $discriminator = $schemaMetadata['discriminator'] ?? null;
+
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
+            // Symfony DTOs are flattened: inherited properties are merged into a single standalone
+            // constructor (no `extends`/parent::__construct chaining), which maps cleanly onto the
+            // Symfony serializer/validator without partially-initialised parent state.
+            return $this->renderSymfonyDtoClass(
+                namespace: $namespace,
+                className: $className,
+                properties: $this->flattenedSymfonyProperties($className, $properties),
+                unionTypes: $unionTypes,
+            );
+        }
+
         $imports = $this->collectGeneratedClassImports(
             namespace: $namespace,
             className: $className,
@@ -2494,6 +2552,450 @@ final class GenerateDtoCommand extends Command
             'parameterSourceAssignments' => $parameterSourceAssignments,
             'parameterStyleAssignments' => $parameterStyleAssignments,
         ]);
+    }
+
+    /**
+     * Renders a DTO in Symfony mode: a plain data class with promoted public readonly
+     * constructor properties decorated with Symfony Validator (#[Assert\*]) and Serializer
+     * (#[SerializedName]) attributes. No library runtime, interface, or normalization map.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @param array<int, string> $unionTypes
+     */
+    private function renderSymfonyDtoClass(
+        string $namespace,
+        string $className,
+        array $properties,
+        array $unionTypes,
+    ): string {
+        $useStatements = [];
+        if ($this->needsDateTimeImmutableImport($properties)) {
+            $useStatements[] = 'DateTimeImmutable';
+        }
+        if ($this->needsUploadedFileImport($properties)) {
+            $useStatements[] = 'Symfony\\Component\\HttpFoundation\\File\\UploadedFile';
+        }
+        foreach ($this->collectGeneratedClassImports($namespace, $className, $properties, null, $unionTypes, null) as $import) {
+            $useStatements[] = $import;
+        }
+
+        $params = [];
+        $needsSerializedName = false;
+        $needsGroups = false;
+        foreach ($properties as $property) {
+            $param = $this->resolveSymfonyParam($property, $namespace);
+            if ($param['serializedName'] !== null) {
+                $needsSerializedName = true;
+            }
+            foreach ($param['attributes'] as $attribute) {
+                if (str_contains($attribute, 'Groups(')) {
+                    $needsGroups = true;
+                }
+            }
+            $params[] = $param;
+        }
+
+        $useStatements[] = 'Symfony\\Component\\Validator\\Constraints as Assert';
+        if ($needsSerializedName) {
+            $useStatements[] = 'Symfony\\Component\\Serializer\\Attribute\\SerializedName';
+        }
+        if ($needsGroups) {
+            $useStatements[] = 'Symfony\\Component\\Serializer\\Attribute\\Groups';
+        }
+        $useStatements = array_values(array_unique($useStatements));
+        sort($useStatements);
+
+        return $this->renderPhpTemplate('dto.symfony.php.twig', [
+            'namespace' => $namespace,
+            'imports' => $useStatements,
+            'className' => $className,
+            'extends' => null,
+            'params' => $params,
+        ]);
+    }
+
+    /**
+     * Returns the full, flattened property list for a Symfony DTO: inherited properties (resolved
+     * recursively through allOf parents) followed by own ones, deduplicated by name so a child
+     * override wins. Falls back to the pre-resolved own properties when the schema is not
+     * registered (e.g. a union marker).
+     *
+     * @param array<int, SchemaProperty> $ownProperties
+     * @return array<int, SchemaProperty>
+     */
+    private function flattenedSymfonyProperties(string $className, array $ownProperties): array
+    {
+        $all = array_key_exists($className, $this->dtoSchemas)
+            ? $this->getSchemaProperties($className)
+            : $ownProperties;
+
+        $byName = [];
+        foreach ($all as $property) {
+            $byName[$property['name']] = $property;
+        }
+
+        $values = array_values($byName);
+
+        // Required params (which get no default) must precede optional ones (which get a default),
+        // otherwise PHP emits an "optional before required" deprecation and construction by the
+        // required args alone fails. usort is stable on PHP 8.3, so schema order is otherwise kept.
+        usort(
+            $values,
+            static fn(array $a, array $b): int => ($b['required'] ? 1 : 0) <=> ($a['required'] ? 1 : 0),
+        );
+
+        return $values;
+    }
+
+    /**
+     * @param SchemaProperty $property
+     * @return array{declaredType: string, docType: ?string, name: string, serializedName: ?string, default: string, attributes: array<int, string>}
+     */
+    private function resolveSymfonyParam(array $property, string $namespace): array
+    {
+        $phpType = $property['type'];
+        $docType = null;
+
+        if (str_contains($phpType, '<')) {
+            $docType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
+            $phpType = 'array';
+        } else {
+            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
+        }
+
+        $required = $property['required'];
+        $default = $property['default'] ?? null;
+
+        // Symfony mode drops the UnsetValue sentinel: an optional property becomes nullable with a
+        // default (null unless the schema declares one). PATCH partial-update semantics (present vs
+        // omitted) are intentionally not modelled here — that is a documented limitation.
+        $declaredNullable = $property['nullable'] || (!$required && $default === null);
+        $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
+
+        if ($required) {
+            $defaultLiteral = '';
+        } elseif ($default !== null) {
+            $defaultLiteral = $this->renderDefaultValue($default, $phpType, $declaredType);
+        } else {
+            $defaultLiteral = ' = null';
+        }
+
+        return [
+            'declaredType' => $declaredType,
+            'docType' => $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null,
+            'name' => $property['name'],
+            'serializedName' => $property['name'] !== $property['openApiName'] ? $property['openApiName'] : null,
+            'default' => $defaultLiteral,
+            'attributes' => $this->resolveSymfonyAttributes($property),
+        ];
+    }
+
+    /**
+     * Maps OpenAPI constraints to Symfony Validator attribute lines. Covers the common scalar,
+     * string, numeric and array constraints plus cascade validation. Composition keywords
+     * (oneOf/anyOf/allOf/discriminator/if-then-else) have no clean Symfony equivalent and are not
+     * emitted — a documented limitation of this mode.
+     *
+     * @param SchemaProperty $property
+     * @return array<int, string>
+     */
+    private function resolveSymfonyAttributes(array $property): array
+    {
+        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        $attributes = [];
+
+        if ($property['required'] && !$property['nullable']) {
+            $attributes[] = '#[Assert\\NotNull]';
+        }
+
+        // Scalar/value-level constraints (Length, Range, Regex, EqualTo, format-based, ...).
+        foreach ($this->scalarConstraintSpecs($constraints) as $spec) {
+            $attributes[] = $spec['args'] === ''
+                ? '#[Assert\\' . $spec['name'] . ']'
+                : '#[Assert\\' . $spec['name'] . '(' . $spec['args'] . ')]';
+        }
+
+        // Array/map size — minItems/maxItems (lists) and minProperties/maxProperties (inline maps)
+        // both count elements of the backing PHP array, so they share a single Count attribute.
+        $count = [];
+        $countMin = $constraints['minItems'] ?? $constraints['minProperties'] ?? null;
+        $countMax = $constraints['maxItems'] ?? $constraints['maxProperties'] ?? null;
+        if (is_int($countMin)) {
+            $count[] = 'min: ' . $countMin;
+        }
+        if (is_int($countMax)) {
+            $count[] = 'max: ' . $countMax;
+        }
+        if ($count !== []) {
+            $attributes[] = '#[Assert\\Count(' . implode(', ', $count) . ')]';
+        }
+
+        if (($constraints['uniqueItems'] ?? null) === true) {
+            $attributes[] = '#[Assert\\Unique]';
+        }
+
+        // Typed map values (additionalProperties: { schema }) — validate every value via All.
+        $additionalProperties = $constraints['additionalProperties'] ?? null;
+        if (is_array($additionalProperties)) {
+            $valueExpressions = $this->valueConstraintExpressions($additionalProperties);
+            if ($valueExpressions !== []) {
+                $attributes[] = '#[Assert\\All([' . implode(', ', $valueExpressions) . '])]';
+            }
+        }
+
+        // anyOf — the value must satisfy at least one branch.
+        $anyOf = $constraints['anyOf'] ?? null;
+        if (is_array($anyOf) && count($anyOf) >= 2) {
+            $branches = [];
+            $allBranchesValidatable = true;
+            foreach ($anyOf as $branch) {
+                $expressions = is_array($branch) ? $this->valueConstraintExpressions($branch) : [];
+                if ($expressions === []) {
+                    $allBranchesValidatable = false;
+                    break;
+                }
+                $branches[] = count($expressions) === 1
+                    ? $expressions[0]
+                    : 'new Assert\\Sequentially([' . implode(', ', $expressions) . '])';
+            }
+            if ($allBranchesValidatable && count($branches) >= 2) {
+                $attributes[] = '#[Assert\\AtLeastOneOf([' . implode(', ', $branches) . '])]';
+            }
+        }
+
+        // Per-item constraints for arrays of scalars (array of DTOs cascades via Valid instead).
+        $items = $constraints['items'] ?? null;
+        if (is_array($items) && !$this->symfonyPropertyCascades($property)) {
+            $itemSpecs = $this->scalarConstraintSpecs($items);
+            if ($itemSpecs !== []) {
+                $expressions = array_map(
+                    static fn(array $spec): string => 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')',
+                    $itemSpecs,
+                );
+                $attributes[] = '#[Assert\\All([' . implode(', ', $expressions) . '])]';
+            }
+        }
+
+        // Serialization groups for read-only / write-only fields.
+        if (($property['readOnly'] ?? false) === true) {
+            $attributes[] = "#[Groups(['read'])]";
+        }
+        if (($property['writeOnly'] ?? false) === true) {
+            $attributes[] = "#[Groups(['write'])]";
+        }
+
+        if ($this->symfonyPropertyCascades($property)) {
+            $attributes[] = '#[Assert\\Valid]';
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Maps the scalar/value-level OpenAPI constraints of a (sub)schema to Symfony constraint
+     * specs: [{name, args}]. Shared by property attributes and by #[Assert\All] item constraints.
+     * Composition keywords (oneOf/anyOf/allOf/not/if-then-else), tuple prefixItems and inline-map
+     * object constraints (minProperties/additionalProperties) have no clean Symfony equivalent and
+     * are intentionally not mapped — a documented limitation of this mode.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<int, array{name: string, args: string}>
+     */
+    private function scalarConstraintSpecs(array $constraints): array
+    {
+        $specs = [];
+
+        $length = [];
+        if (is_int($constraints['minLength'] ?? null)) {
+            $length[] = 'min: ' . $constraints['minLength'];
+        }
+        if (is_int($constraints['maxLength'] ?? null)) {
+            $length[] = 'max: ' . $constraints['maxLength'];
+        }
+        if ($length !== []) {
+            $specs[] = ['name' => 'Length', 'args' => implode(', ', $length)];
+        }
+
+        $min = $constraints['minimum'] ?? null;
+        $max = $constraints['maximum'] ?? null;
+        $exclusiveMin = $constraints['exclusiveMinimum'] ?? null;
+        $exclusiveMax = $constraints['exclusiveMaximum'] ?? null;
+
+        if (is_int($exclusiveMin) || is_float($exclusiveMin)) {
+            $specs[] = ['name' => 'GreaterThan', 'args' => $this->numericLiteral($exclusiveMin)];
+        } elseif ($exclusiveMin === true && (is_int($min) || is_float($min))) {
+            $specs[] = ['name' => 'GreaterThan', 'args' => $this->numericLiteral($min)];
+            $min = null;
+        }
+
+        if (is_int($exclusiveMax) || is_float($exclusiveMax)) {
+            $specs[] = ['name' => 'LessThan', 'args' => $this->numericLiteral($exclusiveMax)];
+        } elseif ($exclusiveMax === true && (is_int($max) || is_float($max))) {
+            $specs[] = ['name' => 'LessThan', 'args' => $this->numericLiteral($max)];
+            $max = null;
+        }
+
+        $range = [];
+        if (is_int($min) || is_float($min)) {
+            $range[] = 'min: ' . $this->numericLiteral($min);
+        }
+        if (is_int($max) || is_float($max)) {
+            $range[] = 'max: ' . $this->numericLiteral($max);
+        }
+        if ($range !== []) {
+            $specs[] = ['name' => 'Range', 'args' => implode(', ', $range)];
+        }
+
+        if (is_int($constraints['multipleOf'] ?? null) || is_float($constraints['multipleOf'] ?? null)) {
+            $specs[] = ['name' => 'DivisibleBy', 'args' => $this->numericLiteral($constraints['multipleOf'])];
+        }
+
+        if (is_string($constraints['pattern'] ?? null) && $constraints['pattern'] !== '') {
+            $delimited = '/' . str_replace('/', '\\/', $constraints['pattern']) . '/';
+            $specs[] = ['name' => 'Regex', 'args' => $this->phpStringLiteral($delimited)];
+        }
+
+        if (array_key_exists('const', $constraints) && $this->isScalarConstValue($constraints['const'])) {
+            $specs[] = ['name' => 'EqualTo', 'args' => 'value: ' . $this->scalarLiteral($constraints['const'])];
+        }
+
+        $hasRange = $range !== [];
+        foreach ($this->formatConstraintSpecs($constraints['format'] ?? null) as $spec) {
+            // An explicit minimum/maximum Range already covers (and is tighter than) the format's
+            // implicit int32 bounds — avoid emitting a redundant second Range.
+            if ($spec['name'] === 'Range' && $hasRange) {
+                continue;
+            }
+            $specs[] = $spec;
+        }
+
+        return $specs;
+    }
+
+    /**
+     * Maps an OpenAPI `format` to Symfony format constraints. Formats without a clean Symfony
+     * equivalent (date/date-time are covered by the DateTimeImmutable type; duration, etc.) are skipped.
+     *
+     * @return array<int, array{name: string, args: string}>
+     */
+    private function formatConstraintSpecs(mixed $format): array
+    {
+        if (!is_string($format)) {
+            return [];
+        }
+
+        return match ($format) {
+            'email', 'idn-email' => [['name' => 'Email', 'args' => '']],
+            'uuid' => [['name' => 'Uuid', 'args' => '']],
+            'uri', 'iri', 'url' => [['name' => 'Url', 'args' => '']],
+            'hostname', 'idn-hostname' => [['name' => 'Hostname', 'args' => '']],
+            'ipv4' => [['name' => 'Ip', 'args' => "version: '4'"]],
+            'ipv6' => [['name' => 'Ip', 'args' => "version: '6'"]],
+            'int32' => [['name' => 'Range', 'args' => 'min: -2147483648, max: 2147483647']],
+            'uint32' => [['name' => 'Range', 'args' => 'min: 0, max: 4294967295']],
+            // uint64's upper bound (2^64-1) exceeds PHP's signed int, so only the lower bound
+            // is expressible; int64 is the native PHP int range and needs no constraint.
+            'uint64' => [['name' => 'Range', 'args' => 'min: 0']],
+            default => [],
+        };
+    }
+
+    /**
+     * Builds `new Assert\*(...)` expressions enforcing a (sub)schema on a value that has no own PHP
+     * type hint — array/map items and anyOf branches. Includes a Type constraint (the element type
+     * cannot be expressed in the declared `array` hint) plus the scalar constraint specs.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function valueConstraintExpressions(array $schema): array
+    {
+        $expressions = [];
+
+        $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
+        if ($symfonyType !== null) {
+            $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
+        }
+
+        foreach ($this->scalarConstraintSpecs($schema) as $spec) {
+            $expressions[] = 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')';
+        }
+
+        return $expressions;
+    }
+
+    private function openApiTypeToSymfonyType(mixed $type): ?string
+    {
+        if (!is_string($type)) {
+            return null;
+        }
+
+        return match ($type) {
+            'integer' => 'int',
+            'number' => 'float',
+            'string' => 'string',
+            'boolean' => 'bool',
+            'array', 'object' => 'array',
+            default => null,
+        };
+    }
+
+    private function isScalarConstValue(mixed $value): bool
+    {
+        return is_string($value) || is_int($value) || is_float($value) || is_bool($value);
+    }
+
+    private function scalarLiteral(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        if (is_int($value) || is_float($value)) {
+            return $this->numericLiteral($value);
+        }
+
+        return $this->phpStringLiteral(is_string($value) ? $value : (string)$value);
+    }
+
+    /**
+     * True when the property references a generated DTO (directly or as an array of DTOs), so a
+     * cascade (#[Assert\Valid]) should be emitted. Enums validate by type and do not cascade.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyPropertyCascades(array $property): bool
+    {
+        $type = $property['type'];
+        if (preg_match('/^array<(.+)>$/', $type, $matches) === 1) {
+            $type = $matches[1];
+        }
+        $type = ltrim($type, '?');
+        $shortName = $this->shortClassName($type);
+
+        return array_key_exists($shortName, $this->dtoSchemas);
+    }
+
+    private function shortClassName(string $type): string
+    {
+        $parts = explode('\\', $type);
+
+        return end($parts);
+    }
+
+    private function numericLiteral(int|float $value): string
+    {
+        if (is_int($value)) {
+            return (string)$value;
+        }
+
+        $rendered = json_encode($value);
+
+        return is_string($rendered) ? $rendered : (string)$value;
+    }
+
+    private function phpStringLiteral(string $value): string
+    {
+        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
     }
 
     /**
@@ -3930,13 +4432,20 @@ final class GenerateDtoCommand extends Command
             ];
         }
 
-        return $this->renderPhpTemplate('enum.php.twig', [
-            'namespace' => $namespace,
-            'imports' => [$this->generatedDtoInterfaceImportFqcn],
-            'enumName' => $enumName,
-            'backingType' => $backingType,
-            'cases' => $cases,
-        ]);
+        // Symfony mode emits a plain backed enum (no library runtime interface/methods) — the
+        // Symfony serializer handles backed enums natively via BackedEnumNormalizer.
+        $isSymfony = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY;
+
+        return $this->renderPhpTemplate(
+            $isSymfony ? 'enum.symfony.php.twig' : 'enum.php.twig',
+            [
+                'namespace' => $namespace,
+                'imports' => $isSymfony ? [] : [$this->generatedDtoInterfaceImportFqcn],
+                'enumName' => $enumName,
+                'backingType' => $backingType,
+                'cases' => $cases,
+            ],
+        );
     }
 
     /**

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OpenapiPhpDtoGenerator\Tests;
+namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
@@ -65,7 +65,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      */
     private function generateProbeModel(string $namespace): string
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/gap1-probe.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/gap1-probe.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
 
         $files = glob($this->outputDirectory . '/*.php');
@@ -85,7 +85,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      */
     private function generateOptionalFieldModel(string $namespace): string
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/optional-field-validation.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/optional-field-validation.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
 
         $files = glob($this->outputDirectory . '/*.php');
@@ -103,7 +103,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      */
     private function generateIntFormatModel(string $namespace): string
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/int-format.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/int-format.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
 
         $files = glob($this->outputDirectory . '/*.php');
@@ -121,7 +121,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      */
     private function generateEventModel(string $namespace): string
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/array-datetime.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/array-datetime.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
 
         $files = glob($this->outputDirectory . '/*.php');
@@ -188,7 +188,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      */
     private function generateBoxModel(string $namespace): string
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/array-enum-dto.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/array-enum-dto.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
 
         $files = glob($this->outputDirectory . '/*.php');
@@ -235,7 +235,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     {
         // Regression: int-backed enum case (value 1) never strict-equalled the incoming "1"
         // from a query parameter (Symfony delivers query/path/form as strings).
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/int-enum-query.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/int-enum-query.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapIntEnum');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -251,7 +251,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testIntOverflowStringFromQueryIsRejected(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/int-enum-query.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/int-enum-query.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapIntOverflow');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -268,7 +268,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     {
         // Regression: if:{$ref} extracted to an empty (vacuously-true) schema, so `then`
         // (discountCode required) was applied to EVERY value. The unvalidatable if/then is dropped.
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/if-ref.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/if-ref.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapIfRef');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -297,7 +297,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     public function testNestedDtoWriteOnlyFieldIsNotSerialized(): void
     {
         // write-only fields of a NESTED DTO must not leak into the parent's serialized output.
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nested-writeonly.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nested-writeonly.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapNestedWo');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -318,7 +318,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     public function testCyclicDtoGraphSerializesWithoutInfiniteRecursion(): void
     {
         // Cycles are now explicit serialization errors (instead of silent null truncation).
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/cyclic-node.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapCycle');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -340,7 +340,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     public function testCyclicDtoGraphIsReportedByValidateAndRejectedByValidateAndNormalize(): void
     {
         // Validation must reject circular graphs, and validateAndNormalize* must fail too.
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/cyclic-node.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapCycleValidate');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -366,7 +366,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     public function testSelfReferentialRootSerializesWithoutInfiniteRecursion(): void
     {
         // Root self-reference is now an explicit serialization error.
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/cyclic-node.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/cyclic-node.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapSelfRef');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -388,7 +388,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // Regression: a oneOf with a $ref variant extracted an empty branch that the
         // validator treated as always-matching → false "matches more than one oneOf
         // branch". The unvalidatable union must be dropped from getConstraints().
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/oneof-ref.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/oneof-ref.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapOneOfRef');
         $files = glob($this->outputDirectory . '/*.php');
         foreach ($files === false ? [] : $files as $file) {
@@ -540,7 +540,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testHeaderAndCookieParamsAreDeserializedThroughGeneratedDto(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/source-params.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/source-params.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapSrc');
 
         $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
@@ -587,7 +587,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testRequiredHeaderParamMissingThrowsThroughGeneratedDto(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/source-params.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/source-params.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapSrcMissing');
 
         $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
@@ -618,7 +618,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testDelimitedArrayParamsSplitByStyleThroughGeneratedDto(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/parameter-style.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/parameter-style.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenStyle');
 
         $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
@@ -651,7 +651,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testNullableArrayItemsAreAcceptedThroughGeneratedDto(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-array-items.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nullable-array-items.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenNullItems');
 
         foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
@@ -673,7 +673,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testDefaultValuedParamPresenceFlagReflectsActualProvision(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/default-param-presence.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/default-param-presence.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenDefaultParam');
 
         foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
@@ -700,7 +700,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testDateTimeSubSecondPrecisionRoundTrips(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/datetime-precision.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/datetime-precision.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenMoment');
 
         foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
@@ -729,7 +729,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testValidateAndNormalizeOmitsUnprovidedOptionalField(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/normalize-unprovided.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/normalize-unprovided.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenNormUnprov');
 
         foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {

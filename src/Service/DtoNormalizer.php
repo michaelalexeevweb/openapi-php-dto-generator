@@ -130,22 +130,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /**
      * @return array<string, mixed>|null
      */
-    private function tryFastArray(object $dto): ?array
+    private function tryFastArray(GeneratedDtoInterface $dto): ?array
     {
-        if (!method_exists($dto, 'toArray')) {
-            return $this->tryFastJsonSerializableArray($dto);
-        }
-
         try {
             $result = $dto->toArray();
         } catch (LogicException $e) {
             if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                 throw $e;
             }
-            return null;
-        }
-
-        if (!is_array($result)) {
             return null;
         }
 
@@ -158,37 +150,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
             // reflection-based dtoToArray() — which is more robust (e.g. the UploadedFile
             // fallback). A genuine Error (TypeError etc.) is NOT caught: it propagates, matching
             // dtoToArray()'s behaviour instead of silently masking a bug behind the slow path.
-            return null;
-        }
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function tryFastJsonSerializableArray(object $dto): ?array
-    {
-        if (!$dto instanceof JsonSerializable) {
-            return null;
-        }
-
-        try {
-            $serialized = $dto->jsonSerialize();
-        } catch (LogicException $e) {
-            if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
-                throw $e;
-            }
-            return null;
-        }
-
-        if (!is_array($serialized)) {
-            return null;
-        }
-
-        try {
-            return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($serialized, [spl_object_id($dto) => true]));
-        } catch (LogicException | RuntimeException) {
-            // Same as tryFastArray(): swallow only expected normalization failures and fall
-            // back; let a genuine Error propagate for consistency with the slow path.
             return null;
         }
     }

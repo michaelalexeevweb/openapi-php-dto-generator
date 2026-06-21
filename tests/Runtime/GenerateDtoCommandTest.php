@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OpenapiPhpDtoGenerator\Tests;
+namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
@@ -63,7 +63,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testPathAndQueryParameters(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $count = $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $this->assertGreaterThan(0, $count);
@@ -108,7 +108,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testParameterStyleMetadataIsEmitted(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/parameter-style.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/parameter-style.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'StyleNamespace');
 
         $content = (string)file_get_contents($this->outputDirectory . '/SearchGetQueryParams.php');
@@ -204,7 +204,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testRequestBodyPostGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check POST request DTO
@@ -219,7 +219,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testRequestBodyPatchGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check PATCH request DTO
@@ -683,7 +683,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testInlineResponseSchemaGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check inline response schema DTO
@@ -698,7 +698,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testDescriptionSupport(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $postFile = $this->outputDirectory . '/Post.php';
@@ -872,7 +872,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testDefaultValuesSupport(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $settingsFile = $this->outputDirectory . '/PostSettings.php';
@@ -885,7 +885,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testEnumGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // String enum
@@ -915,7 +915,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testNestedSchemaGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check nested metadata schema
@@ -939,7 +939,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testNestedEnumGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check nested enum in Comment
@@ -962,7 +962,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testAllOfWithInheritance(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check base entity
@@ -986,7 +986,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testOneOfGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $petFile = $this->outputDirectory . '/Pet.php';
@@ -1003,7 +1003,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testAnyOfGeneration(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $notificationFile = $this->outputDirectory . '/Notification.php';
@@ -1020,7 +1020,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testDiscriminatorSupport(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Check Animal base
@@ -1061,7 +1061,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testDiscriminatorDuplicateMappingTargetThrowsException(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/discriminator-duplicate-mapping.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/discriminator-duplicate-mapping.yaml');
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('duplicate target "DogAnimal"');
@@ -1071,7 +1071,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testInheritedEnumOverrideSubsetReusesParentEnumType(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/discriminator-enum-override-subset.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/discriminator-enum-override-subset.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $parentFile = $this->outputDirectory . '/Test1.php';
@@ -1092,7 +1092,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testGeneratesOpenApiConstraintsMetadata(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/constraints.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/constraints.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/ConstraintSample.php';
@@ -1110,7 +1110,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testGeneratesUnionTypeForPropertyOneOf(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/union-type.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/union-type.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/UnionSample.php';
@@ -1139,7 +1139,7 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $count = $this->generator->generateFromFile(
-                __DIR__ . '/fixtures/external-ref/root.yaml',
+                __DIR__ . '/../fixtures/external-ref/root.yaml',
                 $outputDir,
                 'TestNamespace',
             );
@@ -1177,7 +1177,7 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $count = $this->generator->generateFromFile(
-                __DIR__ . '/fixtures/external-ref/root-nested.yaml',
+                __DIR__ . '/../fixtures/external-ref/root-nested.yaml',
                 $outputDir,
                 'TestNamespace',
             );
@@ -1362,7 +1362,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testAllOfLastTypeWinsForProperty(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/allof-last-type-wins.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/allof-last-type-wins.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/AllOfSample.php';
@@ -1396,7 +1396,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testQueryParametersWithDefaults(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $queryParamsFile = $this->outputDirectory . '/UsersPostsGetQueryParams.php';
@@ -1409,7 +1409,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testGeneratedFilesCount(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $count = $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Should generate many DTOs, enums, and parameter classes
@@ -1418,7 +1418,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testNamespaceIsCorrect(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'My\\Custom\\Namespace');
 
         $postFile = $this->outputDirectory . '/Post.php';
@@ -1435,7 +1435,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($this->outputDirectory . '/dummy.txt');
 
         // Generate DTOs
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/test-all-features.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Dummy file should be removed
@@ -1444,7 +1444,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testPathParametersAreAlwaysRequiredAndQueryRequiredSupportsStringFlags(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/path-query-required-coercion.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/path-query-required-coercion.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $queryParamsFile = $this->outputDirectory . '/ApiTestCatsActionsGetQueryParams.php';
@@ -1635,7 +1635,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testAdditionalPropertiesMapGeneratesArrayTypeAndNoNestedClass(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/additional-properties.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/additional-properties.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/TestMapModel.php';
@@ -1744,7 +1744,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testNullableAllOfWithSingleRef(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nullable-allof.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Test User with single $ref in nullable allOf
@@ -1759,7 +1759,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testNullableAllOfWithMultipleRefs(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nullable-allof.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Test User with multiple $refs - should create merged DTO
@@ -1799,7 +1799,7 @@ final class GenerateDtoCommandTest extends TestCase
         // OAS 3.0 spec-valid alternative: nullable: true as a branch inside allOf
         // allOf: [{$ref: '...'}, {nullable: true}]
         // Must produce the same result as: nullable: true + allOf: [{$ref: '...'}]
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nullable-allof.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $userFile = $this->outputDirectory . '/UserWithNullableInsideAllOf.php';
@@ -1820,7 +1820,7 @@ final class GenerateDtoCommandTest extends TestCase
         // allOf: [{$ref: Cat}, {$ref: Dog}, {nullable: true}]
         // The nullable branch must be stripped before creating the merged DTO,
         // and the merged DTO must be nullable.
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/nullable-allof.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nullable-allof.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $userFile = $this->outputDirectory . '/UserWithNullableInsideAllOfMultiRefs.php';
@@ -1843,7 +1843,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testMultipartBinaryFileSupport(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/../OpenApiExamples/test.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../../OpenApiExamples/test.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         // Inline multipart request body
@@ -1866,7 +1866,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testDateAndDateTimeFormatSupport(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/../OpenApiExamples/test.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../../OpenApiExamples/test.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $userFile = $this->outputDirectory . '/User.php';
@@ -1892,7 +1892,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testDatetimeAliasFormatSupport(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/datetime-alias.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/datetime-alias.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $aliasFile = $this->outputDirectory . '/AliasDateTimeModel.php';
@@ -1915,7 +1915,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31NullableScalarViaArrayType(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/NullableScalarModel.php';
@@ -1938,7 +1938,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31NullableRefViaOneOfNull(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/NullableRefModel.php';
@@ -1955,7 +1955,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31RefWithSiblingDescription(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/RefWithSiblingDescription.php';
@@ -1974,7 +1974,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31MultipleNonNullTypesInArrayType(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/UnionTypeModel.php';
@@ -1992,7 +1992,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31ExclusiveMinMaxAsNumbers(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/NumericConstraints31Model.php';
@@ -2011,7 +2011,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31ExplicitNullType(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/ExplicitNullModel.php';
@@ -2028,7 +2028,7 @@ final class GenerateDtoCommandTest extends TestCase
      */
     public function testOpenApi31RequestBodyWithNullableArrayType(): void
     {
-        $openApi = Yaml::parseFile(__DIR__ . '/fixtures/openapi-31.yaml');
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/openapi-31.yaml');
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $file = $this->outputDirectory . '/CreateOrderRequest.php';

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OpenapiPhpDtoGenerator\Tests;
+namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;

@@ -13,6 +13,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Features
 
 - 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
+- 🎯 **Two generation modes** — **runtime** (DTOs backed by this library's validator/normalizer/deserializer) or **symfony** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes, validated and (de)serialized by Symfony itself)
 - ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
 - 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
 - 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
@@ -25,13 +26,14 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
 - [Generate DTOs](#generate-dto-classes-from-yaml-openapi-spec)
+- [Generation Modes: Runtime vs Symfony](#generation-modes-runtime-vs-symfony)
 - [Validate & Normalize](#validate-and-normalize-generated-dtos)
 - [CLI Commands](#cli-commands)
 
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.3.5
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.4.0
 ```
 
 ## Requirements
@@ -113,6 +115,138 @@ Parameters:
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
 | `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
+| `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime) or `symfony` (DTOs decorated with Symfony Validator/Serializer attributes). See [Generation Modes](#generation-modes-runtime-vs-symfony). |
+
+## Generation Modes: Runtime vs Symfony
+
+The generator emits DTOs in one of two modes, selected with `--attributes` (default: `runtime`).
+
+### Runtime mode (default)
+
+DTOs implement `GeneratedDtoInterface` and carry the metadata methods (`toArray()`,
+`getNormalizationMap()`, `getConstraints()`, …). They are validated, normalized and deserialized
+by **this library's own services** — `DtoValidator`, `DtoNormalizer`, `DtoDeserializer` — which
+enforce the full OpenAPI vocabulary (including `oneOf`/`anyOf`/`allOf`, `if/then/else`, `not`,
+`prefixItems`, object/map constraints) and track which optional fields were actually provided
+(PATCH-friendly presence tracking via the `UnsetValue` sentinel).
+
+```bash
+composer openapi:generate-dto -- \
+  --file=OpenApiExamples/test.yaml \
+  --directory=generated/test \
+  --namespace=Generated\\Test
+  # --attributes=runtime is the default
+```
+
+```php
+// generated in runtime mode (excerpt)
+final class User implements GeneratedDtoInterface, Stringable
+{
+    // presence flags per property: $nameInRequest, $emailInRequest, … (what was actually sent)
+
+    /**
+     * @param string $name
+     * Constraints: minLength=2, maxLength=50
+     * @param string|UnsetValue|null $email
+     * Constraints: format=email
+     */
+    public function __construct(
+        private readonly string $name,
+        private readonly string|UnsetValue|null $email = UnsetValue::UNSET,
+        private readonly Address|UnsetValue|null $address = UnsetValue::UNSET,
+    ) {
+        $this->emailInRequest = $email !== UnsetValue::UNSET; // presence tracking (PATCH-friendly)
+        // …
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getEmail(): ?string
+    {
+        return $this->email !== UnsetValue::UNSET ? $this->email : null;
+    }
+
+    // + isNameInRequest()/isNameRequired()/…, toArray(), jsonSerialize(),
+    //   getNormalizationMap(), getAliases(), getConstraints() — consumed by the runtime services
+}
+```
+
+### Symfony mode (`--attributes=symfony`)
+
+DTOs are plain, immutable data classes with promoted `public readonly` constructor properties
+decorated with **Symfony Validator / Serializer attributes**. There is no library runtime: the DTOs
+are validated by `symfony/validator` and (de)serialized by `symfony/serializer` (or auto-mapped in a
+controller with `#[MapRequestPayload]` / `#[MapQueryString]`).
+
+```bash
+composer openapi:generate-dto -- \
+  --file=OpenApiExamples/test.yaml \
+  --directory=generated/test \
+  --namespace=Generated\\Test \
+  --attributes=symfony
+```
+
+```php
+// generated in symfony mode
+class User
+{
+    public function __construct(
+        #[Assert\NotNull]
+        #[Assert\Length(min: 2, max: 50)]
+        public readonly string $name,
+        #[Assert\Email]
+        public readonly ?string $email = null,
+        #[SerializedName('created_at')]
+        public readonly ?DateTimeImmutable $createdAt = null,
+        #[Assert\Valid]
+        public readonly ?Address $address = null,
+    ) {
+    }
+}
+```
+
+In a Symfony controller the DTO is validated and populated automatically:
+
+```php
+public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
+```
+
+**OpenAPI → Symfony attribute mapping:**
+
+| OpenAPI | Symfony attribute |
+|---|---|
+| `required` (non-nullable) | `#[Assert\NotNull]` |
+| `minLength` / `maxLength` | `#[Assert\Length(min:, max:)]` |
+| `minimum` / `maximum` | `#[Assert\Range(min:, max:)]` |
+| `exclusiveMinimum` / `exclusiveMaximum` | `#[Assert\GreaterThan]` / `#[Assert\LessThan]` |
+| `multipleOf` | `#[Assert\DivisibleBy]` |
+| `pattern` | `#[Assert\Regex]` |
+| `minItems` / `maxItems`, `minProperties` / `maxProperties` | `#[Assert\Count]` |
+| `uniqueItems` | `#[Assert\Unique]` |
+| `const` | `#[Assert\EqualTo]` |
+| `enum` | generated PHP backed `enum` (type-enforced) |
+| `format: email` / `uuid` / `uri` / `ipv4`,`ipv6` / `hostname` | `#[Assert\Email]` / `Uuid` / `Url` / `Ip` / `Hostname` |
+| `format: int32` / `uint32` / `uint64` | `#[Assert\Range]` (bounds) |
+| `format: date` / `date-time` | `DateTimeImmutable` type |
+| `format: binary` | `UploadedFile` type |
+| `items` (scalar) / `additionalProperties` | `#[Assert\All([...])]` |
+| `anyOf` | `#[Assert\AtLeastOneOf([...])]` |
+| nested DTO / array of DTOs | `#[Assert\Valid]` (cascade) |
+| property name ≠ OpenAPI name | `#[SerializedName('…')]` |
+| `readOnly` / `writeOnly` | `#[Groups(['read'])]` / `#[Groups(['write'])]` |
+
+**Symfony-mode limitations** (no clean Symfony Validator equivalent — these keywords are skipped):
+`oneOf`/`discriminator` polymorphism, `not`, `if/then/else`, `prefixItems` (tuples),
+`patternProperties`, `propertyNames`, `dependentRequired`/`dependentSchemas`, `contains`. Optional
+fields become `?T = null` (no `UnsetValue` presence tracking — use runtime mode if you need
+PATCH/partial-update semantics). Note also: `format: uri`/`iri` maps to `#[Assert\Url]`, which
+expects an absolute URL (relative URIs would fail); and an `anyOf` branch that is purely
+`{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be dropped (the field stays nullable).
+
+> Requires `symfony/validator` and `symfony/serializer` in the consuming project.
 
 ## Validation Notes
 

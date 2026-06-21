@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OpenapiPhpDtoGenerator\Tests;
+namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;

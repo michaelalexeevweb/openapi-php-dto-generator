@@ -47,7 +47,12 @@
         "phpstan/phpstan-strict-rules": "^2.0",
         "squizlabs/php_codesniffer": "^4.0",
         "slevomat/coding-standard": "^8.29",
-        "friendsofphp/php-cs-fixer": "^3.95"
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "symfony/validator": "^7.4",
+        "symfony/serializer": "^7.4",
+        "symfony/property-access": "^7.4",
+        "phpdocumentor/reflection-docblock": "^5.4",
+        "symfony/property-info": "^7.4"
     },
     "bin": [
         "bin/console"
