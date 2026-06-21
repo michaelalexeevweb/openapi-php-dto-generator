@@ -53,7 +53,7 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, array<mixed>> */
     public array $dtoSchemas = [];
 
-    /** @var array<string, array{type: string, values: array<int, string|int>}> */
+    /** @var array<string, array{type: string, values: array<int, string|int>, caseNames: array<int, string>, descriptions: array<int, ?string>}> */
     public array $enumSchemas = [];
 
     /** @var array<string, true> */
@@ -453,6 +453,8 @@ final class GenerateDtoCommand extends Command
                 enumName: $enumName,
                 backingType: $enumDefinition['type'],
                 values: $enumDefinition['values'],
+                caseNames: $enumDefinition['caseNames'],
+                descriptions: $enumDefinition['descriptions'],
             );
             $this->ensureDirectoryExists($outputDirectory);
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $enumName . '.php';
@@ -527,7 +529,14 @@ final class GenerateDtoCommand extends Command
             $type = $this->resolveEnumBackingType($schemaDefinition);
             /** @var array<int, string|int> $values */
             $values = $schemaDefinition['enum'];
-            $this->registerEnum(enumName: $className, type: $type, values: $values, sourceFile: $sourceFile);
+            $this->registerEnum(
+                enumName: $className,
+                type: $type,
+                values: $values,
+                sourceFile: $sourceFile,
+                varnames: $this->extractEnumVarnames($schemaDefinition, $values),
+                descriptions: $this->extractEnumDescriptions($schemaDefinition, $values),
+            );
             return;
         }
 
@@ -1648,6 +1657,8 @@ final class GenerateDtoCommand extends Command
                 type: $type,
                 values: $values,
                 sourceFile: $this->getSchemaSourceFile($ownerClassName),
+                varnames: $this->extractEnumVarnames($propertySchema, $values),
+                descriptions: $this->extractEnumDescriptions($propertySchema, $values),
             );
             return [$enumName, $nullable];
         }
@@ -1749,7 +1760,14 @@ final class GenerateDtoCommand extends Command
                 $enumType = $this->resolveEnumBackingType($items);
                 /** @var array<int, string|int> $values */
                 $values = $items['enum'];
-                $this->registerEnum($enumName, $enumType, $values, $this->getSchemaSourceFile($ownerClassName));
+                $this->registerEnum(
+                    $enumName,
+                    $enumType,
+                    $values,
+                    $this->getSchemaSourceFile($ownerClassName),
+                    $this->extractEnumVarnames($items, $values),
+                    $this->extractEnumDescriptions($items, $values),
+                );
                 return ['array<' . $itemPrefix . $enumName . '>', $nullable];
             }
 
@@ -3839,9 +3857,17 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param array<int, string|int> $values
+     * @param array<int, string>|null $varnames mapped positionally onto $values (x-enum-varnames)
+     * @param array<int, ?string>|null $descriptions mapped positionally onto $values (x-enum-descriptions)
      */
-    private function registerEnum(string $enumName, string $type, array $values, ?string $sourceFile): void
-    {
+    private function registerEnum(
+        string $enumName,
+        string $type,
+        array $values,
+        ?string $sourceFile,
+        ?array $varnames = null,
+        ?array $descriptions = null,
+    ): void {
         $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
         $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
 
@@ -3861,9 +3887,20 @@ final class GenerateDtoCommand extends Command
             throw new RuntimeException(sprintf('Enum/DTO name collision for %s.', $enumName));
         }
 
+        $caseNames = $this->buildEnumCaseNames($values, $varnames);
+        $normalizedDescriptions = [];
+        foreach (array_keys($values) as $i) {
+            $description = $descriptions[$i] ?? null;
+            $normalizedDescriptions[$i] = is_string($description) && $description !== ''
+                ? $this->normalizeEnumCaseDescription($description)
+                : null;
+        }
+
         $this->enumSchemas[$enumName] = [
             'type' => $type,
             'values' => $values,
+            'caseNames' => $caseNames,
+            'descriptions' => $normalizedDescriptions,
         ];
         $this->enumSourceFiles[$enumName] = $sourceFile;
         $this->enumNamespaces[$enumName] = $namespace;
@@ -3872,17 +3909,24 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param array<int, string|int> $values
+     * @param array<int, string> $caseNames
+     * @param array<int, ?string> $descriptions
      */
-    private function renderEnum(string $namespace, string $enumName, string $backingType, array $values): string
-    {
-        $usedCaseNames = [];
+    private function renderEnum(
+        string $namespace,
+        string $enumName,
+        string $backingType,
+        array $values,
+        array $caseNames,
+        array $descriptions,
+    ): string {
         $cases = [];
 
-        foreach ($values as $value) {
-            $caseName = $this->buildEnumCaseName($value, $usedCaseNames);
+        foreach (array_values($values) as $index => $value) {
             $cases[] = [
-                'name' => $caseName,
+                'name' => $caseNames[$index],
                 'value' => $this->renderEnumValue($value, $backingType),
+                'description' => $descriptions[$index] ?? null,
             ];
         }
 
@@ -3893,6 +3937,143 @@ final class GenerateDtoCommand extends Command
             'backingType' => $backingType,
             'cases' => $cases,
         ]);
+    }
+
+    /**
+     * Reads the x-enum-varnames vendor extension. Returns positional case names only when the
+     * extension is a list of non-empty strings matching the value count, otherwise null (fallback
+     * to value-derived names). x-enum-varnames is not part of the OpenAPI spec; it is a de-facto
+     * codegen convention.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<int, string|int> $values
+     * @return array<int, string>|null
+     */
+    private function extractEnumVarnames(array $schema, array $values): ?array
+    {
+        $varnames = $schema['x-enum-varnames'] ?? null;
+        if (!is_array($varnames) || count($varnames) !== count($values)) {
+            return null;
+        }
+
+        $result = [];
+        foreach (array_values($varnames) as $name) {
+            if (!is_string($name) || $name === '') {
+                return null;
+            }
+            $result[] = $name;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Reads the x-enum-descriptions vendor extension. Returns a positional list aligned with the
+     * value count (entries may be null), otherwise null.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<int, string|int> $values
+     * @return array<int, ?string>|null
+     */
+    private function extractEnumDescriptions(array $schema, array $values): ?array
+    {
+        $descriptions = $schema['x-enum-descriptions'] ?? null;
+        if (!is_array($descriptions) || count($descriptions) !== count($values)) {
+            return null;
+        }
+
+        $result = [];
+        foreach (array_values($descriptions) as $description) {
+            $result[] = is_string($description) ? $description : null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Builds the final enum case names (deduplicated) for a value list. When $varnames is provided
+     * (from x-enum-varnames) each name is sanitised into a valid identifier; otherwise names are
+     * derived from the values. This is the single source of truth shared by enum rendering and
+     * enum default-value resolution.
+     *
+     * @param array<int, string|int> $values
+     * @param array<int, string>|null $varnames
+     * @return array<int, string>
+     */
+    private function buildEnumCaseNames(array $values, ?array $varnames): array
+    {
+        $usedCaseNames = [];
+        $caseNames = [];
+
+        foreach (array_values($values) as $index => $value) {
+            $caseNames[] = $varnames !== null
+                ? $this->sanitizeEnumCaseName($varnames[$index], $usedCaseNames)
+                : $this->buildEnumCaseName($value, $usedCaseNames);
+        }
+
+        return $caseNames;
+    }
+
+    /**
+     * Turns an x-enum-varnames entry into a valid, unique PHP enum case identifier, preserving the
+     * author's intended casing where possible.
+     *
+     * @param array<string, true> $usedCaseNames
+     */
+    private function sanitizeEnumCaseName(string $varname, array &$usedCaseNames): string
+    {
+        $base = preg_replace('/[^A-Za-z0-9]+/', '_', $varname) ?? $varname;
+        $base = trim($base, '_');
+
+        if ($base === '') {
+            $base = 'VALUE';
+        }
+
+        if (is_numeric($base[0])) {
+            $base = 'VALUE_' . $base;
+        }
+
+        $name = $base;
+        $i = 2;
+
+        while (array_key_exists($name, $usedCaseNames)) {
+            $name = $base . '_' . $i;
+            $i++;
+        }
+
+        $usedCaseNames[$name] = true;
+
+        return $name;
+    }
+
+    /**
+     * Resolves the generated case name for an enum default value by matching it against the
+     * registered enum's value list, so defaults reference the same case name the enum declares
+     * (including any x-enum-varnames mapping). Returns null when the enum is not registered.
+     */
+    private function resolveEnumCaseNameForValue(string $enumName, string|int $value): ?string
+    {
+        $enum = $this->enumSchemas[$enumName] ?? null;
+        if ($enum === null) {
+            return null;
+        }
+
+        $index = array_search($value, $enum['values'], true);
+        if ($index === false) {
+            return null;
+        }
+
+        return $enum['caseNames'][$index] ?? null;
+    }
+
+    /**
+     * Collapses an x-enum-descriptions entry to a single docblock-safe line.
+     */
+    private function normalizeEnumCaseDescription(string $description): string
+    {
+        $normalized = preg_replace('/\s+/', ' ', trim($description)) ?? $description;
+
+        return str_replace('*/', '* /', $normalized);
     }
 
     /**
@@ -4015,15 +4196,15 @@ final class GenerateDtoCommand extends Command
                 true,
             )
         ) {
-            // It's an enum or custom type
-            if (is_string($defaultValue)) {
-                $usedNames = [];
-                $enumCaseName = $this->buildEnumCaseName($defaultValue, $usedNames);
-                return ' = ' . $phpType . '::' . $enumCaseName;
-            }
-            if (is_int($defaultValue)) {
-                $usedNames = [];
-                $enumCaseName = $this->buildEnumCaseName($defaultValue, $usedNames);
+            // It's an enum or custom type. Resolve the case name against the registered enum so the
+            // default references the same case the enum declares (honouring x-enum-varnames). Fall
+            // back to value-derived naming for enums not registered here (e.g. external types).
+            if (is_string($defaultValue) || is_int($defaultValue)) {
+                $enumCaseName = $this->resolveEnumCaseNameForValue($phpType, $defaultValue);
+                if ($enumCaseName === null) {
+                    $usedNames = [];
+                    $enumCaseName = $this->buildEnumCaseName($defaultValue, $usedNames);
+                }
                 return ' = ' . $phpType . '::' . $enumCaseName;
             }
         }

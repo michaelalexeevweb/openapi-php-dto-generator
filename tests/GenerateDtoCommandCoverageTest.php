@@ -682,6 +682,91 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertStringContainsString('PriorityEnum::', $content);
     }
 
+    public function testEnumVarnamesAndDescriptionsDriveCaseNames(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'enum varnames', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Status' => [
+                        'type' => 'integer',
+                        'enum' => [0, 1, 2],
+                        'x-enum-varnames' => ['Inactive', 'Active', 'Banned'],
+                        'x-enum-descriptions' => ['Not active.', 'Currently active', 'Banned by admin.'],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsEnumVarnames');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Status.php');
+        // x-enum-varnames map positionally onto the values.
+        $this->assertStringContainsString('case Inactive = 0;', $content);
+        $this->assertStringContainsString('case Active = 1;', $content);
+        $this->assertStringContainsString('case Banned = 2;', $content);
+        // x-enum-descriptions render as a docblock above the case.
+        $this->assertStringContainsString('Currently active', $content);
+        $this->assertMatchesRegularExpression('/Banned by admin\.\s+\*\/\s+case Banned/s', $content);
+    }
+
+    public function testEnumVarnamesLengthMismatchFallsBackToValueNames(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'enum mismatch', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Mismatch' => [
+                        'type' => 'integer',
+                        'enum' => [1, 2, 3],
+                        'x-enum-varnames' => ['One', 'Two'],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsEnumMismatch');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Mismatch.php');
+        // Wrong-length x-enum-varnames is ignored; case names fall back to value-derived ones.
+        $this->assertStringContainsString('case VALUE_1 = 1;', $content);
+        $this->assertStringNotContainsString('case One', $content);
+    }
+
+    public function testEnumDefaultUsesVarnameCase(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'enum default varname', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Status' => [
+                        'type' => 'integer',
+                        'enum' => [0, 1, 2],
+                        'x-enum-varnames' => ['Inactive', 'Active', 'Banned'],
+                    ],
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                            'status' => ['$ref' => '#/components/schemas/Status', 'default' => 1],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsEnumDefaultVarname');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Holder.php');
+        // The default must reference the varname-derived case, not a value-derived one.
+        $this->assertStringContainsString('Status::Active', $content);
+        $this->assertStringNotContainsString('Status::VALUE_1', $content);
+    }
+
     public function testScalarDefaultValuesRenderForAllTypes(): void
     {
         $openApi = [
