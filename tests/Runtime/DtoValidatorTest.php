@@ -1685,7 +1685,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // VAL-4: nested oneOf/anyOf inside union branch
+    // nested oneOf/anyOf inside union branch
     // =========================================================================
 
     public function testNestedOneOfInBranch_passesWhenInnerBranchMatches(): void
@@ -1741,7 +1741,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // VAL-5: toIntOrNull ignores non-integer float constraints
+    // toIntOrNull ignores non-integer float constraints
     // =========================================================================
 
     public function testMinLength_withFloatConstraint_isIgnored(): void
@@ -1925,7 +1925,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // Numeric formats: int32 / int64 range (GAP-3)
+    // Numeric formats: int32 / int64 range
     // =========================================================================
 
     public function testInt32Format_acceptsValueInRange(): void
@@ -1965,7 +1965,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // UUID format: nil / max special cases (GAP-4)
+    // UUID format: nil / max special cases
     // =========================================================================
 
     public function testUuidFormat_acceptsRegularV4(): void
@@ -1987,7 +1987,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // pattern: single-compile invalid vs no-match (PERF-6)
+    // pattern: single-compile invalid vs no-match
     // =========================================================================
 
     public function testInvalidSchemaPatternReportsDistinctError(): void
@@ -2018,7 +2018,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // Union branch selection: oneOf / anyOf incl. 3.1 type-array (GAP-9)
+    // Union branch selection: oneOf / anyOf incl. 3.1 type-array
     // =========================================================================
 
     public function testOneOfExactlyOneBranchMatches(): void
@@ -2062,7 +2062,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // format: time (GAP-5)
+    // format: time
     // =========================================================================
 
     public function testTimeFormat_acceptsValidTimes(): void
@@ -2081,7 +2081,7 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
-    // patternProperties / propertyNames (GAP-6)
+    // patternProperties / propertyNames
     // =========================================================================
 
     public function testPatternPropertiesValidatesMatchingKeys(): void

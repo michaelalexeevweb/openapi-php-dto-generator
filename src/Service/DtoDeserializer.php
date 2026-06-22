@@ -122,6 +122,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     public function deserialize(Request $request, string $dtoClass): object
     {
+        $this->convertParametersToAttributes($request);
+
         // Pre-fetch all request data sources once — avoids N per-parameter array allocations.
         /** @var T $dto */
         $dto = $this->deserializeInternal(
@@ -133,6 +135,39 @@ final class DtoDeserializer implements DtoDeserializerInterface
         );
 
         return $dto;
+    }
+
+    /**
+     * The deserializer reads path parameters from the request attribute bag. Some Request
+     * implementations instead expose them on a route object via a `route()->parameters()` API
+     * (e.g. frameworks built on top of the Symfony Request) and leave the attribute bag untouched.
+     * Mirror those into the attribute bag so path params resolve the same way everywhere.
+     *
+     * Detected purely by duck-typing (`method_exists`) so no extra package is required: a plain
+     * Symfony Request has no `route()` method and this is a single no-op check. Existing attributes
+     * are never overwritten — a value already in the bag keeps precedence.
+     */
+    private function convertParametersToAttributes(Request $request): void
+    {
+        if (!method_exists($request, 'route')) {
+            return;
+        }
+
+        $route = $request->route();
+        if (!is_object($route) || !method_exists($route, 'parameters')) {
+            return;
+        }
+
+        $parameters = $route->parameters();
+        if (!is_array($parameters)) {
+            return;
+        }
+
+        foreach ($parameters as $name => $value) {
+            if (is_string($name) && !$request->attributes->has($name)) {
+                $request->attributes->set($name, $value);
+            }
+        }
     }
 
     /**

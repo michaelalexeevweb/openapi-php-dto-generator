@@ -17,6 +17,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 - ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
 - 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
 - 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
+- 🔌 **Framework-agnostic (PSR-7)** — deserialize any PSR-7 `ServerRequestInterface` via `DtoDeserializerPsr7` (Slim, Mezzio, Laminas, Yii3, …); Symfony `Request` covers Symfony + Laravel
 - 🔒 **Immutable by design** — all generated classes are read-only value objects
 - ⚡ **Supports OpenAPI 3.0.x and 3.1.x**
 
@@ -28,12 +29,13 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 - [Generate DTOs](#generate-dto-classes-from-yaml-openapi-spec)
 - [Generation Modes: Runtime vs Symfony](#generation-modes-runtime-vs-symfony)
 - [Validate & Normalize](#validate-and-normalize-generated-dtos)
+- [Framework-Agnostic Deserialization (PSR-7)](#framework-agnostic-deserialization-psr-7)
 - [CLI Commands](#cli-commands)
 
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.7.2
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.8.0
 ```
 
 ## Requirements
@@ -249,6 +251,64 @@ expects an absolute URL (relative URIs would fail); and an `anyOf` branch that i
 `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be dropped (the field stays nullable).
 
 > Requires `symfony/validator` and `symfony/serializer` in the consuming project.
+
+## Framework-Agnostic Deserialization (PSR-7)
+
+`deserialize()` accepts a Symfony `Request` — which also covers **Laravel** (its
+`Illuminate\Http\Request` extends the Symfony one). Laravel route parameters
+(`/users/{id}`) are bridged automatically: `deserialize()` reads them from
+`$request->route()->parameters()` when present, so path params resolve with no extra wiring. For any other stack (Slim, Mezzio, Laminas,
+Yii3, …) that speaks **PSR-7**, use `DtoDeserializerPsr7`: it converts a PSR-7
+`ServerRequestInterface` into a Symfony `Request` via the official
+[`symfony/psr-http-message-bridge`](https://github.com/symfony/psr-http-message-bridge) and
+delegates to the core deserializer.
+
+```php
+use OpenapiPhpDtoGenerator\Service\DtoDeserializerPsr7;
+use Psr\Http\Message\ServerRequestInterface;
+
+/** @var ServerRequestInterface $request */
+$deserializer = new DtoDeserializerPsr7();
+
+// Single object body:
+$dto = $deserializer->deserializePsr7($request, UserPostRequest::class);
+
+// Top-level JSON array body (bulk endpoints):
+$items = $deserializer->deserializeCollectionPsr7($request, Item::class);
+```
+
+Path parameters are read from PSR-7 request attributes (`$request->withAttribute('id', …)`), where
+routers typically place them — the bridge carries them over to the Symfony request.
+
+PSR-7 support requires the bridge in your project:
+
+```bash
+composer require symfony/psr-http-message-bridge
+```
+
+When vendoring the runtime into your project (`--dto-generator-directory`), pass `--with-psr7` to
+also copy `DtoDeserializerPsr7` alongside the other runtime services.
+
+### Laravel
+
+`Illuminate\Http\Request` is a Symfony `Request`, so the core `DtoDeserializer` takes it directly —
+body, query, headers, cookies and uploaded files all work, and `/users/{id}` route parameters are
+bridged automatically. No PSR-7 conversion or extra package needed.
+
+```php
+use Illuminate\Http\Request;
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+
+class UserController
+{
+    public function store(Request $request)
+    {
+        // route params (/users/{id}), query, JSON body, headers, cookies and files all resolve.
+        $dto = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
+        // ... use $dto
+    }
+}
+```
 
 ## Validation Notes
 

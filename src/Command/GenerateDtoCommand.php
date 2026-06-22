@@ -178,6 +178,12 @@ final class GenerateDtoCommand extends Command
             default: self::ATTRIBUTE_MODE_RUNTIME,
         );
         $this->addOption(
+            name: 'with-psr7',
+            shortcut: null,
+            mode: InputOption::VALUE_NONE,
+            description: 'Also copy the PSR-7 deserializer (DtoDeserializerPsr7) when vendoring the runtime. Requires symfony/psr-http-message-bridge in the consuming project.',
+        );
+        $this->addOption(
             name: 'ref',
             shortcut: null,
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
@@ -274,6 +280,8 @@ final class GenerateDtoCommand extends Command
         $refPairs = is_array($refOption) ? array_values(array_filter($refOption, 'is_string')) : [];
         $refNamespacePairs = is_array($refNamespaceOption) ? array_values(array_filter($refNamespaceOption, 'is_string')) : [];
 
+        $withPsr7 = $input->getOption('with-psr7') === true;
+
         try {
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
 
@@ -285,11 +293,19 @@ final class GenerateDtoCommand extends Command
                     namespace: $namespace,
                     dtoGeneratorDirectory: $dtoGeneratorDirectory,
                     dtoGeneratorNamespace: $dtoGeneratorNamespace,
+                    withPsr7: $withPsr7,
                 );
             }
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
             return Command::FAILURE;
+        }
+
+        if ($withPsr7) {
+            $io->note(
+                'PSR-7 deserializer copied. Install the bridge in your project: '
+                . 'composer require symfony/psr-http-message-bridge',
+            );
         }
 
         $io->success(
@@ -493,6 +509,7 @@ final class GenerateDtoCommand extends Command
         string $namespace,
         ?string $dtoGeneratorDirectory = null,
         ?string $dtoGeneratorNamespace = null,
+        bool $withPsr7 = false,
     ): void {
         $dtoGeneratorDirectory ??= 'Common';
 
@@ -526,6 +543,12 @@ final class GenerateDtoCommand extends Command
             'Service/DtoValidator.php',
             'Service/DtoDeserializer.php',
         ];
+
+        // PSR-7 deserializer is optional: only vendored when explicitly requested, so the
+        // default copy stays free of the symfony/psr-http-message-bridge dependency.
+        if ($withPsr7) {
+            $filesToCopy[] = 'Service/DtoDeserializerPsr7.php';
+        }
 
         $sourceBase = dirname(__DIR__);
         $targetNamespace = $this->resolveDtoGeneratorTargetNamespace(
@@ -1733,6 +1756,14 @@ final class GenerateDtoCommand extends Command
             }
 
             $constraints[$key] = $propertySchema[$key];
+        }
+
+        // A `string` + `format: binary` property is materialized as an UploadedFile, not a
+        // string. Forwarding `type: string` would make the validator reject the uploaded file
+        // ("param must be of type string") at deserialization time; the file is validated by its
+        // PHP type instead. Drop the string type/format so no string constraint applies.
+        if (($propertySchema['type'] ?? null) === 'string' && ($propertySchema['format'] ?? null) === 'binary') {
+            unset($constraints['type'], $constraints['format']);
         }
 
         foreach (['oneOf', 'anyOf'] as $unionKey) {

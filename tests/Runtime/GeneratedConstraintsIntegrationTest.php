@@ -13,14 +13,15 @@ use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Yaml\Yaml;
 use UnitEnum;
 
 /**
- * GAP-1 regression coverage.
+ * Generated-constraint regression coverage.
  *
- * This is the "through the generator" integration layer that was missing: it
+ * This is the "through the generator" integration layer: it
  * generates a DTO from an OpenAPI spec, loads it, and asserts that the validation
  * constraints actually survive into the generated getConstraints() AND are enforced
  * by DtoNormalizer::validate(). Before the allowlist was widened, keys such as
@@ -58,7 +59,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
-     * Generates ProbeModel from the GAP-1 fixture into a unique namespace (so each
+     * Generates ProbeModel from the probe fixture into a unique namespace (so each
      * test method gets its own class and PHP never sees a redeclaration) and returns
      * the fully-qualified class name after requiring every generated file.
      *
@@ -1171,5 +1172,47 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $this->assertSame(['success' => true], $normalizer->validateAndNormalizeToArray($dto));
         $this->assertSame('{"success":true}', $normalizer->validateAndNormalizeToJson($dto));
+    }
+
+    public function testBinaryUploadFieldDropsStringTypeConstraintThroughGeneratedDto(): void
+    {
+        $spec = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/upload' => ['post' => [
+                'operationId' => 'upload',
+                'requestBody' => ['required' => true, 'content' => ['multipart/form-data' => ['schema' => [
+                    'type' => 'object',
+                    'required' => ['avatar'],
+                    'properties' => ['avatar' => ['type' => 'string', 'format' => 'binary']],
+                ]]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, 'GenBinary');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenBinary\\UploadPostRequest';
+
+        // A binary field is materialized as UploadedFile — the string type/format must NOT be
+        // forwarded as a constraint, else the validator rejects the uploaded file at deserialization.
+        $avatarConstraints = $cls::getConstraints()['avatar'] ?? [];
+        $this->assertArrayNotHasKey('type', $avatarConstraints);
+        $this->assertArrayNotHasKey('format', $avatarConstraints);
+
+        // And the upload actually deserializes: the file passes through, no "must be of type string".
+        $tmp = tempnam(sys_get_temp_dir(), 'dto_bin_');
+        $this->assertNotFalse($tmp);
+        try {
+            $file = new UploadedFile($tmp, 'avatar.png', 'image/png', null, true);
+            $request = new Request([], [], [], [], ['avatar' => $file]);
+            $dto = (new DtoDeserializer())->deserialize($request, $cls);
+            $this->assertInstanceOf(UploadedFile::class, $dto->getAvatar());
+        } finally {
+            @unlink($tmp);
+        }
     }
 }
