@@ -1202,6 +1202,58 @@ final class GenerateDtoCommandTest extends TestCase
         }
     }
 
+    public function testExternalRefMappingOverridesPlacementForMappedFile(): void
+    {
+        $unique = uniqid('openapi_refmap_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/Infrastructure/WidgetApi/ViewModel';
+        $commonOutputDir = $baseDir . '/Infrastructure/Common/ViewModel';
+        $commonRefFile = __DIR__ . '/../fixtures/external-ref/common/common.yaml';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            // Output folder (WidgetApi) is named independently of the spec; explicit --ref places
+            // the external common schema exactly where we say, regardless of name matching.
+            $this->generator->setExternalRefMappings(
+                [$commonRefFile . '=' . $commonOutputDir],
+                [$commonRefFile . '=' . 'Acme\\Infrastructure\\Common\\ViewModel'],
+            );
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref/root.yaml',
+                $outputDir,
+                'Acme\\Infrastructure\\WidgetApi\\ViewModel',
+            );
+
+            $commonFile = $commonOutputDir . '/Test.php';
+            $this->assertFileExists($commonFile);
+            $this->assertStringContainsString(
+                'namespace Acme\\Infrastructure\\Common\\ViewModel;',
+                (string)file_get_contents($commonFile),
+            );
+
+            $localContent = (string)file_get_contents($outputDir . '/LocalResponse.php');
+            $this->assertStringContainsString('use Acme\\Infrastructure\\Common\\ViewModel\\Test;', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testExternalRefMappingRequiresBothDirectoryAndNamespace(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('requires a matching --ref-namespace');
+
+        $this->generator->setExternalRefMappings(
+            ['/some/common.yaml=/out/Common'],
+            [],
+        );
+    }
+
     public function testGeneratesCommonExternalRefsIntoSiblingCommonSchemasDirectory(): void
     {
         $unique = uniqid('openapi_common_model_', true);

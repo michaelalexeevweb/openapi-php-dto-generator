@@ -106,6 +106,19 @@ final class GenerateDtoCommand extends Command
      * Symfony itself (no copy-runtime).
      */
     public string $attributeMode = self::ATTRIBUTE_MODE_RUNTIME;
+
+    /**
+     * Explicit per-external-ref placement, keyed by the canonical (realpath) ref file. When an
+     * external $ref resolves to a mapped file, its schemas go to the mapped output directory /
+     * namespace instead of the default spec-name-derived placement. Set via --ref / --ref-namespace.
+     *
+     * @var array<string, string>
+     */
+    public array $refOutputDirectoryMap = [];
+
+    /** @var array<string, string> */
+    public array $refNamespaceMap = [];
+
     public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
     public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
 
@@ -148,6 +161,18 @@ final class GenerateDtoCommand extends Command
             mode: InputOption::VALUE_REQUIRED,
             description: 'Generation mode: "runtime" (default, library runtime) or "symfony" (Symfony Validator/Serializer attributes)',
             default: self::ATTRIBUTE_MODE_RUNTIME,
+        );
+        $this->addOption(
+            name: 'ref',
+            shortcut: null,
+            mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+            description: 'Explicit output directory for an external $ref file: "<refFile>=<directory>". Repeatable. Requires a matching --ref-namespace.',
+        );
+        $this->addOption(
+            name: 'ref-namespace',
+            shortcut: null,
+            mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+            description: 'Explicit namespace for an external $ref file: "<refFile>=<namespace>". Repeatable. Requires a matching --ref.',
         );
     }
 
@@ -229,7 +254,14 @@ final class GenerateDtoCommand extends Command
             $this->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
         }
 
+        $refOption = $input->getOption('ref');
+        $refNamespaceOption = $input->getOption('ref-namespace');
+        $refPairs = is_array($refOption) ? array_values(array_filter($refOption, 'is_string')) : [];
+        $refNamespacePairs = is_array($refNamespaceOption) ? array_values(array_filter($refNamespaceOption, 'is_string')) : [];
+
         try {
+            $this->setExternalRefMappings($refPairs, $refNamespacePairs);
+
             $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace, mode: $mode);
 
             if ($dtoGeneratorDirectory !== null) {
@@ -350,6 +382,67 @@ final class GenerateDtoCommand extends Command
         }
 
         $this->attributeMode = $mode;
+    }
+
+    /**
+     * Configures explicit per-external-ref placement. Each entry maps a ref spec file to an output
+     * directory (--ref) and a namespace (--ref-namespace). Both are required for a given file. Keys
+     * are canonicalised (realpath) so they match the resolved ref target regardless of how the
+     * `$ref` is written. When a ref file is not mapped, the default placement is used.
+     *
+     * @param array<int, string> $refDirectoryPairs `<refFile>=<outputDirectory>` entries
+     * @param array<int, string> $refNamespacePairs `<refFile>=<namespace>` entries
+     */
+    public function setExternalRefMappings(array $refDirectoryPairs, array $refNamespacePairs): void
+    {
+        $directoryMap = $this->parseRefPairs($refDirectoryPairs, '--ref');
+        $namespaceMap = $this->parseRefPairs($refNamespacePairs, '--ref-namespace');
+
+        foreach (array_keys($directoryMap) as $file) {
+            if (!array_key_exists($file, $namespaceMap)) {
+                throw new RuntimeException(sprintf('--ref for "%s" requires a matching --ref-namespace.', $file));
+            }
+        }
+        foreach (array_keys($namespaceMap) as $file) {
+            if (!array_key_exists($file, $directoryMap)) {
+                throw new RuntimeException(sprintf('--ref-namespace for "%s" requires a matching --ref.', $file));
+            }
+        }
+
+        $this->refOutputDirectoryMap = $directoryMap;
+        $this->refNamespaceMap = $namespaceMap;
+    }
+
+    /**
+     * @param array<int, string> $pairs
+     * @return array<string, string>
+     */
+    private function parseRefPairs(array $pairs, string $optionName): array
+    {
+        $map = [];
+        foreach ($pairs as $pair) {
+            $position = strpos($pair, '=');
+            if ($position === false || $position === 0) {
+                throw new RuntimeException(sprintf('Invalid %s value "%s" (expected "<refFile>=<value>").', $optionName, $pair));
+            }
+
+            $file = trim(substr($pair, 0, $position));
+            $value = trim(substr($pair, $position + 1));
+            if ($file === '' || $value === '') {
+                throw new RuntimeException(sprintf('Invalid %s value "%s" (empty file or value).', $optionName, $pair));
+            }
+
+            $map[$this->canonicalizeRefPath($file)] = $value;
+        }
+
+        return $map;
+    }
+
+    private function canonicalizeRefPath(string $path): string
+    {
+        $real = realpath($path);
+
+        return $real !== false ? $real : $path;
     }
 
     public function copyCommonServices(
@@ -609,6 +702,12 @@ final class GenerateDtoCommand extends Command
             return $this->baseNamespace;
         }
 
+        // Explicit --ref-namespace mapping takes highest precedence.
+        $explicit = $this->refNamespaceMap[$this->canonicalizeRefPath($sourceFile)] ?? null;
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
         $sharedNamespace = $this->resolveCommonNamespaceForSourceFile($sourceFile);
         if ($sharedNamespace !== null) {
             return $sharedNamespace;
@@ -640,6 +739,12 @@ final class GenerateDtoCommand extends Command
     {
         if ($sourceFile === null || $this->rootSpecFile === null || $sourceFile === $this->rootSpecFile) {
             return $this->baseOutputDirectory;
+        }
+
+        // Explicit --ref mapping takes highest precedence.
+        $explicit = $this->refOutputDirectoryMap[$this->canonicalizeRefPath($sourceFile)] ?? null;
+        if ($explicit !== null) {
+            return $explicit;
         }
 
         $sharedOutputDirectory = $this->resolveCommonOutputDirectoryForSourceFile($sourceFile);
