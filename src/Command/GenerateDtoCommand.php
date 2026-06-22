@@ -1752,12 +1752,12 @@ final class GenerateDtoCommand extends Command
 
             // Keep legacy allOf behavior for refs/objects: single ref -> ref type, multi-part -> merged DTO.
             if (count($propertySchema['allOf']) === 1 && array_key_exists('$ref', $propertySchema['allOf'][0])) {
-                $binaryType = $this->resolveBinaryRefType((string)$propertySchema['allOf'][0]['$ref']);
+                $binaryType = $this->resolveBinaryRefType((string)$propertySchema['allOf'][0]['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 if ($binaryType !== null) {
                     return [$binaryType, $nullable];
                 }
 
-                $temporalType = $this->resolveTemporalRefType((string)$propertySchema['allOf'][0]['$ref']);
+                $temporalType = $this->resolveTemporalRefType((string)$propertySchema['allOf'][0]['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 if ($temporalType !== null) {
                     return [$temporalType, $nullable];
                 }
@@ -1797,12 +1797,12 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists('$ref', $propertySchema) && is_string($propertySchema['$ref'])) {
-            $binaryType = $this->resolveBinaryRefType($propertySchema['$ref']);
+            $binaryType = $this->resolveBinaryRefType($propertySchema['$ref'], $this->getSchemaSourceFile($ownerClassName));
             if ($binaryType !== null) {
                 return [$binaryType, $nullable];
             }
 
-            $temporalType = $this->resolveTemporalRefType($propertySchema['$ref']);
+            $temporalType = $this->resolveTemporalRefType($propertySchema['$ref'], $this->getSchemaSourceFile($ownerClassName));
             if ($temporalType !== null) {
                 return [$temporalType, $nullable];
             }
@@ -1914,12 +1914,12 @@ final class GenerateDtoCommand extends Command
             $itemPrefix = $itemNullable ? '?' : '';
 
             if (array_key_exists('$ref', $items) && is_string($items['$ref'])) {
-                $binaryItemType = $this->resolveBinaryRefType($items['$ref']);
+                $binaryItemType = $this->resolveBinaryRefType($items['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 if ($binaryItemType !== null) {
                     return ['array<' . $itemPrefix . $binaryItemType . '>', $nullable];
                 }
 
-                $temporalItemType = $this->resolveTemporalRefType($items['$ref']);
+                $temporalItemType = $this->resolveTemporalRefType($items['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 if ($temporalItemType !== null) {
                     return ['array<' . $itemPrefix . $temporalItemType . '>', $nullable];
                 }
@@ -2338,11 +2338,11 @@ final class GenerateDtoCommand extends Command
         };
     }
 
-    private function resolveBinaryRefType(string $ref): ?string
+    private function resolveBinaryRefType(string $ref, ?string $currentSourceFile = null): ?string
     {
         $prefix = '#/components/schemas/';
         if (!str_starts_with($ref, $prefix)) {
-            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $this->rootSpecFile);
+            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $currentSourceFile ?? $this->rootSpecFile);
             if ($resolvedExternal === null) {
                 return null;
             }
@@ -2370,11 +2370,11 @@ final class GenerateDtoCommand extends Command
         return null;
     }
 
-    private function resolveTemporalRefType(string $ref): ?string
+    private function resolveTemporalRefType(string $ref, ?string $currentSourceFile = null): ?string
     {
         $prefix = '#/components/schemas/';
         if (!str_starts_with($ref, $prefix)) {
-            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $this->rootSpecFile);
+            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $currentSourceFile ?? $this->rootSpecFile);
             if ($resolvedExternal === null) {
                 return null;
             }
