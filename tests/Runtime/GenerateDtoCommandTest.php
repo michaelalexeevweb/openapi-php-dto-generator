@@ -1206,8 +1206,8 @@ final class GenerateDtoCommandTest extends TestCase
     {
         $unique = uniqid('openapi_refmap_', true);
         $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
-        $outputDir = $baseDir . '/Infrastructure/WidgetApi/ViewModel';
-        $commonOutputDir = $baseDir . '/Infrastructure/Common/ViewModel';
+        $outputDir = $baseDir . '/Layer/WidgetApi/Dto';
+        $commonOutputDir = $baseDir . '/Layer/Common/Dto';
         $commonRefFile = __DIR__ . '/../fixtures/external-ref/common/common.yaml';
 
         if (!is_dir($outputDir)) {
@@ -1219,23 +1219,61 @@ final class GenerateDtoCommandTest extends TestCase
             // the external common schema exactly where we say, regardless of name matching.
             $this->generator->setExternalRefMappings(
                 [$commonRefFile . '=' . $commonOutputDir],
-                [$commonRefFile . '=' . 'Acme\\Infrastructure\\Common\\ViewModel'],
+                [$commonRefFile . '=' . 'Acme\\Layer\\Common\\Dto'],
             );
             $this->generator->generateFromFile(
                 __DIR__ . '/../fixtures/external-ref/root.yaml',
                 $outputDir,
-                'Acme\\Infrastructure\\WidgetApi\\ViewModel',
+                'Acme\\Layer\\WidgetApi\\Dto',
             );
 
             $commonFile = $commonOutputDir . '/Test.php';
             $this->assertFileExists($commonFile);
             $this->assertStringContainsString(
-                'namespace Acme\\Infrastructure\\Common\\ViewModel;',
+                'namespace Acme\\Layer\\Common\\Dto;',
                 (string)file_get_contents($commonFile),
             );
 
             $localContent = (string)file_get_contents($outputDir . '/LocalResponse.php');
-            $this->assertStringContainsString('use Acme\\Infrastructure\\Common\\ViewModel\\Test;', $localContent);
+            $this->assertStringContainsString('use Acme\\Layer\\Common\\Dto\\Test;', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testExternalRefMappingAcceptsDirectoryKeyForAllFilesInside(): void
+    {
+        $unique = uniqid('openapi_refmapdir_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/Layer/WidgetApi/Dto';
+        $commonOutputDir = $baseDir . '/Layer/Common/Dto';
+        // Key is the common DIRECTORY (not a single file) — any ref'd file inside it is mapped.
+        $commonRefDir = __DIR__ . '/../fixtures/external-ref/common';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            $this->generator->setExternalRefMappings(
+                [$commonRefDir . '=' . $commonOutputDir],
+                [$commonRefDir . '=' . 'Acme\\Layer\\Common\\Dto'],
+            );
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref/root.yaml',
+                $outputDir,
+                'Acme\\Layer\\WidgetApi\\Dto',
+            );
+
+            // common/common.yaml's Test matched via the directory key.
+            $commonFile = $commonOutputDir . '/Test.php';
+            $this->assertFileExists($commonFile);
+            $this->assertStringContainsString(
+                'namespace Acme\\Layer\\Common\\Dto;',
+                (string)file_get_contents($commonFile),
+            );
         } finally {
             if (is_dir($baseDir)) {
                 $this->deleteDirectory($baseDir);
@@ -2174,8 +2212,8 @@ final class GenerateDtoCommandTest extends TestCase
     public function testCopyCommonServicesCustomPath(): void
     {
         $namespace = 'MyApp\\Generated';
-        $customDirRelative = 'Shared/Infrastructure';
-        $customNamespace = 'MyApp\\Shared\\Infrastructure';
+        $customDirRelative = 'Shared/Layer';
+        $customNamespace = 'MyApp\\Shared\\Layer';
 
         $workingDirectory = getcwd() ?: '.';
         $customDir = $workingDirectory . '/' . $customDirRelative;
@@ -2195,9 +2233,9 @@ final class GenerateDtoCommandTest extends TestCase
             $content = (string)file_get_contents($servicePath);
 
             // Check namespace change
-            $this->assertStringContainsString('namespace MyApp\\Shared\\Infrastructure;', $content);
+            $this->assertStringContainsString('namespace MyApp\\Shared\\Layer;', $content);
             // Self-namespace imports removed — same-namespace classes need no use statement
-            $this->assertStringNotContainsString('use MyApp\\Shared\\Infrastructure\\DtoDeserializerInterface;', $content);
+            $this->assertStringNotContainsString('use MyApp\\Shared\\Layer\\DtoDeserializerInterface;', $content);
         } finally {
             $this->deleteDirectory($customDir);
             $this->deleteDirectory(dirname($customDir)); // Shared

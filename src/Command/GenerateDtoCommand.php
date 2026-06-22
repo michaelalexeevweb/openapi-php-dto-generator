@@ -166,13 +166,13 @@ final class GenerateDtoCommand extends Command
             name: 'ref',
             shortcut: null,
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
-            description: 'Explicit output directory for an external $ref file: "<refFile>=<directory>". Repeatable. Requires a matching --ref-namespace.',
+            description: 'Explicit output directory for an external $ref file or directory: "<refFileOrDir>=<directory>". A directory key maps every ref\'d file inside it. Repeatable. Requires a matching --ref-namespace.',
         );
         $this->addOption(
             name: 'ref-namespace',
             shortcut: null,
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
-            description: 'Explicit namespace for an external $ref file: "<refFile>=<namespace>". Repeatable. Requires a matching --ref.',
+            description: 'Explicit namespace for an external $ref file or directory: "<refFileOrDir>=<namespace>". A directory key maps every ref\'d file inside it. Repeatable. Requires a matching --ref.',
         );
     }
 
@@ -445,6 +445,34 @@ final class GenerateDtoCommand extends Command
         return $real !== false ? $real : $path;
     }
 
+    /**
+     * Resolves an external $ref source file against a --ref map. A map key may be either a single
+     * file (exact match) or a directory (matches any file inside it, recursively). An exact file
+     * key wins over a containing-directory key.
+     *
+     * @param array<string, string> $map
+     */
+    private function matchRefMapping(string $sourceFile, array $map): ?string
+    {
+        if ($map === []) {
+            return null;
+        }
+
+        $canonical = $this->canonicalizeRefPath($sourceFile);
+
+        if (array_key_exists($canonical, $map)) {
+            return $map[$canonical];
+        }
+
+        foreach ($map as $key => $value) {
+            if (is_dir($key) && str_starts_with($canonical, $key . DIRECTORY_SEPARATOR)) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
     public function copyCommonServices(
         string $outputDirectory,
         string $namespace,
@@ -703,7 +731,7 @@ final class GenerateDtoCommand extends Command
         }
 
         // Explicit --ref-namespace mapping takes highest precedence.
-        $explicit = $this->refNamespaceMap[$this->canonicalizeRefPath($sourceFile)] ?? null;
+        $explicit = $this->matchRefMapping($sourceFile, $this->refNamespaceMap);
         if ($explicit !== null) {
             return $explicit;
         }
@@ -742,7 +770,7 @@ final class GenerateDtoCommand extends Command
         }
 
         // Explicit --ref mapping takes highest precedence.
-        $explicit = $this->refOutputDirectoryMap[$this->canonicalizeRefPath($sourceFile)] ?? null;
+        $explicit = $this->matchRefMapping($sourceFile, $this->refOutputDirectoryMap);
         if ($explicit !== null) {
             return $explicit;
         }
