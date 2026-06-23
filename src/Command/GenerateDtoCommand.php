@@ -92,8 +92,12 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, string> */
     public array $enumOutputDirectories = [];
 
-    /** @var array<string, true> */
-    public array $loadedExternalFiles = [];
+    /**
+     * Cache of parsed external documents: canonical file path => [schemaName => schemaDefinition].
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    public array $externalDocSchemas = [];
 
     public ?string $rootSpecFile = null;
     public string $baseOutputDirectory = '';
@@ -568,7 +572,7 @@ final class GenerateDtoCommand extends Command
         $this->enumSourceFiles = [];
         $this->enumNamespaces = [];
         $this->enumOutputDirectories = [];
-        $this->loadedExternalFiles = [];
+        $this->externalDocSchemas = [];
         $this->rootSpecFile = $rootSpecFile;
         $this->baseOutputDirectory = $outputDirectory;
         $this->baseNamespace = $namespace;
@@ -981,8 +985,17 @@ final class GenerateDtoCommand extends Command
             return;
         }
 
-        [$externalFile] = $resolved;
-        $this->loadExternalDocument($externalFile);
+        [$externalFile, $pointer] = $resolved;
+        $schemaName = $this->externalPointerSchemaName($pointer);
+        if ($schemaName === null) {
+            // Deeper pointer (e.g. .../properties/id). A scalar target is inlined at type-resolution
+            // time (see resolvePropertyType); nothing to register here, so we do NOT pull the whole
+            // external document and its unrelated schema graph.
+            return;
+        }
+
+        // Register only the referenced schema (plus its transitive refs), not every schema in the file.
+        $this->registerExternalSchema(externalFile: $externalFile, schemaName: $schemaName);
     }
 
     /**
@@ -1008,20 +1021,143 @@ final class GenerateDtoCommand extends Command
         return [$absoluteFile, '#' . $pointerPart];
     }
 
-    private function loadExternalDocument(string $filePath): void
+    /**
+     * Parse (once, cached) the components.schemas map of an external document.
+     *
+     * @return array<string, mixed>
+     */
+    private function externalSchemasOf(string $filePath): array
     {
-        if (array_key_exists($filePath, $this->loadedExternalFiles)) {
-            return;
+        if (array_key_exists($filePath, $this->externalDocSchemas)) {
+            return $this->externalDocSchemas[$filePath];
         }
 
-        $this->loadedExternalFiles[$filePath] = true;
         $data = $this->parseSpecFile($filePath);
         if (!is_array($data)) {
             throw new RuntimeException(sprintf('OpenAPI root must be an object/array in %s.', $filePath));
         }
 
-        $this->registerDocumentSchemas(openApi: $data, sourceFile: $filePath, includeInlineSchemas: false);
-        $this->scanExternalSchemaRefs(node: $data, currentSourceFile: $filePath);
+        $schemas = $this->extractSchemas($data);
+
+        return $this->externalDocSchemas[$filePath] = $schemas;
+    }
+
+    /**
+     * Returns the schema name when the pointer addresses a top-level schema exactly
+     * (#/components/schemas/Name), or null for an internal pointer or a deeper pointer
+     * (e.g. #/components/schemas/Name/properties/id).
+     */
+    private function externalPointerSchemaName(string $pointer): ?string
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($pointer, $prefix)) {
+            return null;
+        }
+
+        $path = substr($pointer, strlen($prefix));
+        if ($path === '' || str_contains($path, '/')) {
+            return null;
+        }
+
+        return $path;
+    }
+
+    /**
+     * Walk a JSON pointer (#/components/schemas/Name/properties/x/...) inside an external document
+     * and return the addressed node, or null when it cannot be resolved.
+     */
+    private function resolveExternalPointerNode(string $filePath, string $pointer): mixed
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($pointer, $prefix)) {
+            return null;
+        }
+
+        $segments = explode('/', substr($pointer, strlen($prefix)));
+        $schemaName = array_shift($segments);
+        if ($schemaName === '') {
+            return null;
+        }
+
+        $node = $this->externalSchemasOf($filePath)[$schemaName] ?? null;
+        foreach ($segments as $segment) {
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                return null;
+            }
+            $node = $node[$segment];
+        }
+
+        return $node;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private function isScalarSchemaDefinition(array $schema): bool
+    {
+        if (array_key_exists('$ref', $schema)) {
+            return false;
+        }
+
+        return in_array($schema['type'] ?? null, ['string', 'integer', 'number', 'boolean'], true)
+            && !array_key_exists('properties', $schema)
+            && !array_key_exists('items', $schema);
+    }
+
+    /**
+     * Inline (B): when a $ref points deeper than a top-level external schema and the target is a
+     * scalar, return that scalar sub-schema so the caller can treat it as if it were declared inline.
+     * Avoids dragging the whole external document in just to reuse a primitive property type.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function tryInlineExternalScalarRef(string $ref, ?string $currentSourceFile): ?array
+    {
+        if (str_starts_with($ref, '#/components/schemas/')) {
+            return null;
+        }
+
+        $resolved = $this->resolveExternalSchemaPointer(ref: $ref, currentSourceFile: $currentSourceFile);
+        if ($resolved === null) {
+            return null;
+        }
+
+        [$externalFile, $pointer] = $resolved;
+        if ($this->externalPointerSchemaName($pointer) !== null) {
+            return null;
+        }
+
+        $node = $this->resolveExternalPointerNode($externalFile, $pointer);
+
+        return is_array($node) && $this->isScalarSchemaDefinition($node) ? $node : null;
+    }
+
+    /**
+     * Register a single schema from an external document (plus its transitive refs), instead of
+     * registering every schema declared in that file.
+     */
+    private function registerExternalSchema(string $externalFile, string $schemaName): void
+    {
+        $className = $this->normalizeClassName($schemaName);
+        if (array_key_exists($className, $this->dtoSchemas) || array_key_exists($className, $this->enumSchemas)) {
+            return;
+        }
+
+        $definition = $this->externalSchemasOf($externalFile)[$schemaName] ?? null;
+        if (!is_array($definition)) {
+            return;
+        }
+
+        if ($this->isPureExternalSchemaAlias($definition)) {
+            $aliasRef = $definition['$ref'];
+            if (is_string($aliasRef)) {
+                $this->ensureSchemaRefRegistered(ref: $aliasRef, currentSourceFile: $externalFile);
+            }
+            return;
+        }
+
+        $this->registerSchema(className: $className, schemaDefinition: $definition, sourceFile: $externalFile);
+        $this->scanExternalSchemaRefs(node: $definition, currentSourceFile: $externalFile);
     }
 
     /**
@@ -1740,6 +1876,26 @@ final class GenerateDtoCommand extends Command
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
         $nullable = (bool)($propertySchema['nullable'] ?? false);
 
+        // B: a $ref pointing to a scalar property of an external schema is inlined as that scalar,
+        // so we neither emit a bogus class name nor pull in the whole external document.
+        if (array_key_exists('$ref', $propertySchema) && is_string($propertySchema['$ref'])) {
+            $inlinedScalar = $this->tryInlineExternalScalarRef(
+                ref: $propertySchema['$ref'],
+                currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
+            );
+            if ($inlinedScalar !== null) {
+                if ($nullable) {
+                    $inlinedScalar['nullable'] = true;
+                }
+
+                return $this->resolvePropertyType(
+                    propertySchema: $inlinedScalar,
+                    ownerClassName: $ownerClassName,
+                    propertyName: $propertyName,
+                );
+            }
+        }
+
         if (array_key_exists('allOf', $propertySchema) && is_array($propertySchema['allOf'])) {
             $normalizedAllOf = $this->normalizeAllOfPropertySchema($propertySchema);
             if ($normalizedAllOf !== null) {
@@ -2348,7 +2504,10 @@ final class GenerateDtoCommand extends Command
             }
 
             [$externalFile, $pointer] = $resolvedExternal;
-            $this->loadExternalDocument($externalFile);
+            $externalSchemaName = $this->externalPointerSchemaName($pointer);
+            if ($externalSchemaName !== null) {
+                $this->registerExternalSchema(externalFile: $externalFile, schemaName: $externalSchemaName);
+            }
             $ref = $pointer;
         }
 
@@ -2380,7 +2539,10 @@ final class GenerateDtoCommand extends Command
             }
 
             [$externalFile, $pointer] = $resolvedExternal;
-            $this->loadExternalDocument($externalFile);
+            $externalSchemaName = $this->externalPointerSchemaName($pointer);
+            if ($externalSchemaName !== null) {
+                $this->registerExternalSchema(externalFile: $externalFile, schemaName: $externalSchemaName);
+            }
             $ref = $pointer;
         }
 
@@ -2421,18 +2583,17 @@ final class GenerateDtoCommand extends Command
         }
 
         [$externalFile, $pointer] = $resolvedExternal;
-        $this->loadExternalDocument($externalFile);
 
-        $externalPrefix = '#/components/schemas/';
-        if (!str_starts_with($pointer, $externalPrefix)) {
+        $schemaName = $this->externalPointerSchemaName($pointer);
+        if ($schemaName === null) {
+            // Deeper pointer (e.g. .../properties/id): not a class. Scalars are inlined upstream
+            // (see resolvePropertyType); anything else is unsupported as a class reference.
             return 'mixed';
         }
 
-        $schemaName = substr($pointer, strlen($externalPrefix));
+        $this->registerExternalSchema(externalFile: $externalFile, schemaName: $schemaName);
 
-        return $schemaName !== ''
-            ? $this->normalizeClassName($schemaName)
-            : 'mixed';
+        return $this->normalizeClassName($schemaName);
     }
 
     private function getSchemaSourceFile(string $className): ?string

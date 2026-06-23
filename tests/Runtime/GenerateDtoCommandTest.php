@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
+use FilesystemIterator;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -1197,6 +1198,73 @@ final class GenerateDtoCommandTest extends TestCase
             $localContent = file_get_contents($localFile);
             $this->assertStringContainsString('use TestNamespace\\Test\\Common\\TestCommonResponse;', $localContent);
             $this->assertStringContainsString('private readonly TestCommonResponse $response', $localContent);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testExternalRefRegistersOnlyReferencedSchemaNotWholeFile(): void
+    {
+        $unique = uniqid('openapi_ext_selective_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref-selective/root.yaml',
+                $outputDir,
+                'TestNamespace',
+            );
+
+            $generatedFiles = [];
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($baseDir, FilesystemIterator::SKIP_DOTS));
+            foreach ($iterator as $file) {
+                $generatedFiles[] = $file->getFilename();
+            }
+
+            // The referenced external schema is generated...
+            $this->assertContains('Widget.php', $generatedFiles);
+            // ...but the unrelated schema sharing the same file is NOT pulled in.
+            $this->assertNotContains('Unrelated.php', $generatedFiles);
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testExternalRefToScalarPropertyIsInlinedWithoutPullingExternalSchema(): void
+    {
+        $unique = uniqid('openapi_ext_inline_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref-selective/root.yaml',
+                $outputDir,
+                'TestNamespace',
+            );
+
+            $holder = $outputDir . '/InlineScalarHolder.php';
+            $this->assertFileExists($holder);
+            $content = file_get_contents($holder);
+
+            // The scalar property of an external schema is inlined as the primitive type...
+            $this->assertStringContainsString('int $reusedId', $content);
+            // ...and no bogus class is referenced for the deep pointer.
+            $this->assertStringNotContainsString('properties', $content);
+            $this->assertStringNotContainsString('Id $reusedId', $content);
         } finally {
             if (is_dir($baseDir)) {
                 $this->deleteDirectory($baseDir);

@@ -1,0 +1,21 @@
+openapi: 3.0.0
+info:
+  title: Root
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    SchemaHolder:
+      type: object
+      required:
+        - widget
+      properties:
+        widget:
+          $ref: './lib.yaml/#/components/schemas/Widget'
+    InlineScalarHolder:
+      type: object
+      required:
+        - reusedId
+      properties:
+        reusedId:
+          $ref: './lib.yaml/#/components/schemas/Widget/properties/id'
