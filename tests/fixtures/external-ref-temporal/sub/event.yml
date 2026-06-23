@@ -1,0 +1,14 @@
+openapi: 3.0.0
+info:
+  title: Event
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Event:
+      type: object
+      required:
+        - at
+      properties:
+        at:
+          $ref: './types.yml#/components/schemas/Timestamp'

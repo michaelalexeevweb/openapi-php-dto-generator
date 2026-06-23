@@ -6,6 +6,8 @@ namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -1274,6 +1276,46 @@ final class GenerateDtoCommandTest extends TestCase
                 'namespace Acme\\Layer\\Common\\Dto;',
                 (string)file_get_contents($commonFile),
             );
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    public function testTemporalRefInExternalSchemaResolvesRelativeToOwnerFile(): void
+    {
+        $unique = uniqid('openapi_temporal_ref_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref-temporal/root.yml',
+                $outputDir,
+                'TemporalNs',
+            );
+
+            // Event is an external schema (sub/event.yml); its `at` property $refs './types.yml'
+            // RELATIVE TO that file, not the root spec. The fix resolves the temporal ref against
+            // the owner file, so `at` becomes DateTimeImmutable (the old root-relative base missed it).
+            $eventFile = null;
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($baseDir));
+            foreach ($iterator as $file) {
+                if ($file->getFilename() === 'Event.php') {
+                    $eventFile = $file->getPathname();
+                    break;
+                }
+            }
+
+            $this->assertNotNull($eventFile, 'Event.php was not generated');
+            $content = (string)file_get_contents($eventFile);
+            $this->assertStringContainsString('use DateTimeImmutable;', $content);
+            $this->assertStringContainsString('DateTimeImmutable $at', $content);
         } finally {
             if (is_dir($baseDir)) {
                 $this->deleteDirectory($baseDir);
