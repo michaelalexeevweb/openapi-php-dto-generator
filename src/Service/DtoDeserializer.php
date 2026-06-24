@@ -136,6 +136,66 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * Deserializes a top-level JSON array request body (e.g. a bulk endpoint whose
+     * `requestBody` schema is `type: array`) into a list of DTOs, one per element.
+     *
+     * The standard {@see deserialize()} entry point requires the JSON root to be an
+     * object; a collection body has an array root instead, so it needs this dedicated
+     * path. Each element must be a JSON object and is deserialized (and validated) into
+     * `$itemClass` exactly like a nested object would be. An empty array yields `[]`.
+     *
+     * @template T of object
+     * @param class-string<T> $itemClass
+     * @return array<int, T>
+     */
+    public function deserializeCollection(Request $request, string $itemClass): array
+    {
+        $content = $request->getContent();
+        if ($content === '') {
+            return [];
+        }
+
+        $contentType = (string)$request->headers->get('Content-Type', '');
+        if (!str_contains($contentType, 'application/json')) {
+            throw new RuntimeException('Collection body must be application/json.');
+        }
+
+        // Decode without assoc so JSON objects stay stdClass — lets each element reuse
+        // the same object/array distinction the per-item deserialization relies on.
+        $decoded = json_decode($content, false);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new RuntimeException('Json is not valid: ' . json_last_error_msg());
+        }
+
+        if (!is_array($decoded)) {
+            throw new RuntimeException('JSON body must be an array, got ' . gettype($decoded));
+        }
+
+        $result = [];
+        $errors = [];
+        foreach ($decoded as $index => $element) {
+            if (!$element instanceof stdClass) {
+                $errors[] = sprintf('Array element %d must be an object, got %s.', $index, gettype($element));
+                continue;
+            }
+
+            try {
+                $result[] = $this->deserializeFromArray($this->stdClassToArray($element), $itemClass);
+            } catch (RuntimeException $e) {
+                foreach (explode("\n", $e->getMessage()) as $message) {
+                    $errors[] = sprintf('element %d: %s', $index, $message);
+                }
+            }
+        }
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique($errors)));
+        }
+
+        return $result;
+    }
+
+    /**
      * Deserializes a nested DTO directly from a decoded JSON array, bypassing the
      * Symfony Request entirely. Nested objects only ever come from the JSON body, so
      * there are no path/query/form/file sources to consider — this avoids allocating a

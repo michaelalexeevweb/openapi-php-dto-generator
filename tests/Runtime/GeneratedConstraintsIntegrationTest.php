@@ -781,6 +781,85 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertTrue($provided->isStageInRequest());
     }
 
+    public function testDeserializeCollectionParsesTopLevelJsonArrayBody(): void
+    {
+        // A bulk endpoint whose requestBody schema is `type: array` sends a top-level JSON array
+        // (`[{...}, {...}]`). deserializeCollection() turns it into a list of item DTOs.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Bulk', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Item' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer']],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenBulk');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $itemClass */
+        $itemClass = '\\GenBulk\\Item';
+        $deserializer = new DtoDeserializer();
+
+        // Happy path: top-level array of objects → list of DTOs.
+        /** @var array<int, object{getId: callable}> $items */
+        $items = $deserializer->deserializeCollection(
+            $this->jsonPostRequest('[{"id":1},{"id":2},{"id":3}]'),
+            $itemClass,
+        );
+        $this->assertCount(3, $items);
+        $this->assertSame([1, 2, 3], array_map(static fn(object $i): int => $i->getId(), $items));
+
+        // Empty array → empty list.
+        $this->assertSame([], $deserializer->deserializeCollection($this->jsonPostRequest('[]'), $itemClass));
+    }
+
+    public function testDeserializeCollectionValidatesEachElement(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Bulk', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Item' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer']],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenBulkBad');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $itemClass */
+        $itemClass = '\\GenBulkBad\\Item';
+        $deserializer = new DtoDeserializer();
+
+        // An element missing a required field is reported with its index.
+        try {
+            $deserializer->deserializeCollection($this->jsonPostRequest('[{"id":1},{}]'), $itemClass);
+            $this->fail('Expected a validation error for the invalid element.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('element 1', $e->getMessage());
+        }
+
+        // An object root (not an array) is rejected by the collection path.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('JSON body must be an array');
+        $deserializer->deserializeCollection($this->jsonPostRequest('{"id":1}'), $itemClass);
+    }
+
     public function testDateTimeSubSecondPrecisionRoundTrips(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/datetime-precision.yaml');
