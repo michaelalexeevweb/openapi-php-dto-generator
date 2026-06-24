@@ -15,6 +15,7 @@ use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Yaml\Yaml;
+use UnitEnum;
 
 /**
  * GAP-1 regression coverage.
@@ -819,6 +820,148 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // Empty array → empty list.
         $this->assertSame([], $deserializer->deserializeCollection($this->jsonPostRequest('[]'), $itemClass));
+    }
+
+    public function testDeserializeCollectionOfScalars(): void
+    {
+        // requestBody: {type: array, items: {type: <scalar>}} → top-level array of scalars.
+        $deserializer = new DtoDeserializer();
+
+        $this->assertSame(
+            [1, 2, 3],
+            $deserializer->deserializeCollection($this->jsonPostRequest('[1,2,3]'), 'int'),
+        );
+        $this->assertSame(
+            [1.5, 2.5],
+            $deserializer->deserializeCollection($this->jsonPostRequest('[1.5,2.5]'), 'float'),
+        );
+        $this->assertSame(
+            ['test1', 'test2'],
+            $deserializer->deserializeCollection($this->jsonPostRequest('["test1","test2"]'), 'string'),
+        );
+        $this->assertSame(
+            [true, false, true],
+            $deserializer->deserializeCollection($this->jsonPostRequest('[true,false,true]'), 'bool'),
+        );
+
+        // A wrong-typed element is reported with its index.
+        try {
+            $deserializer->deserializeCollection($this->jsonPostRequest('[1,"x",3]'), 'int');
+            $this->fail('Expected a type error for the non-int element.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('expects int', $e->getMessage());
+        }
+    }
+
+    public function testDeserializeCollectionOfEnums(): void
+    {
+        // requestBody: {type: array, items: {$ref: SomeEnum}} → top-level array of enum values.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Bulk enum', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'StageEnum' => [
+                        'type' => 'string',
+                        'enum' => ['early', 'late'],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenBulkEnum');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string $enumClass */
+        $enumClass = '\\GenBulkEnum\\StageEnum';
+        $deserializer = new DtoDeserializer();
+
+        /** @var array<int, UnitEnum> $enums */
+        $enums = $deserializer->deserializeCollection(
+            $this->jsonPostRequest('["early","late","early"]'),
+            $enumClass,
+        );
+        $this->assertCount(3, $enums);
+        $this->assertSame(
+            [$enumClass::EARLY, $enumClass::LATE, $enumClass::EARLY],
+            $enums,
+        );
+
+        // An unknown enum value is reported with its index.
+        try {
+            $deserializer->deserializeCollection($this->jsonPostRequest('["early","WRONG"]'), $enumClass);
+            $this->fail('Expected an enum error for the unknown value.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('Allowed: early, late', $e->getMessage());
+        }
+    }
+
+    public function testDeserializeCollectionOfDiscriminatedMixedObjects(): void
+    {
+        // A heterogeneous collection — requestBody: {type: array, items: {$ref: Pet}} where Pet
+        // carries a discriminator. Each element resolves to its concrete subtype by the
+        // discriminator property; you pass the BASE class, not a list of candidate classes.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Bulk mixed', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Pet' => [
+                        'type' => 'object',
+                        'required' => ['petType'],
+                        'properties' => ['petType' => ['type' => 'string']],
+                        'discriminator' => [
+                            'propertyName' => 'petType',
+                            'mapping' => [
+                                'dog' => '#/components/schemas/Dog',
+                                'cat' => '#/components/schemas/Cat',
+                            ],
+                        ],
+                    ],
+                    'Dog' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/Pet'],
+                            ['type' => 'object', 'required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                        ],
+                    ],
+                    'Cat' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/Pet'],
+                            ['type' => 'object', 'required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $namespace = 'GenBulkMixed';
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
+
+        // Autoload by class name so parent classes load before their subtypes (require-order safe).
+        spl_autoload_register(function (string $class) use ($namespace): void {
+            if (!str_starts_with($class, $namespace . '\\')) {
+                return;
+            }
+            $file = $this->outputDirectory . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        });
+
+        /** @var class-string<GeneratedDtoInterface> $baseClass */
+        $baseClass = '\\' . $namespace . '\\Pet';
+
+        $pets = (new DtoDeserializer())->deserializeCollection(
+            $this->jsonPostRequest('[{"petType":"dog","bark":"woof"},{"petType":"cat","meow":"mew"}]'),
+            $baseClass,
+        );
+
+        $this->assertCount(2, $pets);
+        $this->assertInstanceOf('\\' . $namespace . '\\Dog', $pets[0]);
+        $this->assertInstanceOf('\\' . $namespace . '\\Cat', $pets[1]);
     }
 
     public function testDeserializeCollectionValidatesEachElement(): void

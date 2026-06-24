@@ -137,18 +137,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     /**
      * Deserializes a top-level JSON array request body (e.g. a bulk endpoint whose
-     * `requestBody` schema is `type: array`) into a list of DTOs, one per element.
+     * `requestBody` schema is `type: array`) into a list of items, one per element.
      *
      * The standard {@see deserialize()} entry point requires the JSON root to be an
      * object; a collection body has an array root instead, so it needs this dedicated
-     * path. Each element must be a JSON object and is deserialized (and validated) into
-     * `$itemClass` exactly like a nested object would be. An empty array yields `[]`.
+     * path. `$itemType` is the OpenAPI items type and may be a scalar keyword
+     * (`int`/`float`/`string`/`bool`), an enum class, a DTO class (discriminator
+     * aware) or `DateTimeImmutable`; each element is cast and validated exactly like a
+     * nested array item. An empty array yields `[]`.
      *
      * @template T of object
-     * @param class-string<T> $itemClass
-     * @return array<int, T>
+     * @param class-string<T>|string $itemType
+     * @return ($itemType is class-string<T> ? array<int, T> : array<int, mixed>)
      */
-    public function deserializeCollection(Request $request, string $itemClass): array
+    public function deserializeCollection(Request $request, string $itemType): array
     {
         $content = $request->getContent();
         if ($content === '') {
@@ -161,7 +163,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         // Decode without assoc so JSON objects stay stdClass — lets each element reuse
-        // the same object/array distinction the per-item deserialization relies on.
+        // the same object/array distinction the per-item caster relies on.
         $decoded = json_decode($content, false);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new RuntimeException('Json is not valid: ' . json_last_error_msg());
@@ -174,13 +176,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $result = [];
         $errors = [];
         foreach ($decoded as $index => $element) {
-            if (!$element instanceof stdClass) {
-                $errors[] = sprintf('Array element %d must be an object, got %s.', $index, gettype($element));
-                continue;
-            }
-
             try {
-                $result[] = $this->deserializeFromArray($this->stdClassToArray($element), $itemClass);
+                // Reuse the array-item caster so scalars, enums, datetimes and DTOs
+                // (with discriminator support) all behave like nested array elements.
+                $result[] = $this->castArrayItemValue(
+                    itemValue: $element,
+                    arrayItemType: $itemType,
+                    itemPath: (string)$index,
+                    source: 'json',
+                );
             } catch (RuntimeException $e) {
                 foreach (explode("\n", $e->getMessage()) as $message) {
                     $errors[] = sprintf('element %d: %s', $index, $message);
