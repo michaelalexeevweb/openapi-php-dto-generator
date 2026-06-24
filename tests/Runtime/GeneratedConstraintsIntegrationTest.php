@@ -140,6 +140,68 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
     }
 
+    public function testAdditionalPropertiesMapSerializesAsObjectAndRoundTrips(): void
+    {
+        // A `type: object` + `additionalProperties` map ({id: name}) must serialize as a JSON
+        // object even when its keys are dense integers (0, 1, 2, …) — a raw array would become a
+        // JSON list and lose the keys. Deserialization casts each value to the items type.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Map', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['fieldTypes'],
+                        'properties' => [
+                            'fieldTypes' => [
+                                'type' => 'object',
+                                'additionalProperties' => ['$ref' => '#/components/schemas/FieldTypesEnumView'],
+                            ],
+                        ],
+                    ],
+                    'FieldTypesEnumView' => ['type' => 'string', 'enum' => ['text', 'number', 'date']],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenMap');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenMap\\Holder';
+        $enum = '\\GenMap\\FieldTypesEnumView';
+        $normalizer = new DtoNormalizer();
+
+        // Dense integer keys must still produce a JSON object on every output path.
+        $dense = new $cls([0 => $enum::TEXT, 1 => $enum::NUMBER, 2 => $enum::DATE]);
+        $expected = '{"fieldTypes":{"0":"text","1":"number","2":"date"}}';
+        $this->assertSame($expected, $dense->toJson());
+        $this->assertSame($expected, (string)json_encode($normalizer->toArray($dense)));
+        $this->assertSame($expected, (string)json_encode($normalizer->validateAndNormalizeToArray($dense)));
+
+        // Deserialize a JSON object body → keys preserved, values cast to the enum.
+        $deserialized = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"fieldTypes":{"0":"text","5":"date"}}'),
+            $cls,
+        );
+        $map = $deserialized->getFieldTypes();
+        $this->assertSame([0, 5], array_keys($map));
+        $this->assertSame($enum::TEXT, $map[0]);
+        $this->assertSame($enum::DATE, $map[5]);
+
+        // A map exposes a keyed adder ($key, $item) that preserves keys in the object output.
+        $built = new $cls([0 => $enum::TEXT]);
+        $built->addItemToFieldTypes('5', $enum::DATE);
+        $built->addItemToFieldTypes('label', $enum::NUMBER);
+        $this->assertSame(
+            '{"fieldTypes":{"0":"text","5":"date","label":"number"}}',
+            $built->toJson(),
+        );
+    }
+
     public function testTemporalFieldExposesObjectGetterAlongsideStringGetter(): void
     {
         // A scalar temporal field keeps its string getter (formatted per the OpenAPI format) and

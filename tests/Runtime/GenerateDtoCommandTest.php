@@ -2044,8 +2044,13 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($file);
 
         $this->assertStringContainsString('private array $testMap', $content);
-        $this->assertStringContainsString('@var array<string>', $content);
+        // A map is a string-keyed type, not a list, and serializes as a JSON object.
+        $this->assertStringContainsString('@var array<string, string>', $content);
         $this->assertStringContainsString("'type' => 'object'", $content);
+        $this->assertStringContainsString('= $this->testMap === null ? null : (object) $this->testMap;', $content);
+        // A map's adder is keyed: ($key, $item), not a list ($item).
+        $this->assertStringContainsString('public function addItemToTestMap(string $key, string $item): void', $content);
+        $this->assertStringContainsString('$this->testMap[$key] = $item;', $content);
         $this->assertStringContainsString('public static function getAliases(): array', $content);
         $this->assertStringContainsString('public static function getConstraints(): array', $content);
         $this->assertStringContainsString('private bool $testMapInRequest = false;', $content);
@@ -2139,7 +2144,9 @@ final class GenerateDtoCommandTest extends TestCase
         $wrapperContent = file_get_contents($wrapper);
 
         $this->assertStringContainsString('private array $namesById', $wrapperContent);
-        $this->assertStringContainsString('@var array<NameItemView>', $wrapperContent);
+        // Map of DTOs: string-keyed value type, serialized as an object.
+        $this->assertStringContainsString('@var array<string, NameItemView>', $wrapperContent);
+        $this->assertStringContainsString('= $this->namesById === null ? null : (object) $this->namesById;', $wrapperContent);
         $this->assertFileExists($this->outputDirectory . '/NameItemView.php');
     }
 

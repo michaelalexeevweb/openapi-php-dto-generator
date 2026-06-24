@@ -36,7 +36,8 @@ use Twig\Loader\FilesystemLoader;
  *   constraints?: array<string, mixed>,
  *   readOnly?: bool,
  *   writeOnly?: bool,
- *   deprecated?: bool
+ *   deprecated?: bool,
+ *   isMap?: bool
  * }
  * @phpstan-type SchemaMetadata array{
  *   properties: array<int, SchemaProperty>,
@@ -1655,10 +1656,22 @@ final class GenerateDtoCommand extends Command
                 'readOnly' => (bool)($propertySchema['readOnly'] ?? false),
                 'writeOnly' => (bool)($propertySchema['writeOnly'] ?? false),
                 'deprecated' => (bool)($propertySchema['deprecated'] ?? false),
+                'isMap' => $this->isMapType($type),
             ];
         }
 
         return $result;
+    }
+
+    /**
+     * A `type: object` + `additionalProperties` schema (a string-keyed map) is represented as the
+     * generic type `array<string, V>`. Such a field must serialize as a JSON object, not a JSON
+     * array — otherwise dense integer-like keys (0, 1, 2, …) make json_encode emit a list and the
+     * map's keys are lost.
+     */
+    private function isMapType(string $type): bool
+    {
+        return str_starts_with($type, 'array<string, ');
     }
 
     /**
@@ -2081,7 +2094,7 @@ final class GenerateDtoCommand extends Command
                     ownerClassName: $ownerClassName,
                     propertyName: $propertyName,
                 );
-                return ['array<' . $mapValueType . '>', $nullable];
+                return ['array<string, ' . $mapValueType . '>', $nullable];
             }
 
             $nestedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
@@ -3525,7 +3538,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, isParameter: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, isMap: bool, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, isParameter: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -3616,6 +3629,9 @@ final class GenerateDtoCommand extends Command
             'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'presenceFlagName' => $this->resolvePresenceFlagName($property),
+            // A map (array<string, V>) is keyed: its adder takes ($key, $item) and it serializes
+            // as a JSON object. A list adder takes ($item) only.
+            'isMap' => $property['isMap'] ?? false,
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
@@ -4188,6 +4204,12 @@ final class GenerateDtoCommand extends Command
         $itemType = substr($fullType, 6, -1);
         if ($itemType === '') {
             return 'mixed';
+        }
+
+        // Map type `array<string, V>` — the value type is the part after the key prefix.
+        $commaPos = strpos($itemType, ', ');
+        if ($commaPos !== false) {
+            $itemType = substr($itemType, $commaPos + 2);
         }
 
         return match ($itemType) {

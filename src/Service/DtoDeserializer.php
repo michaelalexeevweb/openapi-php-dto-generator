@@ -1752,7 +1752,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        if (preg_match('/array<\??([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)>/', $docComment, $matches) !== 1) {
+        // Matches both a list `array<V>` and a map `array<string, V>` (the optional `key,` prefix is
+        // discarded) so map values are cast to their declared value type, not left as raw scalars.
+        if (preg_match('/array<(?:[^,<>]+,\s*)?\??([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)>/', $docComment, $matches) !== 1) {
             return null;
         }
 

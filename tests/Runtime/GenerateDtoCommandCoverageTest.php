@@ -493,8 +493,9 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertFileExists($file);
         $content = (string)file_get_contents($file);
 
-        $this->assertStringContainsString('@var array<string>', $content);
-        $this->assertStringContainsString('@var array<mixed>', $content);
+        // additionalProperties maps are string-keyed value types, not lists.
+        $this->assertStringContainsString('@var array<string, string>', $content);
+        $this->assertStringContainsString('@var array<string, mixed>', $content);
     }
 
     public function testComposedUnionPropertyWithNullVariant(): void

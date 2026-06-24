@@ -15,6 +15,7 @@ use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use ReflectionMethod;
 use RuntimeException;
+use stdClass;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Throwable;
@@ -53,6 +54,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
      *     isParameter: bool,
+     *     isMap: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
@@ -439,7 +441,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $value = $this->coerceEmptyStringToNull($rawValue, $getterMeta, $meta);
 
             try {
-                $result[$getterMeta['outputName']] = $this->normalizeValue($value, $visited);
+                $normalized = $this->normalizeValue($value, $visited);
+                // A map field must serialize as a JSON object; a plain array would become a JSON
+                // list when its keys are dense integers.
+                if ($getterMeta['isMap'] && is_array($normalized)) {
+                    $normalized = (object)$normalized;
+                }
+                $result[$getterMeta['outputName']] = $normalized;
             } catch (Throwable $e) {
                 if (!$rawValue instanceof File) {
                     throw $e;
@@ -513,6 +521,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 $result[$key] = $this->normalizeValue($item, $visited);
             }
             return $result;
+        }
+
+        // A map field serialized as an object (via the DTO's toArray()). Keep it an object so dense
+        // integer-like keys survive JSON encoding; normalize the values recursively.
+        if ($value instanceof stdClass) {
+            $object = new stdClass();
+            foreach ((array)$value as $key => $item) {
+                $object->{$key} = $this->normalizeValue($item, $visited);
+            }
+            return $object;
         }
 
         if ($value instanceof BackedEnum) {
@@ -836,6 +854,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
      *     isParameter: bool,
+     *     isMap: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
@@ -875,6 +894,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
      *     isParameter: bool,
+     *     isMap: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
@@ -948,6 +968,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'arrayItemTypeNames' => $arrayItemTypeNames,
                 'writeOnly' => $writeOnly,
                 'isParameter' => $isParameter,
+                // `object` normalization type marks a map (or free-form object): it must serialize
+                // as a JSON object even when its keys are dense integers.
+                'isMap' => is_string($type) && $type === 'object',
                 'required' => ($metadataArr['required'] ?? false) === true,
                 'inRequestFlagGetter' => $this->flagGetterName($metadataArr, 'inRequestFlagGetter'),
                 'inPathFlagGetter' => $this->flagGetterName($metadataArr, 'inPathFlagGetter'),
@@ -989,6 +1012,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
      *     arrayItemTypeNames: list<string>,
      *     writeOnly: bool,
      *     isParameter: bool,
+     *     isMap: bool,
      *     required: bool,
      *     inRequestFlagGetter: string|null,
      *     inPathFlagGetter: string|null,
@@ -1028,6 +1052,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 'arrayItemTypeNames' => $this->resolveArrayItemTypeNames($className, $methodName),
                 'writeOnly' => false,
                 'isParameter' => false,
+                'isMap' => false,
                 // No normalization map → no provenance metadata. Treat every getter as
                 // required so validation never silently skips a field on this fallback path.
                 'required' => true,

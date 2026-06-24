@@ -302,7 +302,10 @@ final class DtoValidator implements DtoValidatorInterface
             'string' => is_string($value) || ($value instanceof BackedEnum && is_string($value->value)),
             'boolean' => is_bool($value),
             'array' => is_array($value) && array_is_list($value),
-            'object' => (is_array($value) && !array_is_list($value)) || is_object($value),
+            // A map (type: object + additionalProperties) is held as a PHP array. When its keys are
+            // dense integers (0, 1, 2, …) the array is a list, yet it still represents a JSON object
+            // — PHP cannot tell the two apart — so any array satisfies `object`.
+            'object' => is_array($value) || is_object($value),
             'null' => $value === null,
             default => true,
         };
