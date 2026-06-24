@@ -991,6 +991,17 @@ final class GenerateDtoCommand extends Command
     private function ensureSchemaRefRegistered(string $ref, ?string $currentSourceFile): void
     {
         if (str_starts_with($ref, '#/components/schemas/')) {
+            // A local pointer inside an external document addresses a sibling schema of THAT file,
+            // not the root spec. Register it (and its own transitive refs) against the external
+            // file so same-file children of a cross-file ref target are emitted too. Local pointers
+            // of the root document are already handled by registerDocumentSchemas.
+            if ($currentSourceFile !== null && $currentSourceFile !== $this->rootSpecFile) {
+                $schemaName = $this->externalPointerSchemaName($ref);
+                if ($schemaName !== null) {
+                    $this->registerExternalSchema(externalFile: $currentSourceFile, schemaName: $schemaName);
+                }
+            }
+
             return;
         }
 

@@ -1311,6 +1311,46 @@ final class GenerateDtoCommandTest extends TestCase
         }
     }
 
+    public function testExternalRefGeneratesSameFileChildrenOfTarget(): void
+    {
+        // A cross-file ref target may itself reference sibling schemas of its own file via a local
+        // pointer (#/components/schemas/Child). Those children must be generated too, otherwise the
+        // emitted target class references a class that is never written to disk.
+        $unique = uniqid('openapi_ext_samefile_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref-samefile/root.yaml',
+                $outputDir,
+                'TestNamespace',
+            );
+
+            // Cross-file target itself.
+            $bundleFile = $baseDir . '/common/Bundle.php';
+            $this->assertFileExists($bundleFile);
+            $bundleContent = (string)file_get_contents($bundleFile);
+            $this->assertStringContainsString('BundleItem $item', $bundleContent);
+
+            // Same-file child of the target — the previously missing class.
+            $childFile = $baseDir . '/common/BundleItem.php';
+            $this->assertFileExists($childFile);
+            $this->assertStringContainsString('class BundleItem', (string)file_get_contents($childFile));
+
+            // Selectivity preserved: an unreferenced sibling is not emitted.
+            $this->assertFileDoesNotExist($baseDir . '/common/Unused.php');
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
     public function testExternalRefRegistersOnlyReferencedSchemaNotWholeFile(): void
     {
         $unique = uniqid('openapi_ext_selective_', true);

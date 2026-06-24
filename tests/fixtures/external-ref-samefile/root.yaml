@@ -1,0 +1,14 @@
+openapi: 3.0.0
+info:
+  title: Root
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    LocalResponse:
+      type: object
+      required:
+        - bundle
+      properties:
+        bundle:
+          $ref: './common/forms.yaml#/components/schemas/Bundle'

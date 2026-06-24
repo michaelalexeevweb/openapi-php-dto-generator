@@ -1,0 +1,28 @@
+openapi: 3.0.0
+info:
+  title: Lib
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Bundle:
+      type: object
+      required:
+        - item
+      properties:
+        item:
+          $ref: '#/components/schemas/BundleItem'
+    BundleItem:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+    Unused:
+      type: object
+      required:
+        - foo
+      properties:
+        foo:
+          type: string
