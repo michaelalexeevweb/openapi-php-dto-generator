@@ -99,6 +99,16 @@ final class GenerateDtoCommand extends Command
      */
     public array $externalDocSchemas = [];
 
+    /**
+     * Raw, unmodified schema definitions keyed by generated class name, captured for every
+     * registered schema (DTOs and enums alike). Lets a property that only carries a $ref recover
+     * keywords declared on the referenced schema itself — notably `default`, which lives on the
+     * target schema, not on the inline `{$ref: ...}` node.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    public array $rawSchemasByClass = [];
+
     public ?string $rootSpecFile = null;
     public string $baseOutputDirectory = '';
     public string $baseNamespace = '';
@@ -694,6 +704,10 @@ final class GenerateDtoCommand extends Command
     {
         $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
         $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
+
+        // Keep the raw definition (including enums, which otherwise return early below) so a
+        // referencing property can later read keywords declared on the target, e.g. `default`.
+        $this->rawSchemasByClass[$className] = $schemaDefinition;
 
         if ($this->isEnumSchema($schemaDefinition)) {
             $type = $this->resolveEnumBackingType($schemaDefinition);
@@ -1571,6 +1585,15 @@ final class GenerateDtoCommand extends Command
             $isRequired = array_key_exists($openApiPropertyName, $requiredMap);
             $nullable = $nullableBySchema || !$isRequired;
             $default = $this->extractDefaultValue($propertySchema, $type);
+            if (!array_key_exists('default', $propertySchema)) {
+                // No inline default on the property itself: a pure `$ref` (or single-ref allOf)
+                // inherits the `default` declared on the referenced schema. OpenAPI 3.0/3.1 both
+                // treat this as valid — the default belongs to the target schema.
+                $referencedDefault = $this->resolveReferencedDefault($propertySchema, $ownerClassName);
+                if ($referencedDefault !== null) {
+                    $default = $referencedDefault;
+                }
+            }
             $description = $this->extractDescription($propertySchema);
             $example = $this->extractExample($propertySchema);
             $temporalFormat = $this->resolveTemporalPhpDocFormat($propertySchema);
@@ -4934,6 +4957,113 @@ final class GenerateDtoCommand extends Command
         }
 
         return $propertySchema['default'];
+    }
+
+    /**
+     * Recovers the `default` declared on a referenced schema when the property itself only carries
+     * a `$ref` (optionally wrapped in a single-ref allOf). Returns null when the property is not a
+     * pure reference or the target declares no default.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    private function resolveReferencedDefault(array $propertySchema, string $ownerClassName): mixed
+    {
+        $ref = $this->singleRefOf($propertySchema);
+        if ($ref === null) {
+            return null;
+        }
+
+        return $this->defaultFromRef(
+            ref: $ref,
+            currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
+            depth: 0,
+        );
+    }
+
+    /**
+     * Returns the `$ref` string when the schema is a pure reference — either a direct `$ref` or an
+     * allOf with exactly one ref-only branch — otherwise null.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function singleRefOf(array $schema): ?string
+    {
+        if (array_key_exists('$ref', $schema) && is_string($schema['$ref'])) {
+            return $schema['$ref'];
+        }
+
+        if (array_key_exists('allOf', $schema) && is_array($schema['allOf']) && count($schema['allOf']) === 1) {
+            $first = $schema['allOf'][0];
+            if (is_array($first) && array_key_exists('$ref', $first) && is_string($first['$ref'])) {
+                return $first['$ref'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Walks a $ref (internal or external) to the target schema node and returns its `default`,
+     * following one further level of pure-reference indirection. Bounded by $depth to guard
+     * against reference cycles.
+     */
+    private function defaultFromRef(string $ref, ?string $currentSourceFile, int $depth): mixed
+    {
+        if ($depth > 10) {
+            return null;
+        }
+
+        $resolved = $this->resolveSchemaNodeByRef($ref, $currentSourceFile);
+        if ($resolved === null) {
+            return null;
+        }
+
+        [$node, $nodeSourceFile] = $resolved;
+
+        if (array_key_exists('default', $node)) {
+            return $node['default'];
+        }
+
+        $nestedRef = $this->singleRefOf($node);
+        if ($nestedRef !== null) {
+            return $this->defaultFromRef(ref: $nestedRef, currentSourceFile: $nodeSourceFile, depth: $depth + 1);
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves a $ref (internal `#/components/schemas/Name` or external `file#/...`) to its raw
+     * schema node and the source file that node belongs to (for chained ref resolution). Returns
+     * null when the target cannot be located.
+     *
+     * @return array{0: array<string, mixed>, 1: ?string}|null
+     */
+    private function resolveSchemaNodeByRef(string $ref, ?string $currentSourceFile): ?array
+    {
+        $prefix = '#/components/schemas/';
+
+        if (str_starts_with($ref, $prefix)) {
+            $schemaName = substr($ref, strlen($prefix));
+            if ($schemaName === '' || str_contains($schemaName, '/')) {
+                return null;
+            }
+
+            $className = $this->normalizeClassName($schemaName);
+            $node = $this->rawSchemasByClass[$className] ?? null;
+
+            return is_array($node) ? [$node, $this->getSchemaSourceFile($className)] : null;
+        }
+
+        $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $currentSourceFile);
+        if ($resolvedExternal === null) {
+            return null;
+        }
+
+        [$externalFile, $pointer] = $resolvedExternal;
+        $node = $this->resolveExternalPointerNode($externalFile, $pointer);
+
+        return is_array($node) ? [$node, $externalFile] : null;
     }
 
     /**

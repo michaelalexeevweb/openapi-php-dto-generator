@@ -886,6 +886,112 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('= 100', $content); // maxComments default
     }
 
+    public function testRefPropertyInheritsDefaultFromReferencedEnumSchema(): void
+    {
+        // A property that is only a $ref must inherit the `default` declared on the referenced
+        // schema (here the enum itself). The default lives on TestEnumView, not on the inline
+        // `{$ref: ...}` node, so the generator has to follow the reference to recover it.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'TestRequest' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'testEnumValues' => ['$ref' => '#/components/schemas/TestEnumView'],
+                        ],
+                    ],
+                    'TestEnumView' => [
+                        'type' => 'string',
+                        'enum' => ['first', 'second'],
+                        'default' => 'second',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/TestRequest.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString('TestEnumView $testEnumValues = TestEnumView::SECOND', $content);
+    }
+
+    public function testRefPropertyInheritsDefaultThroughSingleRefAllOf(): void
+    {
+        // OpenAPI 3.0 idiom: the $ref is wrapped in a single-element allOf (so a sibling default
+        // could be attached). Even with no sibling default, the referenced schema's own default
+        // must still be inherited.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'TestRequest' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'testEnumValues' => [
+                                'allOf' => [
+                                    ['$ref' => '#/components/schemas/TestEnumView'],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'TestEnumView' => [
+                        'type' => 'string',
+                        'enum' => ['first', 'second'],
+                        'default' => 'second',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/TestRequest.php';
+        $this->assertFileExists($file);
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString('TestEnumView $testEnumValues = TestEnumView::SECOND', $content);
+    }
+
+    public function testInlineSiblingDefaultOverridesReferencedDefault(): void
+    {
+        // OpenAPI 3.1 allows a default sibling next to $ref. When present inline it wins over the
+        // referenced schema's default.
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'TestRequest' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'testEnumValues' => [
+                                '$ref' => '#/components/schemas/TestEnumView',
+                                'default' => 'first',
+                            ],
+                        ],
+                    ],
+                    'TestEnumView' => [
+                        'type' => 'string',
+                        'enum' => ['first', 'second'],
+                        'default' => 'second',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/TestRequest.php');
+
+        $this->assertStringContainsString('TestEnumView $testEnumValues = TestEnumView::FIRST', $content);
+    }
+
     public function testEnumGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
