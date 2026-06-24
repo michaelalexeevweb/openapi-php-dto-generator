@@ -3327,6 +3327,34 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Decides whether an optional property is modelled with the UnsetValue sentinel so it can be
+     * omitted from the serialized payload. Body fields always use it — even when they declare a
+     * default, which then only seeds the constructor value (`T|UnsetValue|null = default`), leaving
+     * `UnsetValue::UNSET` available for explicit omission. Parameters (path/query/header/cookie)
+     * with a default keep the args-only presence model instead (their presence is inferred by the
+     * deserializer), so they are excluded here.
+     *
+     * @param SchemaProperty $property
+     */
+    private function propertyUsesUnsetSentinel(array $property): bool
+    {
+        if ($property['required']) {
+            return false;
+        }
+
+        $isParameter = ($property['inPath'] ?? false) === true
+            || ($property['inQuery'] ?? false) === true
+            || ($property['inHeader'] ?? false) === true
+            || ($property['inCookie'] ?? false) === true;
+
+        if ($isParameter) {
+            return $property['default'] === null;
+        }
+
+        return true;
+    }
+
+    /**
      * @param SchemaProperty $property
      * @return array{description: ?string, example: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, isArray: bool, usesUnsetSentinel: bool}
      */
@@ -3371,7 +3399,7 @@ final class GenerateDtoCommand extends Command
             'inHeaderFlagName' => $this->normalizeInHeaderFlagName($property['name']),
             'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
             'isArray' => $isArray,
-            'usesUnsetSentinel' => !$property['required'] && $property['default'] === null,
+            'usesUnsetSentinel' => $this->propertyUsesUnsetSentinel($property),
         ];
     }
 
@@ -3416,24 +3444,29 @@ final class GenerateDtoCommand extends Command
         $type = $this->composePhpTypeHint($phpType, $property['nullable']);
         $defaultValue = $this->renderDefaultValue($property['default'], $phpType, $property['type']);
 
-        // Use UnsetValue enum for optional parameters that track presence and have no explicit default
-        $usesUnsetSentinel = false;
-        if (!$property['required'] && $defaultValue === '') {
-            if ($tracksArgPresence) {
-                $usesUnsetSentinel = true;
-                // Add union type with UnsetValue and null. Strip any existing nullability first
-                // (leading ? or a null union member) so the result never has a duplicate null.
-                // null is emitted last to satisfy the ordered_types code-style rule
-                // (null_adjustment: always_last).
-                $baseType = strpos($type, '?') === 0 ? substr($type, 1) : $type;
-                $members = array_filter(
-                    explode('|', $baseType),
-                    static fn(string $member): bool => $member !== '' && $member !== 'null',
-                );
-                $type = implode('|', $members) . '|UnsetValue|null';
-            } elseif ($property['nullable']) {
-                $defaultValue = ' = null';
+        // Optional, presence-tracked properties carry the UnsetValue sentinel so they can be
+        // omitted. A declared default (if any) stays as the constructor default — the sentinel only
+        // adds the ability to pass UnsetValue::UNSET explicitly. Inherited (parent) properties are
+        // tracked by the parent, so they are excluded via $tracksArgPresence.
+        $usesUnsetSentinel = $tracksArgPresence && $this->propertyUsesUnsetSentinel($property);
+        if ($usesUnsetSentinel) {
+            // Add union type with UnsetValue and null. Strip any existing nullability first
+            // (leading ? or a null union member) so the result never has a duplicate null.
+            // null is emitted last to satisfy the ordered_types code-style rule
+            // (null_adjustment: always_last).
+            $baseType = strpos($type, '?') === 0 ? substr($type, 1) : $type;
+            $members = array_filter(
+                explode('|', $baseType),
+                static fn(string $member): bool => $member !== '' && $member !== 'null',
+            );
+            $type = implode('|', $members) . '|UnsetValue|null';
+
+            // No explicit default → the sentinel itself is the constructor default.
+            if ($defaultValue === '') {
+                $defaultValue = ' = UnsetValue::UNSET';
             }
+        } elseif (!$property['required'] && $defaultValue === '' && $property['nullable']) {
+            $defaultValue = ' = null';
         }
 
         $description = $property['description'] ?? null;
@@ -3527,7 +3560,7 @@ final class GenerateDtoCommand extends Command
         $returnType = $type;
         $phpDateFormat = null;
         $isNullableTemporal = false;
-        $usesUnsetSentinel = !$property['required'] && $property['default'] === null;
+        $usesUnsetSentinel = $this->propertyUsesUnsetSentinel($property);
         $needsInRequestGuard = !$property['required']
             && !($property['inPath'] ?? false)
             && !($property['inQuery'] ?? false)

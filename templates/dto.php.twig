@@ -105,9 +105,9 @@ interface {{ className }}
     public function __construct(
 {% for param in constructorParams %}
 {% if param.isPromoted %}
-        private readonly {{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
+        private readonly {{ param.type }} ${{ param.name }}{{ param.defaultValue }},
 {% else %}
-        {{ param.type }} ${{ param.name }}{{ param.usesUnsetSentinel ? ' = UnsetValue::UNSET' : param.defaultValue }},
+        {{ param.type }} ${{ param.name }}{{ param.defaultValue }},
 {% endif %}
 {% endfor %}
     ) {

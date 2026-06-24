@@ -508,8 +508,10 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($file);
         $content = (string)file_get_contents($file);
 
+        // Required params first; the optional default-valued field carries the UnsetValue sentinel
+        // (so it can still be omitted) while keeping the declared default as its constructor value.
         $this->assertMatchesRegularExpression(
-            '/public function __construct\(\s*array \$userIds,\s*private readonly \?UserTypeEnum \$user = UserTypeEnum::ALL,/s',
+            '/public function __construct\(\s*array \$userIds,\s*private readonly UserTypeEnum\|UnsetValue\|null \$user = UserTypeEnum::ALL,/s',
             $content,
         );
     }
@@ -917,7 +919,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($file);
         $content = (string)file_get_contents($file);
 
-        $this->assertStringContainsString('TestEnumView $testEnumValues = TestEnumView::SECOND', $content);
+        $this->assertStringContainsString('TestEnumView|UnsetValue|null $testEnumValues = TestEnumView::SECOND', $content);
     }
 
     public function testRefPropertyInheritsDefaultThroughSingleRefAllOf(): void
@@ -955,7 +957,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($file);
         $content = (string)file_get_contents($file);
 
-        $this->assertStringContainsString('TestEnumView $testEnumValues = TestEnumView::SECOND', $content);
+        $this->assertStringContainsString('TestEnumView|UnsetValue|null $testEnumValues = TestEnumView::SECOND', $content);
     }
 
     public function testInlineSiblingDefaultOverridesReferencedDefault(): void
@@ -989,7 +991,60 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = (string)file_get_contents($this->outputDirectory . '/TestRequest.php');
 
-        $this->assertStringContainsString('TestEnumView $testEnumValues = TestEnumView::FIRST', $content);
+        $this->assertStringContainsString('TestEnumView|UnsetValue|null $testEnumValues = TestEnumView::FIRST', $content);
+    }
+
+    public function testOptionalBodyFieldWithDefaultKeepsUnsetSentinel(): void
+    {
+        // An optional body field that declares a default must still carry the UnsetValue sentinel:
+        // the default only seeds the constructor value, while UnsetValue::UNSET stays available so
+        // the field can be omitted from the serialized payload entirely. Presence is derived from
+        // whether the sentinel was passed.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'SampleRequest' => [
+                        'type' => 'object',
+                        'required' => ['itemIds'],
+                        'properties' => [
+                            'stage' => ['$ref' => '#/components/schemas/SampleEnumView'],
+                            'itemIds' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'integer'],
+                            ],
+                        ],
+                    ],
+                    'SampleEnumView' => [
+                        'type' => 'string',
+                        'enum' => ['alpha', 'beta'],
+                        'default' => 'alpha',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/SampleRequest.php');
+
+        // Sentinel union with the declared default as the constructor value.
+        $this->assertStringContainsString(
+            'private readonly SampleEnumView|UnsetValue|null $stage = SampleEnumView::ALPHA',
+            $content,
+        );
+        // Presence reflects whether the value was actually passed (not hardcoded true).
+        $this->assertStringContainsString(
+            '$this->stageInRequest = $stage !== UnsetValue::UNSET;',
+            $content,
+        );
+        $this->assertStringNotContainsString('$this->stageInRequest = true;', $content);
+        // Getter unwraps the sentinel back to null.
+        $this->assertStringContainsString(
+            'return $this->stage !== UnsetValue::UNSET ? $this->stage : null;',
+            $content,
+        );
     }
 
     public function testEnumGeneration(): void

@@ -698,6 +698,73 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertTrue($provided->isScopeInQuery());
     }
 
+    public function testOptionalBodyFieldWithDefaultCanBeOmittedViaUnsetSentinel(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Body default omission', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'SampleRequest' => [
+                        'type' => 'object',
+                        'required' => ['itemIds'],
+                        'properties' => [
+                            'stage' => ['$ref' => '#/components/schemas/SampleEnumView'],
+                            'itemIds' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'integer'],
+                            ],
+                        ],
+                    ],
+                    'SampleEnumView' => [
+                        'type' => 'string',
+                        'enum' => ['alpha', 'beta'],
+                        'default' => 'alpha',
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenBodyDefault');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenBodyDefault\\SampleRequest';
+        $enum = '\\GenBodyDefault\\SampleEnumView';
+
+        // Plain construction → declared default applies and is serialized (intent preserved).
+        /** @var object{toArray: callable, getStage: callable, isStageInRequest: callable} $withDefault */
+        $withDefault = new $cls([1, 2]);
+        $this->assertTrue($withDefault->isStageInRequest());
+        $this->assertSame($enum::ALPHA, $withDefault->getStage());
+        $this->assertArrayHasKey('stage', $withDefault->toArray());
+
+        // Explicit UnsetValue::UNSET → omitted from the payload (new capability).
+        /** @var object{toArray: callable, getStage: callable, isStageInRequest: callable} $omitted */
+        $omitted = new $cls([1, 2], \OpenapiPhpDtoGenerator\Contract\UnsetValue::UNSET);
+        $this->assertFalse($omitted->isStageInRequest());
+        $this->assertNull($omitted->getStage());
+        $this->assertArrayNotHasKey('stage', $omitted->toArray());
+
+        // Deserialization of a payload without the field → default applied, presence stays false.
+        $deserialized = (new DtoDeserializer())->deserialize(
+            Request::create(
+                uri: '/',
+                method: 'POST',
+                parameters: [],
+                cookies: [],
+                files: [],
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: (string)json_encode(['itemIds' => [1]]),
+            ),
+            $cls,
+        );
+        $this->assertSame($enum::ALPHA, $deserialized->getStage());
+        $this->assertFalse($deserialized->isStageInRequest());
+    }
+
     public function testDateTimeSubSecondPrecisionRoundTrips(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/datetime-precision.yaml');
