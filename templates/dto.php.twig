@@ -201,6 +201,19 @@ interface {{ className }}
 {% endif %}
 {% endif %}
     }
+{% if property.hasObjectGetter %}
+
+    public function {{ property.objectGetterMethodName }}(): {{ property.objectGetterReturnType }}
+    {
+{% if property.usesUnsetSentinel %}
+        if ($this->{{ property.name }} === UnsetValue::UNSET) {
+            return null;
+        }
+
+{% endif %}
+        return $this->{{ property.name }};
+    }
+{% endif %}
 
     public function is{{ property.nameSuffix }}Required(): bool
     {

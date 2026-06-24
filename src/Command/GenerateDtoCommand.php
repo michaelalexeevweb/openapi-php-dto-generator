@@ -3525,7 +3525,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, isParameter: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, isParameter: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -3589,6 +3589,13 @@ final class GenerateDtoCommand extends Command
         // the property is never UnsetValue at read time. Non-array sentinel getters still do.
         $getterUsesSentinel = $usesUnsetSentinel && $phpType !== 'array';
 
+        // Scalar temporal fields expose a second getter that returns the underlying
+        // DateTimeImmutable object (the primary getter returns a formatted string). The value
+        // is already stored as DateTimeImmutable, so this just unwraps the sentinel/null.
+        $hasObjectGetter = $returnKind === 'temporal';
+        $objectGetterMethodName = $hasObjectGetter ? 'get' . ucfirst($property['name']) . 'AsDateTime' : '';
+        $objectGetterReturnType = $isNullableTemporal ? '?DateTimeImmutable' : 'DateTimeImmutable';
+
         return [
             'name' => $property['name'],
             'openApiName' => $property['openApiName'],
@@ -3616,6 +3623,9 @@ final class GenerateDtoCommand extends Command
             'nullableArray' => $property['nullable'],
             'usesUnsetSentinel' => $usesUnsetSentinel,
             'getterUsesSentinel' => $getterUsesSentinel,
+            'hasObjectGetter' => $hasObjectGetter,
+            'objectGetterMethodName' => $objectGetterMethodName,
+            'objectGetterReturnType' => $objectGetterReturnType,
             'readOnly' => $property['readOnly'] ?? false,
             'writeOnly' => $property['writeOnly'] ?? false,
             'deprecated' => $property['deprecated'] ?? false,

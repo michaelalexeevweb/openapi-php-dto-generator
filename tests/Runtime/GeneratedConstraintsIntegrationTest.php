@@ -140,6 +140,64 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
     }
 
+    public function testTemporalFieldExposesObjectGetterAlongsideStringGetter(): void
+    {
+        // A scalar temporal field keeps its string getter (formatted per the OpenAPI format) and
+        // gains a getXAsDateTime() that returns the underlying DateTimeImmutable. Covers a required
+        // (non-null) and a nullable field.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Temporal', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Event' => [
+                        'type' => 'object',
+                        'required' => ['startDate'],
+                        'properties' => [
+                            'startDate' => ['type' => 'string', 'format' => 'date'],
+                            'createdAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenTemporal');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\GenTemporal\\Event';
+
+        /** @var object{getStartDate: callable, getStartDateAsDateTime: callable, getCreatedAt: callable, getCreatedAtAsDateTime: callable} $dto */
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"startDate":"2026-01-15","createdAt":"2026-02-20T08:30:00+00:00"}'),
+            $cls,
+        );
+
+        // String getter: formatted per the OpenAPI format.
+        $this->assertSame('2026-01-15', $dto->getStartDate());
+        // Object getter: the underlying DateTimeImmutable.
+        $startDateObject = $dto->getStartDateAsDateTime();
+        $this->assertInstanceOf(DateTimeImmutable::class, $startDateObject);
+        $this->assertSame('2026-01-15', $startDateObject->format('Y-m-d'));
+
+        // Nullable field present → both getters return the value.
+        $this->assertSame('2026-02-20T08:30:00+00:00', $dto->getCreatedAt());
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->getCreatedAtAsDateTime());
+
+        // Reflect the declared return types.
+        $this->assertSame(
+            'DateTimeImmutable',
+            (string)(new ReflectionMethod($cls, 'getStartDateAsDateTime'))->getReturnType(),
+        );
+        $this->assertSame(
+            '?DateTimeImmutable',
+            (string)(new ReflectionMethod($cls, 'getCreatedAtAsDateTime'))->getReturnType(),
+        );
+    }
+
     public function testArrayOfDateTimeItemsAreParsedThroughGeneratedDto(): void
     {
         // Regression: array<DateTimeImmutable> items used to fail deserialization —
