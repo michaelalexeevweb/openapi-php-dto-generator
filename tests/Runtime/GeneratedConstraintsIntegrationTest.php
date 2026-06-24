@@ -763,6 +763,22 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
         $this->assertSame($enum::ALPHA, $deserialized->getStage());
         $this->assertFalse($deserialized->isStageInRequest());
+
+        // Deserialization of a payload WITH the field → value taken from payload, presence true.
+        $provided = (new DtoDeserializer())->deserialize(
+            Request::create(
+                uri: '/',
+                method: 'POST',
+                parameters: [],
+                cookies: [],
+                files: [],
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: (string)json_encode(['itemIds' => [1], 'stage' => 'beta']),
+            ),
+            $cls,
+        );
+        $this->assertSame($enum::BETA, $provided->getStage());
+        $this->assertTrue($provided->isStageInRequest());
     }
 
     public function testDateTimeSubSecondPrecisionRoundTrips(): void
