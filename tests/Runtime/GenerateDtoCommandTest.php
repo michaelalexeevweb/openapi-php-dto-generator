@@ -3150,4 +3150,31 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('public function getWidgets(): array', $content);
         $this->assertStringNotContainsString('WidgetList', $content);
     }
+
+    public function testGeneratedEnumImportsJsonExceptionForToJson(): void
+    {
+        // The runtime enum's toJson() references JsonException (@throws + json_encode with
+        // JSON_THROW_ON_ERROR), so the generated enum must import it — otherwise the @throws
+        // annotation points at a non-existent class under static analysis.
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['market'],
+                    'properties' => [
+                        'market' => ['type' => 'string', 'enum' => ['ios', 'android']],
+                    ],
+                ],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/HolderMarket.php');
+        $this->assertStringContainsString('enum HolderMarket', $content);
+        $this->assertStringContainsString('@throws JsonException', $content);
+        $this->assertStringContainsString('use JsonException;', $content);
+    }
 }

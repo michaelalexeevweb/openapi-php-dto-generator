@@ -4969,11 +4969,24 @@ final class GenerateDtoCommand extends Command
         // Symfony serializer handles backed enums natively via BackedEnumNormalizer.
         $isSymfony = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY;
 
+        $imports = [];
+        if (!$isSymfony) {
+            // Import the runtime interface only when it lives in another namespace (avoid a
+            // self-import), and JsonException for the enum's toJson() (@throws + json_encode with
+            // JSON_THROW_ON_ERROR). Sort so the output matches php-cs-fixer's ordered_imports.
+            $fqcnNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
+            if ($fqcnNamespace !== $namespace) {
+                $imports[] = $this->generatedDtoInterfaceImportFqcn;
+            }
+            $imports[] = 'JsonException';
+            sort($imports);
+        }
+
         return $this->renderPhpTemplate(
             $isSymfony ? 'enum.symfony.php.twig' : 'enum.php.twig',
             [
                 'namespace' => $namespace,
-                'imports' => $isSymfony ? [] : [$this->generatedDtoInterfaceImportFqcn],
+                'imports' => $imports,
                 'enumName' => $enumName,
                 'backingType' => $backingType,
                 'cases' => $cases,
