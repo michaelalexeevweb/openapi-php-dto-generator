@@ -3177,4 +3177,44 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('@throws JsonException', $content);
         $this->assertStringContainsString('use JsonException;', $content);
     }
+
+    public function testChildClassImportsInheritedConstructorParamTypes(): void
+    {
+        // A child (allOf/extends) re-declares its parent's properties as constructor parameters.
+        // Their types must be imported too — e.g. an inherited DateTimeImmutable param. Without the
+        // import the type hint resolves to the current namespace and fatals at construction time.
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Round' => [
+                    'type' => 'object',
+                    'required' => ['id', 'createdDate'],
+                    'properties' => [
+                        'id' => ['type' => 'integer'],
+                        'createdDate' => ['type' => 'string', 'format' => 'date-time'],
+                    ],
+                ],
+                'RoundWithLogs' => [
+                    'allOf' => [
+                        ['$ref' => '#/components/schemas/Round'],
+                        [
+                            'type' => 'object',
+                            'required' => ['logs'],
+                            'properties' => [
+                                'logs' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            ],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/RoundWithLogs.php');
+        // Inherited createdDate param is typed DateTimeImmutable → its import must be present.
+        $this->assertStringContainsString('DateTimeImmutable $createdDate', $content);
+        $this->assertStringContainsString('use DateTimeImmutable;', $content);
+    }
 }

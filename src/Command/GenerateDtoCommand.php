@@ -2783,10 +2783,17 @@ final class GenerateDtoCommand extends Command
             );
         }
 
+        // A child (allOf/extends) class re-declares its parent's properties as constructor
+        // parameters, so imports must cover their types too (e.g. an inherited DateTimeImmutable
+        // param). Scan own + parent properties — the same parent set the constructor emits.
+        $importScanProperties = $extends !== null
+            ? array_merge($this->getParentProperties($extends), $properties)
+            : $properties;
+
         $imports = $this->collectGeneratedClassImports(
             namespace: $namespace,
             className: $className,
-            properties: $properties,
+            properties: $importScanProperties,
             extends: $extends,
             unionTypes: $unionTypes,
             discriminator: $discriminator,
@@ -2794,8 +2801,8 @@ final class GenerateDtoCommand extends Command
 
         $useStatements = [];
 
-        $needsDateTimeImport = $this->needsDateTimeImmutableImport($properties);
-        $needsUploadedFileImport = $this->needsUploadedFileImport($properties);
+        $needsDateTimeImport = $this->needsDateTimeImmutableImport($importScanProperties);
+        $needsUploadedFileImport = $this->needsUploadedFileImport($importScanProperties);
 
         if ($needsDateTimeImport) {
             $useStatements[] = 'DateTimeImmutable';
