@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use RuntimeException;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
@@ -21,7 +22,7 @@ final class DtoDeserializerPsr7
     private readonly HttpFoundationFactory $httpFoundationFactory;
 
     public function __construct(
-        private readonly DtoDeserializer $deserializer = new DtoDeserializer(),
+        private readonly DtoDeserializerInterface $deserializer = new DtoDeserializer(),
     ) {
         if (!class_exists(HttpFoundationFactory::class)) {
             throw new RuntimeException(
