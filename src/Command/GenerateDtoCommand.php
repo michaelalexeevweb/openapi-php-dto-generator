@@ -2427,6 +2427,14 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
+            // OpenAPI 3.0 idiom for "X or null": a bare `{nullable: true}` branch (no type/$ref/
+            // composition) just adds null to the union. Treat it as the null branch instead of
+            // letting it resolve to `mixed` and collapse the whole union to mixed.
+            if (($variant['nullable'] ?? false) === true && $this->isNullOnlyBranch($variant)) {
+                $nullable = true;
+                continue;
+            }
+
             [$variantType, $variantNullable] = $this->resolvePropertyType($variant, $ownerClassName, $propertyName);
             if ($variantNullable) {
                 $nullable = true;
@@ -2453,6 +2461,26 @@ final class GenerateDtoCommand extends Command
         }
 
         return [implode('|', $types), $nullable];
+    }
+
+    /**
+     * True when a union variant carries no type-bearing keyword — i.e. it only constrains
+     * nullability (the OpenAPI 3.0 `{nullable: true}` idiom for adding null to a oneOf/anyOf).
+     *
+     * @param array<string, mixed> $variant
+     */
+    private function isNullOnlyBranch(array $variant): bool
+    {
+        foreach (
+            ['type', '$ref', 'enum', 'const', 'oneOf', 'anyOf', 'allOf', 'not',
+                'properties', 'items', 'additionalProperties', 'prefixItems', 'if'] as $key
+        ) {
+            if (array_key_exists($key, $variant)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -4372,6 +4400,12 @@ final class GenerateDtoCommand extends Command
     {
         if (!$nullable) {
             return $type;
+        }
+
+        // `mixed` already includes null — `?mixed` is a fatal error
+        // ("Type mixed cannot be marked as nullable since mixed already includes null").
+        if ($type === 'mixed') {
+            return 'mixed';
         }
 
         if (str_contains($type, '|')) {

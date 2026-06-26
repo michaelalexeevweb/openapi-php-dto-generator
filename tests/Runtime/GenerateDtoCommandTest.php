@@ -3041,4 +3041,42 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString("'minContains'", $content);
         $this->assertStringContainsString("'maxContains'", $content);
     }
+
+    public function testOneOfWithNullableBranchResolvesToNullableTypeNotMixed(): void
+    {
+        // OpenAPI 3.0 "X or null" idiom: oneOf of [$ref, {nullable: true}]. The bare nullable
+        // branch must add null to the ref type (?TreeNode), not collapse the union to ?mixed
+        // (which is a fatal: "Type mixed cannot be marked as nullable").
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'TreeNode' => [
+                    'type' => 'object',
+                    'required' => ['id', 'parent'],
+                    'properties' => [
+                        'id' => ['type' => 'integer'],
+                        'parent' => ['oneOf' => [
+                            ['$ref' => '#/components/schemas/TreeNode'],
+                            ['nullable' => true],
+                        ]],
+                    ],
+                ],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $file = $this->outputDirectory . '/TreeNode.php';
+        $content = (string)file_get_contents($file);
+
+        $this->assertStringContainsString('private readonly ?TreeNode $parent', $content);
+        $this->assertStringContainsString('public function getParent(): ?TreeNode', $content);
+        $this->assertStringNotContainsString('?mixed', $content);
+
+        // The generated file must be valid PHP (no "?mixed" fatal).
+        $lint = shell_exec('php -l ' . escapeshellarg($file) . ' 2>&1');
+        $this->assertStringContainsString('No syntax errors', (string)$lint);
+    }
 }
