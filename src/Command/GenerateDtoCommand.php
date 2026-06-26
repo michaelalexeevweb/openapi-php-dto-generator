@@ -635,6 +635,13 @@ final class GenerateDtoCommand extends Command
         $generatedCount = 0;
 
         foreach ($this->dtoSchemas as $className => $schemaDefinition) {
+            // A component schema whose top-level type is `array` is a type alias (a list), not an
+            // object — references to it resolve to the aliased array type, so no empty DTO class
+            // file is emitted for it.
+            if (($schemaDefinition['type'] ?? null) === 'array') {
+                continue;
+            }
+
             $schemaMetadata = $this->analyzeSchema(className: $className, schemaDefinition: $schemaDefinition);
             $namespace = $this->schemaNamespaces[$className] ?? $this->baseNamespace;
             $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
@@ -2041,6 +2048,18 @@ final class GenerateDtoCommand extends Command
                 return [$temporalType, $nullable];
             }
 
+            // A $ref to a component schema whose top-level type is `array` is a type alias, not an
+            // object: resolve it to the aliased array type (e.g. array<AppScheme>) so the property
+            // is typed as a list, instead of pointing at an empty generated class.
+            $aliasArrayType = $this->resolveArrayAliasRefType(
+                $propertySchema['$ref'],
+                $ownerClassName,
+                $propertyName,
+            );
+            if ($aliasArrayType !== null) {
+                return [$aliasArrayType, $nullable];
+            }
+
             return [
                 $this->schemaRefToClassName(
                     ref: $propertySchema['$ref'],
@@ -2598,6 +2617,36 @@ final class GenerateDtoCommand extends Command
             'date-time', 'datetime' => 'yyyy-MM-dd HH:mm:ss',
             default => null,
         };
+    }
+
+    /**
+     * If $ref points at a component schema whose top-level type is `array`, returns the aliased
+     * array type (e.g. `array<AppScheme>`) so a property referencing it is typed as a list rather
+     * than an empty generated class. Returns null for object schemas and external refs (which keep
+     * the class-name typing). Only local `#/components/schemas/...` aliases are redirected.
+     */
+    private function resolveArrayAliasRefType(string $ref, string $ownerClassName, string $propertyName): ?string
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        $schemaName = substr($ref, strlen($prefix));
+        if ($schemaName === '') {
+            return null;
+        }
+
+        $className = $this->normalizeClassName($schemaName);
+        $definition = $this->dtoSchemas[$className] ?? null;
+        if (!is_array($definition) || ($definition['type'] ?? null) !== 'array') {
+            return null;
+        }
+
+        // Resolve relative to the alias schema itself so its `items` $ref resolves correctly.
+        [$type] = $this->resolvePropertyType($definition, $className, $propertyName);
+
+        return $type;
     }
 
     private function resolveBinaryRefType(string $ref, ?string $currentSourceFile = null): ?string

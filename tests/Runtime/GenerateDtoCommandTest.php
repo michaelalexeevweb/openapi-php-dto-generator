@@ -3108,4 +3108,46 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString("'pattern' => '\\d+'", $content);
         $this->assertStringNotContainsString("'pattern' => '\\\\d+'", $content);
     }
+
+    public function testArrayAliasComponentSchemaResolvesToTypedListNotEmptyClass(): void
+    {
+        // A component schema that is `type: array` (a list alias) referenced via $ref as a property
+        // type must type the property as a typed list (array<Widget>), not generate an empty DTO
+        // class for the alias.
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'CatalogResponse' => [
+                    'type' => 'object',
+                    'required' => ['widgets'],
+                    'properties' => [
+                        'widgets' => ['$ref' => '#/components/schemas/WidgetList'],
+                    ],
+                ],
+                'WidgetList' => [
+                    'type' => 'array',
+                    'items' => ['$ref' => '#/components/schemas/Widget'],
+                ],
+                'Widget' => [
+                    'type' => 'object',
+                    'required' => ['id'],
+                    'properties' => ['id' => ['type' => 'integer']],
+                ],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        // The array-alias schema must NOT generate a class file.
+        $this->assertFileDoesNotExist($this->outputDirectory . '/WidgetList.php');
+        $this->assertFileExists($this->outputDirectory . '/Widget.php');
+
+        // The referencing property is a typed list, not the alias class.
+        $content = (string)file_get_contents($this->outputDirectory . '/CatalogResponse.php');
+        $this->assertStringContainsString('private array $widgets', $content);
+        $this->assertStringContainsString('@param array<Widget> $widgets', $content);
+        $this->assertStringContainsString('public function getWidgets(): array', $content);
+        $this->assertStringNotContainsString('WidgetList', $content);
+    }
 }
