@@ -307,7 +307,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 if (str_contains($exception->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
                     continue;
                 }
-                $errors[] = "Failed to call $methodName(): " . $exception->getMessage();
+                $errors[] = "Failed to call {$methodName}(): " . $exception->getMessage();
             } catch (Error $error) {
                 // A genuine programming error (TypeError, undefined method, etc.) — most
                 // likely a broken hand-written getter. Let it bubble instead of disguising
@@ -698,13 +698,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private function validateValue(mixed $value, string $expectedType, string $methodName): ?string
     {
         return match ($expectedType) {
-            'int' => is_int($value) ? null : "Method $methodName() must return int, got " . gettype($value),
+            'int' => is_int($value) ? null : "Method {$methodName}() must return int, got " . gettype($value),
             'float' => (is_float($value) || is_int(
                 $value,
-            )) ? null : "Method $methodName() must return float, got " . gettype($value),
-            'string' => is_string($value) ? null : "Method $methodName() must return string, got " . gettype($value),
-            'bool' => is_bool($value) ? null : "Method $methodName() must return bool, got " . gettype($value),
-            'array' => is_array($value) ? null : "Method $methodName() must return array, got " . gettype($value),
+            )) ? null : "Method {$methodName}() must return float, got " . gettype($value),
+            'string' => is_string($value) ? null : "Method {$methodName}() must return string, got " . gettype($value),
+            'bool' => is_bool($value) ? null : "Method {$methodName}() must return bool, got " . gettype($value),
+            'array' => is_array($value) ? null : "Method {$methodName}() must return array, got " . gettype($value),
             'mixed' => null,
             default => $this->validateObject($value, $expectedType, $methodName),
         };
@@ -764,10 +764,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         if (enum_exists($expectedType)) {
-            return "Method $methodName() must return enum $expectedType, got " . get_debug_type($value);
+            return "Method {$methodName}() must return enum {$expectedType}, got " . get_debug_type($value);
         }
 
-        return "Method $methodName() must return instance of $expectedType, got " . get_debug_type($value);
+        return "Method {$methodName}() must return instance of {$expectedType}, got " . get_debug_type($value);
     }
 
     private function isSerializableGetterName(string $name): bool

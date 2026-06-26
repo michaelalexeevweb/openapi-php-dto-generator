@@ -38,7 +38,7 @@ final class DtoFeaturesTest extends TestCase
     // 1. Numeric constraints
     // =========================================================================
 
-    public function testMinimumConstraint_rejectsValueBelowMinimum(): void
+    public function testMinimumConstraintRejectsValueBelowMinimum(): void
     {
         $request = $this->jsonRequest(['amount' => 9]);
 
@@ -48,7 +48,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
     }
 
-    public function testMinimumConstraint_acceptsExactMinimum(): void
+    public function testMinimumConstraintAcceptsExactMinimum(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['amount' => 10, 'multiplier' => 3]),
@@ -58,7 +58,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame(10, $dto->amount);
     }
 
-    public function testExclusiveMinimumConstraint_rejectsEqualValue(): void
+    public function testExclusiveMinimumConstraintRejectsEqualValue(): void
     {
         $request = $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 5]);
 
@@ -68,7 +68,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
     }
 
-    public function testExclusiveMinimumConstraint_acceptsAbove(): void
+    public function testExclusiveMinimumConstraintAcceptsAbove(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6]),
@@ -78,7 +78,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame(6, $dto->score);
     }
 
-    public function testMaximumConstraint_rejectsValueAboveMaximum(): void
+    public function testMaximumConstraintRejectsValueAboveMaximum(): void
     {
         $request = $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6, 'limit' => 101]);
 
@@ -88,7 +88,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
     }
 
-    public function testMaximumConstraint_acceptsExactMaximum(): void
+    public function testMaximumConstraintAcceptsExactMaximum(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6, 'limit' => 100]),
@@ -98,7 +98,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame(100, $dto->limit);
     }
 
-    public function testMultipleOfConstraint_rejectsNonMultiple(): void
+    public function testMultipleOfConstraintRejectsNonMultiple(): void
     {
         $request = $this->jsonRequest(['amount' => 10, 'multiplier' => 7]);
 
@@ -108,7 +108,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, NumericConstraintsDto::class);
     }
 
-    public function testMultipleOfConstraint_acceptsMultiple(): void
+    public function testMultipleOfConstraintAcceptsMultiple(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['amount' => 12, 'multiplier' => 9]),
@@ -122,7 +122,7 @@ final class DtoFeaturesTest extends TestCase
     // 2. String constraints
     // =========================================================================
 
-    public function testMinLengthConstraint_rejectsShortString(): void
+    public function testMinLengthConstraintRejectsShortString(): void
     {
         $request = $this->jsonRequest(['username' => 'hi', 'code' => 'abc123']);
 
@@ -132,7 +132,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, StringConstraintsDto::class);
     }
 
-    public function testMinLengthConstraint_acceptsExactLength(): void
+    public function testMinLengthConstraintAcceptsExactLength(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['username' => 'hello', 'code' => '123456']),
@@ -142,7 +142,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('hello', $dto->username);
     }
 
-    public function testMaxLengthConstraint_rejectsTooLong(): void
+    public function testMaxLengthConstraintRejectsTooLong(): void
     {
         $request = $this->jsonRequest(['username' => 'hello', 'code' => 'toolongvalue']);
 
@@ -152,7 +152,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, StringConstraintsDto::class);
     }
 
-    public function testPatternConstraint_rejectsNonMatchingString(): void
+    public function testPatternConstraintRejectsNonMatchingString(): void
     {
         $request = $this->jsonRequest(['username' => 'hello', 'code' => 'abc']);
 
@@ -162,7 +162,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, StringConstraintsDto::class);
     }
 
-    public function testPatternConstraint_acceptsMatchingString(): void
+    public function testPatternConstraintAcceptsMatchingString(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['username' => 'hello', 'code' => '123456']),
@@ -176,7 +176,7 @@ final class DtoFeaturesTest extends TestCase
     // 3. Format constraints
     // =========================================================================
 
-    public function testFormatEmail_rejectsInvalidEmail(): void
+    public function testFormatEmailRejectsInvalidEmail(): void
     {
         $request = $this->jsonRequest(['email' => 'not-an-email']);
 
@@ -186,7 +186,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, EmailFormatDto::class);
     }
 
-    public function testFormatEmail_acceptsValidEmail(): void
+    public function testFormatEmailAcceptsValidEmail(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['email' => 'user@example.com']),
@@ -196,7 +196,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('user@example.com', $dto->email);
     }
 
-    public function testFormatUuid_rejectsInvalidUuid(): void
+    public function testFormatUuidRejectsInvalidUuid(): void
     {
         $request = $this->jsonRequest(['uuid' => 'not-a-uuid']);
 
@@ -206,7 +206,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, UuidFormatDto::class);
     }
 
-    public function testFormatUuid_acceptsValidUuid(): void
+    public function testFormatUuidAcceptsValidUuid(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['uuid' => '550e8400-e29b-41d4-a716-446655440000']),
@@ -216,7 +216,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('550e8400-e29b-41d4-a716-446655440000', $dto->uuid);
     }
 
-    public function testFormatDate_rejectsInvalidDate(): void
+    public function testFormatDateRejectsInvalidDate(): void
     {
         // 2024-13-01 is invalid (month 13)
         $request = $this->jsonRequest(['dateStr' => '2024-13-01']);
@@ -227,7 +227,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, DateFormatDto::class);
     }
 
-    public function testFormatDate_acceptsValidDate(): void
+    public function testFormatDateAcceptsValidDate(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['dateStr' => '2024-06-15']),
@@ -237,7 +237,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('2024-06-15', $dto->dateStr);
     }
 
-    public function testFormatDateTime_rejectsInvalidDateTime(): void
+    public function testFormatDateTimeRejectsInvalidDateTime(): void
     {
         $request = $this->jsonRequest(['dateTimeStr' => 'not-a-datetime']);
 
@@ -247,7 +247,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, DateTimeFormatDto::class);
     }
 
-    public function testFormatDateTime_acceptsValidDateTime(): void
+    public function testFormatDateTimeAcceptsValidDateTime(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['dateTimeStr' => '2024-01-15T10:30:00+00:00']),
@@ -261,7 +261,7 @@ final class DtoFeaturesTest extends TestCase
     // 4. Array constraints
     // =========================================================================
 
-    public function testMinItemsConstraint_rejectsTooFewItems(): void
+    public function testMinItemsConstraintRejectsTooFewItems(): void
     {
         $request = $this->jsonRequest(['tags' => ['a']]);
 
@@ -271,7 +271,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, ArrayConstraintsDto::class);
     }
 
-    public function testMinItemsConstraint_acceptsEnoughItems(): void
+    public function testMinItemsConstraintAcceptsEnoughItems(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['tags' => ['a', 'b']]),
@@ -281,7 +281,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertCount(2, $dto->tags);
     }
 
-    public function testMaxItemsConstraint_rejectsTooManyItems(): void
+    public function testMaxItemsConstraintRejectsTooManyItems(): void
     {
         $request = $this->jsonRequest(['tags' => ['a', 'b', 'c', 'd', 'e', 'f']]);
 
@@ -291,7 +291,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, ArrayConstraintsDto::class);
     }
 
-    public function testUniqueItemsConstraint_rejectsDuplicates(): void
+    public function testUniqueItemsConstraintRejectsDuplicates(): void
     {
         $request = $this->jsonRequest(['tags' => ['a', 'a']]);
 
@@ -301,7 +301,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, ArrayConstraintsDto::class);
     }
 
-    public function testUniqueItemsConstraint_acceptsUnique(): void
+    public function testUniqueItemsConstraintAcceptsUnique(): void
     {
         $dto = $this->deserializer->deserialize(
             $this->jsonRequest(['tags' => ['a', 'b']]),
@@ -315,7 +315,7 @@ final class DtoFeaturesTest extends TestCase
     // 5. Parameter sources
     // =========================================================================
 
-    public function testGetRequest_readsFromQueryString(): void
+    public function testGetRequestReadsFromQueryString(): void
     {
         $request = new Request(['search' => 'hello', 'page' => '3'], [], [], [], [], []);
 
@@ -429,7 +429,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, QueryUuidArrayDto::class);
     }
 
-    public function testPathParameters_readFromAttributes(): void
+    public function testPathParametersReadFromAttributes(): void
     {
         $request = new Request([], [], ['userId' => '42', 'slug' => 'my-post'], [], [], []);
 
@@ -439,7 +439,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('my-post', $dto->slug);
     }
 
-    public function testPostRequest_readsFromJsonBody(): void
+    public function testPostRequestReadsFromJsonBody(): void
     {
         $request = $this->jsonRequest(['title' => 'My Post', 'body' => 'Some content']);
 
@@ -449,7 +449,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('Some content', $dto->body);
     }
 
-    public function testMixedRequest_pathPlusBody(): void
+    public function testMixedRequestPathPlusBody(): void
     {
         // Simulates PATCH /users/{id} — id comes from path, name from JSON body
         $request = new Request([], [], ['id' => '99'], [], [], [], json_encode(['name' => 'Alice']));
@@ -461,7 +461,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('Alice', $dto->name);
     }
 
-    public function testInRequestTracking_tracksProvidedFields(): void
+    public function testInRequestTrackingTracksProvidedFields(): void
     {
         // Only provide 'id' and 'name', leave 'description' absent
         $request = $this->jsonRequest(['id' => 7, 'name' => 'Bob']);
@@ -510,7 +510,7 @@ final class DtoFeaturesTest extends TestCase
     // 6. Date deserialization
     // =========================================================================
 
-    public function testDeserializeDate_parsesYmd(): void
+    public function testDeserializeDateParsesYmd(): void
     {
         // openApiFormat = 'date' makes the deserializer use Y-m-d temporal format
         $request = $this->jsonRequest(['dateField' => '2024-03-15']);
@@ -521,7 +521,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('2024-03-15', $dto->dateField->format('Y-m-d'));
     }
 
-    public function testDeserializeDateTime_parsesIso8601(): void
+    public function testDeserializeDateTimeParsesIso8601(): void
     {
         $request = $this->jsonRequest(['createdAt' => '2024-01-15T10:30:00+00:00']);
 
@@ -532,7 +532,7 @@ final class DtoFeaturesTest extends TestCase
         $this->assertSame('10:30:00', $dto->createdAt->format('H:i:s'));
     }
 
-    public function testDeserializeDate_throwsForInvalidDate(): void
+    public function testDeserializeDateThrowsForInvalidDate(): void
     {
         $request = $this->jsonRequest(['dateField' => 'not-a-date']);
 
@@ -542,7 +542,7 @@ final class DtoFeaturesTest extends TestCase
         $this->deserializer->deserialize($request, DateDeserializeDto::class);
     }
 
-    public function testDeserializeDate_throwsForEmptyString(): void
+    public function testDeserializeDateThrowsForEmptyString(): void
     {
         $request = $this->jsonRequest(['dateField' => '']);
 
@@ -556,7 +556,7 @@ final class DtoFeaturesTest extends TestCase
     // 7. File upload
     // =========================================================================
 
-    public function testFileUpload_deserializesUploadedFile(): void
+    public function testFileUploadDeserializesUploadedFile(): void
     {
         $tmpPath = tempnam(sys_get_temp_dir(), 'test');
         file_put_contents($tmpPath, 'fake file content');
@@ -580,7 +580,7 @@ final class DtoFeaturesTest extends TestCase
         @unlink($tmpPath);
     }
 
-    public function testFileUpload_throwsForMissingFile(): void
+    public function testFileUploadThrowsForMissingFile(): void
     {
         // No file provided, field is required
         $request = new Request([], [], [], [], [], []);

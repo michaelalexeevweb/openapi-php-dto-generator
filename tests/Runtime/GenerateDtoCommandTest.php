@@ -78,7 +78,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($queryParamsFile);
         $this->assertStringContainsString('class UsersPostsGetQueryParams', $content);
         $this->assertStringContainsString('implements GeneratedDtoInterface', $content);
-        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface;', $content);
+        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;', $content);
         $this->assertStringContainsString('private readonly int $userId', $content);
         $this->assertStringContainsString('private readonly string $postId', $content);
         $this->assertStringContainsString('private readonly ?int $page', $content);
@@ -766,7 +766,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('Example: demo-value', $content);
     }
 
-    public function testArrayPropertyDocblockKeepsVarTypeWhenOnlyExampleExists(): void
+    public function testArrayPropertyDocblockOmitsSuperfluousVarTypeWhenOnlyExampleExists(): void
     {
         $openApi = [
             'openapi' => '3.0.0',
@@ -799,7 +799,10 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($file);
 
         $this->assertStringContainsString('* Example: []', $content);
-        $this->assertStringContainsString('* @var array', $content);
+        // A plain `@var array` over a typed `array $payload` is superfluous (adds nothing over the
+        // native type) and is stripped by php-cs-fixer's no_superfluous_phpdoc_tags — the generator
+        // must not emit it. The Example docblock and the @param (which carries a description) stay.
+        $this->assertStringNotContainsString('@var array', $content);
         $this->assertStringContainsString('@param array $payload Example: []', $content);
     }
 
@@ -1059,7 +1062,7 @@ final class GenerateDtoCommandTest extends TestCase
         $content = file_get_contents($statusEnumFile);
         $this->assertStringContainsString('enum PostStatus: string', $content);
         $this->assertStringContainsString('implements GeneratedDtoInterface', $content);
-        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface;', $content);
+        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;', $content);
         $this->assertStringNotContainsString('public function __toString(): string', $content);
         $this->assertStringContainsString("case DRAFT = 'draft'", $content);
         $this->assertStringContainsString("case PUBLISHED = 'published'", $content);
@@ -1313,14 +1316,14 @@ final class GenerateDtoCommandTest extends TestCase
             $externalFile = $baseDir . '/common/Test.php';
             $this->assertFileExists($externalFile);
             $externalContent = file_get_contents($externalFile);
-            $this->assertStringContainsString('namespace TestNamespace\\Common;', $externalContent);
+            $this->assertStringContainsString('namespace TestNamespace\Common;', $externalContent);
             $this->assertStringContainsString('class Test', $externalContent);
 
             $localFile = $outputDir . '/LocalResponse.php';
             $this->assertFileExists($localFile);
             $localContent = file_get_contents($localFile);
             $this->assertStringContainsString('namespace TestNamespace;', $localContent);
-            $this->assertStringContainsString('use TestNamespace\\Common\\Test;', $localContent);
+            $this->assertStringContainsString('use TestNamespace\Common\Test;', $localContent);
             $this->assertStringContainsString('private readonly Test $test', $localContent);
         } finally {
             if (is_dir($baseDir)) {
@@ -1351,13 +1354,13 @@ final class GenerateDtoCommandTest extends TestCase
             $externalFile = $baseDir . '/test/common/TestCommonResponse.php';
             $this->assertFileExists($externalFile);
             $externalContent = file_get_contents($externalFile);
-            $this->assertStringContainsString('namespace TestNamespace\\Test\\Common;', $externalContent);
+            $this->assertStringContainsString('namespace TestNamespace\Test\Common;', $externalContent);
             $this->assertStringContainsString('class TestCommonResponse', $externalContent);
 
             $localFile = $outputDir . '/LocalNestedResponse.php';
             $this->assertFileExists($localFile);
             $localContent = file_get_contents($localFile);
-            $this->assertStringContainsString('use TestNamespace\\Test\\Common\\TestCommonResponse;', $localContent);
+            $this->assertStringContainsString('use TestNamespace\Test\Common\TestCommonResponse;', $localContent);
             $this->assertStringContainsString('private readonly TestCommonResponse $response', $localContent);
         } finally {
             if (is_dir($baseDir)) {
@@ -1490,23 +1493,23 @@ final class GenerateDtoCommandTest extends TestCase
             // the external common schema exactly where we say, regardless of name matching.
             $this->generator->setExternalRefMappings(
                 [$commonRefFile . '=' . $commonOutputDir],
-                [$commonRefFile . '=' . 'Acme\\Layer\\Common\\Dto'],
+                [$commonRefFile . '=Acme\Layer\Common\Dto'],
             );
             $this->generator->generateFromFile(
                 __DIR__ . '/../fixtures/external-ref/root.yaml',
                 $outputDir,
-                'Acme\\Layer\\WidgetApi\\Dto',
+                'Acme\Layer\WidgetApi\Dto',
             );
 
             $commonFile = $commonOutputDir . '/Test.php';
             $this->assertFileExists($commonFile);
             $this->assertStringContainsString(
-                'namespace Acme\\Layer\\Common\\Dto;',
+                'namespace Acme\Layer\Common\Dto;',
                 (string)file_get_contents($commonFile),
             );
 
             $localContent = (string)file_get_contents($outputDir . '/LocalResponse.php');
-            $this->assertStringContainsString('use Acme\\Layer\\Common\\Dto\\Test;', $localContent);
+            $this->assertStringContainsString('use Acme\Layer\Common\Dto\Test;', $localContent);
         } finally {
             if (is_dir($baseDir)) {
                 $this->deleteDirectory($baseDir);
@@ -1530,19 +1533,19 @@ final class GenerateDtoCommandTest extends TestCase
         try {
             $this->generator->setExternalRefMappings(
                 [$commonRefDir . '=' . $commonOutputDir],
-                [$commonRefDir . '=' . 'Acme\\Layer\\Common\\Dto'],
+                [$commonRefDir . '=Acme\Layer\Common\Dto'],
             );
             $this->generator->generateFromFile(
                 __DIR__ . '/../fixtures/external-ref/root.yaml',
                 $outputDir,
-                'Acme\\Layer\\WidgetApi\\Dto',
+                'Acme\Layer\WidgetApi\Dto',
             );
 
             // common/common.yaml's Test matched via the directory key.
             $commonFile = $commonOutputDir . '/Test.php';
             $this->assertFileExists($commonFile);
             $this->assertStringContainsString(
-                'namespace Acme\\Layer\\Common\\Dto;',
+                'namespace Acme\Layer\Common\Dto;',
                 (string)file_get_contents($commonFile),
             );
         } finally {
@@ -1658,7 +1661,7 @@ final class GenerateDtoCommandTest extends TestCase
             $count = $this->generator->generateFromFile(
                 $specDir . '/module.yml',
                 $outputDir,
-                'TestNamespace\\Module\\Schemas',
+                'TestNamespace\Module\Schemas',
             );
 
             $this->assertGreaterThanOrEqual(2, $count);
@@ -1666,13 +1669,13 @@ final class GenerateDtoCommandTest extends TestCase
             $externalFile = $baseDir . '/Generated/Common/Schemas/TestResponse.php';
             $this->assertFileExists($externalFile);
             $externalContent = file_get_contents($externalFile);
-            $this->assertStringContainsString('namespace TestNamespace\\Common\\Schemas;', $externalContent);
+            $this->assertStringContainsString('namespace TestNamespace\Common\Schemas;', $externalContent);
 
             $localFile = $outputDir . '/ModuleResponse.php';
             $this->assertFileExists($localFile);
             $localContent = file_get_contents($localFile);
-            $this->assertStringContainsString('namespace TestNamespace\\Module\\Schemas;', $localContent);
-            $this->assertStringContainsString('use TestNamespace\\Common\\Schemas\\TestResponse;', $localContent);
+            $this->assertStringContainsString('namespace TestNamespace\Module\Schemas;', $localContent);
+            $this->assertStringContainsString('use TestNamespace\Common\Schemas\TestResponse;', $localContent);
             $this->assertStringContainsString('private readonly TestResponse $response', $localContent);
         } finally {
             if (is_dir($baseDir)) {
@@ -1738,7 +1741,7 @@ final class GenerateDtoCommandTest extends TestCase
             $count = $this->generator->generateFromFile(
                 $specDir . '/module.yml',
                 $outputDir,
-                'TestNamespace\\Module\\Schemas',
+                'TestNamespace\Module\Schemas',
             );
 
             $this->assertGreaterThanOrEqual(2, $count);
@@ -1752,7 +1755,7 @@ final class GenerateDtoCommandTest extends TestCase
             $localFile = $outputDir . '/ModuleResponse.php';
             $this->assertFileExists($localFile);
             $localContent = file_get_contents($localFile);
-            $this->assertStringContainsString('use TestNamespace\\Common\\Schemas\\TestResponse;', $localContent);
+            $this->assertStringContainsString('use TestNamespace\Common\Schemas\TestResponse;', $localContent);
             $this->assertStringContainsString('private readonly TestResponse $response', $localContent);
         } finally {
             if (is_dir($baseDir)) {
@@ -1820,13 +1823,13 @@ final class GenerateDtoCommandTest extends TestCase
     public function testNamespaceIsCorrect(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
-        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'My\\Custom\\Namespace');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'My\Custom\Namespace');
 
         $postFile = $this->outputDirectory . '/Post.php';
         $this->assertFileExists($postFile);
 
         $content = file_get_contents($postFile);
-        $this->assertStringContainsString('namespace My\\Custom\\Namespace;', $content);
+        $this->assertStringContainsString('namespace My\Custom\Namespace;', $content);
     }
 
     public function testOutputDirectoryIsCleanedBeforeGeneration(): void
@@ -2047,7 +2050,7 @@ final class GenerateDtoCommandTest extends TestCase
         // A map is a string-keyed type, not a list, and serializes as a JSON object.
         $this->assertStringContainsString('@var array<string, string>', $content);
         $this->assertStringContainsString("'type' => 'object'", $content);
-        $this->assertStringContainsString('= $this->testMap === null ? null : (object) $this->testMap;', $content);
+        $this->assertStringContainsString('= $this->testMap === null ? null : (object)$this->testMap;', $content);
         // A map's adder is keyed: ($key, $item), not a list ($item).
         $this->assertStringContainsString('public function addItemToTestMap(string $key, string $item): void', $content);
         $this->assertStringContainsString('$this->testMap[$key] = $item;', $content);
@@ -2146,7 +2149,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private array $namesById', $wrapperContent);
         // Map of DTOs: string-keyed value type, serialized as an object.
         $this->assertStringContainsString('@var array<string, NameItemView>', $wrapperContent);
-        $this->assertStringContainsString('= $this->namesById === null ? null : (object) $this->namesById;', $wrapperContent);
+        $this->assertStringContainsString('= $this->namesById === null ? null : (object)$this->namesById;', $wrapperContent);
         $this->assertFileExists($this->outputDirectory . '/NameItemView.php');
     }
 
@@ -2259,7 +2262,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($inlineFile);
         $inlineContent = file_get_contents($inlineFile);
         $this->assertStringContainsString(
-            'use Symfony\\Component\\HttpFoundation\\File\\UploadedFile;',
+            'use Symfony\Component\HttpFoundation\File\UploadedFile;',
             $inlineContent,
         );
         $this->assertStringContainsString('private readonly UploadedFile $file', $inlineContent);
@@ -2497,7 +2500,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testCopyCommonServices(): void
     {
-        $namespace = 'MyApp\\Generated';
+        $namespace = 'MyApp\Generated';
         $this->generator->copyCommonServices($this->outputDirectory, $namespace);
 
         $commonDir = $this->outputDirectory . '/Common';
@@ -2517,21 +2520,21 @@ final class GenerateDtoCommandTest extends TestCase
             $path = $commonDir . '/' . $file;
             $this->assertFileExists($path);
             $content = (string)file_get_contents($path);
-            $this->assertStringContainsString('namespace MyApp\\Generated\\Common;', $content);
+            $this->assertStringContainsString('namespace MyApp\Generated\Common;', $content);
             $this->assertStringNotContainsString('namespace OpenapiPhpDtoGenerator\\', $content);
         }
 
         // Self-namespace imports must be removed — same-namespace classes need no use statement
         $serviceContent = (string)file_get_contents($commonDir . '/DtoDeserializer.php');
-        $this->assertStringNotContainsString('use MyApp\\Generated\\Common\\DtoDeserializerInterface;', $serviceContent);
-        $this->assertStringNotContainsString('use OpenapiPhpDtoGenerator\\Contract\\DtoDeserializerInterface;', $serviceContent);
+        $this->assertStringNotContainsString('use MyApp\Generated\Common\DtoDeserializerInterface;', $serviceContent);
+        $this->assertStringNotContainsString('use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;', $serviceContent);
     }
 
     public function testCopyCommonServicesCustomPath(): void
     {
-        $namespace = 'MyApp\\Generated';
+        $namespace = 'MyApp\Generated';
         $customDirRelative = 'Shared/Layer';
-        $customNamespace = 'MyApp\\Shared\\Layer';
+        $customNamespace = 'MyApp\Shared\Layer';
 
         $workingDirectory = getcwd() ?: '.';
         $customDir = $workingDirectory . '/' . $customDirRelative;
@@ -2551,9 +2554,9 @@ final class GenerateDtoCommandTest extends TestCase
             $content = (string)file_get_contents($servicePath);
 
             // Check namespace change
-            $this->assertStringContainsString('namespace MyApp\\Shared\\Layer;', $content);
+            $this->assertStringContainsString('namespace MyApp\Shared\Layer;', $content);
             // Self-namespace imports removed — same-namespace classes need no use statement
-            $this->assertStringNotContainsString('use MyApp\\Shared\\Layer\\DtoDeserializerInterface;', $content);
+            $this->assertStringNotContainsString('use MyApp\Shared\Layer\DtoDeserializerInterface;', $content);
         } finally {
             $this->deleteDirectory($customDir);
             $this->deleteDirectory(dirname($customDir)); // Shared
@@ -2562,7 +2565,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testCopyCommonServicesCustomPathOnly(): void
     {
-        $namespace = 'MyApp\\Generated';
+        $namespace = 'MyApp\Generated';
         $customDirRelative = 'Core/Common';
 
         $workingDirectory = getcwd() ?: '.';
@@ -2582,7 +2585,7 @@ final class GenerateDtoCommandTest extends TestCase
             $content = (string)file_get_contents($servicePath);
 
             // Check namespace change - it should be derived from base namespace + custom directory
-            $this->assertStringContainsString('namespace MyApp\\Generated\\Core\\Common;', $content);
+            $this->assertStringContainsString('namespace MyApp\Generated\Core\Common;', $content);
         } finally {
             $this->deleteDirectory($customDir);
             $this->deleteDirectory(dirname($customDir)); // Core
@@ -2627,7 +2630,7 @@ final class GenerateDtoCommandTest extends TestCase
                 '--directory' => $outputDir,
                 '--namespace' => 'TestNamespace',
                 '--dto-generator-directory' => $commonDir,
-                '--dto-generator-namespace' => 'MyApp\\Shared\\DtoTools',
+                '--dto-generator-namespace' => 'MyApp\Shared\DtoTools',
             ]);
 
             $this->assertSame(0, $exitCode);
@@ -2635,9 +2638,9 @@ final class GenerateDtoCommandTest extends TestCase
             $dtoFile = $outputDir . '/SampleResponse.php';
             $this->assertFileExists($dtoFile);
             $dtoContent = (string)file_get_contents($dtoFile);
-            $this->assertStringContainsString('use MyApp\\Shared\\DtoTools\\GeneratedDtoInterface;', $dtoContent);
+            $this->assertStringContainsString('use MyApp\Shared\DtoTools\GeneratedDtoInterface;', $dtoContent);
             $this->assertStringNotContainsString(
-                'use OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface;',
+                'use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;',
                 $dtoContent,
             );
 
@@ -2651,7 +2654,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testCopyCommonServicesAbsolutePath(): void
     {
-        $namespace = 'MyApp\\Generated';
+        $namespace = 'MyApp\Generated';
         $absoluteDir = $this->outputDirectory . '/Absolute/Common';
 
         $this->generator->copyCommonServices(
@@ -2670,7 +2673,7 @@ final class GenerateDtoCommandTest extends TestCase
         // But since the path is absolute, it may look strange.
         // In our case, GenerateDtoCommand tries to fix this.
         // Here we are testing the service itself.
-        $expectedNamespace = 'namespace MyApp\\Generated\\' . str_replace('/', '\\', ltrim($absoluteDir, '/')) . ';';
+        $expectedNamespace = 'namespace MyApp\Generated\\' . str_replace('/', '\\', ltrim($absoluteDir, '/')) . ';';
         $this->assertStringContainsString($expectedNamespace, $content);
 
         // Cleanup
@@ -2679,7 +2682,7 @@ final class GenerateDtoCommandTest extends TestCase
 
     public function testCopyCommonServicesCleansUpDirectory(): void
     {
-        $namespace = 'MyApp\\Generated';
+        $namespace = 'MyApp\Generated';
         $commonDir = $this->outputDirectory . '/Common';
 
         // Ensure directory exists and has some "old" files
@@ -2980,7 +2983,7 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString("'else'", $content);
     }
 
-    public function testOas31ArrayTypeNullable_generatesNullableProperty(): void
+    public function testOas31ArrayTypeNullableGeneratesNullableProperty(): void
     {
         $openApi = [
             'openapi' => '3.1.0',
@@ -3078,5 +3081,31 @@ final class GenerateDtoCommandTest extends TestCase
         // The generated file must be valid PHP (no "?mixed" fatal).
         $lint = shell_exec('php -l ' . escapeshellarg($file) . ' 2>&1');
         $this->assertStringContainsString('No syntax errors', (string)$lint);
+    }
+
+    public function testPatternConstraintUsesMinimalBackslashEscaping(): void
+    {
+        // A backslash in a single-quoted literal needs no escaping unless it precedes a quote or
+        // another backslash. The generator must emit the minimal form ('\d+'), which is a fixed
+        // point of php-cs-fixer's string_implicit_backslashes rule — not the over-escaped '\\d+'.
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'CodeModel' => [
+                    'type' => 'object',
+                    'required' => ['code'],
+                    'properties' => [
+                        'code' => ['type' => 'string', 'pattern' => '\d+'],
+                    ],
+                ],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/CodeModel.php');
+        $this->assertStringContainsString("'pattern' => '\\d+'", $content);
+        $this->assertStringNotContainsString("'pattern' => '\\\\d+'", $content);
     }
 }

@@ -34,7 +34,8 @@ interface {{ className }}
 {
 {% for property in privateProperties %}
 {% if property.isArray %}
-{% set hasDoc = property.description is not null or property.example is not null or property.constraintsLine is not null or property.docVarType is not null %}
+{% set hasDocBody = property.description is not null or property.example is not null or property.constraintsLine is not null %}
+{% set hasDoc = hasDocBody or property.docVarType is not null %}
 {% if hasDoc %}
     /**
 {% if property.description is not null %}
@@ -52,14 +53,12 @@ interface {{ className }}
 {% endif %}
      * Constraints: {{ property.constraintsLine }}
 {% endif %}
-{% if property.description is not null or property.example is not null or property.constraintsLine is not null %}
+{% if property.docVarType is not null %}
+{% if hasDocBody %}
      *
 {% endif %}
-     * @var {{ property.docVarType is not null ? property.docVarType : property.type }}
-     */
-{% else %}
-    /**
-     * @var {{ property.type }}
+     * @var {{ property.docVarType }}
+{% endif %}
      */
 {% endif %}
     private {{ property.type }} ${{ property.name }};
@@ -327,7 +326,7 @@ interface {{ className }}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object) $this->{{ property.name }};
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% else %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -336,7 +335,7 @@ interface {{ className }}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object) $this->{{ property.name }};
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% else %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -362,7 +361,7 @@ interface {{ className }}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object) $this->{{ property.name }};
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% else %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -371,7 +370,7 @@ interface {{ className }}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object) $this->{{ property.name }};
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% else %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}

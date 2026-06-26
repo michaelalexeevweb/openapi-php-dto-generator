@@ -54,7 +54,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testTypeString_acceptsStringBackedEnum(): void
+    public function testTypeStringAcceptsStringBackedEnum(): void
     {
         $errors = $this->validator->validate(
             subject: 'type',
@@ -65,7 +65,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testTypeString_rejectsIntBackedEnum(): void
+    public function testTypeStringRejectsIntBackedEnum(): void
     {
         $errors = $this->validator->validate(
             subject: 'type',
@@ -77,7 +77,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('type must be of type string', $errors[0]);
     }
 
-    public function testTypeInteger_acceptsIntBackedEnum(): void
+    public function testTypeIntegerAcceptsIntBackedEnum(): void
     {
         $errors = $this->validator->validate(
             subject: 'type',
@@ -88,7 +88,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testTypeInteger_rejectsStringBackedEnum(): void
+    public function testTypeIntegerRejectsStringBackedEnum(): void
     {
         $errors = $this->validator->validate(
             subject: 'type',
@@ -100,7 +100,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('type must be of type integer', $errors[0]);
     }
 
-    public function testTypeNumber_acceptsIntBackedEnum(): void
+    public function testTypeNumberAcceptsIntBackedEnum(): void
     {
         $errors = $this->validator->validate(
             subject: 'type',
@@ -111,7 +111,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testEnum_acceptsBackedEnumWhoseValueMatches(): void
+    public function testEnumAcceptsBackedEnumWhoseValueMatches(): void
     {
         // The getter returns a backed enum object; the schema enum holds raw scalars.
         // The match must compare by ->value, not reject the object outright.
@@ -127,7 +127,7 @@ final class DtoValidatorTest extends TestCase
         ));
     }
 
-    public function testEnum_rejectsBackedEnumWhoseValueIsNotAllowed(): void
+    public function testEnumRejectsBackedEnumWhoseValueIsNotAllowed(): void
     {
         $errors = $this->validator->validate(
             subject: 'status',
@@ -139,7 +139,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('status must be one of', $errors[0]);
     }
 
-    public function testTypeArray_rejectsAssociativeArrayWithClearMessage(): void
+    public function testTypeArrayRejectsAssociativeArrayWithClearMessage(): void
     {
         // An associative array is a JSON object, not a JSON array (list) — the message must
         // explain that rather than the confusing bare "must be of type array".
@@ -153,7 +153,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('tags must be a JSON array (list', $errors[0]);
     }
 
-    public function testTypeArray_acceptsList(): void
+    public function testTypeArrayAcceptsList(): void
     {
         $errors = $this->validator->validate(subject: 'tags', value: ['a', 'b'], constraints: ['type' => 'array']);
 
@@ -170,7 +170,7 @@ final class DtoValidatorTest extends TestCase
     // Numeric — exclusiveMaximum
     // =========================================================================
 
-    public function testExclusiveMaximumNumeric_rejectsEqualValue(): void
+    public function testExclusiveMaximumNumericRejectsEqualValue(): void
     {
         // OpenAPI 3.1: exclusiveMaximum IS the exclusive upper boundary
         $errors = $this->validator->validate(subject: 'price', value: 50.0, constraints: ['exclusiveMaximum' => 50]);
@@ -179,13 +179,13 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be less than 50', $errors[0]);
     }
 
-    public function testExclusiveMaximumNumeric_acceptsBelowBoundary(): void
+    public function testExclusiveMaximumNumericAcceptsBelowBoundary(): void
     {
         $errors = $this->validator->validate(subject: 'price', value: 49.0, constraints: ['exclusiveMaximum' => 50]);
         $this->assertSame([], $errors);
     }
 
-    public function testExclusiveMaximumBoolean_rejectsEqualToMaximum(): void
+    public function testExclusiveMaximumBooleanRejectsEqualToMaximum(): void
     {
         // OpenAPI 3.0: maximum + exclusiveMaximum: true
         $errors = $this->validator->validate(
@@ -198,7 +198,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be less than 100', $errors[0]);
     }
 
-    public function testExclusiveMaximumBoolean_acceptsBelowMaximum(): void
+    public function testExclusiveMaximumBooleanAcceptsBelowMaximum(): void
     {
         $errors = $this->validator->validate(
             subject: 'score',
@@ -208,13 +208,13 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testMaximumInclusive_acceptsExactBoundary(): void
+    public function testMaximumInclusiveAcceptsExactBoundary(): void
     {
         $errors = $this->validator->validate(subject: 'n', value: 100.0, constraints: ['maximum' => 100]);
         $this->assertSame([], $errors);
     }
 
-    public function testMaximumInclusive_rejectsAboveBoundary(): void
+    public function testMaximumInclusiveRejectsAboveBoundary(): void
     {
         $errors = $this->validator->validate(subject: 'n', value: 101.0, constraints: ['maximum' => 100]);
         $this->assertNotEmpty($errors);
@@ -225,7 +225,7 @@ final class DtoValidatorTest extends TestCase
     // Numeric — multipleOf with float divisor
     // =========================================================================
 
-    public function testMultipleOfFloat_rejectsNonMultiple(): void
+    public function testMultipleOfFloatRejectsNonMultiple(): void
     {
         $errors = $this->validator->validate(subject: 'amount', value: 10.1, constraints: ['multipleOf' => 0.5]);
 
@@ -233,7 +233,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be a multiple of 0.5', $errors[0]);
     }
 
-    public function testMultipleOfFloat_acceptsExactMultiple(): void
+    public function testMultipleOfFloatAcceptsExactMultiple(): void
     {
         $errors = $this->validator->validate(subject: 'amount', value: 10.5, constraints: ['multipleOf' => 0.5]);
         $this->assertSame([], $errors);
@@ -243,7 +243,7 @@ final class DtoValidatorTest extends TestCase
     // String formats
     // =========================================================================
 
-    public function testFormatUri_rejectsPlainText(): void
+    public function testFormatUriRejectsPlainText(): void
     {
         $errors = $this->validator->validate(subject: 'url', value: 'not a url', constraints: ['format' => 'uri']);
 
@@ -251,7 +251,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must match format uri', $errors[0]);
     }
 
-    public function testFormatUri_acceptsHttpsUrl(): void
+    public function testFormatUriAcceptsHttpsUrl(): void
     {
         $errors = $this->validator->validate(
             subject: 'url',
@@ -261,7 +261,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatIpv4_rejectsOutOfRangeOctets(): void
+    public function testFormatIpv4RejectsOutOfRangeOctets(): void
     {
         $errors = $this->validator->validate(
             subject: 'ip',
@@ -271,7 +271,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testFormatIpv4_acceptsValidAddress(): void
+    public function testFormatIpv4AcceptsValidAddress(): void
     {
         $errors = $this->validator->validate(
             subject: 'ip',
@@ -281,7 +281,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatIpv6_acceptsValidAddress(): void
+    public function testFormatIpv6AcceptsValidAddress(): void
     {
         $errors = $this->validator->validate(
             subject: 'ip',
@@ -291,7 +291,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatIpv6_rejectsIpv4Address(): void
+    public function testFormatIpv6RejectsIpv4Address(): void
     {
         $errors = $this->validator->validate(
             subject: 'ip',
@@ -301,7 +301,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testFormatByte_acceptsValidBase64(): void
+    public function testFormatByteAcceptsValidBase64(): void
     {
         $errors = $this->validator->validate(
             subject: 'data',
@@ -311,7 +311,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatByte_rejectsStringWithIllegalChars(): void
+    public function testFormatByteRejectsStringWithIllegalChars(): void
     {
         $errors = $this->validator->validate(
             subject: 'data',
@@ -322,7 +322,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must match format byte', $errors[0]);
     }
 
-    public function testFormatIdnEmail_acceptsUnicodeLocalPart(): void
+    public function testFormatIdnEmailAcceptsUnicodeLocalPart(): void
     {
         $errors = $this->validator->validate(
             subject: 'email',
@@ -332,7 +332,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatIdnEmail_rejectsGarbage(): void
+    public function testFormatIdnEmailRejectsGarbage(): void
     {
         $errors = $this->validator->validate(
             subject: 'email',
@@ -343,7 +343,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must match format idn-email', $errors[0]);
     }
 
-    public function testFormatIri_acceptsUnicodeUri(): void
+    public function testFormatIriAcceptsUnicodeUri(): void
     {
         $errors = $this->validator->validate(
             subject: 'iri',
@@ -353,7 +353,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatIri_rejectsSchemelessOrWhitespace(): void
+    public function testFormatIriRejectsSchemelessOrWhitespace(): void
     {
         // 'a:' is a scheme with no body — not a usable IRI.
         foreach (['no-scheme/path', 'http://has space.com', 'a:'] as $bad) {
@@ -362,7 +362,7 @@ final class DtoValidatorTest extends TestCase
         }
     }
 
-    public function testFormatDuration_acceptsIso8601(): void
+    public function testFormatDurationAcceptsIso8601(): void
     {
         foreach (['P3Y6M4DT12H30M5S', 'PT15M', 'P1W', 'P1D', 'PT0.5S'] as $good) {
             $errors = $this->validator->validate(
@@ -374,7 +374,7 @@ final class DtoValidatorTest extends TestCase
         }
     }
 
-    public function testFormatDuration_rejectsInvalid(): void
+    public function testFormatDurationRejectsInvalid(): void
     {
         // Last three: the week form (PnW) is mutually exclusive with Y/M/D/T components.
         foreach (['P', 'PT', '3Y', '1H', 'P1S', 'P1W2D', 'P1W1Y', 'P1WT1H'] as $bad) {
@@ -387,7 +387,7 @@ final class DtoValidatorTest extends TestCase
         }
     }
 
-    public function testFormatJsonPointer_acceptsValidPointers(): void
+    public function testFormatJsonPointerAcceptsValidPointers(): void
     {
         foreach (['', '/foo', '/foo/0', '/a~1b', '/m~0n'] as $good) {
             $errors = $this->validator->validate(
@@ -399,7 +399,7 @@ final class DtoValidatorTest extends TestCase
         }
     }
 
-    public function testFormatJsonPointer_rejectsMissingLeadingSlashAndBadEscape(): void
+    public function testFormatJsonPointerRejectsMissingLeadingSlashAndBadEscape(): void
     {
         foreach (['foo', '/foo~', '/foo~2'] as $bad) {
             $errors = $this->validator->validate(
@@ -411,7 +411,7 @@ final class DtoValidatorTest extends TestCase
         }
     }
 
-    public function testFormatRegex_acceptsCompilablePattern(): void
+    public function testFormatRegexAcceptsCompilablePattern(): void
     {
         $errors = $this->validator->validate(
             subject: 'pat',
@@ -421,7 +421,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatRegex_rejectsUncompilablePattern(): void
+    public function testFormatRegexRejectsUncompilablePattern(): void
     {
         $errors = $this->validator->validate(
             subject: 'pat',
@@ -432,7 +432,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must match format regex', $errors[0]);
     }
 
-    public function testFormatRegex_acceptsByteOrientedPattern(): void
+    public function testFormatRegexAcceptsByteOrientedPattern(): void
     {
         // A pattern with a lone high byte (invalid UTF-8) but a compilable byte-oriented
         // PCRE must be accepted — the validator must not force the `u` modifier.
@@ -444,7 +444,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatBinary_acceptsStringValue(): void
+    public function testFormatBinaryAcceptsStringValue(): void
     {
         $errors = $this->validator->validate(
             subject: 'file',
@@ -454,7 +454,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatBinary_rejectsIntegerValue(): void
+    public function testFormatBinaryRejectsIntegerValue(): void
     {
         $errors = $this->validator->validate(
             subject: 'file',
@@ -466,7 +466,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('expects binary data', $errors[0]);
     }
 
-    public function testFormatHostname_rejectsLeadingHyphen(): void
+    public function testFormatHostnameRejectsLeadingHyphen(): void
     {
         $errors = $this->validator->validate(
             subject: 'host',
@@ -476,7 +476,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testFormatHostname_acceptsValidDomain(): void
+    public function testFormatHostnameAcceptsValidDomain(): void
     {
         $errors = $this->validator->validate(
             subject: 'host',
@@ -486,7 +486,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatPassword_alwaysValid(): void
+    public function testFormatPasswordAlwaysValid(): void
     {
         $errors = $this->validator->validate(
             subject: 'pw',
@@ -500,7 +500,7 @@ final class DtoValidatorTest extends TestCase
     // anyOf
     // =========================================================================
 
-    public function testAnyOf_acceptsWhenOneBranchMatches(): void
+    public function testAnyOfAcceptsWhenOneBranchMatches(): void
     {
         $errors = $this->validator->validate('v', 'hello', [
             'anyOf' => [
@@ -511,7 +511,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAnyOf_acceptsWhenMultipleBranchesMatch(): void
+    public function testAnyOfAcceptsWhenMultipleBranchesMatch(): void
     {
         // anyOf succeeds as long as at least one branch is satisfied
         $errors = $this->validator->validate('v', 42, [
@@ -523,7 +523,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAnyOf_rejectsWhenValueTypeMatchesNoBranch(): void
+    public function testAnyOfRejectsWhenValueTypeMatchesNoBranch(): void
     {
         // Boolean doesn't match 'integer' or 'string' type → no branch matches at all
         $errors = $this->validator->validate('v', true, [
@@ -537,7 +537,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('does not match any anyOf branch', $errors[0]);
     }
 
-    public function testAnyOf_returnsConstraintErrorsWhenTypeMatchesButConstraintFails(): void
+    public function testAnyOfReturnsConstraintErrorsWhenTypeMatchesButConstraintFails(): void
     {
         // The string type branch matches, but minLength constraint fails → branch errors returned
         $errors = $this->validator->validate('v', 'hi', [
@@ -555,7 +555,7 @@ final class DtoValidatorTest extends TestCase
     // oneOf
     // =========================================================================
 
-    public function testOneOf_acceptsExactlyOneMatch(): void
+    public function testOneOfAcceptsExactlyOneMatch(): void
     {
         $errors = $this->validator->validate('id', 42, [
             'oneOf' => [
@@ -566,7 +566,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testOneOf_rejectsWhenMultipleBranchesMatch(): void
+    public function testOneOfRejectsWhenMultipleBranchesMatch(): void
     {
         // Both integer branches match value 10 → oneOf violation
         $errors = $this->validator->validate('num', 10, [
@@ -580,7 +580,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('matches more than one allowed oneOf branch', $errors[0]);
     }
 
-    public function testOneOf_rejectsWhenNoBranchMatches(): void
+    public function testOneOfRejectsWhenNoBranchMatches(): void
     {
         $errors = $this->validator->validate('v', true, [
             'oneOf' => [
@@ -593,7 +593,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('does not match any oneOf branch', $errors[0]);
     }
 
-    public function testOneOf_acceptsWhenOneOfTwoTypeMatchingBranchesFullyValidates(): void
+    public function testOneOfAcceptsWhenOneOfTwoTypeMatchingBranchesFullyValidates(): void
     {
         // value = 0: both branches match type integer, but only branch1 passes minimum: 0
         // Old bug: $matched=2, $errors=[branch2 errors] → incorrectly returned errors
@@ -611,7 +611,7 @@ final class DtoValidatorTest extends TestCase
     // items (recursive)
     // =========================================================================
 
-    public function testItems_rejectsInvalidItemsWithCorrectPath(): void
+    public function testItemsRejectsInvalidItemsWithCorrectPath(): void
     {
         $errors = $this->validator->validate('emails', ['a@b.com', 'bad-email'], [
             'items' => ['type' => 'string', 'format' => 'email'],
@@ -621,7 +621,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('emails.1', $errors[0]);
     }
 
-    public function testItems_acceptsAllValidItems(): void
+    public function testItemsAcceptsAllValidItems(): void
     {
         $errors = $this->validator->validate('emails', ['a@b.com', 'c@d.com'], [
             'items' => ['type' => 'string', 'format' => 'email'],
@@ -629,7 +629,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testItems_collectsErrorsForMultipleInvalidItems(): void
+    public function testItemsCollectsErrorsForMultipleInvalidItems(): void
     {
         $errors = $this->validator->validate('nums', [1, 200, 300], [
             'items' => ['type' => 'integer', 'maximum' => 100],
@@ -640,7 +640,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('nums.2', $errors[1]);
     }
 
-    public function testItems_withAnyOf_acceptsElementsMatchingAtLeastOneBranch(): void
+    public function testItemsWithAnyOfAcceptsElementsMatchingAtLeastOneBranch(): void
     {
         $errors = $this->validator->validate('tags', ['hello', 42, 'world'], [
             'items' => [
@@ -653,7 +653,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testItems_withAnyOf_rejectsElementMatchingNoBranch(): void
+    public function testItemsWithAnyOfRejectsElementMatchingNoBranch(): void
     {
         $errors = $this->validator->validate('tags', ['hello', 3.14], [
             'items' => [
@@ -667,7 +667,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('tags.1', $errors[0]);
     }
 
-    public function testItems_withOneOf_acceptsElementMatchingExactlyOneBranch(): void
+    public function testItemsWithOneOfAcceptsElementMatchingExactlyOneBranch(): void
     {
         $errors = $this->validator->validate('values', ['text', 5], [
             'items' => [
@@ -680,7 +680,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testItems_withOneOf_rejectsElementMatchingMoreThanOneBranch(): void
+    public function testItemsWithOneOfRejectsElementMatchingMoreThanOneBranch(): void
     {
         // 10 matches both integer branches
         $errors = $this->validator->validate('values', [10], [
@@ -695,7 +695,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('values.0', $errors[0]);
     }
 
-    public function testItems_withOneOf_rejectsElementMatchingNoBranch(): void
+    public function testItemsWithOneOfRejectsElementMatchingNoBranch(): void
     {
         $errors = $this->validator->validate('values', ['text', 3.14], [
             'items' => [
@@ -713,7 +713,7 @@ final class DtoValidatorTest extends TestCase
     // contains / minContains / maxContains
     // =========================================================================
 
-    public function testContains_acceptsWhenAtLeastOneItemMatches(): void
+    public function testContainsAcceptsWhenAtLeastOneItemMatches(): void
     {
         $errors = $this->validator->validate('tags', ['hello', 42, 'world'], [
             'contains' => ['type' => 'integer'],
@@ -721,7 +721,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testContains_rejectsWhenNoItemMatches(): void
+    public function testContainsRejectsWhenNoItemMatches(): void
     {
         $errors = $this->validator->validate('tags', ['hello', 'world'], [
             'contains' => ['type' => 'integer'],
@@ -730,7 +730,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('contains', $errors[0]);
     }
 
-    public function testContains_withMinContains_requiresEnoughMatches(): void
+    public function testContainsWithMinContainsRequiresEnoughMatches(): void
     {
         $errors = $this->validator->validate('nums', [1, 'a', 2], [
             'contains' => ['type' => 'integer'],
@@ -740,7 +740,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('at least 3', $errors[0]);
     }
 
-    public function testContains_withMinContains_acceptsEnoughMatches(): void
+    public function testContainsWithMinContainsAcceptsEnoughMatches(): void
     {
         $errors = $this->validator->validate('nums', [1, 2, 3, 'x'], [
             'contains' => ['type' => 'integer'],
@@ -749,7 +749,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testContains_withMaxContains_rejectsTooManyMatches(): void
+    public function testContainsWithMaxContainsRejectsTooManyMatches(): void
     {
         $errors = $this->validator->validate('nums', [1, 2, 3], [
             'contains' => ['type' => 'integer'],
@@ -759,7 +759,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('at most 2', $errors[0]);
     }
 
-    public function testContains_withMaxContains_acceptsWithinLimit(): void
+    public function testContainsWithMaxContainsAcceptsWithinLimit(): void
     {
         $errors = $this->validator->validate('nums', [1, 'a', 'b'], [
             'contains' => ['type' => 'integer'],
@@ -768,7 +768,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testContains_withMinAndMaxContains_acceptsExactRange(): void
+    public function testContainsWithMinAndMaxContainsAcceptsExactRange(): void
     {
         $errors = $this->validator->validate('nums', [1, 2, 'x'], [
             'contains' => ['type' => 'integer'],
@@ -782,7 +782,7 @@ final class DtoValidatorTest extends TestCase
     // DateTimeInterface normalization before validation
     // =========================================================================
 
-    public function testDateTimeInterface_isNormalizedToDateStringForDateFormat(): void
+    public function testDateTimeInterfaceIsNormalizedToDateStringForDateFormat(): void
     {
         $dt = new DateTimeImmutable('2024-06-15');
         // Normalized to '2024-06-15', which passes minLength: 10
@@ -794,7 +794,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testDateTimeInterface_isNormalizedToAtomStringForDateTimeFormat(): void
+    public function testDateTimeInterfaceIsNormalizedToAtomStringForDateTimeFormat(): void
     {
         $dt = new DateTimeImmutable('2024-06-15T12:00:00+00:00');
         $errors = $this->validator->validate(
@@ -805,7 +805,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testDateTimeInterface_isNormalizedToAtomStringWhenNoFormatGiven(): void
+    public function testDateTimeInterfaceIsNormalizedToAtomStringWhenNoFormatGiven(): void
     {
         $dt = new DateTimeImmutable('2024-06-15');
         // No format → normalized to ATOM string → minLength check applies to the full ISO string
@@ -822,20 +822,20 @@ final class DtoValidatorTest extends TestCase
     // Numeric — minimum / exclusiveMinimum
     // =========================================================================
 
-    public function testMinimumInclusive_acceptsExactBoundary(): void
+    public function testMinimumInclusiveAcceptsExactBoundary(): void
     {
         $errors = $this->validator->validate(subject: 'n', value: 5.0, constraints: ['minimum' => 5]);
         $this->assertSame([], $errors);
     }
 
-    public function testMinimumInclusive_rejectsBelowBoundary(): void
+    public function testMinimumInclusiveRejectsBelowBoundary(): void
     {
         $errors = $this->validator->validate(subject: 'n', value: 4.9, constraints: ['minimum' => 5]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must be greater than or equal to 5', $errors[0]);
     }
 
-    public function testExclusiveMinimumNumeric_rejectsEqualValue(): void
+    public function testExclusiveMinimumNumericRejectsEqualValue(): void
     {
         // OpenAPI 3.1: exclusiveMinimum IS the exclusive lower boundary
         $errors = $this->validator->validate(subject: 'n', value: 5.0, constraints: ['exclusiveMinimum' => 5]);
@@ -843,13 +843,13 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be greater than 5', $errors[0]);
     }
 
-    public function testExclusiveMinimumNumeric_acceptsAboveBoundary(): void
+    public function testExclusiveMinimumNumericAcceptsAboveBoundary(): void
     {
         $errors = $this->validator->validate(subject: 'n', value: 5.1, constraints: ['exclusiveMinimum' => 5]);
         $this->assertSame([], $errors);
     }
 
-    public function testExclusiveMinimumBoolean_rejectsEqualToMinimum(): void
+    public function testExclusiveMinimumBooleanRejectsEqualToMinimum(): void
     {
         // OpenAPI 3.0: minimum + exclusiveMinimum: true
         $errors = $this->validator->validate(
@@ -861,7 +861,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be greater than 1', $errors[0]);
     }
 
-    public function testExclusiveMinimumBoolean_acceptsAboveMinimum(): void
+    public function testExclusiveMinimumBooleanAcceptsAboveMinimum(): void
     {
         $errors = $this->validator->validate(
             subject: 'n',
@@ -875,73 +875,73 @@ final class DtoValidatorTest extends TestCase
     // String — minLength / maxLength / pattern / format (email, uuid, date, datetime)
     // =========================================================================
 
-    public function testMinLength_acceptsExactLength(): void
+    public function testMinLengthAcceptsExactLength(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'abc', constraints: ['minLength' => 3]);
         $this->assertSame([], $errors);
     }
 
-    public function testMinLength_rejectsTooShort(): void
+    public function testMinLengthRejectsTooShort(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'ab', constraints: ['minLength' => 3]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('length must be at least 3', $errors[0]);
     }
 
-    public function testMaxLength_acceptsExactLength(): void
+    public function testMaxLengthAcceptsExactLength(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'abc', constraints: ['maxLength' => 3]);
         $this->assertSame([], $errors);
     }
 
-    public function testMaxLength_rejectsTooLong(): void
+    public function testMaxLengthRejectsTooLong(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'abcd', constraints: ['maxLength' => 3]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('length must be at most 3', $errors[0]);
     }
 
-    public function testPattern_acceptsMatchingString(): void
+    public function testPatternAcceptsMatchingString(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'abc123', constraints: ['pattern' => '^[a-z0-9]+$']);
         $this->assertSame([], $errors);
     }
 
-    public function testPattern_rejectsNonMatchingString(): void
+    public function testPatternRejectsNonMatchingString(): void
     {
         $errors = $this->validator->validate(subject: 's', value: 'ABC!', constraints: ['pattern' => '^[a-z0-9]+$']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match pattern', $errors[0]);
     }
 
-    public function testPattern_acceptsPatternContainingForwardSlash(): void
+    public function testPatternAcceptsPatternContainingForwardSlash(): void
     {
         // Patterns with `/` must not double-escape when `#` delimiter is used
         $errors = $this->validator->validate(subject: 'url', value: 'https://example.com/path', constraints: ['pattern' => '^https?://.+']);
         $this->assertSame([], $errors);
     }
 
-    public function testPattern_rejectsNonMatchingPatternWithForwardSlash(): void
+    public function testPatternRejectsNonMatchingPatternWithForwardSlash(): void
     {
         $errors = $this->validator->validate(subject: 'url', value: 'ftp://example.com', constraints: ['pattern' => '^https?://.+']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match pattern', $errors[0]);
     }
 
-    public function testFormatEmail_acceptsValidAddress(): void
+    public function testFormatEmailAcceptsValidAddress(): void
     {
         $errors = $this->validator->validate(subject: 'e', value: 'user@example.com', constraints: ['format' => 'email']);
         $this->assertSame([], $errors);
     }
 
-    public function testFormatEmail_rejectsPlainText(): void
+    public function testFormatEmailRejectsPlainText(): void
     {
         $errors = $this->validator->validate(subject: 'e', value: 'not-an-email', constraints: ['format' => 'email']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match format email', $errors[0]);
     }
 
-    public function testFormatUuid_acceptsValidUuid(): void
+    public function testFormatUuidAcceptsValidUuid(): void
     {
         $errors = $this->validator->validate(
             subject: 'id',
@@ -951,27 +951,27 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatUuid_rejectsNonUuidString(): void
+    public function testFormatUuidRejectsNonUuidString(): void
     {
         $errors = $this->validator->validate(subject: 'id', value: 'not-a-uuid', constraints: ['format' => 'uuid']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match format uuid', $errors[0]);
     }
 
-    public function testFormatDate_acceptsValidDate(): void
+    public function testFormatDateAcceptsValidDate(): void
     {
         $errors = $this->validator->validate(subject: 'd', value: '2024-06-15', constraints: ['format' => 'date']);
         $this->assertSame([], $errors);
     }
 
-    public function testFormatDate_rejectsInvalidDate(): void
+    public function testFormatDateRejectsInvalidDate(): void
     {
         $errors = $this->validator->validate(subject: 'd', value: '15-06-2024', constraints: ['format' => 'date']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match format date', $errors[0]);
     }
 
-    public function testFormatDateTime_acceptsAtomString(): void
+    public function testFormatDateTimeAcceptsAtomString(): void
     {
         $errors = $this->validator->validate(
             subject: 'ts',
@@ -981,7 +981,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatDateTime_rejectsDateOnlyString(): void
+    public function testFormatDateTimeRejectsDateOnlyString(): void
     {
         $errors = $this->validator->validate(subject: 'ts', value: '2024-06-15', constraints: ['format' => 'date-time']);
         $this->assertNotEmpty($errors);
@@ -992,46 +992,46 @@ final class DtoValidatorTest extends TestCase
     // Array — minItems / maxItems / uniqueItems
     // =========================================================================
 
-    public function testMinItems_acceptsEnoughItems(): void
+    public function testMinItemsAcceptsEnoughItems(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: [1, 2, 3], constraints: ['minItems' => 3]);
         $this->assertSame([], $errors);
     }
 
-    public function testMinItems_rejectsTooFewItems(): void
+    public function testMinItemsRejectsTooFewItems(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: [1, 2], constraints: ['minItems' => 3]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must contain at least 3 items', $errors[0]);
     }
 
-    public function testMaxItems_acceptsFewEnoughItems(): void
+    public function testMaxItemsAcceptsFewEnoughItems(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: [1, 2], constraints: ['maxItems' => 3]);
         $this->assertSame([], $errors);
     }
 
-    public function testMaxItems_rejectsTooManyItems(): void
+    public function testMaxItemsRejectsTooManyItems(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: [1, 2, 3, 4], constraints: ['maxItems' => 3]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must contain at most 3 items', $errors[0]);
     }
 
-    public function testUniqueItems_acceptsDistinctItems(): void
+    public function testUniqueItemsAcceptsDistinctItems(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: ['a', 'b', 'c'], constraints: ['uniqueItems' => true]);
         $this->assertSame([], $errors);
     }
 
-    public function testUniqueItems_rejectsDuplicateScalar(): void
+    public function testUniqueItemsRejectsDuplicateScalar(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: ['x', 'x', 'y'], constraints: ['uniqueItems' => true]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('unique items', $errors[0]);
     }
 
-    public function testUniqueItems_falseAllowsDuplicates(): void
+    public function testUniqueItemsFalseAllowsDuplicates(): void
     {
         $errors = $this->validator->validate(subject: 'a', value: [1, 1, 1], constraints: ['uniqueItems' => false]);
         $this->assertSame([], $errors);
@@ -1041,7 +1041,7 @@ final class DtoValidatorTest extends TestCase
     // enum
     // =========================================================================
 
-    public function testEnum_acceptsValueInList(): void
+    public function testEnumAcceptsValueInList(): void
     {
         $errors = $this->validator->validate(
             subject: 'status',
@@ -1051,7 +1051,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testEnum_rejectsValueNotInList(): void
+    public function testEnumRejectsValueNotInList(): void
     {
         $errors = $this->validator->validate(
             subject: 'status',
@@ -1063,7 +1063,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('"active"', $errors[0]);
     }
 
-    public function testEnum_usesStrictComparison(): void
+    public function testEnumUsesStrictComparison(): void
     {
         // "1" (string) must not match 1 (int)
         $errors = $this->validator->validate(
@@ -1074,7 +1074,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testEnum_acceptsIntegerValue(): void
+    public function testEnumAcceptsIntegerValue(): void
     {
         $errors = $this->validator->validate(
             subject: 'priority',
@@ -1088,13 +1088,13 @@ final class DtoValidatorTest extends TestCase
     // const
     // =========================================================================
 
-    public function testConst_acceptsMatchingValue(): void
+    public function testConstAcceptsMatchingValue(): void
     {
         $errors = $this->validator->validate(subject: 'v', value: 'fixed', constraints: ['const' => 'fixed']);
         $this->assertSame([], $errors);
     }
 
-    public function testConst_rejectsNonMatchingValue(): void
+    public function testConstRejectsNonMatchingValue(): void
     {
         $errors = $this->validator->validate(subject: 'v', value: 'other', constraints: ['const' => 'fixed']);
         $this->assertNotEmpty($errors);
@@ -1102,14 +1102,14 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('"fixed"', $errors[0]);
     }
 
-    public function testConst_usesStrictComparison(): void
+    public function testConstUsesStrictComparison(): void
     {
         // 0 (int) must not match false (bool)
         $errors = $this->validator->validate(subject: 'v', value: 0, constraints: ['const' => false]);
         $this->assertNotEmpty($errors);
     }
 
-    public function testConst_acceptsMatchingInteger(): void
+    public function testConstAcceptsMatchingInteger(): void
     {
         $errors = $this->validator->validate(subject: 'v', value: 42, constraints: ['const' => 42]);
         $this->assertSame([], $errors);
@@ -1119,7 +1119,7 @@ final class DtoValidatorTest extends TestCase
     // allOf
     // =========================================================================
 
-    public function testAllOf_acceptsWhenAllBranchesPass(): void
+    public function testAllOfAcceptsWhenAllBranchesPass(): void
     {
         $errors = $this->validator->validate('n', 7, [
             'allOf' => [
@@ -1130,7 +1130,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAllOf_rejectsWhenOneBranchFails(): void
+    public function testAllOfRejectsWhenOneBranchFails(): void
     {
         $errors = $this->validator->validate('n', 15, [
             'allOf' => [
@@ -1142,7 +1142,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be less than or equal to 10', $errors[0]);
     }
 
-    public function testAllOf_collectsErrorsFromAllFailingBranches(): void
+    public function testAllOfCollectsErrorsFromAllFailingBranches(): void
     {
         // Both branches fail: value 0 is below minimum 1 and below minimum 5
         $errors = $this->validator->validate('n', 0, [
@@ -1154,7 +1154,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertCount(2, $errors);
     }
 
-    public function testAllOf_canCombineStringConstraints(): void
+    public function testAllOfCanCombineStringConstraints(): void
     {
         $errors = $this->validator->validate('s', 'hi', [
             'allOf' => [
@@ -1165,7 +1165,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAllOf_withAnyOf_acceptsWhenBothSatisfied(): void
+    public function testAllOfWithAnyOfAcceptsWhenBothSatisfied(): void
     {
         // allOf: must be integer >= 1; anyOf: must be < 5 OR > 100
         // value 3: allOf passes (integer, >= 1), anyOf passes (< 5)
@@ -1182,7 +1182,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAllOf_withAnyOf_rejectsWhenAllOfFails(): void
+    public function testAllOfWithAnyOfRejectsWhenAllOfFails(): void
     {
         // value 0: fails allOf minimum:1
         $errors = $this->validator->validate('n', 0, [
@@ -1199,7 +1199,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be greater than or equal to 1', $errors[0]);
     }
 
-    public function testAllOf_withAnyOf_rejectsWhenAnyOfFails(): void
+    public function testAllOfWithAnyOfRejectsWhenAnyOfFails(): void
     {
         // value 50: allOf passes, anyOf fails (not <= 5, not >= 100)
         // branches have no 'type' so both are tried; both fail → branch errors returned
@@ -1220,7 +1220,7 @@ final class DtoValidatorTest extends TestCase
     // not
     // =========================================================================
 
-    public function testNot_acceptsWhenSchemaDoesNotMatch(): void
+    public function testNotAcceptsWhenSchemaDoesNotMatch(): void
     {
         // Value is not a multiple of 3 → passes 'not' constraint
         $errors = $this->validator->validate('n', 7, [
@@ -1229,7 +1229,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testNot_rejectsWhenSchemaMatches(): void
+    public function testNotRejectsWhenSchemaMatches(): void
     {
         // Value IS a multiple of 3 → violates 'not' constraint
         $errors = $this->validator->validate('n', 9, [
@@ -1239,7 +1239,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString("must not match the 'not' schema", $errors[0]);
     }
 
-    public function testNot_withTypeConstraint_rejectsMatchingType(): void
+    public function testNotWithTypeConstraintRejectsMatchingType(): void
     {
         // 'not integer' → string passes, integer fails
         $errors = $this->validator->validate('v', 42, [
@@ -1248,7 +1248,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testNot_withTypeConstraint_acceptsNonMatchingType(): void
+    public function testNotWithTypeConstraintAcceptsNonMatchingType(): void
     {
         $errors = $this->validator->validate('v', 'hello', [
             'not' => ['type' => 'integer'],
@@ -1256,7 +1256,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testNot_withAllOf_rejectsWhenAllBranchesMatch(): void
+    public function testNotWithAllOfRejectsWhenAllBranchesMatch(): void
     {
         // 'not allOf[string, minLength:3]' — 'hello' matches both branches → rejected
         $errors = $this->validator->validate('v', 'hello', [
@@ -1271,7 +1271,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString("must not match the 'not' schema", $errors[0]);
     }
 
-    public function testNot_withAllOf_acceptsWhenAnyBranchFails(): void
+    public function testNotWithAllOfAcceptsWhenAnyBranchFails(): void
     {
         // 'not allOf[string, minLength:10]' — 'hi' fails minLength → allOf fails → not passes
         $errors = $this->validator->validate('v', 'hi', [
@@ -1289,45 +1289,45 @@ final class DtoValidatorTest extends TestCase
     // minProperties / maxProperties
     // =========================================================================
 
-    public function testMinProperties_acceptsEnoughProperties(): void
+    public function testMinPropertiesAcceptsEnoughProperties(): void
     {
         $errors = $this->validator->validate('obj', ['a' => 1, 'b' => 2], ['minProperties' => 2]);
         $this->assertSame([], $errors);
     }
 
-    public function testMinProperties_rejectsTooFewProperties(): void
+    public function testMinPropertiesRejectsTooFewProperties(): void
     {
         $errors = $this->validator->validate('obj', ['a' => 1], ['minProperties' => 2]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must have at least 2 properties', $errors[0]);
     }
 
-    public function testMinProperties_singularWord_whenOne(): void
+    public function testMinPropertiesSingularWordWhenOne(): void
     {
         $errors = $this->validator->validate('obj', [], ['minProperties' => 1]);
         $this->assertStringContainsString('at least 1 property', $errors[0]);
     }
 
-    public function testMaxProperties_acceptsFewEnoughProperties(): void
+    public function testMaxPropertiesAcceptsFewEnoughProperties(): void
     {
         $errors = $this->validator->validate('obj', ['a' => 1], ['maxProperties' => 3]);
         $this->assertSame([], $errors);
     }
 
-    public function testMaxProperties_rejectsTooManyProperties(): void
+    public function testMaxPropertiesRejectsTooManyProperties(): void
     {
         $errors = $this->validator->validate('obj', ['a' => 1, 'b' => 2, 'c' => 3, 'd' => 4], ['maxProperties' => 3]);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must have at most 3 properties', $errors[0]);
     }
 
-    public function testMaxProperties_singularWord_whenOne(): void
+    public function testMaxPropertiesSingularWordWhenOne(): void
     {
         $errors = $this->validator->validate('obj', ['a' => 1, 'b' => 2], ['maxProperties' => 1]);
         $this->assertStringContainsString('at most 1 property', $errors[0]);
     }
 
-    public function testMinAndMaxProperties_combinedRange_acceptsValid(): void
+    public function testMinAndMaxPropertiesCombinedRangeAcceptsValid(): void
     {
         $errors = $this->validator->validate('obj', ['x' => 1, 'y' => 2], ['minProperties' => 1, 'maxProperties' => 3]);
         $this->assertSame([], $errors);
@@ -1337,7 +1337,7 @@ final class DtoValidatorTest extends TestCase
     // additionalProperties: false
     // =========================================================================
 
-    public function testAdditionalProperties_false_rejectsExtraKey(): void
+    public function testAdditionalPropertiesFalseRejectsExtraKey(): void
     {
         $errors = $this->validator->validate('obj', ['name' => 'Alice', 'extra' => 'oops'], [
             'properties' => [
@@ -1350,7 +1350,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('not allowed', $errors[0]);
     }
 
-    public function testAdditionalProperties_false_acceptsExactlyDefinedKeys(): void
+    public function testAdditionalPropertiesFalseAcceptsExactlyDefinedKeys(): void
     {
         $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
             'properties' => [
@@ -1361,7 +1361,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAdditionalProperties_false_rejectsMultipleExtraKeys(): void
+    public function testAdditionalPropertiesFalseRejectsMultipleExtraKeys(): void
     {
         $errors = $this->validator->validate('obj', ['name' => 'Bob', 'foo' => 1, 'bar' => 2], [
             'properties' => ['name' => ['type' => 'string']],
@@ -1370,7 +1370,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertCount(2, $errors);
     }
 
-    public function testAdditionalProperties_false_withoutProperties_allowsNothing(): void
+    public function testAdditionalPropertiesFalseWithoutPropertiesAllowsNothing(): void
     {
         // additionalProperties: false without 'properties' → no defined keys → every key is
         // additional and must be rejected (previously skipped due to a null-guard bug).
@@ -1378,7 +1378,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertContains('obj has additional property "key" which is not allowed', $errors);
     }
 
-    public function testAdditionalProperties_asSchema_validatesExtraPropertyValues(): void
+    public function testAdditionalPropertiesAsSchemaValidatesExtraPropertyValues(): void
     {
         $errors = $this->validator->validate('obj', ['dynamic' => 'not-a-number'], [
             'additionalProperties' => ['type' => 'integer'],
@@ -1388,7 +1388,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('type integer', $errors[0]);
     }
 
-    public function testAdditionalProperties_asSchema_acceptsValidExtraPropertyValues(): void
+    public function testAdditionalPropertiesAsSchemaAcceptsValidExtraPropertyValues(): void
     {
         $errors = $this->validator->validate('obj', ['count' => 42, 'total' => 100], [
             'additionalProperties' => ['type' => 'integer', 'minimum' => 0],
@@ -1396,7 +1396,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testAdditionalProperties_asSchema_skipsDefinedProperties(): void
+    public function testAdditionalPropertiesAsSchemaSkipsDefinedProperties(): void
     {
         // 'name' is defined in properties (string), extra keys validated as integer
         $errors = $this->validator->validate('obj', ['name' => 'Alice', 'count' => 5], [
@@ -1410,7 +1410,7 @@ final class DtoValidatorTest extends TestCase
     // properties — nested property validation
     // =========================================================================
 
-    public function testProperties_validatesDefinedPropertyConstraints(): void
+    public function testPropertiesValidatesDefinedPropertyConstraints(): void
     {
         $errors = $this->validator->validate('obj', ['age' => -1], [
             'properties' => [
@@ -1422,7 +1422,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('greater than or equal to 0', $errors[0]);
     }
 
-    public function testProperties_acceptsValidNestedValues(): void
+    public function testPropertiesAcceptsValidNestedValues(): void
     {
         $errors = $this->validator->validate('obj', ['age' => 25, 'name' => 'Bob'], [
             'properties' => [
@@ -1433,7 +1433,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testProperties_skipsAbsentOptionalProperties(): void
+    public function testPropertiesSkipsAbsentOptionalProperties(): void
     {
         // 'email' not present → no error even if it had format: email constraint
         $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
@@ -1445,7 +1445,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testProperties_collectsErrorsFromMultipleInvalidFields(): void
+    public function testPropertiesCollectsErrorsFromMultipleInvalidFields(): void
     {
         $errors = $this->validator->validate('user', ['age' => -1, 'score' => 200], [
             'properties' => [
@@ -1462,7 +1462,7 @@ final class DtoValidatorTest extends TestCase
     // required — mandatory properties in object schema
     // =========================================================================
 
-    public function testRequired_missingRequiredProperty_returnsError(): void
+    public function testRequiredMissingRequiredPropertyReturnsError(): void
     {
         $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
             'properties' => [
@@ -1476,7 +1476,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('required', $errors[0]);
     }
 
-    public function testRequired_allRequiredPresent_returnsNoErrors(): void
+    public function testRequiredAllRequiredPresentReturnsNoErrors(): void
     {
         $errors = $this->validator->validate('obj', ['name' => 'Alice', 'email' => 'a@b.com'], [
             'properties' => [
@@ -1488,7 +1488,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testRequired_multipleMissingFields_reportsAll(): void
+    public function testRequiredMultipleMissingFieldsReportsAll(): void
     {
         $errors = $this->validator->validate('obj', [], [
             'required' => ['name', 'email', 'age'],
@@ -1499,7 +1499,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('obj.age', $errors[2]);
     }
 
-    public function testRequired_withoutPropertiesConstraint_stillValidates(): void
+    public function testRequiredWithoutPropertiesConstraintStillValidates(): void
     {
         // required without properties is valid OpenAPI — just checks key presence
         $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
@@ -1509,7 +1509,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('obj.email', $errors[0]);
     }
 
-    public function testRequired_nullValueForRequiredKey_passesPresenceCheck(): void
+    public function testRequiredNullValueForRequiredKeyPassesPresenceCheck(): void
     {
         // key exists with null value — presence satisfied, type may fail separately
         $errors = $this->validator->validate('obj', ['name' => null], [
@@ -1522,14 +1522,14 @@ final class DtoValidatorTest extends TestCase
     // Edge cases
     // =========================================================================
 
-    public function testMultipleOf_zero_doesNotDivideByZero(): void
+    public function testMultipleOfZeroDoesNotDivideByZero(): void
     {
         // multipleOf: 0 is invalid per OpenAPI spec, but must not throw division by zero
         $errors = $this->validator->validate('n', 5, ['multipleOf' => 0]);
         $this->assertSame([], $errors);
     }
 
-    public function testUniqueItems_withComplexObjects_detectsDuplicates(): void
+    public function testUniqueItemsWithComplexObjectsDetectsDuplicates(): void
     {
         $errors = $this->validator->validate('arr', [
             ['id' => 1, 'name' => 'Alice'],
@@ -1539,7 +1539,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('unique items', $errors[0]);
     }
 
-    public function testUniqueItems_withComplexObjects_acceptsDistinct(): void
+    public function testUniqueItemsWithComplexObjectsAcceptsDistinct(): void
     {
         $errors = $this->validator->validate('arr', [
             ['id' => 1],
@@ -1548,21 +1548,21 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testFormatDatetime_aliasForDateTime(): void
+    public function testFormatDatetimeAliasForDateTime(): void
     {
         // 'datetime' is an alias for 'date-time' in the validator
         $errors = $this->validator->validate('ts', '2024-06-15T12:00:00+00:00', ['format' => 'datetime']);
         $this->assertSame([], $errors);
     }
 
-    public function testFormatDatetimeAlias_rejectsDateOnlyString(): void
+    public function testFormatDatetimeAliasRejectsDateOnlyString(): void
     {
         $errors = $this->validator->validate('ts', '2024-06-15', ['format' => 'datetime']);
         $this->assertNotEmpty($errors);
         $this->assertStringContainsString('must match format datetime', $errors[0]);
     }
 
-    public function testTypeNull_matchesNullValue(): void
+    public function testTypeNullMatchesNullValue(): void
     {
         // null values skip validation (line 29: if $value === null return [])
         // But if value IS null and somehow reaches matchesOpenApiType, type: null should match
@@ -1575,7 +1575,7 @@ final class DtoValidatorTest extends TestCase
 
     // --- if/then/else ---
 
-    public function testIfThen_conditionPasses_thenApplied(): void
+    public function testIfThenConditionPassesThenApplied(): void
     {
         // if type=string → then minLength=5; value 'hi' fails then
         $errors = $this->validator->validate('v', 'hi', [
@@ -1586,7 +1586,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('at least 5', $errors[0]);
     }
 
-    public function testIfThen_conditionPasses_thenSatisfied(): void
+    public function testIfThenConditionPassesThenSatisfied(): void
     {
         $errors = $this->validator->validate('v', 'hello world', [
             'if' => ['type' => 'string'],
@@ -1595,7 +1595,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testIfThen_conditionFails_thenSkipped(): void
+    public function testIfThenConditionFailsThenSkipped(): void
     {
         // value is integer, if=string fails → then not applied → no errors
         $errors = $this->validator->validate('v', 42, [
@@ -1605,7 +1605,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testIfElse_conditionFails_elseApplied(): void
+    public function testIfElseConditionFailsElseApplied(): void
     {
         // if type=string fails → else minimum=10; value 3 fails else
         $errors = $this->validator->validate('v', 3, [
@@ -1616,7 +1616,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('greater than or equal to 10', $errors[0]);
     }
 
-    public function testIfElse_conditionFails_elseSatisfied(): void
+    public function testIfElseConditionFailsElseSatisfied(): void
     {
         $errors = $this->validator->validate('v', 42, [
             'if' => ['type' => 'string'],
@@ -1625,7 +1625,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testIfThenElse_conditionPasses_thenApplied_elseSkipped(): void
+    public function testIfThenElseConditionPassesThenAppliedElseSkipped(): void
     {
         $errors = $this->validator->validate('v', 'hi', [
             'if' => ['type' => 'string'],
@@ -1636,7 +1636,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('at least 5', $errors[0]);
     }
 
-    public function testIfThenElse_conditionFails_elseApplied_thenSkipped(): void
+    public function testIfThenElseConditionFailsElseAppliedThenSkipped(): void
     {
         $errors = $this->validator->validate('v', 3, [
             'if' => ['type' => 'string'],
@@ -1647,7 +1647,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('greater than or equal to 10', $errors[0]);
     }
 
-    public function testIf_withoutThenOrElse_noErrors(): void
+    public function testIfWithoutThenOrElseNoErrors(): void
     {
         // if alone: only evaluates condition, no then/else → always no errors
         $errors = $this->validator->validate('v', 'hello', [
@@ -1656,13 +1656,13 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testArrayType_oas31_acceptsMatchingType(): void
+    public function testArrayTypeOas31AcceptsMatchingType(): void
     {
         $errors = $this->validator->validate('v', 'hello', ['type' => ['string', 'null']]);
         $this->assertSame([], $errors);
     }
 
-    public function testArrayType_oas31_rejectsNonMatchingType(): void
+    public function testArrayTypeOas31RejectsNonMatchingType(): void
     {
         $errors = $this->validator->validate('v', 42, ['type' => ['string', 'null']]);
         $this->assertNotEmpty($errors);
@@ -1670,7 +1670,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('string', $errors[0]);
     }
 
-    public function testArrayType_oas31_multiType_acceptsEither(): void
+    public function testArrayTypeOas31MultiTypeAcceptsEither(): void
     {
         $errorsStr = $this->validator->validate('v', 'hello', ['type' => ['string', 'integer']]);
         $errorsInt = $this->validator->validate('v', 42, ['type' => ['string', 'integer']]);
@@ -1678,7 +1678,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errorsInt);
     }
 
-    public function testArrayType_oas31_multiType_rejectsMismatch(): void
+    public function testArrayTypeOas31MultiTypeRejectsMismatch(): void
     {
         $errors = $this->validator->validate('v', 3.14, ['type' => ['string', 'integer']]);
         $this->assertNotEmpty($errors);
@@ -1688,7 +1688,7 @@ final class DtoValidatorTest extends TestCase
     // nested oneOf/anyOf inside union branch
     // =========================================================================
 
-    public function testNestedOneOfInBranch_passesWhenInnerBranchMatches(): void
+    public function testNestedOneOfInBranchPassesWhenInnerBranchMatches(): void
     {
         $errors = $this->validator->validate('v', ['a' => 1], [
             'oneOf' => [
@@ -1705,7 +1705,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testNestedOneOfInBranch_rejectsWhenInnerBranchFails(): void
+    public function testNestedOneOfInBranchRejectsWhenInnerBranchFails(): void
     {
         // ['c' => 1] doesn't satisfy required:a or required:b → inner oneOf fails → outer branch fails
         $errors = $this->validator->validate('v', ['c' => 1], [
@@ -1723,7 +1723,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testNestedAnyOfInBranch_passesWhenInnerBranchMatches(): void
+    public function testNestedAnyOfInBranchPassesWhenInnerBranchMatches(): void
     {
         $errors = $this->validator->validate('v', 5, [
             'anyOf' => [
@@ -1744,14 +1744,14 @@ final class DtoValidatorTest extends TestCase
     // toIntOrNull ignores non-integer float constraints
     // =========================================================================
 
-    public function testMinLength_withFloatConstraint_isIgnored(): void
+    public function testMinLengthWithFloatConstraintIsIgnored(): void
     {
         // minLength: 2.9 is invalid schema (must be integer) — constraint is skipped
         $errors = $this->validator->validate('s', 'ab', ['minLength' => 2.9]);
         $this->assertSame([], $errors);
     }
 
-    public function testMaxItems_withFloatConstraint_isIgnored(): void
+    public function testMaxItemsWithFloatConstraintIsIgnored(): void
     {
         $errors = $this->validator->validate('a', [1, 2, 3], ['maxItems' => 2.7]);
         $this->assertSame([], $errors);
@@ -1761,7 +1761,7 @@ final class DtoValidatorTest extends TestCase
     // dependentRequired
     // =========================================================================
 
-    public function testDependentRequired_fieldPresent_missingDep_returnsError(): void
+    public function testDependentRequiredFieldPresentMissingDepReturnsError(): void
     {
         $errors = $this->validator->validate('obj', ['creditCard' => '1234'], [
             'dependentRequired' => ['creditCard' => ['billingAddress']],
@@ -1771,7 +1771,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('creditCard', $errors[0]);
     }
 
-    public function testDependentRequired_fieldPresent_depAlsoPresent_passes(): void
+    public function testDependentRequiredFieldPresentDepAlsoPresentPasses(): void
     {
         $errors = $this->validator->validate('obj', ['creditCard' => '1234', 'billingAddress' => 'Main St'], [
             'dependentRequired' => ['creditCard' => ['billingAddress']],
@@ -1779,7 +1779,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testDependentRequired_fieldAbsent_depNotRequired(): void
+    public function testDependentRequiredFieldAbsentDepNotRequired(): void
     {
         $errors = $this->validator->validate('obj', ['name' => 'Alice'], [
             'dependentRequired' => ['creditCard' => ['billingAddress']],
@@ -1787,7 +1787,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testDependentRequired_multipleDeps_reportsAllMissing(): void
+    public function testDependentRequiredMultipleDepsReportsAllMissing(): void
     {
         $errors = $this->validator->validate('obj', ['creditCard' => '1234'], [
             'dependentRequired' => ['creditCard' => ['billingAddress', 'billingCity']],
@@ -1799,7 +1799,7 @@ final class DtoValidatorTest extends TestCase
     // dependentSchemas
     // =========================================================================
 
-    public function testDependentSchemas_fieldPresent_schemaApplied_fails(): void
+    public function testDependentSchemasFieldPresentSchemaAppliedFails(): void
     {
         $errors = $this->validator->validate('obj', ['premium' => true, 'score' => 50], [
             'dependentSchemas' => [
@@ -1810,7 +1810,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('score', $errors[0]);
     }
 
-    public function testDependentSchemas_fieldAbsent_schemaNotApplied(): void
+    public function testDependentSchemasFieldAbsentSchemaNotApplied(): void
     {
         $errors = $this->validator->validate('obj', ['score' => 50], [
             'dependentSchemas' => [
@@ -1820,7 +1820,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testDependentSchemas_fieldPresent_schemaSatisfied_passes(): void
+    public function testDependentSchemasFieldPresentSchemaSatisfiedPasses(): void
     {
         $errors = $this->validator->validate('obj', ['premium' => true, 'score' => 150], [
             'dependentSchemas' => [
@@ -1834,7 +1834,7 @@ final class DtoValidatorTest extends TestCase
     // prefixItems (tuple validation)
     // =========================================================================
 
-    public function testPrefixItems_validTuple_passes(): void
+    public function testPrefixItemsValidTuplePasses(): void
     {
         $errors = $this->validator->validate('t', ['hello', 42, true], [
             'prefixItems' => [
@@ -1846,7 +1846,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testPrefixItems_invalidItemAtIndex_fails(): void
+    public function testPrefixItemsInvalidItemAtIndexFails(): void
     {
         $errors = $this->validator->validate('t', ['hello', 'not-int'], [
             'prefixItems' => [
@@ -1858,7 +1858,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('t.1', $errors[0]);
     }
 
-    public function testPrefixItems_shorterArrayThanSchema_passes(): void
+    public function testPrefixItemsShorterArrayThanSchemaPasses(): void
     {
         // Only present items are validated
         $errors = $this->validator->validate('t', ['hello'], [
@@ -1870,7 +1870,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testPrefixItems_extraItemsBeyondSchema_notValidated(): void
+    public function testPrefixItemsExtraItemsBeyondSchemaNotValidated(): void
     {
         $errors = $this->validator->validate('t', ['hello', 42, 'extra', 'more'], [
             'prefixItems' => [
@@ -1881,7 +1881,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testPrefixItems_withConstraintsOnItems_fails(): void
+    public function testPrefixItemsWithConstraintsOnItemsFails(): void
     {
         $errors = $this->validator->validate('t', ['ab', 5], [
             'prefixItems' => [
@@ -1894,7 +1894,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('t.1', $errors[1]);
     }
 
-    public function testPrefixItems_withItemsSuffix_doesNotApplyItemsToPrefixIndices(): void
+    public function testPrefixItemsWithItemsSuffixDoesNotApplyItemsToPrefixIndices(): void
     {
         // JSON Schema 2020-12 tuple-with-rest: prefixItems covers [0,1]; items (boolean)
         // applies only to index >= 2. The string/int at 0/1 must NOT be checked against
@@ -1909,7 +1909,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testPrefixItems_withItemsSuffix_validatesOnlySuffixIndices(): void
+    public function testPrefixItemsWithItemsSuffixValidatesOnlySuffixIndices(): void
     {
         // Suffix element at index 2 violates the items (boolean) schema → exactly one error,
         // and it must reference index 2, not the prefix positions.
@@ -1928,14 +1928,14 @@ final class DtoValidatorTest extends TestCase
     // Numeric formats: int32 / int64 range
     // =========================================================================
 
-    public function testInt32Format_acceptsValueInRange(): void
+    public function testInt32FormatAcceptsValueInRange(): void
     {
         $this->assertSame([], $this->validator->validate('f', 100, ['type' => 'integer', 'format' => 'int32']));
         $this->assertSame([], $this->validator->validate('f', 2147483647, ['type' => 'integer', 'format' => 'int32']));
         $this->assertSame([], $this->validator->validate('f', -2147483648, ['type' => 'integer', 'format' => 'int32']));
     }
 
-    public function testInt32Format_rejectsOverflow(): void
+    public function testInt32FormatRejectsOverflow(): void
     {
         $errors = $this->validator->validate('f', 2147483648, ['type' => 'integer', 'format' => 'int32']);
         $this->assertContains('f must be within int32 range (-2147483648 to 2147483647)', $errors);
@@ -1944,13 +1944,13 @@ final class DtoValidatorTest extends TestCase
         $this->assertContains('f must be within int32 range (-2147483648 to 2147483647)', $errors);
     }
 
-    public function testInt32Format_rejectsFractionalValue(): void
+    public function testInt32FormatRejectsFractionalValue(): void
     {
         $errors = $this->validator->validate('f', 2.5, ['type' => 'number', 'format' => 'int32']);
         $this->assertContains('f must be an integer (int32)', $errors);
     }
 
-    public function testInt64Format_acceptsNativeIntButRejectsFloatOverflow(): void
+    public function testInt64FormatAcceptsNativeIntButRejectsFloatOverflow(): void
     {
         $this->assertSame([], $this->validator->validate('f', 9000000000, ['type' => 'integer', 'format' => 'int64']));
 
@@ -1958,7 +1958,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
     }
 
-    public function testFloatAndDoubleFormats_carryNoExtraRange(): void
+    public function testFloatAndDoubleFormatsCarryNoExtraRange(): void
     {
         $this->assertSame([], $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'float']));
         $this->assertSame([], $this->validator->validate('f', 1.5e300, ['type' => 'number', 'format' => 'double']));
@@ -1968,19 +1968,19 @@ final class DtoValidatorTest extends TestCase
     // UUID format: nil / max special cases
     // =========================================================================
 
-    public function testUuidFormat_acceptsRegularV4(): void
+    public function testUuidFormatAcceptsRegularV4(): void
     {
         $this->assertSame([], $this->validator->validate('f', '550e8400-e29b-41d4-a716-446655440000', ['format' => 'uuid']));
     }
 
-    public function testUuidFormat_acceptsNilAndMaxUuid(): void
+    public function testUuidFormatAcceptsNilAndMaxUuid(): void
     {
         $this->assertSame([], $this->validator->validate('f', '00000000-0000-0000-0000-000000000000', ['format' => 'uuid']));
         $this->assertSame([], $this->validator->validate('f', 'ffffffff-ffff-ffff-ffff-ffffffffffff', ['format' => 'uuid']));
         $this->assertSame([], $this->validator->validate('f', 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF', ['format' => 'uuid']));
     }
 
-    public function testUuidFormat_rejectsGarbage(): void
+    public function testUuidFormatRejectsGarbage(): void
     {
         $errors = $this->validator->validate('f', 'not-a-uuid', ['format' => 'uuid']);
         $this->assertContains('f must match format uuid', $errors);
@@ -2065,14 +2065,14 @@ final class DtoValidatorTest extends TestCase
     // format: time
     // =========================================================================
 
-    public function testTimeFormat_acceptsValidTimes(): void
+    public function testTimeFormatAcceptsValidTimes(): void
     {
         $this->assertSame([], $this->validator->validate('f', '23:59:59Z', ['format' => 'time']));
         $this->assertSame([], $this->validator->validate('f', '08:30:00+02:00', ['format' => 'time']));
         $this->assertSame([], $this->validator->validate('f', '08:30:00.123-05:00', ['format' => 'time']));
     }
 
-    public function testTimeFormat_rejectsInvalid(): void
+    public function testTimeFormatRejectsInvalid(): void
     {
         // Missing offset, bad hour, not a time.
         $this->assertContains('f must match format time', $this->validator->validate('f', '08:30:00', ['format' => 'time']));
@@ -2136,19 +2136,19 @@ final class DtoValidatorTest extends TestCase
         );
     }
 
-    public function testInt64Format_rejectsFloatBeyondBoundary(): void
+    public function testInt64FormatRejectsFloatBeyondBoundary(): void
     {
         // (float)PHP_INT_MAX rounds to 2^63 = PHP_INT_MAX + 1 — must be rejected.
         $errors = $this->validator->validate('f', 9223372036854775808.0, ['format' => 'int64']);
         $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
     }
 
-    public function testInt64Format_acceptsLargeValidInteger(): void
+    public function testInt64FormatAcceptsLargeValidInteger(): void
     {
         $this->assertSame([], $this->validator->validate('f', 9000000000000000000, ['format' => 'int64']));
     }
 
-    public function testDateTimeFormat_rejectsRolloverCalendarDates(): void
+    public function testDateTimeFormatRejectsRolloverCalendarDates(): void
     {
         // createFromFormat silently rolls Feb 30 → Mar 2; these must be rejected, not accepted.
         $this->assertContains('f must match format date-time', $this->validator->validate('f', '2026-02-30T12:00:00Z', ['format' => 'date-time']));
@@ -2157,7 +2157,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', '2026-03-30T12:00:00Z', ['format' => 'date-time']));
     }
 
-    public function testDateTimeFormat_acceptsMicrosecondPrecision(): void
+    public function testDateTimeFormatAcceptsMicrosecondPrecision(): void
     {
         // RFC3339 allows arbitrary fractional digits; previously only 1-3 (milliseconds) parsed.
         $this->assertSame([], $this->validator->validate('f', '2026-03-10T12:00:00.123456Z', ['format' => 'date-time']));

@@ -76,7 +76,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $fqcn */
-        $fqcn = '\\' . $namespace . '\\ProbeModel';
+        $fqcn = '\\' . $namespace . '\ProbeModel';
         return $fqcn;
     }
 
@@ -96,7 +96,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $fqcn */
-        $fqcn = '\\' . $namespace . '\\OptionalFieldModel';
+        $fqcn = '\\' . $namespace . '\OptionalFieldModel';
         return $fqcn;
     }
 
@@ -114,7 +114,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $fqcn */
-        $fqcn = '\\' . $namespace . '\\IntFormatModel';
+        $fqcn = '\\' . $namespace . '\IntFormatModel';
         return $fqcn;
     }
 
@@ -132,7 +132,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $fqcn */
-        $fqcn = '\\' . $namespace . '\\EventModel';
+        $fqcn = '\\' . $namespace . '\EventModel';
         return $fqcn;
     }
 
@@ -172,8 +172,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenMap\\Holder';
-        $enum = '\\GenMap\\FieldTypesEnumView';
+        $cls = '\GenMap\Holder';
+        $enum = '\GenMap\FieldTypesEnumView';
         $normalizer = new DtoNormalizer();
 
         // Dense integer keys must still produce a JSON object on every output path.
@@ -231,7 +231,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenTemporal\\Event';
+        $cls = '\GenTemporal\Event';
 
         /** @var object{getStartDate: callable, getStartDateAsDateTime: callable, getCreatedAt: callable, getCreatedAtAsDateTime: callable} $dto */
         $dto = (new DtoDeserializer())->deserialize(
@@ -298,7 +298,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer = new DtoDeserializer();
         $method = new ReflectionMethod($deserializer, 'resolveFileImports');
         /** @var array<string, string> $imports */
-        $imports = $method->invoke($deserializer, new ReflectionClass('\\GapImports\\EventModel'));
+        $imports = $method->invoke($deserializer, new ReflectionClass('\GapImports\EventModel'));
 
         $this->assertArrayHasKey('DateTimeImmutable', $imports);
         $this->assertSame('DateTimeImmutable', $imports['DateTimeImmutable']);
@@ -319,7 +319,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $fqcn */
-        $fqcn = '\\' . $namespace . '\\Box';
+        $fqcn = '\\' . $namespace . '\Box';
         return $fqcn;
     }
 
@@ -364,7 +364,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapIntEnum\\Filter';
+        $cls = '\GapIntEnum\Filter';
         // status arrives from the query bag as the string "2"; body is empty.
         $request = Request::create('/?status=2', 'GET');
         $dto = (new DtoDeserializer())->deserialize($request, $cls);
@@ -380,7 +380,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapIntOverflow\\Filter';
+        $cls = '\GapIntOverflow\Filter';
         // count = 23 nines: (int) cast would saturate to PHP_INT_MAX — must be rejected instead.
         $this->expectException(RuntimeException::class);
         (new DtoDeserializer())->deserialize(Request::create('/?status=1&count=99999999999999999999999', 'GET'), $cls);
@@ -397,7 +397,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapIfRef\\Account';
+        $cls = '\GapIfRef\Account';
         $profile = $cls::getConstraints()['profile'] ?? [];
         // The $ref `if` extracted to empty and must be dropped — otherwise it is vacuously true
         // and `then` applies to every value. (`then` may remain but is inert without `if`.)
@@ -426,7 +426,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapNestedWo\\Wrap';
+        $cls = '\GapNestedWo\Wrap';
         $dto = (new DtoDeserializer())->deserialize(
             $this->jsonPostRequest('{"child":{"name":"Bob","secret":"sekret"}}'),
             $cls,
@@ -447,7 +447,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapCycle\\Node';
+        $cls = '\GapCycle\Node';
         $a = new $cls('A');
         $b = new $cls('B');
         $a->addItemToChildren($b);
@@ -469,7 +469,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapCycleValidate\\Node';
+        $cls = '\GapCycleValidate\Node';
         $a = new $cls('A');
         $b = new $cls('B');
         $a->addItemToChildren($b);
@@ -495,7 +495,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             require $file;
         }
 
-        $cls = '\\GapSelfRef\\Node';
+        $cls = '\GapSelfRef\Node';
         $node = new $cls('root');
         $node->addItemToChildren($node);
 
@@ -518,7 +518,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GapOneOfRef\\Holder';
+        $cls = '\GapOneOfRef\Holder';
         $constraints = $cls::getConstraints();
         // The whole unvalidatable oneOf is dropped → no 'oneOf' (the 'value' entry may be absent entirely).
         $this->assertArrayNotHasKey('oneOf', $constraints['value'] ?? []);
@@ -672,7 +672,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GapSrc\\' . basename((string)$queryParamFiles[0], '.php');
+        $cls = '\GapSrc\\' . basename((string)$queryParamFiles[0], '.php');
 
         // The generator emitted the per-source binding map.
         $this->assertSame(
@@ -718,7 +718,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GapSrcMissing\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+        $cls = '\GapSrcMissing\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
 
         // token is a required header; omitting the header must fail even though a
         // same-named body field is present (strict source binding).
@@ -749,7 +749,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenStyle\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+        $cls = '\GenStyle\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
 
         // form/explode=false → comma, spaceDelimited → space, pipeDelimited → pipe,
         // form/explode=true → arrives as a repeated-key array (no re-splitting).
@@ -781,7 +781,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenNullItems\\TagBag';
+        $cls = '\GenNullItems\TagBag';
 
         // items: {type: string, nullable: true} — a null element must be accepted, not rejected.
         /** @var object{getTags: callable} $dto */
@@ -804,7 +804,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenDefaultParam\\' . basename((string)(($queryParamFiles ?: [])[0] ?? ''), '.php');
+        $cls = '\GenDefaultParam\\' . basename((string)(($queryParamFiles ?: [])[0] ?? ''), '.php');
 
         // Direct construction without scope → flag false (it was never "in the query").
         /** @var object{isScopeInQuery: callable} $direct */
@@ -853,8 +853,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenBodyDefault\\SampleRequest';
-        $enum = '\\GenBodyDefault\\SampleEnumView';
+        $cls = '\GenBodyDefault\SampleRequest';
+        $enum = '\GenBodyDefault\SampleEnumView';
 
         // Plain construction → declared default applies and is serialized (intent preserved).
         /** @var object{toArray: callable, getStage: callable, isStageInRequest: callable} $withDefault */
@@ -927,7 +927,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $itemClass */
-        $itemClass = '\\GenBulk\\Item';
+        $itemClass = '\GenBulk\Item';
         $deserializer = new DtoDeserializer();
 
         // Happy path: top-level array of objects → list of DTOs.
@@ -997,7 +997,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string $enumClass */
-        $enumClass = '\\GenBulkEnum\\StageEnum';
+        $enumClass = '\GenBulkEnum\StageEnum';
         $deserializer = new DtoDeserializer();
 
         /** @var array<int, UnitEnum> $enums */
@@ -1073,7 +1073,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         });
 
         /** @var class-string<GeneratedDtoInterface> $baseClass */
-        $baseClass = '\\' . $namespace . '\\Pet';
+        $baseClass = '\\' . $namespace . '\Pet';
 
         $pets = (new DtoDeserializer())->deserializeCollection(
             $this->jsonPostRequest('[{"petType":"dog","bark":"woof"},{"petType":"cat","meow":"mew"}]'),
@@ -1081,8 +1081,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
 
         $this->assertCount(2, $pets);
-        $this->assertInstanceOf('\\' . $namespace . '\\Dog', $pets[0]);
-        $this->assertInstanceOf('\\' . $namespace . '\\Cat', $pets[1]);
+        $this->assertInstanceOf('\\' . $namespace . '\Dog', $pets[0]);
+        $this->assertInstanceOf('\\' . $namespace . '\Cat', $pets[1]);
     }
 
     public function testDeserializeCollectionValidatesEachElement(): void
@@ -1107,7 +1107,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $itemClass */
-        $itemClass = '\\GenBulkBad\\Item';
+        $itemClass = '\GenBulkBad\Item';
         $deserializer = new DtoDeserializer();
 
         // An element missing a required field is reported with its index.
@@ -1134,7 +1134,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenMoment\\Moment';
+        $cls = '\GenMoment\Moment';
 
         // Microseconds are preserved on output (not silently dropped by 'c').
         /** @var object{getAt: callable} $withMicros */
@@ -1163,7 +1163,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenNormUnprov\\GenericResponse';
+        $cls = '\GenNormUnprov\GenericResponse';
 
         // message is optional and not provided → must be omitted (not emitted as null),
         // matching the DTO's own inRequest-gated toArray().
@@ -1195,7 +1195,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         /** @var class-string<GeneratedDtoInterface> $cls */
-        $cls = '\\GenBinary\\UploadPostRequest';
+        $cls = '\GenBinary\UploadPostRequest';
 
         // A binary field is materialized as UploadedFile — the string type/format must NOT be
         // forwarded as a constraint, else the validator rejects the uploaded file at deserialization.

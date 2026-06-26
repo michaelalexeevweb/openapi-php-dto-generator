@@ -182,9 +182,9 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $exitCode = $tester->execute([
             '--file' => $spec,
             '--directory' => $outDir,
-            '--namespace' => 'Cli\\Generated',
+            '--namespace' => 'Cli\Generated',
             '--dto-generator-directory' => $generatorDir,
-            '--dto-generator-namespace' => 'Cli\\Common',
+            '--dto-generator-namespace' => 'Cli\Common',
         ]);
 
         $this->assertSame(0, $exitCode);
@@ -193,7 +193,7 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertFileExists($generatorDir . '/UnsetValue.php');
 
         $content = (string)file_get_contents($outDir . '/CliModel.php');
-        $this->assertStringContainsString('namespace Cli\\Generated;', $content);
+        $this->assertStringContainsString('namespace Cli\Generated;', $content);
     }
 
     public function testExecuteDerivesGeneratorNamespaceFromCustomDirectory(): void

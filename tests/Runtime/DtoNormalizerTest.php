@@ -191,7 +191,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertStringContainsString('score', $errors[0]);
     }
 
-    public function testToArray_emptyNormalizationMap_returnsEmptyArrayWithoutReflectionFallback(): void
+    public function testToArrayEmptyNormalizationMapReturnsEmptyArrayWithoutReflectionFallback(): void
     {
         // getNormalizationMap() returns [] (not null) — toArray() returns [] via fast path,
         // does NOT fall through to reflection-based dtoToArray
@@ -225,7 +225,7 @@ final class DtoNormalizerTest extends TestCase
         );
     }
 
-    public function testValidate_getterThrowsNonLogicException_returnsErrorInstead(): void
+    public function testValidateGetterThrowsNonLogicExceptionReturnsErrorInstead(): void
     {
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerThrowingGetterDto();
@@ -236,7 +236,7 @@ final class DtoNormalizerTest extends TestCase
         $normalizer->validate($dto);
     }
 
-    public function testValidate_getterThrowsError_bubblesInsteadOfMasking(): void
+    public function testValidateGetterThrowsErrorBubblesInsteadOfMasking(): void
     {
         // A genuine programming error (TypeError) from a getter is a real fault — it must
         // bubble, not be disguised as a validation error string (which would hide the bug).
@@ -249,7 +249,7 @@ final class DtoNormalizerTest extends TestCase
         $normalizer->validate($dto);
     }
 
-    public function testValidate_anyOfConstraint_passesWhenOneBranchMatches(): void
+    public function testValidateAnyOfConstraintPassesWhenOneBranchMatches(): void
     {
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerAnyOfConstraintDto(value: 3);
@@ -259,7 +259,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testValidate_anyOfConstraint_failsWhenNoBranchMatches(): void
+    public function testValidateAnyOfConstraintFailsWhenNoBranchMatches(): void
     {
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerAnyOfConstraintDto(value: 50);
@@ -270,7 +270,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertStringContainsString('value', $errors[0]);
     }
 
-    public function testValidate_oneOfConstraint_passesWhenExactlyOneBranchMatches(): void
+    public function testValidateOneOfConstraintPassesWhenExactlyOneBranchMatches(): void
     {
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerOneOfConstraintDto(value: 150);
@@ -280,7 +280,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertSame([], $errors);
     }
 
-    public function testValidate_oneOfConstraint_failsWhenMoreThanOneBranchMatches(): void
+    public function testValidateOneOfConstraintFailsWhenMoreThanOneBranchMatches(): void
     {
         $normalizer = new DtoNormalizer();
         // value 50: matches both branches (>= 1 AND <= 100)
@@ -417,7 +417,7 @@ final class DtoNormalizerTest extends TestCase
         );
     }
 
-    public function testValidate_circularReference_doesNotInfiniteLoop(): void
+    public function testValidateCircularReferenceDoesNotInfiniteLoop(): void
     {
         $normalizer = new DtoNormalizer();
         $a = new NormalizerCircularA();
@@ -430,7 +430,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertIsArray($errors);
     }
 
-    public function testNormalizeFileValue_plainFile_hasFilenameWithoutClientFields(): void
+    public function testNormalizeFileValuePlainFileHasFilenameWithoutClientFields(): void
     {
         $normalizer = new DtoNormalizer();
         $dto = new NormalizerFileDto(new File('/tmp/normalizer-test.txt', false));
@@ -446,7 +446,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertSame('normalizer-test.txt', $result['file']['filename']);
     }
 
-    public function testNormalizeFileValue_uploadedFile_includesClientFields(): void
+    public function testNormalizeFileValueUploadedFileIncludesClientFields(): void
     {
         $tmpPath = tempnam(sys_get_temp_dir(), 'dto_normalizer_test_');
         $this->assertNotFalse($tmpPath);
@@ -468,7 +468,7 @@ final class DtoNormalizerTest extends TestCase
         }
     }
 
-    public function testWriteOnlyField_excludedFromValidateAndNormalizeToArray(): void
+    public function testWriteOnlyFieldExcludedFromValidateAndNormalizeToArray(): void
     {
         // validateAndNormalizeToArray() uses dtoToArray() which checks writeOnly from normalization map
         $normalizer = new DtoNormalizer();
@@ -481,7 +481,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertArrayNotHasKey('password', $result);
     }
 
-    public function testWriteOnlyField_excludedFromGeneratedToArray(): void
+    public function testWriteOnlyFieldExcludedFromGeneratedToArray(): void
     {
         // Simulates what generator produces: toArray() itself omits writeOnly fields
         $normalizer = new DtoNormalizer();
@@ -494,7 +494,7 @@ final class DtoNormalizerTest extends TestCase
         $this->assertArrayNotHasKey('password', $result);
     }
 
-    public function testNestedDtoWhoseToArrayThrowsNotProvided_fallsBackToReflectionNotJsonSerialize(): void
+    public function testNestedDtoWhoseToArrayThrowsNotProvidedFallsBackToReflectionNotJsonSerialize(): void
     {
         // Nested DTO's toArray() throws "wasn't provided in request".
         // jsonSerialize() in generated DTOs delegates to toArray() and would re-throw uncaught.
@@ -945,8 +945,9 @@ final class NormalizerInnerItemsDto implements GeneratedDtoInterface
 
 final class NormalizerOuterAliasDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly NormalizerInnerItemsDto $body)
-    {
+    public function __construct(
+        private readonly NormalizerInnerItemsDto $body,
+    ) {
     }
 
     public function getBody(): NormalizerInnerItemsDto
@@ -994,8 +995,9 @@ final class NormalizerOuterAliasDto implements GeneratedDtoInterface
 
 final class NormalizerOuterFqcnDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly NormalizerInnerItemsDto $body)
-    {
+    public function __construct(
+        private readonly NormalizerInnerItemsDto $body,
+    ) {
     }
 
     public function getBody(): NormalizerInnerItemsDto
@@ -1043,8 +1045,9 @@ final class NormalizerOuterFqcnDto implements GeneratedDtoInterface
 // DTO with a DateTimeImmutable field — normalized to 'c' ISO string by the normalizer
 final class NormalizerDateTimeDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly DateTimeImmutable $createdAt)
-    {
+    public function __construct(
+        private readonly DateTimeImmutable $createdAt,
+    ) {
     }
 
     public function getCreatedAt(): DateTimeImmutable
@@ -1107,8 +1110,9 @@ enum NormalizerDirectionEnum
 
 final class NormalizerEnumValueDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly NormalizerStatusEnum $status)
-    {
+    public function __construct(
+        private readonly NormalizerStatusEnum $status,
+    ) {
     }
 
     public function getStatus(): NormalizerStatusEnum
@@ -1153,8 +1157,9 @@ final class NormalizerEnumValueDto implements GeneratedDtoInterface
 
 final class NormalizerIntEnumDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly NormalizerPriorityEnum $priority)
-    {
+    public function __construct(
+        private readonly NormalizerPriorityEnum $priority,
+    ) {
     }
 
     public function getPriority(): NormalizerPriorityEnum
@@ -1199,8 +1204,9 @@ final class NormalizerIntEnumDto implements GeneratedDtoInterface
 
 final class NormalizerUnitEnumDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly NormalizerDirectionEnum $direction)
-    {
+    public function __construct(
+        private readonly NormalizerDirectionEnum $direction,
+    ) {
     }
 
     public function getDirection(): NormalizerDirectionEnum
@@ -1491,8 +1497,9 @@ final class NormalizerDtoWithThrowingToArray implements GeneratedDtoInterface
 // DTO with a nullable string field typed as date — tests normalizeNullableTemporalValue
 final class NormalizerNullableDateDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly ?string $createdAt)
-    {
+    public function __construct(
+        private readonly ?string $createdAt,
+    ) {
     }
 
     public function getCreatedAt(): ?string
@@ -1605,8 +1612,9 @@ final class NormalizerItemDto implements GeneratedDtoInterface
 final class NormalizerListResponseDto implements GeneratedDtoInterface
 {
     /** @param list<NormalizerItemDto> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
     /** @return list<NormalizerItemDto> */
@@ -1654,8 +1662,9 @@ final class NormalizerListResponseDto implements GeneratedDtoInterface
 
 final class NormalizerFileDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly File $file)
-    {
+    public function __construct(
+        private readonly File $file,
+    ) {
     }
 
     public function getFile(): File
@@ -1884,8 +1893,9 @@ final class NormalizerCircularB implements GeneratedDtoInterface
 // anyOf: value <= 5 OR >= 100
 final class NormalizerAnyOfConstraintDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly int $value)
-    {
+    public function __construct(
+        private readonly int $value,
+    ) {
     }
     public function getValue(): int
     {
@@ -1920,8 +1930,9 @@ final class NormalizerAnyOfConstraintDto implements GeneratedDtoInterface
 // oneOf: value >= 100 (only) OR value <= 5 (only) — 50 matches none strictly, but 150 only >= 100
 final class NormalizerOneOfConstraintDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly int $value)
-    {
+    public function __construct(
+        private readonly int $value,
+    ) {
     }
     public function getValue(): int
     {
@@ -2165,8 +2176,9 @@ final class NormalizerOuterWithThrowingInnerDto implements GeneratedDtoInterface
 final class NormalizerMapItemTypeDto implements GeneratedDtoInterface
 {
     /** @param array<string, int> $items */
-    public function __construct(private array $items)
-    {
+    public function __construct(
+        private array $items,
+    ) {
     }
 
     // Intentionally NO @return docblock: the array item type must come from the map.
@@ -2226,8 +2238,9 @@ final class NormalizerMapItemTypeDto implements GeneratedDtoInterface
 final class NormalizerEmptyItemTypeDto implements GeneratedDtoInterface
 {
     /** @param array<int, string> $items */
-    public function __construct(private array $items)
-    {
+    public function __construct(
+        private array $items,
+    ) {
     }
 
     /** @return array<int> */

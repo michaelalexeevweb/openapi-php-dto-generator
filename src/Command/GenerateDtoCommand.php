@@ -134,8 +134,8 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, string> */
     public array $refNamespaceMap = [];
 
-    public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
-    public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
+    public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
+    public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
 
     protected function configure(): void
     {
@@ -229,7 +229,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if ($input->hasParameterOption('--namespace') && $namespaceOption === '') {
-            $io->error('Option --namespace cannot be empty. Example: --namespace=Generated\\Test');
+            $io->error('Option --namespace cannot be empty. Example: --namespace=Generated\Test');
             return Command::FAILURE;
         }
 
@@ -268,11 +268,11 @@ final class GenerateDtoCommand extends Command
                 dtoGeneratorDirectory: $dtoGeneratorDirectory,
                 dtoGeneratorNamespace: $dtoGeneratorNamespace,
             );
-            $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\\' . 'GeneratedDtoInterface';
-            $this->unsetValueImportFqcn = $dtoGeneratorNamespace . '\\' . 'UnsetValue';
+            $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\GeneratedDtoInterface';
+            $this->unsetValueImportFqcn = $dtoGeneratorNamespace . '\UnsetValue';
         } else {
-            $this->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\GeneratedDtoInterface';
-            $this->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\\Contract\\UnsetValue';
+            $this->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
+            $this->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
         }
 
         $refOption = $input->getOption('ref');
@@ -570,20 +570,20 @@ final class GenerateDtoCommand extends Command
 
             // Move all files to a single Common namespace, removing Contract/Service separation
             $content = preg_replace(
-                '/namespace OpenapiPhpDtoGenerator\\\\(Contract|Service);/',
+                '/namespace OpenapiPhpDtoGenerator\\\(Contract|Service);/',
                 'namespace ' . $targetNamespace . ';',
                 $content,
             ) ?? $content;
 
             $content = preg_replace(
-                '/use OpenapiPhpDtoGenerator\\\\(Contract|Service)\\\\/',
+                '/use OpenapiPhpDtoGenerator\\\(Contract|Service)\\\/',
                 'use ' . $targetNamespace . '\\',
                 $content,
             ) ?? $content;
 
             // Remove self-namespace imports (same namespace as target)
             $content = preg_replace(
-                '/^use ' . preg_quote($targetNamespace, '/') . '\\\\[^;]+;\n/m',
+                '/^use ' . preg_quote($targetNamespace, '/') . '\\\[^;]+;\n/m',
                 '',
                 $content,
             ) ?? $content;
@@ -2752,7 +2752,7 @@ final class GenerateDtoCommand extends Command
             $useStatements[] = 'DateTimeImmutable';
         }
         if ($needsUploadedFileImport) {
-            $useStatements[] = 'Symfony\\Component\\HttpFoundation\\File\\UploadedFile';
+            $useStatements[] = 'Symfony\Component\HttpFoundation\File\UploadedFile';
         }
         foreach ($imports as $import) {
             $useStatements[] = $import;
@@ -2973,7 +2973,7 @@ final class GenerateDtoCommand extends Command
             $useStatements[] = 'DateTimeImmutable';
         }
         if ($this->needsUploadedFileImport($properties)) {
-            $useStatements[] = 'Symfony\\Component\\HttpFoundation\\File\\UploadedFile';
+            $useStatements[] = 'Symfony\Component\HttpFoundation\File\UploadedFile';
         }
         foreach ($this->collectGeneratedClassImports($namespace, $className, $properties, null, $unionTypes, null) as $import) {
             $useStatements[] = $import;
@@ -2995,12 +2995,12 @@ final class GenerateDtoCommand extends Command
             $params[] = $param;
         }
 
-        $useStatements[] = 'Symfony\\Component\\Validator\\Constraints as Assert';
+        $useStatements[] = 'Symfony\Component\Validator\Constraints as Assert';
         if ($needsSerializedName) {
-            $useStatements[] = 'Symfony\\Component\\Serializer\\Attribute\\SerializedName';
+            $useStatements[] = 'Symfony\Component\Serializer\Attribute\SerializedName';
         }
         if ($needsGroups) {
-            $useStatements[] = 'Symfony\\Component\\Serializer\\Attribute\\Groups';
+            $useStatements[] = 'Symfony\Component\Serializer\Attribute\Groups';
         }
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
@@ -3105,7 +3105,7 @@ final class GenerateDtoCommand extends Command
         $attributes = [];
 
         if ($property['required'] && !$property['nullable']) {
-            $attributes[] = '#[Assert\\NotNull]';
+            $attributes[] = '#[Assert\NotNull]';
         }
 
         // Scalar/value-level constraints (Length, Range, Regex, EqualTo, format-based, ...).
@@ -3127,11 +3127,11 @@ final class GenerateDtoCommand extends Command
             $count[] = 'max: ' . $countMax;
         }
         if ($count !== []) {
-            $attributes[] = '#[Assert\\Count(' . implode(', ', $count) . ')]';
+            $attributes[] = '#[Assert\Count(' . implode(', ', $count) . ')]';
         }
 
         if (($constraints['uniqueItems'] ?? null) === true) {
-            $attributes[] = '#[Assert\\Unique]';
+            $attributes[] = '#[Assert\Unique]';
         }
 
         // Typed map values (additionalProperties: { schema }) — validate every value via All.
@@ -3139,7 +3139,7 @@ final class GenerateDtoCommand extends Command
         if (is_array($additionalProperties)) {
             $valueExpressions = $this->valueConstraintExpressions($additionalProperties);
             if ($valueExpressions !== []) {
-                $attributes[] = '#[Assert\\All([' . implode(', ', $valueExpressions) . '])]';
+                $attributes[] = '#[Assert\All([' . implode(', ', $valueExpressions) . '])]';
             }
         }
 
@@ -3156,10 +3156,10 @@ final class GenerateDtoCommand extends Command
                 }
                 $branches[] = count($expressions) === 1
                     ? $expressions[0]
-                    : 'new Assert\\Sequentially([' . implode(', ', $expressions) . '])';
+                    : 'new Assert\Sequentially([' . implode(', ', $expressions) . '])';
             }
             if ($allBranchesValidatable && count($branches) >= 2) {
-                $attributes[] = '#[Assert\\AtLeastOneOf([' . implode(', ', $branches) . '])]';
+                $attributes[] = '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]';
             }
         }
 
@@ -3172,7 +3172,7 @@ final class GenerateDtoCommand extends Command
                     static fn(array $spec): string => 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')',
                     $itemSpecs,
                 );
-                $attributes[] = '#[Assert\\All([' . implode(', ', $expressions) . '])]';
+                $attributes[] = '#[Assert\All([' . implode(', ', $expressions) . '])]';
             }
         }
 
@@ -3185,7 +3185,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if ($this->symfonyPropertyCascades($property)) {
-            $attributes[] = '#[Assert\\Valid]';
+            $attributes[] = '#[Assert\Valid]';
         }
 
         return $attributes;
@@ -3251,7 +3251,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_string($constraints['pattern'] ?? null) && $constraints['pattern'] !== '') {
-            $delimited = '/' . str_replace('/', '\\/', $constraints['pattern']) . '/';
+            $delimited = '/' . str_replace('/', '\/', $constraints['pattern']) . '/';
             $specs[] = ['name' => 'Regex', 'args' => $this->phpStringLiteral($delimited)];
         }
 
@@ -3395,7 +3395,33 @@ final class GenerateDtoCommand extends Command
 
     private function phpStringLiteral(string $value): string
     {
-        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
+        return "'" . $this->escapeSingleQuoted($value) . "'";
+    }
+
+    /**
+     * Escapes a string for a single-quoted PHP literal using the minimal form: in single quotes
+     * only `\` and `'` are special, and a backslash is literal unless it precedes another
+     * backslash or a quote (or terminates the string). Emitting `\\` for every backslash is valid
+     * but php-cs-fixer's string_implicit_backslashes rule strips the redundant ones — producing
+     * this minimal form up front keeps generated code a fixed point of that rule.
+     */
+    private function escapeSingleQuoted(string $value): string
+    {
+        $result = '';
+        $length = strlen($value);
+        for ($i = 0; $i < $length; $i++) {
+            $char = $value[$i];
+            if ($char === "'") {
+                $result .= "\\'";
+            } elseif ($char === '\\') {
+                $next = $i + 1 < $length ? $value[$i + 1] : '';
+                $result .= ($next === '\\' || $next === "'" || $next === '') ? '\\\\' : '\\';
+            } else {
+                $result .= $char;
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -3759,13 +3785,13 @@ final class GenerateDtoCommand extends Command
         $mappingEntries = [];
         foreach ($discriminator['mapping'] as $value => $targetClass) {
             $mappingEntries[] = [
-                'value' => str_replace(['\\', "'"], ['\\\\', "\\'"], $value),
+                'value' => $this->escapeSingleQuoted($value),
                 'targetClass' => $this->formatClassNameForNamespace($targetClass, $namespace),
             ];
         }
 
         return [
-            'propertyName' => str_replace(['\\', "'"], ['\\\\', "\\'"], $discriminator['propertyName']),
+            'propertyName' => $this->escapeSingleQuoted($discriminator['propertyName']),
             'mappingEntries' => $mappingEntries,
         ];
     }
@@ -4083,7 +4109,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_string($value)) {
-            $escaped = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
+            $escaped = $this->escapeSingleQuoted($value);
             return "'" . $escaped . "'";
         }
 
@@ -4092,7 +4118,7 @@ final class GenerateDtoCommand extends Command
             foreach ($value as $key => $item) {
                 $itemLiteral = $this->renderPhpLiteral($item);
                 if (is_string($key)) {
-                    $escapedKey = str_replace(['\\', "'"], ['\\\\', "\\'"], $key);
+                    $escapedKey = $this->escapeSingleQuoted($key);
                     $items[] = "'" . $escapedKey . "' => " . $itemLiteral;
                     continue;
                 }
@@ -5084,7 +5110,7 @@ final class GenerateDtoCommand extends Command
             return (string)$value;
         }
 
-        $escaped = str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$value);
+        $escaped = $this->escapeSingleQuoted((string)$value);
         return "'" . $escaped . "'";
     }
 
@@ -5223,9 +5249,7 @@ final class GenerateDtoCommand extends Command
 
         // Normalize multiline descriptions
         $description = trim($description);
-        $description = preg_replace('/\s+/', ' ', $description);
-
-        return $description;
+        return preg_replace('/\s+/', ' ', $description);
     }
 
     /**
@@ -5297,7 +5321,7 @@ final class GenerateDtoCommand extends Command
         }
 
         if ($phpType === 'string') {
-            $escaped = str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$defaultValue);
+            $escaped = $this->escapeSingleQuoted((string)$defaultValue);
             return " = '" . $escaped . "'";
         }
 

@@ -90,15 +90,15 @@ final class GenerateSymfonyDtoTest extends TestCase
 
         $content = (string)file_get_contents($this->outputDirectory . '/User.php');
 
-        $this->assertStringContainsString('use Symfony\\Component\\Validator\\Constraints as Assert;', $content);
-        $this->assertStringContainsString('#[Assert\\NotNull]', $content);
-        $this->assertStringContainsString('#[Assert\\Length(min: 2, max: 50)]', $content);
-        $this->assertStringContainsString('#[Assert\\Range(min: 0, max: 120)]', $content);
-        $this->assertStringContainsString('#[Assert\\GreaterThan(0)]', $content);
-        $this->assertStringContainsString('#[Assert\\DivisibleBy(0.5)]', $content);
-        $this->assertStringContainsString('#[Assert\\Count(min: 1, max: 5)]', $content);
-        $this->assertStringContainsString('#[Assert\\Unique]', $content);
-        $this->assertStringContainsString('#[Assert\\Valid]', $content);
+        $this->assertStringContainsString('use Symfony\Component\Validator\Constraints as Assert;', $content);
+        $this->assertStringContainsString('#[Assert\NotNull]', $content);
+        $this->assertStringContainsString('#[Assert\Length(min: 2, max: 50)]', $content);
+        $this->assertStringContainsString('#[Assert\Range(min: 0, max: 120)]', $content);
+        $this->assertStringContainsString('#[Assert\GreaterThan(0)]', $content);
+        $this->assertStringContainsString('#[Assert\DivisibleBy(0.5)]', $content);
+        $this->assertStringContainsString('#[Assert\Count(min: 1, max: 5)]', $content);
+        $this->assertStringContainsString('#[Assert\Unique]', $content);
+        $this->assertStringContainsString('#[Assert\Valid]', $content);
         $this->assertStringContainsString('public readonly string $name,', $content);
     }
 
@@ -109,7 +109,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         $content = (string)file_get_contents($this->outputDirectory . '/User.php');
 
         // created_at -> camelCased property createdAt with a SerializedName mapping back.
-        $this->assertStringContainsString('use Symfony\\Component\\Serializer\\Attribute\\SerializedName;', $content);
+        $this->assertStringContainsString('use Symfony\Component\Serializer\Attribute\SerializedName;', $content);
         $this->assertStringContainsString("#[SerializedName('created_at')]", $content);
         $this->assertStringContainsString('$createdAt', $content);
     }
@@ -146,8 +146,8 @@ final class GenerateSymfonyDtoTest extends TestCase
         require_once $this->outputDirectory . '/Address.php';
         require_once $this->outputDirectory . '/User.php';
 
-        $userClass = $namespace . '\\User';
-        $addressClass = $namespace . '\\Address';
+        $userClass = $namespace . '\User';
+        $addressClass = $namespace . '\Address';
 
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
@@ -204,8 +204,8 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymGenRange', 'symfony');
 
         $content = (string)file_get_contents($this->outputDirectory . '/Bounds.php');
-        $this->assertStringContainsString('#[Assert\\Range(min: 5)]', $content);
-        $this->assertStringContainsString('#[Assert\\Range(max: 9)]', $content);
+        $this->assertStringContainsString('#[Assert\Range(min: 5)]', $content);
+        $this->assertStringContainsString('#[Assert\Range(max: 9)]', $content);
     }
 
     public function testExclusiveBooleanFormBecomesGreaterThanLessThan(): void
@@ -235,10 +235,10 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymGenExcl', 'symfony');
 
         $content = (string)file_get_contents($this->outputDirectory . '/Excl.php');
-        $this->assertStringContainsString('#[Assert\\GreaterThan(0)]', $content);
-        $this->assertStringContainsString('#[Assert\\LessThan(10)]', $content);
+        $this->assertStringContainsString('#[Assert\GreaterThan(0)]', $content);
+        $this->assertStringContainsString('#[Assert\LessThan(10)]', $content);
         // The inclusive Range must be dropped once the bound is consumed as exclusive.
-        $this->assertStringNotContainsString('#[Assert\\Range(', $content);
+        $this->assertStringNotContainsString('#[Assert\Range(', $content);
     }
 
     public function testRegexPatternIsDelimitedAndEnforcedByValidator(): void
@@ -268,10 +268,10 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, $namespace, 'symfony');
 
         $content = (string)file_get_contents($this->outputDirectory . '/Pat.php');
-        $this->assertStringContainsString('#[Assert\\Regex(', $content);
+        $this->assertStringContainsString('#[Assert\Regex(', $content);
 
         require_once $this->outputDirectory . '/Pat.php';
-        $patClass = $namespace . '\\Pat';
+        $patClass = $namespace . '\Pat';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         // The escaped slashes must yield a working pattern: matching value passes, other fails.
@@ -300,7 +300,7 @@ final class GenerateSymfonyDtoTest extends TestCase
 
         $content = (string)file_get_contents($this->outputDirectory . '/Opt.php');
         $this->assertStringContainsString('public readonly ?string $note = null,', $content);
-        $this->assertStringNotContainsString('#[Assert\\NotNull]', $content);
+        $this->assertStringNotContainsString('#[Assert\NotNull]', $content);
     }
 
     public function testEmptyDtoRendersParameterlessConstructor(): void

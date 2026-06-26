@@ -122,7 +122,7 @@ final class DtoDeserializerPsr7Test extends TestCase
             (string)json_encode(['name' => 'Widget', 'tags' => ['a', 'b']]),
         );
 
-        $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\\ItemsPostRequest');
+        $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\ItemsPostRequest');
 
         $this->assertSame('Widget', $dto->getName());
         $this->assertSame(['a', 'b'], $dto->getTags());
@@ -136,7 +136,7 @@ final class DtoDeserializerPsr7Test extends TestCase
             ->withQueryParams(['limit' => '5'])
             ->withAttribute('id', '42');
 
-        $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\\ItemsPostQueryParams');
+        $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\ItemsPostQueryParams');
 
         $this->assertSame('42', $dto->getId());
         $this->assertSame(5, $dto->getLimit());
@@ -147,7 +147,7 @@ final class DtoDeserializerPsr7Test extends TestCase
         $json = (string)json_encode([['name' => 'Alpha', 'tags' => []], ['name' => 'Beta', 'tags' => ['x']]]);
 
         $psr = new ServerRequest('POST', '/items', ['Content-Type' => 'application/json'], $json);
-        $fromPsr = $this->psr7Deserializer->deserializeCollectionPsr7($psr, 'Psr7Ns\\ItemsPostRequest');
+        $fromPsr = $this->psr7Deserializer->deserializeCollectionPsr7($psr, 'Psr7Ns\ItemsPostRequest');
 
         $this->assertCount(2, $fromPsr);
         $this->assertSame('Alpha', $fromPsr[0]->getName());
@@ -156,7 +156,7 @@ final class DtoDeserializerPsr7Test extends TestCase
         // Parity: same wire input through the Symfony entrypoint yields an equal list.
         $symfony = SymfonyRequest::create('/items', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
         $this->assertEquals(
-            $this->deserializer->deserializeCollection($symfony, 'Psr7Ns\\ItemsPostRequest'),
+            $this->deserializer->deserializeCollection($symfony, 'Psr7Ns\ItemsPostRequest'),
             $fromPsr,
         );
     }
@@ -166,12 +166,12 @@ final class DtoDeserializerPsr7Test extends TestCase
         $json = (string)json_encode(['name' => 'Widget', 'tags' => ['x']]);
 
         $psr = new ServerRequest('POST', '/items/7', ['Content-Type' => 'application/json'], $json);
-        $fromPsr = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\\ItemsPostRequest');
+        $fromPsr = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\ItemsPostRequest');
 
         // Same wire input through the BC Symfony entrypoint yields an equal DTO.
         $symfony = SymfonyRequest::create('/items/7', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
         $this->assertEquals(
-            $this->deserializer->deserialize($symfony, 'Psr7Ns\\ItemsPostRequest'),
+            $this->deserializer->deserialize($symfony, 'Psr7Ns\ItemsPostRequest'),
             $fromPsr,
         );
     }
@@ -187,7 +187,7 @@ final class DtoDeserializerPsr7Test extends TestCase
             (string)json_encode(['name' => 'Solo', 'tags' => []]),
         );
 
-        $dto = $deserializer->deserializePsr7($psr, 'Psr7Ns\\ItemsPostRequest');
+        $dto = $deserializer->deserializePsr7($psr, 'Psr7Ns\ItemsPostRequest');
         $this->assertSame('Solo', $dto->getName());
     }
 
@@ -204,7 +204,7 @@ final class DtoDeserializerPsr7Test extends TestCase
                 ->withUploadedFiles(['avatar' => $uploaded])
                 ->withParsedBody(['caption' => 'hi']);
 
-            $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\\UploadPostRequest');
+            $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\UploadPostRequest');
 
             $this->assertInstanceOf(UploadedFile::class, $dto->getAvatar());
             $this->assertSame('avatar.png', $dto->getAvatar()->getClientOriginalName());
@@ -221,7 +221,7 @@ final class DtoDeserializerPsr7Test extends TestCase
             ->withCookieParams(['sid' => 'cookie-1'])
             ->withHeader('token', 'tok-1');
 
-        $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\\SourcesGetQueryParams');
+        $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\SourcesGetQueryParams');
 
         $this->assertSame('42', $dto->getId());
         $this->assertSame(5, $dto->getPage());

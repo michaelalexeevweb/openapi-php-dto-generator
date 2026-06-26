@@ -145,7 +145,7 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, DateTimeDto::class);
     }
 
-    public function testDeserializeDateOnlyFormat_acceptsValidDate(): void
+    public function testDeserializeDateOnlyFormatAcceptsValidDate(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
             'date' => '2024-06-15',
@@ -157,7 +157,7 @@ final class DtoDeserializerTest extends TestCase
         $this->assertSame('2024-06-15', $dto->date->format('Y-m-d'));
     }
 
-    public function testDeserializeDateOnlyFormat_rejectsDateTime(): void
+    public function testDeserializeDateOnlyFormatRejectsDateTime(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
             'date' => '2024-06-15T12:00:00+00:00',
@@ -171,7 +171,7 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, DateOnlyDto::class);
     }
 
-    public function testDeserializeDateOnlyFormat_rejectsInvalidDate(): void
+    public function testDeserializeDateOnlyFormatRejectsInvalidDate(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
             'date' => '2024-13-45',
@@ -924,7 +924,7 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, SimpleTestDto::class);
     }
 
-    public function testDeserializeOas31ArrayTypeNullable_acceptsExplicitNull(): void
+    public function testDeserializeOas31ArrayTypeNullableAcceptsExplicitNull(): void
     {
         // OpenAPI 3.1: type: [string, null] in getConstraints() — no 'nullable' key
         $request = new Request([], [], [], [], [], [], json_encode(['name' => null]));
@@ -935,7 +935,7 @@ final class DtoDeserializerTest extends TestCase
         $this->assertNull($dto->getName());
     }
 
-    public function testDeserializeOas31ArrayTypeNullable_acceptsStringValue(): void
+    public function testDeserializeOas31ArrayTypeNullableAcceptsStringValue(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode(['name' => 'hello']));
         $request->headers->set('Content-Type', 'application/json');
@@ -1063,7 +1063,7 @@ final class DtoDeserializerTest extends TestCase
         $this->assertSame('Alice', $dto->name);
     }
 
-    public function testDeserializeScalarForArrayQueryParam_throwsException(): void
+    public function testDeserializeScalarForArrayQueryParamThrowsException(): void
     {
         // Symfony returns scalar string for ?tags=only-one — deserializer must reject, not wrap
         $request = new Request(['tags' => 'only-one']);
@@ -1075,7 +1075,7 @@ final class DtoDeserializerTest extends TestCase
         $this->deserializer->deserialize($request, ScalarAsArrayDto::class);
     }
 
-    public function testDeserializeArrayQueryParam_acceptsActualArray(): void
+    public function testDeserializeArrayQueryParamAcceptsActualArray(): void
     {
         // Symfony returns array for ?tags[]=a&tags[]=b
         $request = new Request(['tags' => ['a', 'b']]);
@@ -1166,7 +1166,7 @@ final class DtoDeserializerTest extends TestCase
         }
     }
 
-    public function testDeserializeMultipartArrayOfFiles_rejectsNonUploadedFile(): void
+    public function testDeserializeMultipartArrayOfFilesRejectsNonUploadedFile(): void
     {
         $request = new Request([], [], [], [], ['photos' => ['not-a-file', 'also-not']]);
 

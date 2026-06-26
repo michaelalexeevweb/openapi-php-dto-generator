@@ -1789,7 +1789,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         // Matches both a list `array<V>` and a map `array<string, V>` (the optional `key,` prefix is
         // discarded) so map values are cast to their declared value type, not left as raw scalars.
-        if (preg_match('/array<(?:[^,<>]+,\s*)?\??([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)>/', $docComment, $matches) !== 1) {
+        if (preg_match('/array<(?:[^,<>]+,\s*)?\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)>/', $docComment, $matches) !== 1) {
             return null;
         }
 
@@ -1840,8 +1840,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
         };
     }
 
-    /**
-     */
     private function castToEnum(mixed $value, string $enumClass, ?string $paramPath = null, string $source = 'json'): UnitEnum
     {
         if (!enum_exists($enumClass)) {
@@ -1898,7 +1896,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     private function isInternalUnsetValueType(string $typeName): bool
     {
-        return $typeName === 'UnsetValue' || str_ends_with($typeName, '\\UnsetValue');
+        return $typeName === 'UnsetValue' || str_ends_with($typeName, '\UnsetValue');
     }
 
     private function formatValueForError(mixed $value): string
@@ -2160,7 +2158,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $result = preg_match_all(
-            '/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?;/m',
+            '/^use\s+([\w\\\]+)(?:\s+as\s+(\w+))?;/m',
             $content,
             $matches,
             PREG_SET_ORDER,

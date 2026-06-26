@@ -1170,7 +1170,7 @@ class CovGoodDiscriminatorBaseDto
     {
         return [
             'dog' => CovGoodDiscriminatorDogDto::class,
-            'ghost' => 'OpenapiPhpDtoGenerator\\Tests\\ThisClassDoesNotExist',
+            'ghost' => 'OpenapiPhpDtoGenerator\Tests\ThisClassDoesNotExist',
             'stranger' => CovUnrelatedClass::class,
         ];
     }
@@ -1293,7 +1293,6 @@ final class CovBadAliasesDto
     ) {
     }
 
-    /**  */
     public static function getAliases(): string
     {
         return 'not-an-array';

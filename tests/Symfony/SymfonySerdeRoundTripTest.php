@@ -176,7 +176,7 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $this->assertStringContainsString('string|int $v', $content);
 
         $serializer = $this->serializer();
-        $cls = $ns . '\\M';
+        $cls = $ns . '\M';
         $this->assertSame('hi', $serializer->denormalize(['v' => 'hi'], $cls)->v);
         $this->assertSame(7, $serializer->denormalize(['v' => 7], $cls)->v);
     }
@@ -206,8 +206,8 @@ final class SymfonySerdeRoundTripTest extends TestCase
         ], ['Status', 'Bag']);
 
         $serializer = $this->serializer();
-        $bag = $serializer->denormalize(['tags' => [0, 1, 1]], $ns . '\\Bag');
-        $statusClass = $ns . '\\Status';
+        $bag = $serializer->denormalize(['tags' => [0, 1, 1]], $ns . '\Bag');
+        $statusClass = $ns . '\Status';
         $this->assertCount(3, $bag->tags);
         $this->assertSame($statusClass::from(0), $bag->tags[0]);
         $this->assertSame($statusClass::from(1), $bag->tags[2]);
@@ -239,15 +239,15 @@ final class SymfonySerdeRoundTripTest extends TestCase
         ], ['Status', 'Inner', 'Holder']);
 
         $serializer = $this->serializer();
-        $cls = $ns . '\\Holder';
+        $cls = $ns . '\Holder';
 
         $withNulls = $serializer->denormalize(['status' => null, 'inner' => null], $cls);
         $this->assertNull($withNulls->status);
         $this->assertNull($withNulls->inner);
 
         $withValues = $serializer->denormalize(['status' => 1, 'inner' => ['x' => 'hi']], $cls);
-        $this->assertSame(($ns . '\\Status')::from(1), $withValues->status);
-        $this->assertInstanceOf($ns . '\\Inner', $withValues->inner);
+        $this->assertSame(($ns . '\Status')::from(1), $withValues->status);
+        $this->assertInstanceOf($ns . '\Inner', $withValues->inner);
         $this->assertSame('hi', $withValues->inner->x);
     }
 
@@ -271,9 +271,9 @@ final class SymfonySerdeRoundTripTest extends TestCase
         ], ['C', 'B', 'A']);
 
         $serializer = $this->serializer();
-        $a = $serializer->denormalize(['b' => ['c' => ['val' => 'deep']]], $ns . '\\A');
-        $this->assertInstanceOf($ns . '\\B', $a->b);
-        $this->assertInstanceOf($ns . '\\C', $a->b->c);
+        $a = $serializer->denormalize(['b' => ['c' => ['val' => 'deep']]], $ns . '\A');
+        $this->assertInstanceOf($ns . '\B', $a->b);
+        $this->assertInstanceOf($ns . '\C', $a->b->c);
         $this->assertSame('deep', $a->b->c->val);
     }
 
@@ -303,7 +303,7 @@ final class SymfonySerdeRoundTripTest extends TestCase
         ], ['Node']);
 
         $serializer = $this->serializer();
-        $cls = $ns . '\\Node';
+        $cls = $ns . '\Node';
 
         $root = $serializer->denormalize([
             'name' => 'root',
@@ -347,18 +347,18 @@ final class SymfonySerdeRoundTripTest extends TestCase
             ],
         ];
 
-        $order = $serializer->denormalize($payload, $ns . '\\Order');
+        $order = $serializer->denormalize($payload, $ns . '\Order');
 
         $this->assertSame('o-1', $order->id);
-        $this->assertSame(($ns . '\\Status')::from(1), $order->status);
+        $this->assertSame(($ns . '\Status')::from(1), $order->status);
         $this->assertInstanceOf(DateTimeImmutable::class, $order->createdAt);
         $this->assertSame('2026-01-02T03:04:05+00:00', $order->createdAt->format('c'));
         // Nested DTO denormalized into a typed object.
-        $this->assertInstanceOf($ns . '\\Customer', $order->customer);
+        $this->assertInstanceOf($ns . '\Customer', $order->customer);
         $this->assertSame('Alice', $order->customer->name);
         // Array of DTOs denormalized via the @param array<Item> generic.
         $this->assertCount(2, $order->items);
-        $this->assertInstanceOf($ns . '\\Item', $order->items[0]);
+        $this->assertInstanceOf($ns . '\Item', $order->items[0]);
         $this->assertSame('A', $order->items[0]->sku);
         $this->assertSame(5, $order->items[1]->qty);
         // Omitted optional defaults to null.
@@ -375,10 +375,10 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $this->generateOrder($ns);
         $serializer = $this->serializer();
 
-        $orderClass = $ns . '\\Order';
-        $customerClass = $ns . '\\Customer';
-        $itemClass = $ns . '\\Item';
-        $statusClass = $ns . '\\Status';
+        $orderClass = $ns . '\Order';
+        $customerClass = $ns . '\Customer';
+        $itemClass = $ns . '\Item';
+        $statusClass = $ns . '\Status';
 
         $order = new $orderClass(
             id: 'o-2',
@@ -420,7 +420,7 @@ final class SymfonySerdeRoundTripTest extends TestCase
             'note' => 'fragile',
         ];
 
-        $order = $serializer->denormalize($payload, $ns . '\\Order');
+        $order = $serializer->denormalize($payload, $ns . '\Order');
         $roundTripped = $serializer->normalize($order);
 
         // created_at may re-serialize with a normalized offset; compare the instant separately.

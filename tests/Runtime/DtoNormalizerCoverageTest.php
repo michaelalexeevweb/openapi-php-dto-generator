@@ -417,8 +417,9 @@ final class DtoNormalizerCoverageTest extends TestCase
 
 final class CovNormOuterFastNullDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly string $label)
-    {
+    public function __construct(
+        private readonly string $label,
+    ) {
     }
 
     public function getLabel(): string
@@ -520,8 +521,9 @@ final class CovNormBrokenUploadedFile extends UploadedFile
 
 final class CovNormFileWithMapDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly File $file)
-    {
+    public function __construct(
+        private readonly File $file,
+    ) {
     }
 
     public function getFile(): File
@@ -723,8 +725,9 @@ final class CovNormInstanceTarget
 final class CovNormInstanceArrayDto implements GeneratedDtoInterface
 {
     /** @param array<mixed> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
     /** @return array<CovNormInstanceTarget> */
@@ -1182,7 +1185,7 @@ final class CovNormUncallableGetterDto implements GeneratedDtoInterface
         return '{}';
     }
 
-    protected function protectedGetter(): string
+    private function protectedGetter(): string
     {
         return 'secret';
     }
@@ -1213,8 +1216,9 @@ final class CovNormUncallableGetterDto implements GeneratedDtoInterface
 
 final class CovNormMixedAliasesDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly string $value)
-    {
+    public function __construct(
+        private readonly string $value,
+    ) {
     }
 
     public function getValue(): string
@@ -1266,8 +1270,9 @@ final class CovNormMixedAliasesDto implements GeneratedDtoInterface
 
 final class CovNormMapRowNotArrayDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly string $value)
-    {
+    public function __construct(
+        private readonly string $value,
+    ) {
     }
 
     public function getValue(): string
@@ -1317,8 +1322,9 @@ final class CovNormMapRowNotArrayDto implements GeneratedDtoInterface
 
 final class CovNormMapMissingGetterDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly string $value)
-    {
+    public function __construct(
+        private readonly string $value,
+    ) {
     }
 
     public function getValue(): string
@@ -1366,8 +1372,9 @@ final class CovNormMapMissingGetterDto implements GeneratedDtoInterface
 
 final class CovNormAllRowsInvalidDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly string $value)
-    {
+    public function __construct(
+        private readonly string $value,
+    ) {
     }
 
     public function getValue(): string
@@ -1464,8 +1471,9 @@ final class CovNormBareGetMethodDto implements GeneratedDtoInterface
 final class CovNormMapGenericDocblockDto implements GeneratedDtoInterface
 {
     /** @param array<mixed> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
     /** @return list<CovNormInstanceTarget> */
@@ -1515,8 +1523,9 @@ final class CovNormMapGenericDocblockDto implements GeneratedDtoInterface
 final class CovNormKeyedGenericDocblockDto implements GeneratedDtoInterface
 {
     /** @param array<string, mixed> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
     /** @return array<string, CovNormInstanceTarget> */
@@ -1566,8 +1575,9 @@ final class CovNormKeyedGenericDocblockDto implements GeneratedDtoInterface
 final class CovNormMixedGenericDocblockDto implements GeneratedDtoInterface
 {
     /** @param array<mixed> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
     /** @return array<int, mixed> */
@@ -1673,8 +1683,9 @@ final class CovNormSelfTypeDto implements GeneratedDtoInterface
 
 final class CovNormDateTimeMapDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly DateTimeImmutable $createdAt)
-    {
+    public function __construct(
+        private readonly DateTimeImmutable $createdAt,
+    ) {
     }
 
     public function getCreatedAt(): DateTimeImmutable
@@ -1766,8 +1777,9 @@ final class CovNormNullOnlyTypeDto implements GeneratedDtoInterface
 
 final class CovNormMessyTypeStringDto implements GeneratedDtoInterface
 {
-    public function __construct(private readonly int $value)
-    {
+    public function __construct(
+        private readonly int $value,
+    ) {
     }
 
     public function getValue(): int
@@ -1816,11 +1828,11 @@ final class CovNormMessyTypeStringDto implements GeneratedDtoInterface
 final class CovNormNoGenericDocblockDto implements GeneratedDtoInterface
 {
     /** @param array<mixed> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
-    /**  */
     public function getItems(): array
     {
         return $this->items;
@@ -1866,8 +1878,9 @@ final class CovNormNoGenericDocblockDto implements GeneratedDtoInterface
 final class CovNormNoReturnTagDocblockDto implements GeneratedDtoInterface
 {
     /** @param array<mixed> $items */
-    public function __construct(private readonly array $items)
-    {
+    public function __construct(
+        private readonly array $items,
+    ) {
     }
 
     /** This getter intentionally has no @return tag. */

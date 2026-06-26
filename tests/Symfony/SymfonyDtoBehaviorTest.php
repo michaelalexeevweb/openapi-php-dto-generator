@@ -103,8 +103,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         require_once $this->outputDirectory . '/Status.php';
         require_once $this->outputDirectory . '/Holder.php';
 
-        $holderClass = $ns . '\\Holder';
-        $statusClass = $ns . '\\Status';
+        $holderClass = $ns . '\Holder';
+        $statusClass = $ns . '\Status';
         $serializer = $this->serializer();
 
         $holder = $serializer->denormalize(['status' => 1], $holderClass);
@@ -172,7 +172,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertStringContainsString('public readonly DateTimeImmutable $at', $content);
 
         require_once $this->outputDirectory . '/Event.php';
-        $eventClass = $ns . '\\Event';
+        $eventClass = $ns . '\Event';
         $serializer = $this->serializer();
 
         $event = $serializer->denormalize(['at' => '2026-01-02T03:04:05+00:00'], $eventClass);
@@ -246,7 +246,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertStringContainsString('public readonly ?string $extra', $content);
 
         require_once $this->outputDirectory . '/Child.php';
-        $childClass = $ns . '\\Child';
+        $childClass = $ns . '\Child';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         // Inherited constraint (minLength on id) is enforced on the flattened child.
@@ -275,7 +275,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         // required + nullable: present-but-nullable, so no NotNull (a null value is permitted).
         $this->assertStringContainsString('?string $note', $content);
-        $this->assertStringNotContainsString('#[Assert\\NotNull]', $content);
+        $this->assertStringNotContainsString('#[Assert\NotNull]', $content);
     }
 
     public function testArrayOfDtosCascadesValidationToInvalidItem(): void
@@ -310,8 +310,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         require_once $this->outputDirectory . '/Tag.php';
         require_once $this->outputDirectory . '/Post.php';
 
-        $postClass = $ns . '\\Post';
-        $tagClass = $ns . '\\Tag';
+        $postClass = $ns . '\Post';
+        $tagClass = $ns . '\Tag';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $violations = $validator->validate(new $postClass(tags: [new $tagClass(label: 'x')]));
@@ -354,8 +354,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         $this->assertSame(0, $exit);
         $content = (string)file_get_contents($outDir . '/Cli.php');
-        $this->assertStringContainsString('use Symfony\\Component\\Validator\\Constraints as Assert;', $content);
-        $this->assertStringContainsString('#[Assert\\Length(min: 2)]', $content);
+        $this->assertStringContainsString('use Symfony\Component\Validator\Constraints as Assert;', $content);
+        $this->assertStringContainsString('#[Assert\Length(min: 2)]', $content);
     }
 
     public function testNumberAndBooleanTypesAreMappedAndEnforced(): void
@@ -388,7 +388,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertStringContainsString('public readonly bool $active', $content);
 
         require_once $this->outputDirectory . '/Num.php';
-        $numClass = $ns . '\\Num';
+        $numClass = $ns . '\Num';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(0, $validator->validate(new $numClass(ratio: 0.5, active: true)));
@@ -412,7 +412,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymBin', 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Upload.php');
-        $this->assertStringContainsString('use Symfony\\Component\\HttpFoundation\\File\\UploadedFile;', $content);
+        $this->assertStringContainsString('use Symfony\Component\HttpFoundation\File\UploadedFile;', $content);
         $this->assertStringContainsString('public readonly ?UploadedFile $file', $content);
     }
 
@@ -463,11 +463,11 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymCombo';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Combo.php');
-        $this->assertStringContainsString('#[Assert\\Length(min: 2)]', $content);
-        $this->assertStringContainsString('#[Assert\\Regex(', $content);
+        $this->assertStringContainsString('#[Assert\Length(min: 2)]', $content);
+        $this->assertStringContainsString('#[Assert\Regex(', $content);
 
         require_once $this->outputDirectory . '/Combo.php';
-        $comboClass = $ns . '\\Combo';
+        $comboClass = $ns . '\Combo';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(0, $validator->validate(new $comboClass(code: 'abc')));
@@ -504,11 +504,11 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymMap';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Counters.php');
-        $this->assertStringContainsString('#[Assert\\Count(min: 1)]', $content);
+        $this->assertStringContainsString('#[Assert\Count(min: 1)]', $content);
         $this->assertStringContainsString("#[Assert\\All([new Assert\\Type('int'), new Assert\\Range(min: 0)])]", $content);
 
         require_once $this->outputDirectory . '/Counters.php';
-        $cls = $ns . '\\Counters';
+        $cls = $ns . '\Counters';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(0, $validator->validate(new $cls(counts: ['a' => 1, 'b' => 2])));
@@ -550,10 +550,10 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymAnyOf';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Mix.php');
-        $this->assertStringContainsString('#[Assert\\AtLeastOneOf([', $content);
+        $this->assertStringContainsString('#[Assert\AtLeastOneOf([', $content);
 
         require_once $this->outputDirectory . '/Mix.php';
-        $cls = $ns . '\\Mix';
+        $cls = $ns . '\Mix';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         // Satisfies the string branch.
@@ -602,7 +602,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         );
 
         require_once $this->outputDirectory . '/Order.php';
-        $cls = $ns . '\\Order';
+        $cls = $ns . '\Order';
 
         // Construction by the single required arg must work (no ArgumentCountError).
         $object = new $cls(b: 'x');
@@ -635,10 +635,10 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymEmails';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Mailing.php');
-        $this->assertStringContainsString('#[Assert\\All([new Assert\\Email()])]', $content);
+        $this->assertStringContainsString('#[Assert\All([new Assert\Email()])]', $content);
 
         require_once $this->outputDirectory . '/Mailing.php';
-        $cls = $ns . '\\Mailing';
+        $cls = $ns . '\Mailing';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(0, $validator->validate(new $cls(emails: ['a@b.com', 'c@d.com'])));
@@ -672,7 +672,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymWriteGroup';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         require_once $this->outputDirectory . '/Acct.php';
-        $fqcn = $ns . '\\Acct';
+        $fqcn = $ns . '\Acct';
 
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $serializer = new Serializer([new ObjectNormalizer($classMetadataFactory)]);
@@ -710,7 +710,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertStringContainsString('DateTimeImmutable $on', $content);
 
         require_once $this->outputDirectory . '/Day.php';
-        $cls = $ns . '\\Day';
+        $cls = $ns . '\Day';
         $object = $this->serializer()->denormalize(['on' => '2026-03-04'], $cls);
         $this->assertInstanceOf(DateTimeImmutable::class, $object->on);
         $this->assertSame('2026-03-04', $object->on->format('Y-m-d'));
@@ -750,7 +750,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertStringContainsString('$fooBar', $content);
 
         require_once $this->outputDirectory . '/Reserved.php';
-        $fqcn = $ns . '\\Reserved';
+        $fqcn = $ns . '\Reserved';
 
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $nameConverter = new MetadataAwareNameConverter($classMetadataFactory);

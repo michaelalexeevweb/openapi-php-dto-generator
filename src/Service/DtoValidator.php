@@ -422,7 +422,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
-            $regex = '#' . str_replace('#', '\\#', $pattern) . '#u';
+            $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
             // Single compile: preg_match returns false for an invalid pattern (warning
             // suppressed), 1 on match, 0 on no-match — distinguishing both error cases.
             set_error_handler(static fn(): bool => true);
@@ -746,7 +746,7 @@ final class DtoValidator implements DtoValidatorInterface
 
     private function keyMatchesPattern(string $key, string $pattern): bool
     {
-        $regex = '#' . str_replace('#', '\\#', $pattern) . '#u';
+        $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
         // Suppress warnings from an invalid schema pattern → treat as no match.
         set_error_handler(static fn(): bool => true);
         try {
@@ -802,7 +802,7 @@ final class DtoValidator implements DtoValidatorInterface
         // false (not 0) when the pattern fails to compile. No `u` modifier: `format: regex`
         // only asks whether the pattern compiles, and forcing UTF-8 would reject otherwise
         // valid byte-oriented patterns.
-        $regex = '#' . str_replace('#', '\\#', $value) . '#';
+        $regex = '#' . str_replace('#', '\#', $value) . '#';
         set_error_handler(static fn(): bool => true);
         try {
             return preg_match($regex, '') !== false;

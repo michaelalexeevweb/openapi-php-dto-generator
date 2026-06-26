@@ -125,7 +125,7 @@ final class LaravelRequestDeserializerTest extends TestCase
             (string)json_encode(['name' => 'Widget', 'tags' => ['a', 'b']]),
         );
 
-        $dto = $this->deserializer->deserialize($request, 'LaravelNs\\ItemsPostRequest');
+        $dto = $this->deserializer->deserialize($request, 'LaravelNs\ItemsPostRequest');
 
         $this->assertSame('Widget', $dto->getName());
         $this->assertSame(['a', 'b'], $dto->getTags());
@@ -141,7 +141,7 @@ final class LaravelRequestDeserializerTest extends TestCase
         $route->bind($request); // parses {id} => '42' out of the request path
         $request->setRouteResolver(static fn(): Route => $route);
 
-        $dto = $this->deserializer->deserialize($request, 'LaravelNs\\ItemsPostQueryParams');
+        $dto = $this->deserializer->deserialize($request, 'LaravelNs\ItemsPostQueryParams');
 
         $this->assertSame('42', $dto->getId());
         $this->assertSame(5, $dto->getLimit());
@@ -157,7 +157,7 @@ final class LaravelRequestDeserializerTest extends TestCase
         $route->bind($request); // would resolve id => '99'
         $request->setRouteResolver(static fn(): Route => $route);
 
-        $dto = $this->deserializer->deserialize($request, 'LaravelNs\\ItemsPostQueryParams');
+        $dto = $this->deserializer->deserialize($request, 'LaravelNs\ItemsPostQueryParams');
 
         $this->assertSame('from-attributes', $dto->getId());
     }
@@ -172,7 +172,7 @@ final class LaravelRequestDeserializerTest extends TestCase
             $file = new UploadedFile($tmp, 'avatar.png', 'image/png', null, true);
             $request = LaravelRequest::create('/upload', 'POST', ['caption' => 'hi'], [], ['avatar' => $file]);
 
-            $dto = $this->deserializer->deserialize($request, 'LaravelNs\\UploadPostRequest');
+            $dto = $this->deserializer->deserialize($request, 'LaravelNs\UploadPostRequest');
 
             $this->assertInstanceOf(UploadedFile::class, $dto->getAvatar());
             $this->assertSame('avatar.png', $dto->getAvatar()->getClientOriginalName());
@@ -191,7 +191,7 @@ final class LaravelRequestDeserializerTest extends TestCase
         $route->bind($request);
         $request->setRouteResolver(static fn(): Route => $route);
 
-        $dto = $this->deserializer->deserialize($request, 'LaravelNs\\SourcesGetQueryParams');
+        $dto = $this->deserializer->deserialize($request, 'LaravelNs\SourcesGetQueryParams');
 
         $this->assertSame('42', $dto->getId());
         $this->assertSame(5, $dto->getPage());

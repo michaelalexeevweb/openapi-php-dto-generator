@@ -26,7 +26,7 @@ final class SentinelValueTrackingTest extends TestCase
         $this->deserializer = new DtoDeserializer();
     }
 
-    public function testOptionalUnsetValueParam_notInRequestWhenAbsent(): void
+    public function testOptionalUnsetValueParamNotInRequestWhenAbsent(): void
     {
         // Only 'required' is provided; 'optional' is absent from the request body.
         $request = new Request([], [], [], [], [], [], json_encode(['required' => 'hello']));
@@ -40,7 +40,7 @@ final class SentinelValueTrackingTest extends TestCase
         $this->assertFalse($dto->isOptionalInRequest());
     }
 
-    public function testOptionalUnsetValueParam_inRequestWhenExplicitlyProvided(): void
+    public function testOptionalUnsetValueParamInRequestWhenExplicitlyProvided(): void
     {
         $request = new Request([], [], [], [], [], [], json_encode([
             'required' => 'hello',
@@ -54,7 +54,7 @@ final class SentinelValueTrackingTest extends TestCase
         $this->assertTrue($dto->isOptionalInRequest());
     }
 
-    public function testOptionalUnsetValueParam_inRequestWhenProvidedAsNull(): void
+    public function testOptionalUnsetValueParamInRequestWhenProvidedAsNull(): void
     {
         // Explicit null in request body with nullable: true — field IS present, value IS null
         $request = new Request([], [], [], [], [], [], json_encode([
@@ -69,7 +69,7 @@ final class SentinelValueTrackingTest extends TestCase
         $this->assertTrue($dto->isOptionalInRequest());
     }
 
-    public function testMultipleOptionalParams_independentlyTracked(): void
+    public function testMultipleOptionalParamsIndependentlyTracked(): void
     {
         // Provide 'a' but not 'b'
         $request = new Request([], [], [], [], [], [], json_encode(['a' => 1]));
