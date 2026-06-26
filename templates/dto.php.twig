@@ -318,9 +318,17 @@ interface {{ className }}
     public function toArray(): array
     {
 {% if serializableProperties is empty %}
+{% if extends is not null %}
+        return parent::toArray();
+{% else %}
         return [];
+{% endif %}
+{% else %}
+{% if extends is not null %}
+        $result = parent::toArray();
 {% else %}
         $result = [];
+{% endif %}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
@@ -353,9 +361,17 @@ interface {{ className }}
     public function jsonSerialize(): array
     {
 {% if serializableProperties is empty %}
+{% if extends is not null %}
+        return parent::jsonSerialize();
+{% else %}
         return [];
+{% endif %}
+{% else %}
+{% if extends is not null %}
+        $result = parent::jsonSerialize();
 {% else %}
         $result = [];
+{% endif %}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
@@ -403,33 +419,42 @@ interface {{ className }}
     public static function getNormalizationMap(): array
     {
 {% if methodProperties is empty %}
+{% if extends is not null %}
+        return parent::getNormalizationMap();
+{% else %}
         return [];
+{% endif %}
 {% else %}
         $constraints = self::getConstraints();
 
-        return [
+{% if extends is not null %}
+        $map = parent::getNormalizationMap();
+{% else %}
+        $map = [];
+{% endif %}
 {% for property in methodProperties %}
-            '{{ property.name }}' => [
-                'getter' => '{{ property.methodName }}',
-                'type' => '{{ property.isMap ? 'object' : property.returnType|replace({'?':''})|replace({'|null':''}) }}',
-                'nullable' => {{ property.returnType starts with '?' or ('|null' in property.returnType) ? 'true' : 'false' }},
-                'metadata' => [
-                    'openApiName' => '{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}',
-                    'required' => {{ property.requiredLiteral }},
-                    'inPathFlagGetter' => 'is{{ property.nameSuffix }}InPath',
-                    'inQueryFlagGetter' => 'is{{ property.nameSuffix }}InQuery',
-                    'inHeaderFlagGetter' => 'is{{ property.nameSuffix }}InHeader',
-                    'inCookieFlagGetter' => 'is{{ property.nameSuffix }}InCookie',
-                    'inRequestFlagGetter' => 'is{{ property.nameSuffix }}InRequest',
-                    'constraints' => $constraints['{{ property.name }}'] ?? [],
-                    'writeOnly' => {{ property.writeOnly ? 'true' : 'false' }},
-                    'readOnly' => {{ property.readOnly ? 'true' : 'false' }},
-                    'isParameter' => {{ property.isParameter ? 'true' : 'false' }},
-                    'arrayItemType' => '{{ property.docReturnType is not null ? property.docReturnType|replace({'\\':'\\\\','\'':'\\\''}) : '' }}',
-                ],
+        $map['{{ property.name }}'] = [
+            'getter' => '{{ property.methodName }}',
+            'type' => '{{ property.isMap ? 'object' : property.returnType|replace({'?':''})|replace({'|null':''}) }}',
+            'nullable' => {{ property.returnType starts with '?' or ('|null' in property.returnType) ? 'true' : 'false' }},
+            'metadata' => [
+                'openApiName' => '{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}',
+                'required' => {{ property.requiredLiteral }},
+                'inPathFlagGetter' => 'is{{ property.nameSuffix }}InPath',
+                'inQueryFlagGetter' => 'is{{ property.nameSuffix }}InQuery',
+                'inHeaderFlagGetter' => 'is{{ property.nameSuffix }}InHeader',
+                'inCookieFlagGetter' => 'is{{ property.nameSuffix }}InCookie',
+                'inRequestFlagGetter' => 'is{{ property.nameSuffix }}InRequest',
+                'constraints' => $constraints['{{ property.name }}'] ?? [],
+                'writeOnly' => {{ property.writeOnly ? 'true' : 'false' }},
+                'readOnly' => {{ property.readOnly ? 'true' : 'false' }},
+                'isParameter' => {{ property.isParameter ? 'true' : 'false' }},
+                'arrayItemType' => '{{ property.docReturnType is not null ? property.docReturnType|replace({'\\':'\\\\','\'':'\\\''}) : '' }}',
             ],
-{% endfor %}
         ];
+{% endfor %}
+
+        return $map;
 {% endif %}
     }
 

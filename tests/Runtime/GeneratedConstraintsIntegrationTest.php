@@ -1215,4 +1215,51 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             @unlink($tmp);
         }
     }
+
+    public function testChildClassSerializationMergesParentFields(): void
+    {
+        // A child (allOf/extends) must serialize parent fields too: toArray()/jsonSerialize()/
+        // getNormalizationMap() merge parent:: (parent props are private, only the parent's own
+        // methods read them). Otherwise update endpoints drop all base fields from the response.
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Box' => [
+                    'type' => 'object',
+                    'required' => ['id', 'name'],
+                    'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']],
+                ],
+                'BoxWithLabels' => [
+                    'allOf' => [
+                        ['$ref' => '#/components/schemas/Box'],
+                        [
+                            'type' => 'object',
+                            'required' => ['labels'],
+                            'properties' => ['labels' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+
+        (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, 'MergeNs');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\MergeNs\BoxWithLabels';
+
+        $this->assertSame(['id', 'name', 'labels'], array_keys($cls::getNormalizationMap()));
+
+        $dto = new $cls(id: 7, name: 'alpha', labels: ['a', 'b']);
+
+        $this->assertSame(['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']], $dto->toArray());
+        $this->assertSame(['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']], $dto->jsonSerialize());
+        $this->assertSame(
+            ['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']],
+            (new DtoNormalizer())->toArray($dto),
+        );
+    }
 }

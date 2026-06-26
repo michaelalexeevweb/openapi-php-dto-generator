@@ -3187,22 +3187,22 @@ final class GenerateDtoCommandTest extends TestCase
             'openapi' => '3.0.3',
             'info' => ['title' => 'T', 'version' => '1.0.0'],
             'components' => ['schemas' => [
-                'Round' => [
+                'Ticket' => [
                     'type' => 'object',
-                    'required' => ['id', 'createdDate'],
+                    'required' => ['id', 'createdAt'],
                     'properties' => [
                         'id' => ['type' => 'integer'],
-                        'createdDate' => ['type' => 'string', 'format' => 'date-time'],
+                        'createdAt' => ['type' => 'string', 'format' => 'date-time'],
                     ],
                 ],
-                'RoundWithLogs' => [
+                'TicketWithHistory' => [
                     'allOf' => [
-                        ['$ref' => '#/components/schemas/Round'],
+                        ['$ref' => '#/components/schemas/Ticket'],
                         [
                             'type' => 'object',
-                            'required' => ['logs'],
+                            'required' => ['history'],
                             'properties' => [
-                                'logs' => ['type' => 'array', 'items' => ['type' => 'string']],
+                                'history' => ['type' => 'array', 'items' => ['type' => 'string']],
                             ],
                         ],
                     ],
@@ -3212,9 +3212,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
-        $content = (string)file_get_contents($this->outputDirectory . '/RoundWithLogs.php');
-        // Inherited createdDate param is typed DateTimeImmutable → its import must be present.
-        $this->assertStringContainsString('DateTimeImmutable $createdDate', $content);
+        $content = (string)file_get_contents($this->outputDirectory . '/TicketWithHistory.php');
+        // Inherited createdAt param is typed DateTimeImmutable → its import must be present.
+        $this->assertStringContainsString('DateTimeImmutable $createdAt', $content);
         $this->assertStringContainsString('use DateTimeImmutable;', $content);
     }
 }

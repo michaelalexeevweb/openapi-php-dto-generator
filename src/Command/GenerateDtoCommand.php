@@ -2049,7 +2049,7 @@ final class GenerateDtoCommand extends Command
             }
 
             // A $ref to a component schema whose top-level type is `array` is a type alias, not an
-            // object: resolve it to the aliased array type (e.g. array<AppScheme>) so the property
+            // object: resolve it to the aliased array type (e.g. array<Item>) so the property
             // is typed as a list, instead of pointing at an empty generated class.
             $aliasArrayType = $this->resolveArrayAliasRefType(
                 $propertySchema['$ref'],
@@ -2621,7 +2621,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * If $ref points at a component schema whose top-level type is `array`, returns the aliased
-     * array type (e.g. `array<AppScheme>`) so a property referencing it is typed as a list rather
+     * array type (e.g. `array<Item>`) so a property referencing it is typed as a list rather
      * than an empty generated class. Returns null for object schemas and external refs (which keep
      * the class-name typing). Only local `#/components/schemas/...` aliases are redirected.
      */
