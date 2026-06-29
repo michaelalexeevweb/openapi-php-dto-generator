@@ -35,7 +35,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.8.7
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.8.8
 ```
 
 ## Requirements
@@ -118,6 +118,7 @@ Parameters:
 | `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
 | `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
 | `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime) or `symfony` (DTOs decorated with Symfony Validator/Serializer attributes). See [Generation Modes](#generation-modes-runtime-vs-symfony). |
+| `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
 | `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
 | `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
 

@@ -1013,6 +1013,20 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
+            // Discriminator children are addressed as plain string values in `discriminator.mapping`,
+            // not as `$ref` nodes, so the generic walk below would miss them. Register each mapping
+            // target (and its transitive refs) so subtype DTOs are emitted, not just referenced.
+            if ($key === 'discriminator' && is_array($value)) {
+                $mapping = $value['mapping'] ?? null;
+                if (is_array($mapping)) {
+                    foreach ($mapping as $mappingRef) {
+                        if (is_string($mappingRef)) {
+                            $this->ensureSchemaRefRegistered(ref: $mappingRef, currentSourceFile: $currentSourceFile);
+                        }
+                    }
+                }
+            }
+
             if (is_array($value)) {
                 $this->scanExternalSchemaRefs(node: $value, currentSourceFile: $currentSourceFile);
             }

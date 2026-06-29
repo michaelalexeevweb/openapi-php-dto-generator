@@ -1409,6 +1409,47 @@ final class GenerateDtoCommandTest extends TestCase
         }
     }
 
+    public function testExternalRefGeneratesDiscriminatorMappingChildren(): void
+    {
+        // A cross-file ref target may declare a discriminator whose subtypes are addressed as plain
+        // string values in `discriminator.mapping` (not as `$ref` nodes). Those subtypes must be
+        // generated too, otherwise getDiscriminatorMapping() references classes never written to disk.
+        $unique = uniqid('openapi_ext_discriminator_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0o755, true);
+        }
+
+        try {
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/external-ref-discriminator/root.yaml',
+                $outputDir,
+                'TestNamespace',
+            );
+
+            // Discriminator base (referenced by direct $ref) — already worked before the fix.
+            $this->assertFileExists($baseDir . '/common/ShapeView.php');
+
+            // Discriminator subtypes from `mapping` — the previously missing classes.
+            $circleFile = $baseDir . '/common/CircleShapeView.php';
+            $this->assertFileExists($circleFile);
+            $this->assertStringContainsString('class CircleShapeView', (string)file_get_contents($circleFile));
+
+            $squareFile = $baseDir . '/common/SquareShapeView.php';
+            $this->assertFileExists($squareFile);
+            $this->assertStringContainsString('class SquareShapeView', (string)file_get_contents($squareFile));
+
+            // Selectivity preserved: an unreferenced sibling is not emitted.
+            $this->assertFileDoesNotExist($baseDir . '/common/UnusedShape.php');
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
     public function testExternalRefRegistersOnlyReferencedSchemaNotWholeFile(): void
     {
         $unique = uniqid('openapi_ext_selective_', true);
