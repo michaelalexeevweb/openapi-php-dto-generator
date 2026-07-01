@@ -1,0 +1,20 @@
+openapi: 3.1.0
+info:
+  title: Self-referential schema (tree)
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    TreeNode:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+        parent:
+          $ref: '#/components/schemas/TreeNode'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/TreeNode'

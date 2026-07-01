@@ -17,7 +17,11 @@ use {{ import }};
  *
  * Members: {{ unionMembers }}
  */
+{% if interfaceExtends is defined and interfaceExtends is not empty %}
+interface {{ className }} extends {{ interfaceExtends|join(', ') }}
+{% else %}
 interface {{ className }}
+{% endif %}
 {
 }
 {% else %}

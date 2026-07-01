@@ -43,7 +43,8 @@ use Twig\Loader\FilesystemLoader;
  *   properties: array<int, SchemaProperty>,
  *   extends: string|null,
  *   unionTypes: array<string>,
- *   discriminator: array{propertyName: string, mapping: array<string, string>}|null
+ *   discriminator: array{propertyName: string, mapping: array<string, string>}|null,
+ *   abstract?: bool
  * }
  */
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
@@ -1309,6 +1310,74 @@ final class GenerateDtoCommand extends Command
         ];
     }
 
+    /**
+     * Find the discriminator base class among a variant's allOf $refs.
+     *
+     * Returns the referenced class that declares a discriminator whose mapping lists
+     * $variantClass as a target, so the variant can `extends` it. Returns null when no such
+     * ref exists, or when more than one qualifies (ambiguous — fall back to the ref-count rule).
+     *
+     * @param array<int, string> $refClassNames
+     */
+    private function findDiscriminatorBaseAmongRefs(string $variantClass, array $refClassNames): ?string
+    {
+        $matches = [];
+        foreach ($refClassNames as $refClassName) {
+            $meta = $this->discriminatorSchemas[$refClassName] ?? null;
+            if ($meta === null) {
+                continue;
+            }
+
+            if (in_array($variantClass, $meta['mapping'], true)) {
+                $matches[$refClassName] = true;
+            }
+        }
+
+        return count($matches) === 1 ? array_key_first($matches) : null;
+    }
+
+    /**
+     * Find the discriminator base a schema is a mapping target of, regardless of how it composes.
+     * Used to link oneOf/anyOf-discriminator members (plain objects that carry no allOf $ref back
+     * to the base) to their abstract base via `extends`. Returns null when the class is not a
+     * mapping target, or is a target of more than one base (ambiguous).
+     */
+    private function discriminatorBaseForMember(string $memberClass): ?string
+    {
+        $matches = [];
+        foreach ($this->discriminatorSchemas as $baseClass => $meta) {
+            if ($baseClass === $memberClass) {
+                continue;
+            }
+            if (in_array($memberClass, $meta['mapping'], true)) {
+                $matches[$baseClass] = true;
+            }
+        }
+
+        return count($matches) === 1 ? array_key_first($matches) : null;
+    }
+
+    /**
+     * True when a schema is a discriminator base expressed with `oneOf`/`anyOf` (the composition
+     * pattern). Such a base has no shared properties to inherit, so it is emitted as an abstract
+     * class carrying the discriminator methods, and its members `extends` it. (The allOf pattern,
+     * by contrast, makes the base a concrete class the variants already extend.)
+     */
+    private function isOneOfDiscriminatorBase(string $className): bool
+    {
+        if (!array_key_exists($className, $this->discriminatorSchemas)) {
+            return false;
+        }
+
+        $schema = $this->dtoSchemas[$className] ?? null;
+
+        return is_array($schema)
+            && (
+                (array_key_exists('oneOf', $schema) && is_array($schema['oneOf']))
+                || (array_key_exists('anyOf', $schema) && is_array($schema['anyOf']))
+            );
+    }
+
     private function expandNestedSchemas(): void
     {
         $processed = [];
@@ -1377,6 +1446,11 @@ final class GenerateDtoCommand extends Command
     private function detectParentClasses(): void
     {
         foreach ($this->dtoSchemas as $className => $schemaDefinition) {
+            // A oneOf/anyOf discriminator base is an abstract parent its members extend.
+            if ($this->isOneOfDiscriminatorBase($className)) {
+                $this->parentClasses[$className] = true;
+            }
+
             if (!array_key_exists('allOf', $schemaDefinition) || !is_array($schemaDefinition['allOf'])) {
                 continue;
             }
@@ -1397,31 +1471,51 @@ final class GenerateDtoCommand extends Command
 
     private function detectUnionInterfaces(): void
     {
-        foreach ($this->dtoSchemas as $schemaName => $schemaDefinition) {
-            if (!array_key_exists('oneOf', $schemaDefinition) && !array_key_exists('anyOf', $schemaDefinition)) {
-                continue;
+        // Worklist to a fixpoint: collectUnionTypes may register new nested-union schemas
+        // (inline oneOf/anyOf branches), which must in turn have their own members linked.
+        // A plain foreach over dtoSchemas would not revisit schemas added mid-iteration.
+        $processed = [];
+
+        while (true) {
+            $unprocessed = array_diff(array_keys($this->dtoSchemas), array_keys($processed));
+            if ($unprocessed === []) {
+                return;
             }
 
-            $className = $this->normalizeClassName($schemaName);
+            foreach ($unprocessed as $schemaName) {
+                $processed[$schemaName] = true;
+                $schemaDefinition = $this->dtoSchemas[$schemaName];
+                if (!array_key_exists('oneOf', $schemaDefinition) && !array_key_exists('anyOf', $schemaDefinition)) {
+                    continue;
+                }
 
-            foreach (
-                $this->collectUnionTypes(
-                    ownerClassName: $className,
-                    variants: $schemaDefinition['oneOf'] ?? [],
-                    keyword: 'oneOf',
-                ) as $unionClass
-            ) {
-                $this->unionInterfacesByClass[$unionClass][] = $className;
-            }
+                // A oneOf/anyOf schema with a discriminator is an abstract base, not a marker
+                // interface: its members extend it (see analyzeSchema), so skip interface linking.
+                if (array_key_exists($schemaName, $this->discriminatorSchemas)) {
+                    continue;
+                }
 
-            foreach (
-                $this->collectUnionTypes(
-                    ownerClassName: $className,
-                    variants: $schemaDefinition['anyOf'] ?? [],
-                    keyword: 'anyOf',
-                ) as $unionClass
-            ) {
-                $this->unionInterfacesByClass[$unionClass][] = $className;
+                $className = $this->normalizeClassName($schemaName);
+
+                foreach (
+                    $this->collectUnionTypes(
+                        ownerClassName: $className,
+                        variants: $schemaDefinition['oneOf'] ?? [],
+                        keyword: 'oneOf',
+                    ) as $unionClass
+                ) {
+                    $this->unionInterfacesByClass[$unionClass][] = $className;
+                }
+
+                foreach (
+                    $this->collectUnionTypes(
+                        ownerClassName: $className,
+                        variants: $schemaDefinition['anyOf'] ?? [],
+                        keyword: 'anyOf',
+                    ) as $unionClass
+                ) {
+                    $this->unionInterfacesByClass[$unionClass][] = $className;
+                }
             }
         }
     }
@@ -1447,6 +1541,26 @@ final class GenerateDtoCommand extends Command
                     ref: $variant['$ref'],
                     currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
                 );
+                continue;
+            }
+
+            // A branch that is itself a nested union (inline oneOf/anyOf) must become its own
+            // union interface; otherwise its members are silently dropped from this union.
+            // Register it as a member — detectUnionInterfaces' worklist then links the nested
+            // union's own members, and the nested interface extends this owner (see the interface
+            // branch in renderDtoClass).
+            if (
+                (array_key_exists('oneOf', $variant) && is_array($variant['oneOf']))
+                || (array_key_exists('anyOf', $variant) && is_array($variant['anyOf']))
+            ) {
+                $suffix = $keyword === 'oneOf' ? 'OneOf' : 'AnyOf';
+                $nestedUnionName = $ownerClassName . $suffix . ($index + 1);
+                $this->registerSchema(
+                    className: $nestedUnionName,
+                    schemaDefinition: $variant,
+                    sourceFile: $this->getSchemaSourceFile($ownerClassName),
+                );
+                $result[] = $nestedUnionName;
                 continue;
             }
 
@@ -1491,21 +1605,27 @@ final class GenerateDtoCommand extends Command
 
         if (array_key_exists('allOf', $schemaDefinition) && is_array($schemaDefinition['allOf'])) {
             $allProperties = [];
-            $refCount = 0;
-            $firstRef = null;
 
-            // Count how many $refs we have
+            // Referenced class names, in declaration order, used to detect a discriminator base.
+            $refClassNames = [];
             foreach ($schemaDefinition['allOf'] as $allOfItem) {
                 if (is_array($allOfItem) && array_key_exists('$ref', $allOfItem) && is_string($allOfItem['$ref'])) {
-                    $refCount++;
-                    if ($firstRef === null) {
-                        $firstRef = $allOfItem['$ref'];
-                    }
+                    $refClassNames[] = $this->schemaRefToClassName(
+                        ref: $allOfItem['$ref'],
+                        currentSourceFile: $this->getSchemaSourceFile($className),
+                    );
                 }
             }
 
-            // If only one $ref, use inheritance. Otherwise, merge all properties.
-            $useInheritance = $refCount === 1;
+            // A discriminator variant is usually declared as `allOf: [$ref base, $ref mixin, ...]`.
+            // The plain ref-count rule below would flatten every branch and drop the `extends base`
+            // link, so `is_a($variant, $base)` fails at runtime and a property typed as the base
+            // cannot hold the variant. When this schema is a mapping target of one of its own allOf
+            // refs, make that ref the parent and merge the remaining branches as own properties.
+            // Otherwise keep the historical rule: a single $ref means inheritance, multiple $refs
+            // are merged.
+            $discriminatorParent = $this->findDiscriminatorBaseAmongRefs($className, $refClassNames);
+            $extends = $discriminatorParent ?? (count($refClassNames) === 1 ? $refClassNames[0] : null);
 
             foreach ($schemaDefinition['allOf'] as $allOfItem) {
                 if (!is_array($allOfItem)) {
@@ -1513,20 +1633,19 @@ final class GenerateDtoCommand extends Command
                 }
 
                 if (array_key_exists('$ref', $allOfItem) && is_string($allOfItem['$ref'])) {
-                    if ($useInheritance) {
-                        $extends = $this->schemaRefToClassName(
-                            ref: $allOfItem['$ref'],
-                            currentSourceFile: $this->getSchemaSourceFile($className),
-                        );
-                    } else {
-                        // Multiple $refs: collect properties from referenced schema
-                        $refClassName = $this->schemaRefToClassName(
-                            ref: $allOfItem['$ref'],
-                            currentSourceFile: $this->getSchemaSourceFile($className),
-                        );
-                        foreach ($this->getSchemaProperties($refClassName) as $property) {
-                            $allProperties[] = $property;
-                        }
+                    $refClassName = $this->schemaRefToClassName(
+                        ref: $allOfItem['$ref'],
+                        currentSourceFile: $this->getSchemaSourceFile($className),
+                    );
+
+                    // The parent branch is inherited (its properties arrive via getParentProperties);
+                    // every other branch is merged as own properties.
+                    if ($refClassName === $extends) {
+                        continue;
+                    }
+
+                    foreach ($this->getSchemaProperties($refClassName) as $property) {
+                        $allProperties[] = $property;
                     }
                     continue;
                 }
@@ -1550,6 +1669,10 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists('oneOf', $schemaDefinition) && is_array($schemaDefinition['oneOf'])) {
+            if (array_key_exists($className, $this->discriminatorSchemas)) {
+                return $this->discriminatorBaseMetadata($className, $schemaDefinition);
+            }
+
             $unionTypes = $this->collectUnionTypes(
                 ownerClassName: $className,
                 variants: $schemaDefinition['oneOf'],
@@ -1565,6 +1688,10 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists('anyOf', $schemaDefinition) && is_array($schemaDefinition['anyOf'])) {
+            if (array_key_exists($className, $this->discriminatorSchemas)) {
+                return $this->discriminatorBaseMetadata($className, $schemaDefinition);
+            }
+
             $unionTypes = $this->collectUnionTypes(
                 ownerClassName: $className,
                 variants: $schemaDefinition['anyOf'],
@@ -1579,11 +1706,35 @@ final class GenerateDtoCommand extends Command
             ];
         }
 
+        // A plain-object schema that is a mapping target of a oneOf/anyOf discriminator base has no
+        // allOf $ref linking it to the base, so link it here: it extends the abstract base.
+        $memberBase = $this->discriminatorBaseForMember($className);
+        $memberExtends = ($memberBase !== null && $this->isOneOfDiscriminatorBase($memberBase)) ? $memberBase : null;
+
         return [
             'properties' => $this->extractProperties(schemaDefinition: $schemaDefinition, ownerClassName: $className),
-            'extends' => null,
+            'extends' => $memberExtends,
             'unionTypes' => [],
             'discriminator' => $this->discriminatorSchemas[$className] ?? null,
+        ];
+    }
+
+    /**
+     * Metadata for a oneOf/anyOf discriminator base: an abstract class that carries the
+     * discriminator methods (its members extend it). It has no union members and no shared
+     * properties of its own.
+     *
+     * @param array<string, mixed> $schemaDefinition
+     * @return SchemaMetadata
+     */
+    private function discriminatorBaseMetadata(string $className, array $schemaDefinition): array
+    {
+        return [
+            'properties' => $this->extractProperties($schemaDefinition, $className),
+            'extends' => null,
+            'unionTypes' => [],
+            'discriminator' => $this->discriminatorSchemas[$className],
+            'abstract' => true,
         ];
     }
 
@@ -2024,6 +2175,24 @@ final class GenerateDtoCommand extends Command
                 return [$refType, $nullable];
             }
 
+            // allOf wrapping a single composed union (e.g. `allOf: [{ oneOf: [...] }]`) resolves to
+            // the union type, not an empty merged object. Without this the property collapses to a
+            // standalone empty DTO whose toArray() is always [].
+            if (count($propertySchema['allOf']) === 1 && is_array($propertySchema['allOf'][0])) {
+                $only = $propertySchema['allOf'][0];
+                foreach (['oneOf', 'anyOf'] as $unionKeyword) {
+                    if (array_key_exists($unionKeyword, $only) && is_array($only[$unionKeyword])) {
+                        [$unionType, $unionNullable] = $this->resolveComposedUnionPropertyType(
+                            propertySchema: $only,
+                            keyword: $unionKeyword,
+                            ownerClassName: $ownerClassName,
+                            propertyName: $propertyName,
+                        );
+                        return [$unionType, $nullable || $unionNullable];
+                    }
+                }
+            }
+
             $mergedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
             $this->registerSchema(
                 className: $mergedClassName,
@@ -2391,16 +2560,10 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
+        $resolved = [];
         foreach ($allOf as $item) {
             if (!is_array($item) || !$this->canFlattenAllOfPropertyItem($item)) {
                 return null;
-            }
-        }
-
-        $resolved = [];
-        foreach ($allOf as $item) {
-            if (!is_array($item)) {
-                continue;
             }
 
             // last-wins: each next allOf part overwrites previous keys
@@ -2784,6 +2947,7 @@ final class GenerateDtoCommand extends Command
         $extends = $schemaMetadata['extends'];
         $unionTypes = $schemaMetadata['unionTypes'];
         $discriminator = $schemaMetadata['discriminator'] ?? null;
+        $isAbstract = $schemaMetadata['abstract'] ?? false;
 
         if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
             // Symfony DTOs are flattened: inherited properties are merged into a single standalone
@@ -2831,6 +2995,16 @@ final class GenerateDtoCommand extends Command
         sort($useStatements);
 
         if ($unionTypes !== []) {
+            // When this union is itself a branch of another union (a nested union), its interface
+            // must extend the outer union interface so that its members satisfy the outer type too.
+            $interfaceExtends = array_values(array_unique(array_map(
+                fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+                array_filter(
+                    $this->unionInterfacesByClass[$className] ?? [],
+                    static fn(string $parent): bool => $parent !== $className,
+                ),
+            )));
+
             return $this->renderPhpTemplate('dto.php.twig', [
                 'namespace' => $namespace,
                 'imports' => $useStatements,
@@ -2842,6 +3016,7 @@ final class GenerateDtoCommand extends Command
                         $unionTypes,
                     ),
                 ),
+                'interfaceExtends' => $interfaceExtends,
                 'signature' => null,
                 'implementedInterfaces' => [],
                 'privateProperties' => [],
@@ -2857,7 +3032,9 @@ final class GenerateDtoCommand extends Command
             ]);
         }
 
-        $classModifiers = array_key_exists($className, $this->parentClasses) ? '' : 'final ';
+        $classModifiers = $isAbstract
+            ? 'abstract '
+            : (array_key_exists($className, $this->parentClasses) ? '' : 'final ');
         $fqcnNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
         if ($fqcnNamespace !== $namespace) {
             $useStatements[] = $this->generatedDtoInterfaceImportFqcn;
@@ -4531,16 +4708,21 @@ final class GenerateDtoCommand extends Command
      */
     private function getParentProperties(string $parentClassName): array
     {
-        $schemaDefinition = $this->dtoSchemas[$parentClassName] ?? null;
-
-        return $schemaDefinition !== null ? $this->extractProperties($schemaDefinition, $parentClassName) : [];
+        // Resolve recursively: a parent may itself be an allOf composition (deep inheritance
+        // chain, e.g. a discriminator variant that is also a discriminator base). A flat read
+        // of `properties` would return nothing for such a parent, so the child would drop the
+        // grandparent's constructor arguments and omit parent::__construct().
+        return $this->getSchemaProperties($parentClassName);
     }
 
     /**
      * Recursively get all properties from a schema, including inherited ones.
+     *
+     * @param array<string, true> $visiting allOf ancestry on the current recursion path, used to
+     *                                       detect (and reject) circular allOf inheritance
      * @return array<int, SchemaProperty>
      */
-    private function getSchemaProperties(string $className): array
+    private function getSchemaProperties(string $className, array $visiting = []): array
     {
         $schemaDefinition = $this->dtoSchemas[$className] ?? null;
         if ($schemaDefinition === null) {
@@ -4549,6 +4731,16 @@ final class GenerateDtoCommand extends Command
 
         // If schema has allOf with inheritance, collect parent properties first
         if (array_key_exists('allOf', $schemaDefinition) && is_array($schemaDefinition['allOf'])) {
+            if (array_key_exists($className, $visiting)) {
+                throw new RuntimeException(sprintf(
+                    'Circular allOf inheritance detected involving %s (cycle: %s). '
+                    . 'A schema cannot transitively compose itself via allOf.',
+                    $className,
+                    implode(' -> ', [...array_keys($visiting), $className]),
+                ));
+            }
+            $visiting[$className] = true;
+
             $allProperties = [];
 
             foreach ($schemaDefinition['allOf'] as $allOfItem) {
@@ -4562,7 +4754,7 @@ final class GenerateDtoCommand extends Command
                         currentSourceFile: $this->getSchemaSourceFile($className),
                     );
                     // Recursively get parent properties
-                    foreach ($this->getSchemaProperties($parentClass) as $prop) {
+                    foreach ($this->getSchemaProperties($parentClass, $visiting) as $prop) {
                         $allProperties[] = $prop;
                     }
                     continue;

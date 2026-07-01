@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
+use BackedEnum;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
@@ -1261,5 +1262,334 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             ['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']],
             (new DtoNormalizer())->toArray($dto),
         );
+    }
+
+    /**
+     * A discriminator variant written as `allOf: [$ref base, $ref mixin]` must extend the
+     * base at runtime, so a property typed as the base accepts the variant and the
+     * deserializer's is_a() check passes. Before the fix the variant was a standalone class
+     * (is_a === false) and deserialization into a base-typed property threw a TypeError.
+     */
+    public function testDiscriminatorAllOfMixinVariantExtendsBaseAndDeserializes(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/discriminator-allof-multiref.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'DiscMixinNs');
+        // Load the base before the variants that extend it (glob is alphabetical, so a
+        // variant would otherwise be required before its parent class exists).
+        require $this->outputDirectory . '/ShapeView.php';
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            if (basename($file) === 'ShapeView.php') {
+                continue;
+            }
+            require $file;
+        }
+
+        $base = '\DiscMixinNs\ShapeView';
+        $variant = '\DiscMixinNs\CircleView';
+
+        // Core regression: the runtime inheritance link exists.
+        $this->assertTrue(is_a($variant, $base, true));
+
+        // A request whose base-typed `shape` carries a variant payload resolves to the
+        // concrete variant instance (the discriminator maps `circle` → CircleView).
+        $body = (string)json_encode(['shape' => ['shapeType' => 'circle', 'label' => 'Berlin']]);
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+
+        /** @var class-string<GeneratedDtoInterface> $container */
+        $container = '\DiscMixinNs\ShapeContainer';
+        $dto = (new DtoDeserializer())->deserialize($request, $container);
+
+        $shape = $dto->getShape();
+        $this->assertInstanceOf(ltrim($variant, '\\'), $shape);
+        $this->assertInstanceOf(ltrim($base, '\\'), $shape);
+        $this->assertSame('Berlin', $shape->getLabel());
+        // toArray merges the inherited discriminator property with the variant's own field.
+        $array = $shape->toArray();
+        $this->assertSame(['shapeType', 'label'], array_keys($array));
+        $this->assertSame('Berlin', $array['label']);
+        $this->assertInstanceOf(BackedEnum::class, $array['shapeType']);
+        $this->assertSame('circle', $array['shapeType']->value);
+    }
+
+    /**
+     * A three-level allOf inheritance chain where the intermediate parent is itself an allOf
+     * composition. The leaf must inherit the full ancestor constructor (root + mid properties)
+     * and chain parent::__construct upward. Before getParentProperties resolved allOf
+     * recursively, the intermediate's properties read as empty, so the leaf dropped the
+     * grandparent's arguments and omitted the parent constructor call (fatal at instantiation).
+     */
+    public function testDiscriminatorAllOfDeepChainInheritsWholeAncestry(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/discriminator-allof-deep-chain.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'DeepChainNs');
+        // Load ancestors before descendants (glob is alphabetical).
+        require $this->outputDirectory . '/RootBase.php';
+        require $this->outputDirectory . '/MidLevel.php';
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            if (in_array(basename($file), ['RootBase.php', 'MidLevel.php'], true)) {
+                continue;
+            }
+            require $file;
+        }
+
+        $root = 'DeepChainNs\RootBase';
+        $mid = 'DeepChainNs\MidLevel';
+        $leaf = 'DeepChainNs\LeafLevel';
+
+        // Transitive inheritance link across all three levels.
+        $this->assertTrue(is_a($mid, $root, true));
+        $this->assertTrue(is_a($leaf, $mid, true));
+        $this->assertTrue(is_a($leaf, $root, true));
+
+        // The leaf constructor must accept every ancestor property, not just its own.
+        $params = (new ReflectionMethod($leaf, '__construct'))->getParameters();
+        $names = array_map(static fn($p): string => $p->getName(), $params);
+        $this->assertSame(['kind', 'midField', 'leafField'], $names);
+
+        // Instantiating the leaf runs the full parent::__construct chain and normalizes every level.
+        $enumClass = (new ReflectionMethod($mid, '__construct'))->getParameters()[0]->getType();
+        $this->assertNotNull($enumClass);
+        $enumFqcn = (string)$enumClass;
+        $leafInstance = new $leaf($enumFqcn::from('leaf'), 'mid-value', 42);
+        $this->assertInstanceOf($root, $leafInstance);
+        $this->assertSame(
+            ['midField' => 'mid-value', 'leafField' => 42],
+            array_intersect_key($leafInstance->toArray(), ['midField' => 1, 'leafField' => 1]),
+        );
+        $this->assertArrayHasKey('kind', $leafInstance->toArray());
+    }
+
+    /**
+     * Loads every generated class/interface in $this->outputDirectory under a temporary
+     * autoloader so require-order (interface extends chains) does not matter.
+     */
+    private function autoloadGenerated(string $namespace): callable
+    {
+        $dir = $this->outputDirectory;
+        $loader = static function (string $class) use ($dir, $namespace): void {
+            if (!str_starts_with($class, $namespace . '\\')) {
+                return;
+            }
+            $short = substr($class, strrpos($class, '\\') + 1);
+            $file = $dir . '/' . $short . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        };
+        spl_autoload_register($loader);
+
+        return $loader;
+    }
+
+    /**
+     * Gap A — a union branch that is a $ref to another union. LeafB is a member of InnerUnion,
+     * and InnerUnion is a branch of OuterUnion, so LeafB must also satisfy OuterUnion. This
+     * requires the InnerUnion interface to extend the OuterUnion interface.
+     */
+    public function testNestedUnionViaRefLinksInnerMembersToOuterUnion(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nested-union.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'NestedUnionRefNs');
+        $loader = $this->autoloadGenerated('NestedUnionRefNs');
+
+        try {
+            $this->assertTrue(is_a('NestedUnionRefNs\LeafA', 'NestedUnionRefNs\OuterUnion', true));
+            $this->assertTrue(is_a('NestedUnionRefNs\LeafB', 'NestedUnionRefNs\InnerUnion', true));
+            // The nested link: an InnerUnion member must also be an OuterUnion member.
+            $this->assertTrue(is_a('NestedUnionRefNs\LeafB', 'NestedUnionRefNs\OuterUnion', true));
+            $this->assertTrue(is_a('NestedUnionRefNs\LeafC', 'NestedUnionRefNs\OuterUnion', true));
+        } finally {
+            spl_autoload_unregister($loader);
+        }
+    }
+
+    /**
+     * Gap B — an anyOf with an inline oneOf branch. The inline union's members (LeafB, LeafC)
+     * should be recognised as members of the outer MixedUnion.
+     */
+    public function testAnyOfWithInlineOneOfBranchLinksMembers(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nested-union.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'NestedUnionInlineNs');
+        $loader = $this->autoloadGenerated('NestedUnionInlineNs');
+
+        try {
+            $this->assertTrue(is_a('NestedUnionInlineNs\LeafA', 'NestedUnionInlineNs\MixedUnion', true));
+            $this->assertTrue(is_a('NestedUnionInlineNs\LeafB', 'NestedUnionInlineNs\MixedUnion', true));
+            $this->assertTrue(is_a('NestedUnionInlineNs\LeafC', 'NestedUnionInlineNs\MixedUnion', true));
+        } finally {
+            spl_autoload_unregister($loader);
+        }
+    }
+
+    /**
+     * Gap C — a property whose schema wraps a oneOf inside allOf. The field must be typed as the
+     * union (a member of it accepts LeafA/LeafB), not materialised as an empty object DTO.
+     */
+    public function testOneOfInsideAllOfPropertyIsTypedAsUnionNotEmptyObject(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nested-union.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'NestedUnionAllOfNs');
+        $loader = $this->autoloadGenerated('NestedUnionAllOfNs');
+
+        try {
+            // The property must be typed as the union (LeafA|LeafB), not collapsed into a
+            // standalone empty object DTO.
+            $this->assertFileDoesNotExist($this->outputDirectory . '/UnionHolderField.php');
+
+            $fieldParam = (new ReflectionMethod('NestedUnionAllOfNs\UnionHolder', '__construct'))
+                ->getParameters()[0];
+            $type = (string)$fieldParam->getType();
+            $this->assertStringContainsString('LeafA', $type);
+            $this->assertStringContainsString('LeafB', $type);
+            $this->assertStringNotContainsString('UnionHolderField', $type);
+        } finally {
+            spl_autoload_unregister($loader);
+        }
+    }
+
+    /**
+     * A self-referential schema (a tree node whose properties point back at its own type, directly
+     * and through an array) must generate a single class that types those properties as itself —
+     * and the generator must terminate rather than recurse forever.
+     */
+    public function testSelfReferentialSchemaGeneratesRecursiveType(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/self-referential.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'SelfRefNs');
+        $loader = $this->autoloadGenerated('SelfRefNs');
+
+        try {
+            $node = 'SelfRefNs\TreeNode';
+            $params = [];
+            foreach ((new ReflectionMethod($node, '__construct'))->getParameters() as $param) {
+                $params[$param->getName()] = (string)$param->getType();
+            }
+
+            // The self-referencing property is typed as the node itself; the array of children
+            // is typed as array with a TreeNode item docblock.
+            $this->assertStringContainsString('TreeNode', $params['parent']);
+            $this->assertArrayHasKey('children', $params);
+
+            // The recursive structure actually instantiates: a parent holding a child of its own type.
+            $child = new $node('leaf');
+            $root = new $node('root', $child, [$child]);
+            $this->assertInstanceOf($node, $root->getParent());
+            $this->assertSame('root', $root->getValue());
+            $this->assertSame($child, $root->getChildren()[0]);
+        } finally {
+            spl_autoload_unregister($loader);
+        }
+    }
+
+    /**
+     * A discriminator declared on a `oneOf` base (the composition pattern, as opposed to the allOf
+     * inheritance pattern). The base must carry the discriminator mapping and its members must be
+     * subtypes of it, so a property typed as the base deserializes to the concrete variant selected
+     * by the discriminator value.
+     */
+    public function testOneOfBasedDiscriminatorResolvesSubtype(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/oneof-discriminator.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'OneOfDiscNs');
+        // Load the base before its members (glob is alphabetical).
+        require $this->outputDirectory . '/PetBase.php';
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            if (basename($file) === 'PetBase.php') {
+                continue;
+            }
+            require $file;
+        }
+
+        $base = 'OneOfDiscNs\PetBase';
+        $dog = 'OneOfDiscNs\DogPet';
+
+        // Members are subtypes of the base, and the base exposes the discriminator mapping.
+        $this->assertTrue(is_a($dog, $base, true));
+        $this->assertTrue(method_exists($base, 'getDiscriminatorMapping'));
+        $this->assertSame(
+            ['dog' => 'OneOfDiscNs\DogPet', 'cat' => 'OneOfDiscNs\CatPet'],
+            $base::getDiscriminatorMapping(),
+        );
+
+        // A base-typed property deserializes to the concrete variant chosen by the discriminator.
+        $body = (string)json_encode(['pet' => ['petType' => 'dog', 'bark' => 'woof']]);
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+
+        /** @var class-string<GeneratedDtoInterface> $owner */
+        $owner = 'OneOfDiscNs\PetOwner';
+        $dto = (new DtoDeserializer())->deserialize($request, $owner);
+
+        $pet = $dto->getPet();
+        $this->assertInstanceOf($dog, $pet);
+        $this->assertSame('woof', $pet->getBark());
+    }
+
+    /**
+     * The discriminator base can also be an `anyOf` (not only `oneOf`). Same abstract-base
+     * treatment: members extend it and resolve through the discriminator mapping.
+     */
+    public function testAnyOfBasedDiscriminatorResolvesSubtype(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'ShapeUnion' => [
+                    'anyOf' => [
+                        ['$ref' => '#/components/schemas/CircleVariant'],
+                        ['$ref' => '#/components/schemas/SquareVariant'],
+                    ],
+                    'discriminator' => [
+                        'propertyName' => 'kind',
+                        'mapping' => [
+                            'circle' => '#/components/schemas/CircleVariant',
+                            'square' => '#/components/schemas/SquareVariant',
+                        ],
+                    ],
+                ],
+                'CircleVariant' => [
+                    'type' => 'object',
+                    'required' => ['kind', 'radius'],
+                    'properties' => ['kind' => ['type' => 'string'], 'radius' => ['type' => 'integer']],
+                ],
+                'SquareVariant' => [
+                    'type' => 'object',
+                    'required' => ['kind', 'side'],
+                    'properties' => ['kind' => ['type' => 'string'], 'side' => ['type' => 'integer']],
+                ],
+                'ShapeHolder' => [
+                    'type' => 'object',
+                    'required' => ['shape'],
+                    'properties' => ['shape' => ['$ref' => '#/components/schemas/ShapeUnion']],
+                ],
+            ]],
+        ];
+
+        (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, 'AnyOfDiscNs');
+        require $this->outputDirectory . '/ShapeUnion.php';
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            if (basename($file) === 'ShapeUnion.php') {
+                continue;
+            }
+            require $file;
+        }
+
+        $base = 'AnyOfDiscNs\ShapeUnion';
+        $circle = 'AnyOfDiscNs\CircleVariant';
+        $this->assertTrue((new ReflectionClass($base))->isAbstract());
+        $this->assertTrue(is_a($circle, $base, true));
+
+        $body = (string)json_encode(['shape' => ['kind' => 'circle', 'radius' => 3]]);
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+
+        /** @var class-string<GeneratedDtoInterface> $holder */
+        $holder = 'AnyOfDiscNs\ShapeHolder';
+        $dto = (new DtoDeserializer())->deserialize($request, $holder);
+
+        $shape = $dto->getShape();
+        $this->assertInstanceOf($circle, $shape);
+        $this->assertSame(3, $shape->getRadius());
     }
 }

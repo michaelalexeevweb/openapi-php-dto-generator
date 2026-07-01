@@ -1,0 +1,60 @@
+openapi: 3.1.0
+info:
+  title: Discriminator with allOf base + mixin
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    # Discriminator base. Variants reference it as the FIRST allOf $ref and add a
+    # second $ref (a mixin), which previously flattened the schema and dropped the
+    # `extends base` link (is_a(variant, base) === false → TypeError).
+    ShapeView:
+      type: object
+      required:
+        - shapeType
+      properties:
+        shapeType:
+          type: string
+          enum:
+            - circle
+            - square
+      discriminator:
+        propertyName: shapeType
+        mapping:
+          circle: '#/components/schemas/CircleView'
+          square: '#/components/schemas/SquareView'
+
+    CircleDetails:
+      type: object
+      required:
+        - label
+      properties:
+        label:
+          type: string
+
+    SquareDetails:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+
+    CircleView:
+      allOf:
+        - $ref: '#/components/schemas/ShapeView'
+        - $ref: '#/components/schemas/CircleDetails'
+
+    SquareView:
+      allOf:
+        - $ref: '#/components/schemas/ShapeView'
+        - $ref: '#/components/schemas/SquareDetails'
+
+    # Container property typed as the discriminator base; must accept any variant.
+    ShapeContainer:
+      type: object
+      required:
+        - shape
+      properties:
+        shape:
+          $ref: '#/components/schemas/ShapeView'

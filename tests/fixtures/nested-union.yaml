@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Nested union type materialization
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    LeafA:
+      type: object
+      required: [a]
+      properties:
+        a: { type: string }
+    LeafB:
+      type: object
+      required: [b]
+      properties:
+        b: { type: integer }
+    LeafC:
+      type: object
+      required: [c]
+      properties:
+        c: { type: boolean }
+
+    # Gap A: a union whose branch is a $ref to another union. For a base-typed property to
+    # accept the inner union's members, the inner union interface must extend the outer one.
+    InnerUnion:
+      oneOf:
+        - $ref: '#/components/schemas/LeafB'
+        - $ref: '#/components/schemas/LeafC'
+    OuterUnion:
+      oneOf:
+        - $ref: '#/components/schemas/LeafA'
+        - $ref: '#/components/schemas/InnerUnion'
+
+    # Gap B: an anyOf with an inline oneOf branch. The inline union's members should be
+    # recognised as members of the outer anyOf.
+    MixedUnion:
+      anyOf:
+        - $ref: '#/components/schemas/LeafA'
+        - oneOf:
+            - $ref: '#/components/schemas/LeafB'
+            - $ref: '#/components/schemas/LeafC'
+
+    # Gap C: a property whose schema wraps a oneOf inside allOf. The field should be typed as
+    # the union (LeafA|LeafB), not materialised as an empty object.
+    UnionHolder:
+      type: object
+      properties:
+        field:
+          allOf:
+            - oneOf:
+                - $ref: '#/components/schemas/LeafA'
+                - $ref: '#/components/schemas/LeafB'

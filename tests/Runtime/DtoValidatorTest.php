@@ -1740,6 +1740,63 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
+    public function testTripleNestedOneOfValidatesToInnermostBranch(): void
+    {
+        // oneOf → oneOf → oneOf, three levels deep. The value must satisfy exactly one
+        // branch at every level for the outermost oneOf to pass.
+        $schema = [
+            'oneOf' => [
+                [
+                    'type' => 'integer',
+                    'oneOf' => [
+                        [
+                            'oneOf' => [
+                                ['minimum' => 100],
+                                ['maximum' => -100],
+                            ],
+                        ],
+                        ['multipleOf' => 7],
+                    ],
+                ],
+                ['type' => 'string'],
+            ],
+        ];
+
+        // 150 → integer, inner-inner minimum:100 matches (and not maximum:-100, and 150 % 7 != 0):
+        // exactly one at each level.
+        $this->assertSame([], $this->validator->validate('v', 150, $schema));
+        // 5 → integer, but fails minimum:100 AND maximum:-100 AND multipleOf:7 → all inner fail.
+        $this->assertNotEmpty($this->validator->validate('v', 5, $schema));
+    }
+
+    public function testOneOfNestedInsideAllOfInsideAnyOfValidatesRecursively(): void
+    {
+        // anyOf → allOf → oneOf composition on a numeric value.
+        $schema = [
+            'anyOf' => [
+                [
+                    'type' => 'integer',
+                    'allOf' => [
+                        ['minimum' => 0],
+                        [
+                            'oneOf' => [
+                                ['maximum' => 10],
+                                ['minimum' => 1000],
+                            ],
+                        ],
+                    ],
+                ],
+                ['type' => 'string'],
+            ],
+        ];
+
+        // 5 → integer, minimum:0 ok, and exactly one of (maximum:10 | minimum:1000) → pass.
+        $this->assertSame([], $this->validator->validate('v', 5, $schema));
+        // 50 → integer, minimum:0 ok, but neither maximum:10 nor minimum:1000 → inner oneOf fails
+        // → allOf fails → integer branch fails → not a string either → anyOf fails.
+        $this->assertNotEmpty($this->validator->validate('v', 50, $schema));
+    }
+
     // =========================================================================
     // toIntOrNull ignores non-integer float constraints
     // =========================================================================

@@ -1,0 +1,56 @@
+openapi: 3.1.0
+info:
+  title: Deep discriminator inheritance chain
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    # Three-level chain: RootBase (plain) <- MidLevel (allOf base+mixin, itself a discriminator
+    # base) <- LeafLevel (allOf mid+mixin). The intermediate parent is allOf-composed, so a flat
+    # read of its `properties` returns nothing — the leaf must still inherit the whole ancestor
+    # constructor (root + mid props) and chain parent::__construct all the way up.
+    RootBase:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - mid
+            - leaf
+      discriminator:
+        propertyName: kind
+        mapping:
+          mid: '#/components/schemas/MidLevel'
+          leaf: '#/components/schemas/LeafLevel'
+
+    MidMixin:
+      type: object
+      required:
+        - midField
+      properties:
+        midField:
+          type: string
+
+    LeafMixin:
+      type: object
+      required:
+        - leafField
+      properties:
+        leafField:
+          type: integer
+
+    MidLevel:
+      allOf:
+        - $ref: '#/components/schemas/RootBase'
+        - $ref: '#/components/schemas/MidMixin'
+      discriminator:
+        propertyName: kind
+        mapping:
+          leaf: '#/components/schemas/LeafLevel'
+
+    LeafLevel:
+      allOf:
+        - $ref: '#/components/schemas/MidLevel'
+        - $ref: '#/components/schemas/LeafMixin'

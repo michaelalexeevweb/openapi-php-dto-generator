@@ -1226,6 +1226,45 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private readonly string $meow', $catContent);
     }
 
+    public function testDiscriminatorVariantWithMixinExtendsBase(): void
+    {
+        // Variants declared as `allOf: [$ref base, $ref mixin]` must still extend the
+        // discriminator base (not flatten into a standalone class), otherwise a property
+        // typed as the base cannot hold a variant. Regression for the allOf multi-$ref case.
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/discriminator-allof-multiref.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        // Base stays non-final and carries the discriminator mapping.
+        $baseContent = file_get_contents($this->outputDirectory . '/ShapeView.php');
+        $this->assertStringNotContainsString('final class', $baseContent);
+        $this->assertStringContainsString("'circle' => CircleView::class", $baseContent);
+        $this->assertStringContainsString("'square' => SquareView::class", $baseContent);
+
+        // Variant extends the base and promotes only its mixin's own property, passing the
+        // inherited discriminator property up to the parent constructor.
+        $variantContent = file_get_contents($this->outputDirectory . '/CircleView.php');
+        $this->assertStringContainsString('extends ShapeView', $variantContent);
+        $this->assertStringContainsString('private readonly string $label', $variantContent);
+        $this->assertStringContainsString('parent::__construct($shapeType);', $variantContent);
+
+        $otherVariant = file_get_contents($this->outputDirectory . '/SquareView.php');
+        $this->assertStringContainsString('extends ShapeView', $otherVariant);
+        $this->assertStringContainsString('private readonly string $name', $otherVariant);
+    }
+
+    public function testCircularAllOfInheritanceThrows(): void
+    {
+        // Two schemas that transitively compose each other via allOf are logically impossible
+        // and would otherwise recurse forever while resolving inherited properties. The generator
+        // must reject them with a clear error instead of exhausting the stack.
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/circular-allof.yaml');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Circular allOf inheritance detected');
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+    }
+
     public function testDiscriminatorDuplicateMappingTargetThrowsException(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/discriminator-duplicate-mapping.yaml');
