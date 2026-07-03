@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
+use ArrayObject;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use ReflectionMethod;
 use RuntimeException;
+use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -823,6 +826,239 @@ final class DtoDeserializerCoverageTest extends TestCase
 
         $dto = $this->deserializer->deserialize($request, CovMixedAliasesDto::class);
 
+        $this->assertSame('ok', $dto->name);
+    }
+
+    public function testIntStringInRangeBoundaries(): void
+    {
+        $inRange = new ReflectionMethod($this->deserializer, 'intStringInRange');
+
+        // PHP_INT_MAX / PHP_INT_MIN are in range; one past each magnitude is not.
+        $this->assertTrue($inRange->invoke($this->deserializer, '9223372036854775807'));
+        $this->assertFalse($inRange->invoke($this->deserializer, '9223372036854775808'));
+        $this->assertTrue($inRange->invoke($this->deserializer, '-9223372036854775808'));
+        $this->assertFalse($inRange->invoke($this->deserializer, '-9223372036854775809'));
+
+        // Zero in any sign/leading-zero spelling.
+        $this->assertTrue($inRange->invoke($this->deserializer, '0'));
+        $this->assertTrue($inRange->invoke($this->deserializer, '-0'));
+        $this->assertTrue($inRange->invoke($this->deserializer, '0000'));
+
+        // Leading zeros before an in-range magnitude are stripped before the comparison.
+        $this->assertTrue($inRange->invoke($this->deserializer, '000000009223372036854775807'));
+
+        // Fewer digits than the bound is always in range; strictly more is always out.
+        $this->assertTrue($inRange->invoke($this->deserializer, '123'));
+        $this->assertFalse($inRange->invoke($this->deserializer, '99999999999999999999'));
+    }
+
+    public function testCastToEnumCoercesStringToIntBackedEnumForNonJsonSource(): void
+    {
+        $castToEnum = new ReflectionMethod($this->deserializer, 'castToEnum');
+
+        // query/path/form deliver ints as strings, so "1" must match the int-backed case value 1.
+        $this->assertSame(
+            CovIntPriority::LOW,
+            $castToEnum->invoke($this->deserializer, '1', CovIntPriority::class, 'p', 'query'),
+        );
+        $this->assertSame(
+            CovIntPriority::HIGH,
+            $castToEnum->invoke($this->deserializer, '2', CovIntPriority::class, 'p', 'form'),
+        );
+        // The int itself still matches from any source.
+        $this->assertSame(
+            CovIntPriority::LOW,
+            $castToEnum->invoke($this->deserializer, 1, CovIntPriority::class, 'p', 'json'),
+        );
+    }
+
+    public function testCastToEnumJsonSourceRejectsStringForIntBackedEnum(): void
+    {
+        $castToEnum = new ReflectionMethod($this->deserializer, 'castToEnum');
+
+        // JSON is strict: the string "1" does not equal the int-backed value 1.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('expects enum');
+        $castToEnum->invoke($this->deserializer, '1', CovIntPriority::class, 'p', 'json');
+    }
+
+    public function testResolveFileImportsParsesPlainAliasedAndGlobalUses(): void
+    {
+        $resolve = new ReflectionMethod($this->deserializer, 'resolveFileImports');
+        $imports = $resolve->invoke($this->deserializer, new ReflectionClass(FileImportsSample::class));
+
+        // Plain import: keyed by short name.
+        $this->assertSame(DtoDeserializer::class, $imports['DtoDeserializer'] ?? null);
+        // Aliased import (`as Norm`): keyed by the alias, mapped to the real FQCN.
+        $this->assertSame('OpenapiPhpDtoGenerator\Service\DtoNormalizer', $imports['Norm'] ?? null);
+        // Namespace-less (global) import: short name equals the FQCN.
+        $this->assertSame('Stringable', $imports['Stringable'] ?? null);
+    }
+
+    public function testResolveFileImportsReturnsEmptyForInternalClass(): void
+    {
+        // An internal (PHP core) class has no source file → getFileName() is false → [].
+        $resolve = new ReflectionMethod($this->deserializer, 'resolveFileImports');
+        $this->assertSame([], $resolve->invoke($this->deserializer, new ReflectionClass(ArrayObject::class)));
+    }
+
+    public function testCastToEnumThrowsForNonEnumClass(): void
+    {
+        $castToEnum = new ReflectionMethod($this->deserializer, 'castToEnum');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unsupported type');
+        $castToEnum->invoke($this->deserializer, 'x', stdClass::class, 'p', 'json');
+    }
+
+    public function testCastToEnumInvalidValueWithoutParamPath(): void
+    {
+        // No paramPath → the terminal "Invalid enum value" throw (not the paramPath variant).
+        $castToEnum = new ReflectionMethod($this->deserializer, 'castToEnum');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Invalid enum value');
+        $castToEnum->invoke($this->deserializer, 'nope', CovIntPriority::class, null, 'json');
+    }
+
+    public function testCastValueRejectsNonArrayForArrayType(): void
+    {
+        $castValue = new ReflectionMethod($this->deserializer, 'castValue');
+        $this->expectException(RuntimeException::class);
+        $castValue->invokeArgs($this->deserializer, [
+            'value' => 'scalar',
+            'paramName' => 'p',
+            'typeName' => 'array',
+            'allowsNull' => false,
+            'source' => 'json',
+            'arrayItemType' => 'string',
+        ]);
+    }
+
+    public function testCastValueRejectsAssociativeArrayWhenNotAllowed(): void
+    {
+        $castValue = new ReflectionMethod($this->deserializer, 'castValue');
+        $this->expectException(RuntimeException::class);
+        $castValue->invokeArgs($this->deserializer, [
+            'value' => ['a' => 1],
+            'paramName' => 'p',
+            'typeName' => 'array',
+            'allowsNull' => false,
+            'source' => 'json',
+            'arrayItemType' => 'string',
+            'allowsAssociativeArray' => false,
+        ]);
+    }
+
+    public function testCastArrayItemDateTimeRejectsNonString(): void
+    {
+        $cast = new ReflectionMethod($this->deserializer, 'castArrayItemValue');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('date string');
+        $cast->invoke($this->deserializer, 123, 'DateTimeImmutable', 'p.0', 'json');
+    }
+
+    public function testCastArrayItemDtoRejectsNonArray(): void
+    {
+        $cast = new ReflectionMethod($this->deserializer, 'castArrayItemValue');
+        $this->expectException(RuntimeException::class);
+        $cast->invoke($this->deserializer, 5, CovIntEnumDto::class, 'p.0', 'json');
+    }
+
+    /**
+     * @dataProvider floatStringProvider
+     */
+    public function testIsStrictFloatValueForms(mixed $value, bool $expected): void
+    {
+        $m = new ReflectionMethod($this->deserializer, 'isStrictFloatValue');
+        $this->assertSame($expected, $m->invoke($this->deserializer, $value));
+    }
+
+    /** @return array<string, array{mixed, bool}> */
+    public static function floatStringProvider(): array
+    {
+        return [
+            'leading-zero decimal 00.00' => ['00.00', true],
+            'dot-leading .5' => ['.5', true],
+            'scientific 1e3' => ['1e3', true],
+            'signed +1.5' => ['+1.5', true],
+            'negative zero -0' => ['-0', true],
+            'plain int as float' => ['42', true],
+            'native float' => [1.5, true],
+            'native int' => [7, true],
+            'trailing dot 5.' => ['5.', false],
+            'two dots 1.2.3' => ['1.2.3', false],
+            'hex 0x1a' => ['0x1a', false],
+            'alpha' => ['abc', false],
+            'empty' => ['', false],
+            'array' => [[1.0], false],
+        ];
+    }
+
+    /**
+     * @dataProvider intStringProvider
+     */
+    public function testIsStrictIntValueForms(mixed $value, bool $expected): void
+    {
+        $m = new ReflectionMethod($this->deserializer, 'isStrictIntValue');
+        $this->assertSame($expected, $m->invoke($this->deserializer, $value));
+    }
+
+    /** @return array<string, array{mixed, bool}> */
+    public static function intStringProvider(): array
+    {
+        return [
+            'leading zeros 007' => ['007', true],
+            'signed +5' => ['+5', true],
+            'negative -3' => ['-3', true],
+            'native int' => [9, true],
+            'decimal 5.0' => ['5.0', false],
+            'scientific 1e3' => ['1e3', false],
+            'alpha' => ['x', false],
+            'overflow' => ['99999999999999999999', false],
+            'float value' => [1.5, false],
+        ];
+    }
+
+    public function testDeserializeTopLevelJsonArrayBodyThrows(): void
+    {
+        $request = new Request([], [], [], [], [], [], '[1,2,3]');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('JSON body must be an object, got array');
+        $this->deserializer->deserialize($request, CovSimpleDto::class);
+    }
+
+    public function testDeserializeTopLevelJsonScalarBodyThrows(): void
+    {
+        $request = new Request([], [], [], [], [], [], '"just a string"');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('JSON body must be an object, got string');
+        $this->deserializer->deserialize($request, CovSimpleDto::class);
+    }
+
+    public function testDeserializeDuplicateJsonKeysKeepsLastValue(): void
+    {
+        // Duplicate keys are resolved by json_decode with last-wins semantics.
+        $request = new Request([], [], [], [], [], [], '{"id":1,"id":2,"name":"x"}');
+        $request->headers->set('Content-Type', 'application/json');
+
+        $dto = $this->deserializer->deserialize($request, CovSimpleDto::class);
+
+        $this->assertSame(2, $dto->id);
+        $this->assertSame('x', $dto->name);
+    }
+
+    public function testDeserializeContentTypeWithBoundaryParamStillParsesJson(): void
+    {
+        // A content-type carrying extra params (e.g. a boundary) still matches application/json.
+        $request = new Request([], [], [], [], [], [], '{"id":5,"name":"ok"}');
+        $request->headers->set('Content-Type', 'application/json; boundary=xyz; charset=utf-8');
+
+        $dto = $this->deserializer->deserialize($request, CovSimpleDto::class);
+
+        $this->assertSame(5, $dto->id);
         $this->assertSame('ok', $dto->name);
     }
 }

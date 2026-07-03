@@ -1592,4 +1592,43 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertInstanceOf($circle, $shape);
         $this->assertSame(3, $shape->getRadius());
     }
+
+    /**
+     * A member listed by two different oneOf discriminator bases cannot extend both (PHP single
+     * inheritance). The generator must degrade gracefully — emit the member with no parent rather
+     * than crash or pick an arbitrary base — since the linkage is ambiguous.
+     */
+    public function testDiscriminatorMemberInTwoUnionsDegradesGracefully(): void
+    {
+        $union = static fn(string $prop): array => [
+            'oneOf' => [['$ref' => '#/components/schemas/SharedVariant']],
+            'discriminator' => [
+                'propertyName' => $prop,
+                'mapping' => ['s' => '#/components/schemas/SharedVariant'],
+            ],
+        ];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'FirstBase' => $union('k'),
+                'SecondBase' => $union('k'),
+                'SharedVariant' => [
+                    'type' => 'object',
+                    'required' => ['k'],
+                    'properties' => ['k' => ['type' => 'string']],
+                ],
+            ]],
+        ];
+
+        // Generation must not throw despite the ambiguous membership.
+        (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, 'TwoUnionNs');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        // The ambiguous member extends neither base (graceful: no wrong parent picked).
+        $this->assertFalse((new ReflectionClass('TwoUnionNs\SharedVariant'))->getParentClass());
+    }
 }

@@ -9,9 +9,13 @@ use LogicException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
+use RuntimeException;
+use stdClass;
 use Stringable;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use TypeError;
 
 final class DtoNormalizerCoverageTest extends TestCase
 {
@@ -409,11 +413,136 @@ final class DtoNormalizerCoverageTest extends TestCase
 
         $this->assertSame([], $errors);
     }
+
+    public function testDtoToArrayRethrowsErrorFromGetter(): void
+    {
+        // A getter raising a genuine Error (broken getter) must propagate through dtoToArray,
+        // not be disguised as a corrupt output.
+        $this->expectException(TypeError::class);
+        (new DtoNormalizer())->toArray(new CovNormGetterErrorDto());
+    }
+
+    public function testDtoToArrayWrapsInfrastructureThrowable(): void
+    {
+        // A non-Logic, non-Error Throwable from a getter (e.g. an infrastructure failure) is
+        // wrapped in a RuntimeException rather than silently skipping the field.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('infrastructure exception');
+        (new DtoNormalizer())->toArray(new CovNormGetterInfraDto());
+    }
+
+    public function testDtoToArraySkipsWriteOnlyGetter(): void
+    {
+        // The reflection path (dtoToArray) must omit writeOnly fields from the output.
+        $result = (new DtoNormalizer())->toArray(new CovNormWriteOnlyReflectionDto());
+
+        $this->assertSame(['name' => 'visible'], $result);
+    }
+
+    public function testDtoToArrayCastsMapFieldToObject(): void
+    {
+        // A map (type: object) field must serialize as a JSON object, not a list, even via the
+        // reflection path.
+        $result = (new DtoNormalizer())->toArray(new CovNormMapCastDto());
+
+        $this->assertInstanceOf(stdClass::class, $result['attrs']);
+        $this->assertSame(1, $result['attrs']->a);
+    }
+
+    public function testNormalizeItemTypeErrorStripsPrefix(): void
+    {
+        $m = new ReflectionMethod(DtoNormalizer::class, 'normalizeItemTypeError');
+        $n = new DtoNormalizer();
+        // "... must ..." → text from after the space before "must".
+        $this->assertSame('must be a string', $m->invoke($n, 'field must be a string'));
+        // No "must", but "... returned ..." → text after the space before "returned".
+        $this->assertSame('returned null', $m->invoke($n, 'getter returned null'));
+        // Neither marker → returned unchanged.
+        $this->assertSame('opaque', $m->invoke($n, 'opaque'));
+    }
+
+    public function testNormalizeDocTypeNameEdgeCases(): void
+    {
+        $m = new ReflectionMethod(DtoNormalizer::class, 'normalizeDocTypeNameInClassContext');
+        $n = new DtoNormalizer();
+        // Empty after trimming parens/space → ''.
+        $this->assertSame('', $m->invoke($n, 'Owner', '()'));
+        // self resolves to the owning class.
+        $this->assertSame('Owner', $m->invoke($n, 'Owner', 'self'));
+        // A bare leading backslash trims to empty → ''.
+        $this->assertSame('', $m->invoke($n, 'Owner', '\\'));
+    }
+
+    public function testResolveArrayItemTypeNamesEdgeCases(): void
+    {
+        $m = new ReflectionMethod(DtoNormalizer::class, 'resolveArrayItemTypeNames');
+        $n = new DtoNormalizer();
+        // Missing method → [].
+        $this->assertSame([], $m->invoke($n, CovNormNoReturnTagDocblockDto::class, 'noSuchGetter'));
+        // Getter whose docblock has no @return tag → [].
+        $this->assertSame([], $m->invoke($n, CovNormNoReturnTagDocblockDto::class, 'getItems'));
+    }
+
+    public function testResolveOpenApiPropertyAliasesByClassIgnoresNonArrayReturn(): void
+    {
+        $m = new ReflectionMethod(DtoNormalizer::class, 'resolveOpenApiPropertyAliasesByClass');
+        $n = new DtoNormalizer();
+        // getAliases() returning a non-array is ignored (→ []).
+        $this->assertSame([], $m->invoke($n, CovNormBadAliasesReturnDto::class));
+    }
+
+    public function testBuildClassMetaFromPublicGettersSkipsEmptyPropertyName(): void
+    {
+        $m = new ReflectionMethod(DtoNormalizer::class, 'buildClassMetaFromPublicGetters');
+        $n = new DtoNormalizer();
+        // A bare get() getter resolves to an empty property name and is skipped; only real
+        // getters remain.
+        $meta = $m->invoke($n, CovNormBareGetOnlyDto::class);
+        $names = array_map(static fn(array $g): string => $g['propertyName'], $meta['getters']);
+        $this->assertNotContains('', $names);
+        $this->assertContains('name', $names);
+    }
+
+    public function testNormalizeValueFallbackForPlainFile(): void
+    {
+        $m = new ReflectionMethod(DtoNormalizer::class, 'normalizeValueFallback');
+        $n = new DtoNormalizer();
+        // A plain File (not UploadedFile) falls back to its filename.
+        $file = new File('/tmp/does-not-need-to-exist.txt', false);
+        $this->assertSame(['filename' => 'does-not-need-to-exist.txt'], $m->invoke($n, $file));
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Stub DTOs
 // ---------------------------------------------------------------------------
+
+final class CovNormBadAliasesReturnDto
+{
+    public function getName(): string
+    {
+        return 'x';
+    }
+
+    /** @return string non-array on purpose to exercise the guard */
+    public static function getAliases(): string
+    {
+        return 'not-an-array';
+    }
+}
+
+final class CovNormBareGetOnlyDto
+{
+    public function get(): string
+    {
+        return 'bare';
+    }
+
+    public function getName(): string
+    {
+        return 'named';
+    }
+}
 
 final class CovNormOuterFastNullDto implements GeneratedDtoInterface
 {
@@ -1923,5 +2052,116 @@ final class CovNormNoReturnTagDocblockDto implements GeneratedDtoInterface
     public static function getConstraints(): array
     {
         return [];
+    }
+}
+
+/**
+ * Base for reflection-path (dtoToArray) fixtures: its own toArray() throws FIELD_NOT_PROVIDED so
+ * the fast path bails and dtoToArray() runs.
+ */
+abstract class CovNormReflectionPathDto implements GeneratedDtoInterface
+{
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        throw new LogicException('Field ' . GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE);
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return '{}';
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+final class CovNormGetterErrorDto extends CovNormReflectionPathDto
+{
+    public function getVal(): string
+    {
+        throw new TypeError('broken getter');
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'val' => ['getter' => 'getVal', 'type' => 'string', 'nullable' => false, 'metadata' => ['required' => true]],
+        ];
+    }
+}
+
+final class CovNormGetterInfraDto extends CovNormReflectionPathDto
+{
+    public function getVal(): string
+    {
+        throw new RuntimeException('db down');
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'val' => ['getter' => 'getVal', 'type' => 'string', 'nullable' => false, 'metadata' => ['required' => true]],
+        ];
+    }
+}
+
+final class CovNormWriteOnlyReflectionDto extends CovNormReflectionPathDto
+{
+    public function getSecret(): string
+    {
+        return 'hidden';
+    }
+
+    public function getName(): string
+    {
+        return 'visible';
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'secret' => [
+                'getter' => 'getSecret',
+                'type' => 'string',
+                'nullable' => false,
+                'metadata' => ['required' => true, 'writeOnly' => true],
+            ],
+            'name' => ['getter' => 'getName', 'type' => 'string', 'nullable' => false, 'metadata' => ['required' => true]],
+        ];
+    }
+}
+
+final class CovNormMapCastDto extends CovNormReflectionPathDto
+{
+    /** @return array<string, int> */
+    public function getAttrs(): array
+    {
+        return ['a' => 1];
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'attrs' => ['getter' => 'getAttrs', 'type' => 'object', 'nullable' => false, 'metadata' => ['required' => true]],
+        ];
     }
 }

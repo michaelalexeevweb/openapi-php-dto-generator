@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -905,5 +906,109 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertStringContainsString("\$sources['ignoredHeader'] = 'header';", $content);
         $this->assertStringContainsString("\$sources['id'] = 'path';", $content);
         $this->assertStringContainsString("\$sources['verbose'] = 'query';", $content);
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    private function resolveUnion(array $propertySchema, string $keyword): mixed
+    {
+        $method = new ReflectionMethod($this->generator, 'resolveComposedUnionPropertyType');
+
+        return $method->invoke($this->generator, $propertySchema, $keyword, 'Owner', 'prop');
+    }
+
+    public function testResolveComposedUnionPropertyTypeBranches(): void
+    {
+        // Non-array variants → mixed (nullability preserved from the schema).
+        $this->assertSame(['mixed', false], $this->resolveUnion(['oneOf' => 'nope'], 'oneOf'));
+        $this->assertSame(['mixed', true], $this->resolveUnion(['oneOf' => 'nope', 'nullable' => true], 'oneOf'));
+
+        // A non-array branch is skipped; the scalar branch still resolves.
+        $this->assertSame(['string', false], $this->resolveUnion(['oneOf' => [null, ['type' => 'string']]], 'oneOf'));
+
+        // A `type: null` branch adds null and contributes no type → union collapses to mixed|null.
+        $this->assertSame(['mixed', true], $this->resolveUnion(['oneOf' => [['type' => 'null']]], 'oneOf'));
+
+        // A nullable branch flips the whole union nullable.
+        $this->assertSame(
+            ['string|int', true],
+            $this->resolveUnion(['oneOf' => [['type' => 'string', 'nullable' => true], ['type' => 'integer']]], 'oneOf'),
+        );
+
+        // A branch that resolves to mixed collapses the whole union to mixed.
+        $this->assertSame(['mixed', false], $this->resolveUnion(['oneOf' => [[], ['type' => 'string']]], 'oneOf'));
+
+        // An array-typed branch is flattened to the bare `array` type in the union.
+        $this->assertSame(
+            ['array|int', false],
+            $this->resolveUnion(
+                ['oneOf' => [['type' => 'array', 'items' => ['type' => 'string']], ['type' => 'integer']]],
+                'oneOf',
+            ),
+        );
+    }
+
+    public function testExecuteDefaultsToRuntimeModeAndSucceeds(): void
+    {
+        // No --attributes → mode defaults to runtime; a valid spec generates successfully.
+        $tester = $this->buildTester();
+        $exitCode = $tester->execute([
+            '--file' => __DIR__ . '/../fixtures/additional-properties.yaml',
+            '--directory' => $this->outputDirectory . '/cli-runtime',
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Generated', $tester->getDisplay());
+    }
+
+    public function testExecuteDtoGeneratorDirectoryDefaultsToCommon(): void
+    {
+        // --dto-generator-directory present without a value → defaults to "Common" and copies
+        // the runtime services there.
+        $tester = $this->buildTester();
+        $exitCode = $tester->execute([
+            '--file' => __DIR__ . '/../fixtures/additional-properties.yaml',
+            '--directory' => $this->outputDirectory . '/cli-common',
+            '--dto-generator-directory' => null,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertFileExists($this->outputDirectory . '/cli-common/Common/DtoDeserializer.php');
+    }
+
+    public function testExecuteWithPsr7PrintsBridgeNote(): void
+    {
+        $tester = $this->buildTester();
+        $exitCode = $tester->execute([
+            '--file' => __DIR__ . '/../fixtures/additional-properties.yaml',
+            '--directory' => $this->outputDirectory . '/cli-psr7',
+            '--dto-generator-directory' => null,
+            '--with-psr7' => true,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('symfony/psr-http-message-bridge', $tester->getDisplay());
+    }
+
+    public function testExecuteExtractsInlineResponseRequestAndParameterSchemas(): void
+    {
+        // A spec with inline request/response object schemas and path/query parameters exercises
+        // registerDocumentSchemas' inline block plus extractInline{Response,Request,Parameter}Schemas
+        // and the parameter resolution helpers.
+        $tester = $this->buildTester();
+        $out = $this->outputDirectory . '/cli-inline';
+        $exitCode = $tester->execute([
+            '--file' => __DIR__ . '/../fixtures/inline-schemas.yaml',
+            '--directory' => $out,
+        ]);
+
+        $this->assertSame(0, $exitCode, $tester->getDisplay());
+        // Inline request body object → its own DTO (named from path + method).
+        $this->assertFileExists($out . '/WidgetsPostRequest.php');
+        // Inline response object → its own DTO (named from path + status code).
+        $this->assertFileExists($out . '/Widgets200.php');
+        // Path/query parameters → a params DTO.
+        $this->assertFileExists($out . '/WidgetsGetQueryParams.php');
     }
 }

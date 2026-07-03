@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 enum TestStringBackedEnum: string
 {
@@ -2232,5 +2233,247 @@ final class DtoValidatorTest extends TestCase
         $errors = $this->validator->validate('f', 'x', $constraints);
         $this->assertNotSame([], $errors);
         $this->assertStringContainsString('schema nesting exceeds 256 levels', implode(' | ', $errors));
+    }
+
+    public function testAllOfSkipsNonArrayBranchAndValidatesRest(): void
+    {
+        // A non-array allOf branch is skipped; array branches are enforced.
+        $errors = $this->validator->validate('v', 3, ['allOf' => [['minimum' => 5], 'not-a-branch']]);
+        $this->assertNotEmpty($errors);
+    }
+
+    public function testUnionSkipsNonArrayBranch(): void
+    {
+        // A non-array oneOf branch is skipped; the string branch still matches exactly once.
+        $this->assertSame([], $this->validator->validate('v', 'x', ['oneOf' => ['not-a-branch', ['type' => 'string']]]));
+    }
+
+    public function testMatchesOpenApiTypeEmptyListPlacesNoConstraint(): void
+    {
+        // An empty `type` list matches any value (no constraint).
+        $matches = new ReflectionMethod($this->validator, 'matchesOpenApiType');
+        $this->assertTrue($matches->invoke($this->validator, 5, []));
+        $this->assertTrue($matches->invoke($this->validator, 'x', []));
+    }
+
+    public function testObjectPropertiesAreValidatedRecursively(): void
+    {
+        $errors = $this->validator->validate('o', ['a' => 'not-int'], ['properties' => ['a' => ['type' => 'integer']]]);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('o.a', $errors[0]);
+    }
+
+    public function testObjectRequiredPropertyMissingReported(): void
+    {
+        $errors = $this->validator->validate('o', ['a' => 1], ['required' => ['b']]);
+        $this->assertContains('o.b is required', $errors);
+    }
+
+    public function testObjectPatternPropertiesValidated(): void
+    {
+        $errors = $this->validator->validate(
+            'o',
+            ['x1' => 'not-int'],
+            ['patternProperties' => ['^x' => ['type' => 'integer']]],
+        );
+        $this->assertNotEmpty($errors);
+    }
+
+    public function testUniqueItemsFallsBackToSerializeOnJsonException(): void
+    {
+        // A non-scalar item that cannot be JSON-encoded (contains INF) must not crash uniqueItems;
+        // it falls back to serialize() for the fingerprint.
+        $errors = $this->validator->validate('a', [['x' => INF]], ['type' => 'array', 'uniqueItems' => true]);
+        $this->assertSame([], $errors);
+    }
+
+    public function testFormatDateAndDateTimeRejectEmptyString(): void
+    {
+        $this->assertNotEmpty($this->validator->validate('d', '', ['format' => 'date']));
+        $this->assertNotEmpty($this->validator->validate('dt', '', ['format' => 'date-time']));
+    }
+
+    public function testFormatByteAcceptsEmptyString(): void
+    {
+        $this->assertSame([], $this->validator->validate('b', '', ['format' => 'byte']));
+    }
+
+    public function testMinimumInclusiveBoundary(): void
+    {
+        $c = ['minimum' => 10];
+        $this->assertSame([], $this->validator->validate('v', 10, $c));       // exact boundary passes
+        $this->assertSame([], $this->validator->validate('v', 11, $c));
+        $this->assertNotEmpty($this->validator->validate('v', 9, $c));        // below fails
+    }
+
+    public function testExclusiveMinimumNumericStyle(): void
+    {
+        // OpenAPI 3.1: exclusiveMinimum as a number.
+        $c = ['exclusiveMinimum' => 10];
+        $this->assertNotEmpty($this->validator->validate('v', 10, $c));       // equal fails
+        $this->assertSame([], $this->validator->validate('v', 10.0001, $c));  // above passes
+    }
+
+    public function testExclusiveMinimumBooleanStyle(): void
+    {
+        // OpenAPI 3.0: exclusiveMinimum boolean paired with minimum.
+        $c = ['minimum' => 10, 'exclusiveMinimum' => true];
+        $this->assertNotEmpty($this->validator->validate('v', 10, $c));       // equal fails
+        $this->assertSame([], $this->validator->validate('v', 11, $c));
+    }
+
+    public function testIntegerTypeRejectsFloatValue(): void
+    {
+        // A float (even 1.0) is not an integer.
+        $this->assertNotEmpty($this->validator->validate('v', 1.0, ['type' => 'integer']));
+        $this->assertSame([], $this->validator->validate('v', 1, ['type' => 'integer']));
+        // number accepts both int and float.
+        $this->assertSame([], $this->validator->validate('v', 1.5, ['type' => 'number']));
+        $this->assertSame([], $this->validator->validate('v', 2, ['type' => 'number']));
+    }
+
+    public function testMultipleOfIntegerAndZeroGuard(): void
+    {
+        $this->assertSame([], $this->validator->validate('v', 9, ['multipleOf' => 3]));
+        $this->assertNotEmpty($this->validator->validate('v', 10, ['multipleOf' => 3]));
+        // multipleOf <= 0 is ignored (no division-by-zero, no error).
+        $this->assertSame([], $this->validator->validate('v', 7, ['multipleOf' => 0]));
+    }
+
+    public function testStringLengthBoundaries(): void
+    {
+        $c = ['minLength' => 3, 'maxLength' => 5];
+        $this->assertSame([], $this->validator->validate('s', 'abc', $c));    // exact min
+        $this->assertSame([], $this->validator->validate('s', 'abcde', $c));  // exact max
+        $this->assertNotEmpty($this->validator->validate('s', 'ab', $c));     // below min
+        $this->assertNotEmpty($this->validator->validate('s', 'abcdef', $c)); // above max
+    }
+
+    public function testStringLengthCountsUnicodeCharactersNotBytes(): void
+    {
+        // 'ñññ' is 3 characters but 6 bytes; mb_strlen must count 3.
+        $this->assertSame([], $this->validator->validate('s', 'ñññ', ['minLength' => 3, 'maxLength' => 3]));
+        $this->assertNotEmpty($this->validator->validate('s', 'ñññ', ['minLength' => 4]));
+    }
+
+    public function testArrayItemCountBoundaries(): void
+    {
+        $c = ['type' => 'array', 'minItems' => 2, 'maxItems' => 3];
+        $this->assertSame([], $this->validator->validate('a', [1, 2], $c));      // exact min
+        $this->assertSame([], $this->validator->validate('a', [1, 2, 3], $c));   // exact max
+        $this->assertNotEmpty($this->validator->validate('a', [1], $c));         // below min
+        $this->assertNotEmpty($this->validator->validate('a', [1, 2, 3, 4], $c)); // above max
+    }
+
+    // ---- Cosmetic format sub-variants (characterization: locks current behavior) ----
+
+    public function testFormatByteRejectsUrlSafeAlphabet(): void
+    {
+        // format: byte is standard base64 only; url-safe chars (-_) are rejected.
+        $this->assertNotEmpty($this->validator->validate('b', 'ab-_cd==', ['format' => 'byte']));
+    }
+
+    public function testFormatEmailQuotedAndIpLiteralVariants(): void
+    {
+        // filter_var rejects a quoted-string local part but accepts an IP-address-literal domain.
+        $this->assertNotEmpty($this->validator->validate('e', '"a b"@x.com', ['format' => 'email']));
+        $this->assertSame([], $this->validator->validate('e', 'user@[1.2.3.4]', ['format' => 'email']));
+    }
+
+    public function testFormatIpv6ZoneIdAndV4Mapped(): void
+    {
+        // Zone id (%eth0) is rejected; an IPv4-mapped address is accepted.
+        $this->assertNotEmpty($this->validator->validate('ip', 'fe80::1%eth0', ['format' => 'ipv6']));
+        $this->assertSame([], $this->validator->validate('ip', '::ffff:1.2.3.4', ['format' => 'ipv6']));
+    }
+
+    public function testFormatHostnameTrailingDotAndPunycode(): void
+    {
+        $this->assertSame([], $this->validator->validate('h', 'example.com.', ['format' => 'hostname']));
+        $this->assertSame([], $this->validator->validate('h', 'xn--e1afmkfd.xn--p1ai', ['format' => 'hostname']));
+    }
+
+    public function testFormatUuidRejectsUrnPrefix(): void
+    {
+        $this->assertNotEmpty($this->validator->validate(
+            'u',
+            'urn:uuid:12345678-1234-4234-8234-123456789012',
+            ['format' => 'uuid'],
+        ));
+    }
+
+    public function testFormatDateTimeLeapSecondAndLowercaseSeparatorsRejected(): void
+    {
+        // Leap second (:60) and lowercase t/z separators are rejected.
+        $this->assertNotEmpty($this->validator->validate('t', '2026-06-30T23:59:60Z', ['format' => 'date-time']));
+        $this->assertNotEmpty($this->validator->validate('t', '2026-03-10t12:00:00z', ['format' => 'date-time']));
+    }
+
+    public function testFormatDateTimeAcceptsExtremeYears(): void
+    {
+        $this->assertSame([], $this->validator->validate('t', '0000-01-01T00:00:00Z', ['format' => 'date-time']));
+        $this->assertSame([], $this->validator->validate('t', '9999-12-31T23:59:59Z', ['format' => 'date-time']));
+    }
+
+    // ---- Cosmetic numeric / array edges ----
+
+    public function testMinimumEqualsMaximumAllowsSingleValue(): void
+    {
+        $c = ['minimum' => 5, 'maximum' => 5];
+        $this->assertSame([], $this->validator->validate('v', 5, $c));
+        $this->assertNotEmpty($this->validator->validate('v', 6, $c));
+        $this->assertNotEmpty($this->validator->validate('v', 4, $c));
+    }
+
+    public function testMultipleOfDetectsTinyOffset(): void
+    {
+        // 0.30000001 is not a multiple of 0.1 (beyond the 1e-9 tolerance).
+        $this->assertNotEmpty($this->validator->validate('v', 0.30000001, ['multipleOf' => 0.1]));
+    }
+
+    public function testUniqueItemsTreatsDifferentKeyOrderAsDistinct(): void
+    {
+        // Object fingerprints are order-sensitive: {a,b} and {b,a} are considered distinct items.
+        $this->assertSame([], $this->validator->validate(
+            'a',
+            [['a' => 1, 'b' => 2], ['b' => 2, 'a' => 1]],
+            ['type' => 'array', 'uniqueItems' => true],
+        ));
+    }
+
+    public function testContainsWithMinContainsZeroPassesWithoutMatch(): void
+    {
+        // minContains: 0 means "no minimum" — a value with zero matching items still passes.
+        $this->assertSame([], $this->validator->validate(
+            'a',
+            [1, 2],
+            ['type' => 'array', 'contains' => ['type' => 'string'], 'minContains' => 0],
+        ));
+    }
+
+    public function testPrefixItemsLongerThanValueValidatesPresentPositionsOnly(): void
+    {
+        // Fewer items than prefixItems: only the present positions are checked.
+        $this->assertSame([], $this->validator->validate(
+            'a',
+            [1],
+            ['type' => 'array', 'prefixItems' => [['type' => 'integer'], ['type' => 'integer']]],
+        ));
+    }
+
+    public function testBinaryFormatReportsActualTypeName(): void
+    {
+        $cases = [
+            [5, 'int'],
+            [1.5, 'float'],
+            [true, 'bool'],
+            [[1], 'array'],
+            [(object)[], 'object'],
+        ];
+        foreach ($cases as [$value, $typeName]) {
+            $errors = $this->validator->validate('f', $value, ['format' => 'binary']);
+            $this->assertNotEmpty($errors);
+            $this->assertStringContainsString("got {$typeName}", $errors[0]);
+        }
     }
 }
