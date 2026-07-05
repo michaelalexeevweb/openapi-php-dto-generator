@@ -1913,6 +1913,11 @@ final class GenerateDtoCommand extends Command
             'dependentSchemas',
             'patternProperties',
             'propertyNames',
+            // JSON Schema 2019-09/2020-12 (OpenAPI 3.1): enforced against inline composed
+            // objects/arrays that are not materialized into a dedicated nested DTO. May be a
+            // bool (kept verbatim) or a schema (scrubbed in scrubUnvalidatableSubschemas).
+            'unevaluatedProperties',
+            'unevaluatedItems',
         ];
 
         // NOTE: 'enum' is intentionally NOT forwarded. A property-level enum is
@@ -2050,13 +2055,18 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        // additionalProperties may be a bool (keep) or a schema (scrub).
-        if (array_key_exists('additionalProperties', $constraints) && is_array($constraints['additionalProperties'])) {
-            $extracted = $this->extractValidationConstraints($constraints['additionalProperties']);
+        // additionalProperties / unevaluatedProperties / unevaluatedItems may be a bool
+        // (keep verbatim) or a schema (scrub). A schema that scrubs to [] means "allow
+        // anything" — a no-op for these keywords — so the key is dropped.
+        foreach (['additionalProperties', 'unevaluatedProperties', 'unevaluatedItems'] as $boolOrSchemaKey) {
+            if (!array_key_exists($boolOrSchemaKey, $constraints) || !is_array($constraints[$boolOrSchemaKey])) {
+                continue;
+            }
+            $extracted = $this->extractValidationConstraints($constraints[$boolOrSchemaKey]);
             if ($extracted === []) {
-                unset($constraints['additionalProperties']);
+                unset($constraints[$boolOrSchemaKey]);
             } else {
-                $constraints['additionalProperties'] = $extracted;
+                $constraints[$boolOrSchemaKey] = $extracted;
             }
         }
 

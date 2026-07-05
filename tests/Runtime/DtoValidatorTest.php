@@ -2476,4 +2476,399 @@ final class DtoValidatorTest extends TestCase
             $this->assertStringContainsString("got {$typeName}", $errors[0]);
         }
     }
+
+    // =========================================================================
+    // unevaluatedProperties (JSON Schema 2019-09/2020-12)
+    // =========================================================================
+
+    public function testUnevaluatedPropertiesFalseWithAllOfAcceptsCombinedProperties(): void
+    {
+        // The canonical case additionalProperties cannot express: name/age live in
+        // separate allOf branches, yet both count as evaluated.
+        $constraints = [
+            'allOf' => [
+                ['properties' => ['name' => ['type' => 'string']]],
+                ['properties' => ['age' => ['type' => 'integer']]],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['name' => 'Bob', 'age' => 30], $constraints));
+    }
+
+    public function testUnevaluatedPropertiesFalseRejectsKeyNotCoveredByAnyBranch(): void
+    {
+        $constraints = [
+            'allOf' => [
+                ['properties' => ['name' => ['type' => 'string']]],
+                ['properties' => ['age' => ['type' => 'integer']]],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        $errors = $this->validator->validate('o', ['name' => 'Bob', 'age' => 30, 'extra' => 1], $constraints);
+        $this->assertContains('o has unevaluated property "extra" which is not allowed', $errors);
+    }
+
+    public function testUnevaluatedPropertiesFalseWithOwnProperties(): void
+    {
+        $constraints = [
+            'properties' => ['id' => ['type' => 'integer']],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['id' => 1], $constraints));
+        $this->assertContains(
+            'o has unevaluated property "nope" which is not allowed',
+            $this->validator->validate('o', ['id' => 1, 'nope' => 2], $constraints),
+        );
+    }
+
+    public function testUnevaluatedPropertiesFalseCountsPatternProperties(): void
+    {
+        $constraints = [
+            'patternProperties' => ['^x_' => ['type' => 'string']],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['x_a' => 'v', 'x_b' => 'w'], $constraints));
+        $this->assertContains(
+            'o has unevaluated property "y" which is not allowed',
+            $this->validator->validate('o', ['x_a' => 'v', 'y' => 'z'], $constraints),
+        );
+    }
+
+    public function testUnevaluatedPropertiesFalseCountsAdditionalPropertiesSchema(): void
+    {
+        // additionalProperties as a schema evaluates every remaining key → nothing is left
+        // "unevaluated", so unevaluatedProperties: false never fires.
+        $constraints = [
+            'properties' => ['id' => ['type' => 'integer']],
+            'additionalProperties' => ['type' => 'string'],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['id' => 1, 'extra' => 'ok'], $constraints));
+    }
+
+    public function testUnevaluatedPropertiesSchemaValidatesLeftovers(): void
+    {
+        // unevaluatedProperties as a schema: leftover keys must satisfy it.
+        $constraints = [
+            'properties' => ['id' => ['type' => 'integer']],
+            'unevaluatedProperties' => ['type' => 'string'],
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['id' => 1, 'extra' => 'ok'], $constraints));
+        $this->assertContains(
+            'o.extra must be of type string',
+            $this->validator->validate('o', ['id' => 1, 'extra' => 99], $constraints),
+        );
+    }
+
+    public function testUnevaluatedPropertiesTrueIsNoOp(): void
+    {
+        $constraints = [
+            'properties' => ['id' => ['type' => 'integer']],
+            'unevaluatedProperties' => true,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['id' => 1, 'whatever' => [1, 2, 3]], $constraints));
+    }
+
+    public function testUnevaluatedPropertiesCountsPassingIfThenBranch(): void
+    {
+        // When `if` matches, both `if` and `then` properties count as evaluated.
+        $constraints = [
+            'properties' => ['kind' => ['type' => 'string']],
+            'if' => ['properties' => ['kind' => ['const' => 'a']]],
+            'then' => ['properties' => ['aValue' => ['type' => 'integer']]],
+            'else' => ['properties' => ['bValue' => ['type' => 'integer']]],
+            'unevaluatedProperties' => false,
+        ];
+
+        // if matches (kind=a) → aValue is evaluated, bValue is not.
+        $this->assertSame([], $this->validator->validate('o', ['kind' => 'a', 'aValue' => 1], $constraints));
+        $this->assertContains(
+            'o has unevaluated property "bValue" which is not allowed',
+            $this->validator->validate('o', ['kind' => 'a', 'bValue' => 1], $constraints),
+        );
+
+        // if fails (kind=b) → else branch applies, bValue is evaluated.
+        $this->assertSame([], $this->validator->validate('o', ['kind' => 'b', 'bValue' => 1], $constraints));
+    }
+
+    public function testUnevaluatedPropertiesIgnoresFailingAnyOfBranch(): void
+    {
+        // Only a *passing* anyOf branch contributes evaluated keys. Here the value has
+        // extra=5 (int); the string branch fails, so `extra` stays unevaluated.
+        $constraints = [
+            'anyOf' => [
+                ['properties' => ['extra' => ['type' => 'string']]],
+                ['properties' => ['other' => ['type' => 'integer']]],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        $errors = $this->validator->validate('o', ['other' => 1, 'extra' => 5], $constraints);
+        $this->assertContains('o has unevaluated property "extra" which is not allowed', $errors);
+    }
+
+    // =========================================================================
+    // unevaluatedItems (JSON Schema 2019-09/2020-12)
+    // =========================================================================
+
+    public function testUnevaluatedItemsFalseWithPrefixItemsAcceptsExactTuple(): void
+    {
+        $constraints = [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'string'], ['type' => 'integer']],
+            'unevaluatedItems' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
+    }
+
+    public function testUnevaluatedItemsFalseRejectsExtraTailItem(): void
+    {
+        $constraints = [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'string'], ['type' => 'integer']],
+            'unevaluatedItems' => false,
+        ];
+
+        $errors = $this->validator->validate('a', ['x', 1, 'extra'], $constraints);
+        $this->assertContains('a has an unevaluated item at index 2 which is not allowed', $errors);
+    }
+
+    public function testUnevaluatedItemsFalseWithItemsSuffixIsNoOp(): void
+    {
+        // `items` covers every index beyond the prefix → nothing is left unevaluated.
+        $constraints = [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'string']],
+            'items' => ['type' => 'integer'],
+            'unevaluatedItems' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('a', ['x', 1, 2, 3], $constraints));
+    }
+
+    public function testUnevaluatedItemsSchemaValidatesLeftovers(): void
+    {
+        $constraints = [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'string']],
+            'unevaluatedItems' => ['type' => 'integer'],
+        ];
+
+        $this->assertSame([], $this->validator->validate('a', ['x', 1, 2], $constraints));
+        $this->assertContains(
+            'a.1 must be of type integer',
+            $this->validator->validate('a', ['x', 'not-int'], $constraints),
+        );
+    }
+
+    public function testUnevaluatedItemsFalseWithAllOfPrefixBranch(): void
+    {
+        // prefixItems lives in an allOf branch; unevaluatedItems still sees it.
+        $constraints = [
+            'type' => 'array',
+            'allOf' => [
+                ['prefixItems' => [['type' => 'string'], ['type' => 'integer']]],
+            ],
+            'unevaluatedItems' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
+        $this->assertContains(
+            'a has an unevaluated item at index 2 which is not allowed',
+            $this->validator->validate('a', ['x', 1, true], $constraints),
+        );
+    }
+
+    public function testUnevaluatedItemsCountsContainsMatches(): void
+    {
+        // `contains` evaluates only matching indices; a non-matching leftover is rejected.
+        $constraints = [
+            'type' => 'array',
+            'contains' => ['type' => 'integer'],
+            'unevaluatedItems' => false,
+        ];
+
+        // All ints → all evaluated by contains.
+        $this->assertSame([], $this->validator->validate('a', [1, 2, 3], $constraints));
+
+        // 'str' matches neither contains nor anything else → unevaluated.
+        $this->assertContains(
+            'a has an unevaluated item at index 1 which is not allowed',
+            $this->validator->validate('a', [1, 'str'], $constraints),
+        );
+    }
+
+    public function testUnevaluatedItemsTrueIsNoOp(): void
+    {
+        $constraints = [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'string']],
+            'unevaluatedItems' => true,
+        ];
+
+        $this->assertSame([], $this->validator->validate('a', ['x', 1, 2, 3], $constraints));
+    }
+
+    // =========================================================================
+    // unevaluated* — recursive composition (allOf/anyOf/oneOf nested N-deep)
+    // =========================================================================
+
+    public function testUnevaluatedPropertiesSeesNestedAllOf(): void
+    {
+        // allOf inside allOf: `a` is defined two levels down, `b` one level down.
+        $constraints = [
+            'allOf' => [
+                [
+                    'allOf' => [
+                        ['properties' => ['a' => ['type' => 'string']]],
+                    ],
+                ],
+                ['properties' => ['b' => ['type' => 'integer']]],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['a' => 'x', 'b' => 1], $constraints));
+        $this->assertContains(
+            'o has unevaluated property "c" which is not allowed',
+            $this->validator->validate('o', ['a' => 'x', 'b' => 1, 'c' => true], $constraints),
+        );
+    }
+
+    public function testUnevaluatedPropertiesSeesAnyOfNestedInsideAllOf(): void
+    {
+        // anyOf nested inside allOf: the passing anyOf branch (matching by value) contributes
+        // its property as evaluated.
+        $constraints = [
+            'allOf' => [
+                ['properties' => ['base' => ['type' => 'string']]],
+                [
+                    'anyOf' => [
+                        ['properties' => ['x' => ['type' => 'string']], 'required' => ['x']],
+                        ['properties' => ['y' => ['type' => 'integer']], 'required' => ['y']],
+                    ],
+                ],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        // y-branch passes (y present, int) → base + y evaluated.
+        $this->assertSame([], $this->validator->validate('o', ['base' => 's', 'y' => 1], $constraints));
+
+        // z not covered by any branch → unevaluated.
+        $this->assertContains(
+            'o has unevaluated property "z" which is not allowed',
+            $this->validator->validate('o', ['base' => 's', 'y' => 1, 'z' => 9], $constraints),
+        );
+    }
+
+    public function testUnevaluatedPropertiesSeesPassingOneOfBranch(): void
+    {
+        // oneOf: exactly the one passing branch contributes evaluated keys.
+        $constraints = [
+            'oneOf' => [
+                ['properties' => ['cat' => ['type' => 'string']], 'required' => ['cat']],
+                ['properties' => ['dog' => ['type' => 'string']], 'required' => ['dog']],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('o', ['dog' => 'rex'], $constraints));
+        $this->assertContains(
+            'o has unevaluated property "fish" which is not allowed',
+            $this->validator->validate('o', ['dog' => 'rex', 'fish' => 'nemo'], $constraints),
+        );
+    }
+
+    public function testUnevaluatedPropertiesIgnoresNonMatchingOneOfBranch(): void
+    {
+        // The cat-branch does not apply (no `cat` key) → its `cat` property is NOT counted;
+        // a stray `cat` key present without the branch matching stays unevaluated only if the
+        // matching branch didn't already evaluate it. Here dog-branch matches and does not
+        // cover `cat`, so `cat` is unevaluated.
+        $constraints = [
+            'oneOf' => [
+                ['properties' => ['cat' => ['type' => 'string']], 'required' => ['dog'], 'additionalProperties' => false],
+                ['properties' => ['dog' => ['type' => 'string'], 'note' => ['type' => 'string']], 'required' => ['dog']],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        // dog-branch matches (has dog+note), cat-branch fails → only dog,note evaluated.
+        $this->assertSame([], $this->validator->validate('o', ['dog' => 'rex', 'note' => 'hi'], $constraints));
+    }
+
+    public function testUnevaluatedPropertiesSeesDependentSchemas(): void
+    {
+        // dependentSchemas: when the trigger key is present, its schema's properties count.
+        $constraints = [
+            'properties' => ['creditCard' => ['type' => 'string']],
+            'dependentSchemas' => [
+                'creditCard' => ['properties' => ['billingAddress' => ['type' => 'string']]],
+            ],
+            'unevaluatedProperties' => false,
+        ];
+
+        // creditCard present → billingAddress evaluated via dependentSchemas.
+        $this->assertSame(
+            [],
+            $this->validator->validate('o', ['creditCard' => '4111', 'billingAddress' => 'Main St'], $constraints),
+        );
+
+        // Without the trigger, billingAddress is not evaluated → rejected.
+        $this->assertContains(
+            'o has unevaluated property "billingAddress" which is not allowed',
+            $this->validator->validate('o', ['billingAddress' => 'Main St'], $constraints),
+        );
+    }
+
+    public function testUnevaluatedItemsSeesNestedAllOfPrefixItems(): void
+    {
+        // prefixItems nested two allOf levels deep is still seen by unevaluatedItems.
+        $constraints = [
+            'type' => 'array',
+            'allOf' => [
+                [
+                    'allOf' => [
+                        ['prefixItems' => [['type' => 'string'], ['type' => 'integer']]],
+                    ],
+                ],
+            ],
+            'unevaluatedItems' => false,
+        ];
+
+        $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
+        $this->assertContains(
+            'a has an unevaluated item at index 2 which is not allowed',
+            $this->validator->validate('a', ['x', 1, 'extra'], $constraints),
+        );
+    }
+
+    public function testUnevaluatedItemsSeesItemsInsidePassingAnyOfBranch(): void
+    {
+        // A passing anyOf branch supplying an `items` suffix evaluates the tail positions.
+        $constraints = [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'string']],
+            'anyOf' => [
+                ['prefixItems' => [['type' => 'string']], 'items' => ['type' => 'integer']],
+                ['prefixItems' => [['type' => 'string']], 'items' => ['type' => 'boolean']],
+            ],
+            'unevaluatedItems' => false,
+        ];
+
+        // Tail ints → first anyOf branch passes → all tail evaluated.
+        $this->assertSame([], $this->validator->validate('a', ['x', 1, 2, 3], $constraints));
+
+        // Tail bools → second branch passes.
+        $this->assertSame([], $this->validator->validate('a', ['x', true, false], $constraints));
+    }
 }

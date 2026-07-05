@@ -10,6 +10,7 @@ use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
@@ -659,6 +660,105 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $valid = $normalizer->validate(new $cls('locked', ['a' => 1], tupleField: ['ok', 7]));
         $this->assertNotContains('field "tupleField".0 must be of type string', $valid);
+    }
+
+    public function testUnevaluatedItemsIsEnforcedThroughGeneratedDto(): void
+    {
+        // An array field with prefixItems + unevaluatedItems: false stays a raw list at
+        // runtime (not materialized), so the constraint reaches DtoValidator via the
+        // generated getConstraints() and is enforced by DtoNormalizer::validate().
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'UnevalItems', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'TupleHolder' => [
+                        'type' => 'object',
+                        'required' => ['pair'],
+                        'properties' => [
+                            'pair' => [
+                                'type' => 'array',
+                                'prefixItems' => [['type' => 'string'], ['type' => 'integer']],
+                                'unevaluatedItems' => false,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenUnevalItems');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenUnevalItems\TupleHolder';
+        $constraints = $cls::getConstraints();
+        $this->assertArrayHasKey('pair', $constraints);
+        $this->assertFalse($constraints['pair']['unevaluatedItems']);
+
+        $normalizer = new DtoNormalizer();
+
+        // Exact 2-tuple: nothing left unevaluated.
+        $this->assertSame([], $normalizer->validate(new $cls(['x', 1])));
+
+        // A third item is not covered by prefixItems → rejected.
+        $errors = $normalizer->validate(new $cls(['x', 1, 'extra']));
+        $matched = array_filter(
+            $errors,
+            static fn(string $e): bool => str_contains($e, 'unevaluated item at index 2'),
+        );
+        $this->assertNotEmpty($matched, 'expected an unevaluated-item error, got: ' . implode(' | ', $errors));
+    }
+
+    public function testUnevaluatedPropertiesIsForwardedAndEnforcedThroughGeneratedConstraints(): void
+    {
+        // A composed object with named properties is materialized into a dedicated nested DTO
+        // (so unknown keys are impossible by construction). What we verify here is the other
+        // half: the generator forwards allOf + unevaluatedProperties into getConstraints(),
+        // and DtoValidator enforces them for the non-materialized (raw map / inline) path.
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'UnevalProps', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ConfigHolder' => [
+                        'type' => 'object',
+                        'required' => ['config'],
+                        'properties' => [
+                            'config' => [
+                                'type' => 'object',
+                                'allOf' => [
+                                    ['properties' => ['a' => ['type' => 'string']]],
+                                    ['properties' => ['b' => ['type' => 'integer']]],
+                                ],
+                                'unevaluatedProperties' => false,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenUnevalProps');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenUnevalProps\ConfigHolder';
+        $constraints = $cls::getConstraints();
+        $this->assertArrayHasKey('config', $constraints);
+        $this->assertFalse($constraints['config']['unevaluatedProperties']);
+        $this->assertArrayHasKey('allOf', $constraints['config']);
+
+        // Feed a raw map through DtoValidator using the generated constraints: keys covered
+        // by the allOf branches pass, an extra key is rejected as unevaluated.
+        $validator = new DtoValidator();
+        $this->assertSame([], $validator->validate('config', ['a' => 'x', 'b' => 1], $constraints['config']));
+        $this->assertContains(
+            'config has unevaluated property "extra" which is not allowed',
+            $validator->validate('config', ['a' => 'x', 'b' => 1, 'extra' => 9], $constraints['config']),
+        );
     }
 
     public function testHeaderAndCookieParamsAreDeserializedThroughGeneratedDto(): void

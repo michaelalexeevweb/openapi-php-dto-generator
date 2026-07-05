@@ -181,11 +181,11 @@ final class DtoValidator implements DtoValidatorInterface
             $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
         }
 
-        if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items', 'contains', 'minContains', 'maxContains', 'prefixItems')) {
+        if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items', 'contains', 'minContains', 'maxContains', 'prefixItems', 'unevaluatedItems')) {
             $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
         }
 
-        if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas', 'patternProperties', 'propertyNames')) {
+        if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas', 'patternProperties', 'propertyNames', 'unevaluatedProperties')) {
             $errors = [...$errors, ...$this->validateObjectConstraints(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
         }
 
@@ -607,6 +607,34 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
+        // unevaluatedProperties (JSON Schema 2019-09/2020-12): applies to keys not already
+        // "evaluated" by this schema's own properties/patternProperties/additionalProperties
+        // NOR by any in-place applicator (allOf, passing anyOf/oneOf branches, the applicable
+        // if/then/else, matching dependentSchemas). `true` places no constraint.
+        if (array_key_exists('unevaluatedProperties', $constraints) && $constraints['unevaluatedProperties'] !== true) {
+            $unevaluated = $constraints['unevaluatedProperties'];
+            $evaluatedKeys = $this->collectEvaluatedProperties($value, $constraints, $depth);
+            foreach ($value as $key => $itemValue) {
+                $keyStr = (string)$key;
+                if (array_key_exists($keyStr, $evaluatedKeys)) {
+                    continue;
+                }
+                if ($unevaluated === false) {
+                    $errors[] = "{$subject} has unevaluated property \"{$keyStr}\" which is not allowed";
+                } elseif (is_array($unevaluated) && $unevaluated !== []) {
+                    array_push(
+                        $errors,
+                        ...$this->validateConstraints(
+                            sprintf('%s.%s', $subject, $keyStr),
+                            $itemValue,
+                            $unevaluated,
+                            $depth + 1,
+                        ),
+                    );
+                }
+            }
+        }
+
         return $errors;
     }
 
@@ -717,7 +745,219 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
+        // unevaluatedItems (JSON Schema 2019-09/2020-12): applies to list positions not
+        // already "evaluated" by prefixItems/items/contains NOR by an in-place applicator.
+        // Only meaningful for JSON arrays (lists); `true` places no constraint.
+        if (
+            array_key_exists('unevaluatedItems', $constraints)
+            && $constraints['unevaluatedItems'] !== true
+            && array_is_list($value)
+        ) {
+            $unevaluated = $constraints['unevaluatedItems'];
+            $evaluatedIndices = $this->collectEvaluatedItems($value, $constraints, $depth);
+            foreach ($value as $index => $itemValue) {
+                if (array_key_exists($index, $evaluatedIndices)) {
+                    continue;
+                }
+                if ($unevaluated === false) {
+                    $errors[] = sprintf('%s has an unevaluated item at index %s which is not allowed', $subject, (string)$index);
+                } elseif (is_array($unevaluated) && $unevaluated !== []) {
+                    array_push(
+                        $errors,
+                        ...$this->validateConstraints(
+                            sprintf('%s.%s', $subject, (string)$index),
+                            $itemValue,
+                            $unevaluated,
+                            $depth + 1,
+                        ),
+                    );
+                }
+            }
+        }
+
         return $errors;
+    }
+
+    /**
+     * Collects the object keys considered "evaluated" at this schema location — by its own
+     * properties/patternProperties/additionalProperties and by every in-place applicator
+     * (allOf, passing anyOf/oneOf branches, the applicable if/then/else, matching
+     * dependentSchemas) that applies to the same object. Backs `unevaluatedProperties`,
+     * which only inspects keys left over after all of these.
+     *
+     * A branch contributes annotations only when it actually applies (a failing anyOf/oneOf
+     * branch, or the non-taken if/then/else arm, is discarded) — mirroring the JSON Schema
+     * rule that annotations from unsuccessful subschemas are dropped.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, true>
+     */
+    private function collectEvaluatedProperties(mixed $value, array $constraints, int $depth): array
+    {
+        if (!is_array($value) || $depth >= self::MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $evaluated = [];
+
+        if (is_array($constraints['properties'] ?? null)) {
+            foreach (array_keys($constraints['properties']) as $propName) {
+                if (is_string($propName) && array_key_exists($propName, $value)) {
+                    $evaluated[$propName] = true;
+                }
+            }
+        }
+
+        if (is_array($constraints['patternProperties'] ?? null)) {
+            foreach (array_keys($constraints['patternProperties']) as $pattern) {
+                if (!is_string($pattern)) {
+                    continue;
+                }
+                foreach (array_keys($value) as $key) {
+                    if ($this->keyMatchesPattern((string)$key, $pattern)) {
+                        $evaluated[(string)$key] = true;
+                    }
+                }
+            }
+        }
+
+        // additionalProperties as a schema (or `true`) evaluates every remaining key.
+        $additional = $constraints['additionalProperties'] ?? null;
+        if ($additional === true || (is_array($additional) && $additional !== [])) {
+            foreach (array_keys($value) as $key) {
+                $evaluated[(string)$key] = true;
+            }
+        }
+
+        if (is_array($constraints['allOf'] ?? null)) {
+            foreach ($constraints['allOf'] as $branch) {
+                if (is_array($branch)) {
+                    $evaluated += $this->collectEvaluatedProperties($value, $branch, $depth + 1);
+                }
+            }
+        }
+
+        foreach (['anyOf', 'oneOf'] as $unionKey) {
+            if (!is_array($constraints[$unionKey] ?? null)) {
+                continue;
+            }
+            foreach ($constraints[$unionKey] as $branch) {
+                if (
+                    is_array($branch)
+                    && $this->matchesOpenApiType($value, $branch['type'] ?? null)
+                    && $this->validateConstraints('', $value, $branch, $depth + 1) === []
+                ) {
+                    $evaluated += $this->collectEvaluatedProperties($value, $branch, $depth + 1);
+                }
+            }
+        }
+
+        if (is_array($constraints['if'] ?? null)) {
+            $ifApplies = $this->validateConstraints('', $value, $constraints['if'], $depth + 1) === [];
+            if ($ifApplies) {
+                $evaluated += $this->collectEvaluatedProperties($value, $constraints['if'], $depth + 1);
+                if (is_array($constraints['then'] ?? null)) {
+                    $evaluated += $this->collectEvaluatedProperties($value, $constraints['then'], $depth + 1);
+                }
+            } elseif (is_array($constraints['else'] ?? null)) {
+                $evaluated += $this->collectEvaluatedProperties($value, $constraints['else'], $depth + 1);
+            }
+        }
+
+        if (is_array($constraints['dependentSchemas'] ?? null)) {
+            foreach ($constraints['dependentSchemas'] as $ifProp => $schema) {
+                if (is_string($ifProp) && array_key_exists($ifProp, $value) && is_array($schema)) {
+                    $evaluated += $this->collectEvaluatedProperties($value, $schema, $depth + 1);
+                }
+            }
+        }
+
+        return $evaluated;
+    }
+
+    /**
+     * Array counterpart of {@see collectEvaluatedProperties}: collects the list indices
+     * considered "evaluated" by prefixItems/items/contains and by in-place applicators.
+     * Backs `unevaluatedItems`.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<int, true>
+     */
+    private function collectEvaluatedItems(mixed $value, array $constraints, int $depth): array
+    {
+        if (!is_array($value) || $depth >= self::MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $evaluated = [];
+
+        $prefixCount = 0;
+        if (is_array($constraints['prefixItems'] ?? null)) {
+            $prefixCount = count($constraints['prefixItems']);
+            foreach (array_keys($value) as $key) {
+                if (is_int($key) && $key < $prefixCount) {
+                    $evaluated[$key] = true;
+                }
+            }
+        }
+
+        // `items` (a schema, not `false`) is a suffix validator covering every index at or
+        // beyond the prefix length → all such positions are evaluated.
+        $items = $constraints['items'] ?? null;
+        if (is_array($items) && $items !== []) {
+            foreach (array_keys($value) as $key) {
+                if (is_int($key) && $key >= $prefixCount) {
+                    $evaluated[$key] = true;
+                }
+            }
+        }
+
+        // `contains` evaluates each index whose item matches the contains schema.
+        $contains = $constraints['contains'] ?? null;
+        if (is_array($contains) && $contains !== []) {
+            foreach ($value as $key => $itemValue) {
+                if (is_int($key) && $this->validateConstraints('', $itemValue, $contains, $depth + 1) === []) {
+                    $evaluated[$key] = true;
+                }
+            }
+        }
+
+        if (is_array($constraints['allOf'] ?? null)) {
+            foreach ($constraints['allOf'] as $branch) {
+                if (is_array($branch)) {
+                    $evaluated += $this->collectEvaluatedItems($value, $branch, $depth + 1);
+                }
+            }
+        }
+
+        foreach (['anyOf', 'oneOf'] as $unionKey) {
+            if (!is_array($constraints[$unionKey] ?? null)) {
+                continue;
+            }
+            foreach ($constraints[$unionKey] as $branch) {
+                if (
+                    is_array($branch)
+                    && $this->matchesOpenApiType($value, $branch['type'] ?? null)
+                    && $this->validateConstraints('', $value, $branch, $depth + 1) === []
+                ) {
+                    $evaluated += $this->collectEvaluatedItems($value, $branch, $depth + 1);
+                }
+            }
+        }
+
+        if (is_array($constraints['if'] ?? null)) {
+            $ifApplies = $this->validateConstraints('', $value, $constraints['if'], $depth + 1) === [];
+            if ($ifApplies) {
+                $evaluated += $this->collectEvaluatedItems($value, $constraints['if'], $depth + 1);
+                if (is_array($constraints['then'] ?? null)) {
+                    $evaluated += $this->collectEvaluatedItems($value, $constraints['then'], $depth + 1);
+                }
+            } elseif (is_array($constraints['else'] ?? null)) {
+                $evaluated += $this->collectEvaluatedItems($value, $constraints['else'], $depth + 1);
+            }
+        }
+
+        return $evaluated;
     }
 
     private function isValidStringFormat(string $value, string $format): bool
