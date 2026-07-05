@@ -328,6 +328,7 @@ final class GenerateDtoCommand extends Command
         if (!is_array($data)) {
             throw new RuntimeException('OpenAPI root must be an object/array.');
         }
+        $data = $this->foldJsonSchemaDefs($data);
 
         $realFilePath = realpath($filePath);
         if ($realFilePath === false) {
@@ -377,6 +378,64 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Folds JSON Schema's `$defs` (2019-09/2020-12) into OpenAPI's `components.schemas`:
+     * every root-level `$defs` entry is copied into `components.schemas` (an existing
+     * component of the same name wins) and every `#/$defs/X` pointer in the document is
+     * rewritten to `#/components/schemas/X`. The rest of the generator resolves only
+     * `#/components/schemas/`, so it then handles `$defs`-based specs unchanged.
+     *
+     * Scope: the ROOT document's `$defs`. Subschema-local `$defs` and external-file `$defs`
+     * are not folded (rare — prefer `components.schemas` for shared types).
+     *
+     * @param array<string, mixed> $openApi
+     * @return array<string, mixed>
+     */
+    private function foldJsonSchemaDefs(array $openApi): array
+    {
+        $defs = $openApi['$defs'] ?? null;
+        if (!is_array($defs) || $defs === []) {
+            return $openApi;
+        }
+
+        $components = is_array($openApi['components'] ?? null) ? $openApi['components'] : [];
+        $schemas = is_array($components['schemas'] ?? null) ? $components['schemas'] : [];
+        foreach ($defs as $name => $schema) {
+            if (is_string($name) && !array_key_exists($name, $schemas)) {
+                $schemas[$name] = $schema;
+            }
+        }
+        $components['schemas'] = $schemas;
+        $openApi['components'] = $components;
+        unset($openApi['$defs']);
+
+        $rewritten = $this->rewriteDefsRefs($openApi);
+
+        return is_array($rewritten) ? $rewritten : $openApi;
+    }
+
+    /**
+     * Recursively rewrites every `$ref` pointer of the form `#/$defs/X` to
+     * `#/components/schemas/X`. Other keys/values are returned unchanged.
+     */
+    private function rewriteDefsRefs(mixed $node): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+
+        $result = [];
+        foreach ($node as $key => $value) {
+            if ($key === '$ref' && is_string($value) && str_starts_with($value, '#/$defs/')) {
+                $result[$key] = '#/components/schemas/' . substr($value, strlen('#/$defs/'));
+                continue;
+            }
+            $result[$key] = $this->rewriteDefsRefs($value);
+        }
+
+        return $result;
+    }
+
+    /**
      * @param array<mixed> $openApi
      */
     public function generateFromArray(array $openApi, string $outputDirectory, string $namespace, string $mode = self::ATTRIBUTE_MODE_RUNTIME): int
@@ -384,6 +443,7 @@ final class GenerateDtoCommand extends Command
         $this->setAttributeMode($mode);
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
 
+        $openApi = $this->foldJsonSchemaDefs($openApi);
         $schemas = $this->extractSchemas($openApi);
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
             $schemas[$name] = $schema;
@@ -1918,6 +1978,12 @@ final class GenerateDtoCommand extends Command
             // bool (kept verbatim) or a schema (scrubbed in scrubUnvalidatableSubschemas).
             'unevaluatedProperties',
             'unevaluatedItems',
+            // String content assertions (JSON Schema 2019-09/2020-12, OpenAPI 3.1).
+            // contentEncoding/contentMediaType are scalars; contentSchema is a subschema
+            // (scrubbed in scrubUnvalidatableSubschemas).
+            'contentEncoding',
+            'contentMediaType',
+            'contentSchema',
         ];
 
         // NOTE: 'enum' is intentionally NOT forwarded. A property-level enum is
@@ -2043,7 +2109,7 @@ final class GenerateDtoCommand extends Command
     private function scrubUnvalidatableSubschemas(array $constraints): array
     {
         // Single-subschema keys: drop the key entirely when it extracts to nothing.
-        foreach (['items', 'contains', 'propertyNames', 'if', 'then', 'else'] as $key) {
+        foreach (['items', 'contains', 'propertyNames', 'if', 'then', 'else', 'contentSchema'] as $key) {
             if (!array_key_exists($key, $constraints) || !is_array($constraints[$key])) {
                 continue;
             }

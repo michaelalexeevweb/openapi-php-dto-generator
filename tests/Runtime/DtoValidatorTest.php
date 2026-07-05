@@ -2871,4 +2871,175 @@ final class DtoValidatorTest extends TestCase
         // Tail bools → second branch passes.
         $this->assertSame([], $this->validator->validate('a', ['x', true, false], $constraints));
     }
+
+    // =========================================================================
+    // Additional string formats (uri-reference / iri-reference / uri-template /
+    // relative-json-pointer / idn-hostname)
+    // =========================================================================
+
+    public function testFormatUriReferenceAcceptsAbsoluteAndRelative(): void
+    {
+        foreach (['http://a.com/x', '/path?x=1', '../rel/path', '', 'foo/bar#frag'] as $ref) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('u', $ref, ['type' => 'string', 'format' => 'uri-reference']),
+                "expected '{$ref}' to be a valid uri-reference",
+            );
+        }
+    }
+
+    public function testFormatUriReferenceRejectsWhitespaceAndControl(): void
+    {
+        $this->assertNotEmpty(
+            $this->validator->validate('u', 'has space', ['type' => 'string', 'format' => 'uri-reference']),
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('u', "tab\there", ['type' => 'string', 'format' => 'uri-reference']),
+        );
+    }
+
+    public function testFormatIriReferenceAcceptsUnicode(): void
+    {
+        $this->assertSame(
+            [],
+            $this->validator->validate('u', '/café/münchen', ['type' => 'string', 'format' => 'iri-reference']),
+        );
+    }
+
+    public function testFormatUriTemplateAcceptsWellFormedExpressions(): void
+    {
+        foreach (['http://x.com/{id}', '/users/{id}/posts{?page,limit}', '/a/{var:3}', 'no/braces/here'] as $tpl) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('t', $tpl, ['type' => 'string', 'format' => 'uri-template']),
+                "expected '{$tpl}' to be a valid uri-template",
+            );
+        }
+    }
+
+    public function testFormatUriTemplateRejectsMalformedBraces(): void
+    {
+        foreach (['open{brace', 'close}brace', '{}', 'x{ bad }'] as $tpl) {
+            $this->assertNotEmpty(
+                $this->validator->validate('t', $tpl, ['type' => 'string', 'format' => 'uri-template']),
+                "expected '{$tpl}' to be rejected",
+            );
+        }
+    }
+
+    public function testFormatRelativeJsonPointer(): void
+    {
+        foreach (['0', '1/foo', '2#', '10/a/b'] as $ok) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('p', $ok, ['type' => 'string', 'format' => 'relative-json-pointer']),
+                "expected '{$ok}' valid",
+            );
+        }
+        foreach (['-1', '01', '#', '1.5', '/foo'] as $bad) {
+            $this->assertNotEmpty(
+                $this->validator->validate('p', $bad, ['type' => 'string', 'format' => 'relative-json-pointer']),
+                "expected '{$bad}' invalid",
+            );
+        }
+    }
+
+    public function testFormatIdnHostname(): void
+    {
+        foreach (['münchen.de', 'example.com', 'a.b.c'] as $ok) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('h', $ok, ['type' => 'string', 'format' => 'idn-hostname']),
+                "expected '{$ok}' valid",
+            );
+        }
+        foreach (['', 'has space', '-bad.com', 'bad-.com'] as $bad) {
+            $this->assertNotEmpty(
+                $this->validator->validate('h', $bad, ['type' => 'string', 'format' => 'idn-hostname']),
+                "expected '{$bad}' invalid",
+            );
+        }
+    }
+
+    // =========================================================================
+    // content* (contentEncoding / contentMediaType / contentSchema)
+    // =========================================================================
+
+    public function testContentEncodingBase64(): void
+    {
+        $this->assertSame(
+            [],
+            $this->validator->validate('c', base64_encode('hello'), ['contentEncoding' => 'base64']),
+        );
+        $this->assertContains(
+            'c is not valid base64-encoded content',
+            $this->validator->validate('c', 'not valid base64 !!!', ['contentEncoding' => 'base64']),
+        );
+    }
+
+    public function testContentEncodingBase16(): void
+    {
+        $this->assertSame([], $this->validator->validate('c', bin2hex('hi'), ['contentEncoding' => 'base16']));
+        // Odd length / non-hex → invalid.
+        $this->assertNotEmpty($this->validator->validate('c', 'abc', ['contentEncoding' => 'base16']));
+        $this->assertNotEmpty($this->validator->validate('c', 'zz', ['contentEncoding' => 'base16']));
+    }
+
+    public function testContentEncodingUnknownIsLenient(): void
+    {
+        // base32 has no native codec → accepted leniently (annotation, not assertion).
+        $this->assertSame([], $this->validator->validate('c', 'anything', ['contentEncoding' => 'base32']));
+    }
+
+    public function testContentMediaTypeJson(): void
+    {
+        $this->assertSame(
+            [],
+            $this->validator->validate('c', '{"a":1}', ['contentMediaType' => 'application/json']),
+        );
+        $this->assertContains(
+            'c is not valid application/json content',
+            $this->validator->validate('c', '{bad json', ['contentMediaType' => 'application/json']),
+        );
+    }
+
+    public function testContentSchemaValidatesDecodedJson(): void
+    {
+        $constraints = [
+            'contentMediaType' => 'application/json',
+            'contentSchema' => [
+                'type' => 'object',
+                'required' => ['a'],
+                'properties' => ['a' => ['type' => 'integer']],
+            ],
+        ];
+
+        $this->assertSame([], $this->validator->validate('c', '{"a":1}', $constraints));
+        // a is a string → contentSchema fails.
+        $this->assertContains('c.a must be of type integer', $this->validator->validate('c', '{"a":"x"}', $constraints));
+    }
+
+    public function testContentEncodingPlusMediaTypePlusSchema(): void
+    {
+        $constraints = [
+            'contentEncoding' => 'base64',
+            'contentMediaType' => 'application/json',
+            'contentSchema' => [
+                'type' => 'object',
+                'required' => ['n'],
+                'properties' => ['n' => ['type' => 'integer']],
+            ],
+        ];
+
+        $this->assertSame([], $this->validator->validate('c', base64_encode('{"n":42}'), $constraints));
+        $this->assertContains(
+            'c.n must be of type integer',
+            $this->validator->validate('c', base64_encode('{"n":"nope"}'), $constraints),
+        );
+        // Bad base64 short-circuits before the JSON/schema checks.
+        $this->assertContains(
+            'c is not valid base64-encoded content',
+            $this->validator->validate('c', '!!!bad!!!', $constraints),
+        );
+    }
 }

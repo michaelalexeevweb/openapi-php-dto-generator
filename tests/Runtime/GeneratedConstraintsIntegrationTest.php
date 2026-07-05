@@ -761,6 +761,58 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
     }
 
+    public function testJsonSchemaDefsAreFoldedIntoComponentsAndResolved(): void
+    {
+        // JSON Schema `$defs` (sibling to `components`) + a `#/$defs/X` pointer: the generator
+        // folds $defs into components.schemas and rewrites the ref, so the referenced schema is
+        // materialized and the property is typed to it.
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Defs', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'DefsHolder' => [
+                        'type' => 'object',
+                        'required' => ['addr'],
+                        'properties' => [
+                            'addr' => ['$ref' => '#/$defs/DefsAddress'],
+                        ],
+                    ],
+                ],
+            ],
+            '$defs' => [
+                'DefsAddress' => [
+                    'type' => 'object',
+                    'required' => ['city'],
+                    'properties' => ['city' => ['type' => 'string']],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenDefs');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        // The $defs entry became a real DTO class.
+        $this->assertTrue(class_exists('\GenDefs\DefsAddress'));
+
+        // The holder's property is typed to the folded schema (ref resolved, not left dangling).
+        $holderReflection = new ReflectionClass('\GenDefs\DefsHolder');
+        $ctor = $holderReflection->getConstructor();
+        $this->assertNotNull($ctor);
+        $addrType = (string)$ctor->getParameters()[0]->getType();
+        $this->assertStringContainsString('DefsAddress', $addrType);
+
+        // End-to-end: a nested JSON body deserializes into the referenced DTO.
+        /** @var class-string<GeneratedDtoInterface> $holder */
+        $holder = '\GenDefs\DefsHolder';
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"addr":{"city":"Berlin"}}'),
+            $holder,
+        );
+        $this->assertSame('Berlin', $dto->getAddr()->getCity());
+    }
+
     public function testHeaderAndCookieParamsAreDeserializedThroughGeneratedDto(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/source-params.yaml');

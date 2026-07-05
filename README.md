@@ -35,7 +35,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.8.10
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.8.11
 ```
 
 ## Requirements
@@ -132,8 +132,9 @@ DTOs implement `GeneratedDtoInterface` and carry the metadata methods (`toArray(
 `getNormalizationMap()`, `getConstraints()`, …). They are validated, normalized and deserialized
 by **this library's own services** — `DtoValidator`, `DtoNormalizer`, `DtoDeserializer` — which
 enforce the full OpenAPI vocabulary (including `oneOf`/`anyOf`/`allOf`, `if/then/else`, `not`,
-`prefixItems`, `unevaluatedProperties`/`unevaluatedItems`, object/map constraints) and track which
-optional fields were actually provided (PATCH-friendly presence tracking via the `UnsetValue` sentinel).
+`prefixItems`, `unevaluatedProperties`/`unevaluatedItems`, `contentEncoding`/`contentMediaType`/`contentSchema`,
+object/map constraints) and track which optional fields were actually provided (PATCH-friendly
+presence tracking via the `UnsetValue` sentinel).
 
 ```bash
 composer openapi:generate-dto -- \
@@ -246,7 +247,7 @@ public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
 **Symfony-mode limitations** (no clean Symfony Validator equivalent — these keywords are skipped):
 `oneOf`/`discriminator` polymorphism, `not`, `if/then/else`, `prefixItems` (tuples),
 `patternProperties`, `propertyNames`, `dependentRequired`/`dependentSchemas`, `contains`,
-`unevaluatedProperties`/`unevaluatedItems`. Optional
+`unevaluatedProperties`/`unevaluatedItems`, `contentEncoding`/`contentMediaType`/`contentSchema`. Optional
 fields become `?T = null` (no `UnsetValue` presence tracking — use runtime mode if you need
 PATCH/partial-update semantics). Note also: `format: uri`/`iri` maps to `#[Assert\Url]`, which
 expects an absolute URL (relative URIs would fail); and an `anyOf` branch that is purely
@@ -319,3 +320,6 @@ A few behaviours worth knowing when validating against the schema:
 - **`type: array` means a JSON array (list).** A value passes only when it is a PHP list (sequential integer keys from `0`). An associative array is treated as a JSON object, not an array — so a getter returning `array_filter(...)` (which may leave non-contiguous keys) should wrap the result in `array_values(...)`.
 - **`oneOf` / `anyOf` pick the first matching branch.** Branches are tried in declaration order and the first one that validates wins. When several branches accept the same input (e.g. `oneOf: [string, integer]` given `"123"`), order your schema branches from most specific to least specific.
 - **`unevaluatedProperties` / `unevaluatedItems` (JSON Schema 2019-09/2020-12, OpenAPI 3.1).** Like `additionalProperties: false` / a suffix `items`, but annotation-aware: a key or index counts as "evaluated" when it is covered by this schema *or* by any in-place applicator that actually applies (`allOf`, a passing `anyOf`/`oneOf` branch, the taken `if`/`then`/`else` arm, a triggered `dependentSchemas`) — recursively, to any nesting depth. Only what is left over is checked. They are enforced on the non-materialized paths (raw lists, inline maps); a composed object with named properties is materialized into a dedicated nested DTO where unknown keys are impossible by construction.
+- **`contentEncoding` / `contentMediaType` / `contentSchema` (JSON Schema 2019-09/2020-12, OpenAPI 3.1).** Enforced as assertions on strings: the value must decode under `contentEncoding` (`base64`, `base16`, `quoted-printable`, `7bit`/`8bit`/`binary`; an unknown codec such as `base32` is accepted leniently), the decoded bytes must parse when `contentMediaType` is a JSON type (`application/json` or any `+json`), and the parsed document must satisfy `contentSchema`.
+- **`$defs` (JSON Schema) is folded into `components.schemas`.** A root-level `$defs` map and any `#/$defs/X` pointer are normalized to `components.schemas` at load time, so `$defs`-style specs generate the same as `components`-style ones. (Subschema-local and external-file `$defs` are not folded — prefer `components.schemas` for shared types.)
+- **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).

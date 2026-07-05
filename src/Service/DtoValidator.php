@@ -181,6 +181,10 @@ final class DtoValidator implements DtoValidatorInterface
             $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
         }
 
+        if (is_string($value) && $this->constraintsHave($constraints, 'contentEncoding', 'contentMediaType', 'contentSchema')) {
+            $errors = [...$errors, ...$this->validateContent(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
+        }
+
         if (is_array($value) && $this->constraintsHave($constraints, 'minItems', 'maxItems', 'uniqueItems', 'items', 'contains', 'minContains', 'maxContains', 'prefixItems', 'unevaluatedItems')) {
             $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
         }
@@ -451,6 +455,88 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return $errors;
+    }
+
+    /**
+     * contentEncoding / contentMediaType / contentSchema (JSON Schema 2019-09/2020-12, OpenAPI 3.1).
+     * Enforced as assertions on string values: the string must decode under contentEncoding, the
+     * decoded bytes must parse as contentMediaType (for JSON media types), and the parsed document
+     * must satisfy contentSchema. An unknown encoding / non-JSON media type is accepted leniently
+     * (the spec treats these as annotations we cannot assert without a codec/parser).
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string>
+     */
+    private function validateContent(string $subject, string $value, array $constraints, int $depth): array
+    {
+        $decoded = $value;
+
+        $encoding = $constraints['contentEncoding'] ?? null;
+        if (is_string($encoding)) {
+            $result = $this->decodeContent($value, $encoding);
+            if ($result === null) {
+                // Bad encoding: cannot proceed to media-type / schema checks.
+                return ["{$subject} is not valid {$encoding}-encoded content"];
+            }
+            $decoded = $result;
+        }
+
+        $mediaType = $constraints['contentMediaType'] ?? null;
+        if (!is_string($mediaType) || !$this->isJsonMediaType($mediaType)) {
+            // No JSON media type to parse against → nothing further to assert.
+            return [];
+        }
+
+        try {
+            $parsed = json_decode($decoded, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return ["{$subject} is not valid {$mediaType} content"];
+        }
+
+        $contentSchema = $constraints['contentSchema'] ?? null;
+        if (is_array($contentSchema) && $contentSchema !== []) {
+            return $this->validateConstraints($subject, $parsed, $contentSchema, $depth + 1);
+        }
+
+        return [];
+    }
+
+    private function decodeContent(string $value, string $encoding): ?string
+    {
+        switch (strtolower($encoding)) {
+            case 'base64':
+                if (!$this->isValidBase64($value)) {
+                    return null;
+                }
+                $decoded = base64_decode($value, true);
+                return $decoded === false ? null : $decoded;
+            case 'base16':
+                if ($value === '') {
+                    return '';
+                }
+                if (strlen($value) % 2 !== 0 || !ctype_xdigit($value)) {
+                    return null;
+                }
+                $decoded = hex2bin($value);
+                return $decoded === false ? null : $decoded;
+            case 'quoted-printable':
+                return quoted_printable_decode($value);
+            case '7bit':
+            case '8bit':
+            case 'binary':
+                // Identity transfer encodings: the string is already the content.
+                return $value;
+            default:
+                // Unknown codec (e.g. base32): accept leniently, no decode applied.
+                return $value;
+        }
+    }
+
+    private function isJsonMediaType(string $mediaType): bool
+    {
+        // application/json and any structured-suffix +json type (application/ld+json, …).
+        $normalized = strtolower(trim(explode(';', $mediaType)[0]));
+        return $normalized === 'application/json' || str_ends_with($normalized, '+json');
     }
 
     /**
@@ -971,10 +1057,14 @@ final class DtoValidator implements DtoValidatorInterface
             'uuid' => $this->isValidUuid(value: $value),
             'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
             'iri' => $this->isValidIri(value: $value),
+            'uri-reference', 'iri-reference' => $this->isValidUriReference(value: $value),
+            'uri-template' => $this->isValidUriTemplate(value: $value),
             'duration' => $this->isValidDuration(value: $value),
             'json-pointer' => $this->isValidJsonPointer(value: $value),
+            'relative-json-pointer' => $this->isValidRelativeJsonPointer(value: $value),
             'regex' => $this->isValidRegexFormat(value: $value),
             'hostname' => filter_var($value, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false,
+            'idn-hostname' => $this->isValidIdnHostname(value: $value),
             'ipv4' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false,
             'ipv6' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false,
             'byte' => $this->isValidBase64(value: $value),
@@ -1034,6 +1124,72 @@ final class DtoValidator implements DtoValidatorInterface
         // RFC 6901: the empty string (whole document) or one-or-more "/"-prefixed tokens.
         // Inside a token "~" is an escape and must be followed by "0" or "1".
         return preg_match('#^(/(?:[^/~]|~[01])*)*$#u', $value) === 1;
+    }
+
+    private function isValidRelativeJsonPointer(string $value): bool
+    {
+        // RFC draft: a non-negative integer (no leading zeros) optionally followed by either
+        // "#" (the key/index) or a JSON Pointer. Examples: "0", "1/foo", "2#".
+        return preg_match('!^(0|[1-9][0-9]*)(?:#|(?:/(?:[^/~]|~[01])*)*)$!u', $value) === 1;
+    }
+
+    private function isValidUriReference(string $value): bool
+    {
+        // RFC 3986 URI-reference: absolute URI OR a relative reference. The empty string is a
+        // valid same-document reference. Structural full-grammar validation is impractical, so
+        // apply the sound, cheap invariant: no whitespace or control characters. (Unicode is
+        // permitted, which also covers iri-reference.)
+        return preg_match('/[\s\x00-\x1F\x7F]/u', $value) !== 1;
+    }
+
+    private function isValidUriTemplate(string $value): bool
+    {
+        // RFC 6570: a URI-reference that may embed {expression} blocks. Reject whitespace/control
+        // first, then require every brace to belong to a well-formed expression: an optional
+        // operator (+#./;?&=,!@|) followed by a comma-separated list of varspecs, each a varname
+        // with optional ":" prefix-length or "*" explode modifier. Stray/unbalanced braces fail.
+        if (preg_match('/[\s\x00-\x1F\x7F]/u', $value) === 1) {
+            return false;
+        }
+        if (str_contains($value, '{')) {
+            $expression = '\{[+#./;?&=,!@|]?(?:[\p{L}\p{N}_%]+(?::[1-9][0-9]{0,3}|\*)?)'
+                . '(?:,[\p{L}\p{N}_%]+(?::[1-9][0-9]{0,3}|\*)?)*\}';
+            // Remove every valid expression; if any brace survives (in the leftover), the
+            // template is malformed.
+            $stripped = preg_replace('~' . $expression . '~u', '', $value);
+
+            return $stripped !== null && !str_contains($stripped, '{') && !str_contains($stripped, '}');
+        }
+
+        // No expressions at all: a stray closing brace is malformed.
+        return !str_contains($value, '}');
+    }
+
+    private function isValidIdnHostname(string $value): bool
+    {
+        // Internationalized hostname (RFC 5890). Prefer the intl extension: convert Unicode
+        // labels to ASCII (punycode) and validate the result as a plain hostname. Without intl,
+        // fall back to a pragmatic Unicode-aware label check (1-63 chars/label, no leading or
+        // trailing hyphen, total ≤ 253, no whitespace/control/dots-in-label).
+        if ($value === '' || strlen($value) > 253) {
+            return false;
+        }
+
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii($value, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            return is_string($ascii)
+                && filter_var($ascii, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
+        }
+
+        foreach (explode('.', $value) as $label) {
+            if (
+                preg_match('/^(?!-)[\p{L}\p{N}\p{M}-]{1,63}(?<!-)$/u', $label) !== 1
+            ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function isValidRegexFormat(string $value): bool
