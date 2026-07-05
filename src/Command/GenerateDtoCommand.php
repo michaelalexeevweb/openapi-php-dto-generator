@@ -380,12 +380,14 @@ final class GenerateDtoCommand extends Command
     /**
      * Folds JSON Schema's `$defs` (2019-09/2020-12) into OpenAPI's `components.schemas`:
      * every root-level `$defs` entry is copied into `components.schemas` (an existing
-     * component of the same name wins) and every `#/$defs/X` pointer in the document is
-     * rewritten to `#/components/schemas/X`. The rest of the generator resolves only
-     * `#/components/schemas/`, so it then handles `$defs`-based specs unchanged.
+     * component of the same name wins) and every `#/$defs/X` pointer (local `#/$defs/X`
+     * OR external `file.yaml#/$defs/X`) is rewritten to the `#/components/schemas/X` form.
+     * The rest of the generator resolves only `#/components/schemas/`, so it then handles
+     * `$defs`-based specs unchanged. Applied to the root document AND each external file
+     * (see externalSchemasOf), so cross-file `$defs` references resolve too.
      *
-     * Scope: the ROOT document's `$defs`. Subschema-local `$defs` and external-file `$defs`
-     * are not folded (rare — prefer `components.schemas` for shared types).
+     * Not folded: subschema-LOCAL `$defs` (e.g. `#/components/schemas/Foo/$defs/Bar`) —
+     * rare; prefer `components.schemas` for shared types.
      *
      * @param array<string, mixed> $openApi
      * @return array<string, mixed>
@@ -393,20 +395,20 @@ final class GenerateDtoCommand extends Command
     private function foldJsonSchemaDefs(array $openApi): array
     {
         $defs = $openApi['$defs'] ?? null;
-        if (!is_array($defs) || $defs === []) {
-            return $openApi;
-        }
+        $hasDefs = is_array($defs) && $defs !== [];
 
-        $components = is_array($openApi['components'] ?? null) ? $openApi['components'] : [];
-        $schemas = is_array($components['schemas'] ?? null) ? $components['schemas'] : [];
-        foreach ($defs as $name => $schema) {
-            if (is_string($name) && !array_key_exists($name, $schemas)) {
-                $schemas[$name] = $schema;
+        if ($hasDefs) {
+            $components = is_array($openApi['components'] ?? null) ? $openApi['components'] : [];
+            $schemas = is_array($components['schemas'] ?? null) ? $components['schemas'] : [];
+            foreach ($defs as $name => $schema) {
+                if (is_string($name) && !array_key_exists($name, $schemas)) {
+                    $schemas[$name] = $schema;
+                }
             }
+            $components['schemas'] = $schemas;
+            $openApi['components'] = $components;
+            unset($openApi['$defs']);
         }
-        $components['schemas'] = $schemas;
-        $openApi['components'] = $components;
-        unset($openApi['$defs']);
 
         $rewritten = $this->rewriteDefsRefs($openApi);
 
@@ -414,8 +416,10 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Recursively rewrites every `$ref` pointer of the form `#/$defs/X` to
-     * `#/components/schemas/X`. Other keys/values are returned unchanged.
+     * Recursively rewrites every `$ref` pointer containing `#/$defs/` (local or
+     * external-file) to the `#/components/schemas/` form. Subschema-local `$defs`
+     * pointers (`.../Foo/$defs/Bar`, no leading `#/`) are intentionally left untouched.
+     * Other keys/values are returned unchanged.
      */
     private function rewriteDefsRefs(mixed $node): mixed
     {
@@ -425,8 +429,8 @@ final class GenerateDtoCommand extends Command
 
         $result = [];
         foreach ($node as $key => $value) {
-            if ($key === '$ref' && is_string($value) && str_starts_with($value, '#/$defs/')) {
-                $result[$key] = '#/components/schemas/' . substr($value, strlen('#/$defs/'));
+            if ($key === '$ref' && is_string($value) && str_contains($value, '#/$defs/')) {
+                $result[$key] = str_replace('#/$defs/', '#/components/schemas/', $value);
                 continue;
             }
             $result[$key] = $this->rewriteDefsRefs($value);
@@ -1167,6 +1171,9 @@ final class GenerateDtoCommand extends Command
         if (!is_array($data)) {
             throw new RuntimeException(sprintf('OpenAPI root must be an object/array in %s.', $filePath));
         }
+        // Fold this external document's own `$defs` into its components.schemas (and rewrite
+        // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
+        $data = $this->foldJsonSchemaDefs($data);
 
         $schemas = $this->extractSchemas($data);
 
@@ -5822,6 +5829,20 @@ final class GenerateDtoCommand extends Command
             $name = $parameter['name'] ?? null;
             $schema = $parameter['schema'] ?? null;
 
+            // A parameter may serialize a complex value via `content` (e.g.
+            // content: {application/json: {schema}}) instead of a plain `schema`. Extract the
+            // (single) media type's schema; JSON media types are decoded at deserialization.
+            $contentJson = false;
+            if (!is_array($schema) && is_array($parameter['content'] ?? null)) {
+                foreach ($parameter['content'] as $mediaType => $mediaTypeObject) {
+                    if (is_array($mediaTypeObject) && is_array($mediaTypeObject['schema'] ?? null)) {
+                        $schema = $mediaTypeObject['schema'];
+                        $contentJson = is_string($mediaType) && $this->isJsonMediaTypeName($mediaType);
+                        break;
+                    }
+                }
+            }
+
             if (!is_string($name) || !is_array($schema)) {
                 continue;
             }
@@ -5829,11 +5850,19 @@ final class GenerateDtoCommand extends Command
             $paramIn = $parameter['in'] ?? null;
             if (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
                 $schema['x-parameter-in'] = $paramIn;
-                $schema['x-parameter-style'] = $this->resolveParameterStyle($parameter, $paramIn);
-                $schema['x-parameter-explode'] = $this->resolveParameterExplode(
-                    $parameter,
-                    $schema['x-parameter-style'],
-                );
+                if ($contentJson) {
+                    // A content:application/json parameter arrives as a JSON string; the
+                    // deserializer json_decodes it before casting. Reuse the style channel with
+                    // a 'json' sentinel (not a real OpenAPI style) to carry that signal.
+                    $schema['x-parameter-style'] = 'json';
+                    $schema['x-parameter-explode'] = false;
+                } else {
+                    $schema['x-parameter-style'] = $this->resolveParameterStyle($parameter, $paramIn);
+                    $schema['x-parameter-explode'] = $this->resolveParameterExplode(
+                        $parameter,
+                        $schema['x-parameter-style'],
+                    );
+                }
             }
 
             $properties[$name] = $schema;
@@ -5868,6 +5897,17 @@ final class GenerateDtoCommand extends Command
         }
 
         return in_array($paramIn, ['query', 'cookie'], true) ? 'form' : 'simple';
+    }
+
+    /**
+     * Whether a media type carries JSON (application/json or any structured +json suffix),
+     * so a content-typed parameter's string value should be JSON-decoded before validation.
+     */
+    private function isJsonMediaTypeName(string $mediaType): bool
+    {
+        $normalized = strtolower(trim(explode(';', $mediaType)[0]));
+
+        return $normalized === 'application/json' || str_ends_with($normalized, '+json');
     }
 
     /**

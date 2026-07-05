@@ -813,6 +813,71 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame('Berlin', $dto->getAddr()->getCity());
     }
 
+    public function testContentJsonParameterIsExtractedAndDeserialized(): void
+    {
+        // A query parameter serialized via `content: {application/json: {schema}}` (instead of
+        // a plain `schema`) is no longer silently dropped: the schema is extracted, the param
+        // is generated, and its JSON-string value is decoded before validation/casting.
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'ContentParam', 'version' => '1.0.0'],
+            'paths' => [
+                '/search' => [
+                    'get' => [
+                        'parameters' => [
+                            [
+                                'name' => 'filter',
+                                'in' => 'query',
+                                'required' => true,
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => [
+                                            'type' => 'object',
+                                            'required' => ['status'],
+                                            'properties' => [
+                                                'status' => ['type' => 'string'],
+                                                'limit' => ['type' => 'integer'],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'OK']],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenContentParam');
+
+        // Require every generated file — the inline content schema is materialized into a
+        // separate nested DTO alongside the *QueryParams class.
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        $this->assertNotEmpty($queryParamFiles);
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenContentParam\\' . basename((string)($queryParamFiles === false ? '' : $queryParamFiles[0]), '.php');
+
+        // The generator carries the JSON content-type via the 'json' style sentinel.
+        $this->assertSame(['filter' => ['style' => 'json', 'explode' => false]], $cls::getParameterStyles());
+
+        // The JSON string arrives in the query and is decoded into the nested object.
+        $request = new Request(query: ['filter' => '{"status":"active","limit":5}']);
+        $dto = (new DtoDeserializer())->deserialize($request, $cls);
+        $this->assertSame('active', $dto->getFilter()->getStatus());
+        $this->assertSame(5, $dto->getFilter()->getLimit());
+
+        // Malformed JSON is a clear validation error, not a silent failure.
+        $bad = new Request(query: ['filter' => '{not json']);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Parameter "filter" must be valid JSON');
+        (new DtoDeserializer())->deserialize($bad, $cls);
+    }
+
     public function testHeaderAndCookieParamsAreDeserializedThroughGeneratedDto(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/source-params.yaml');

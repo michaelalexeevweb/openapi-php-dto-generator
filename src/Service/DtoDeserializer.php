@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Service;
 use BackedEnum;
 use DateTimeImmutable;
 use Error;
+use JsonException;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
@@ -57,6 +58,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     readOnly: bool,
      *     sourceConstraint: string|null,
      *     arrayDelimiter: non-empty-string|null,
+     *     contentJson: bool,
      *     arrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
@@ -312,6 +314,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 source: $rawSource,
             );
 
+            // content: application/json parameter: the raw value is a JSON document encoded as
+            // a string. Decode it before casting so an object/array schema validates against the
+            // parsed structure rather than the literal string.
+            if ($rawWasProvided && $paramMeta['contentJson'] && is_string($rawValue)) {
+                try {
+                    $rawValue = json_decode($rawValue, associative: true, flags: JSON_THROW_ON_ERROR);
+                } catch (JsonException) {
+                    $errors[] = sprintf('Parameter "%s" must be valid JSON.', $requestFieldName);
+                    // Keep positional arg alignment; the collected error aborts before use.
+                    $args[] = null;
+                    continue;
+                }
+            }
+
             // OpenAPI delimited-array serialization: a single query/header/cookie string
             // (e.g. "1,2,3" or "1 2 3") is split into elements per the parameter's style.
             // Already-arrayified values (form+explode repeated keys, deepObject brackets)
@@ -499,6 +515,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     readOnly: bool,
      *     sourceConstraint: string|null,
      *     arrayDelimiter: non-empty-string|null,
+     *     contentJson: bool,
      *     arrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
@@ -639,6 +656,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $arrayDelimiter = $arrayItemType !== null && $styleEntry !== null
                 ? $this->resolveStyleDelimiter($styleEntry['style'], $styleEntry['explode'])
                 : null;
+            // A content:application/json parameter carries the 'json' style sentinel: its raw
+            // string value is JSON-decoded before casting (see the deserialize() loop).
+            $contentJson = ($styleEntry['style'] ?? null) === 'json';
 
             $params[] = [
                 'name' => $paramName,
@@ -658,6 +678,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'readOnly' => ($fieldConstraints['readOnly'] ?? false) === true,
                 'sourceConstraint' => $sourceConstraint,
                 'arrayDelimiter' => $arrayDelimiter,
+                'contentJson' => $contentJson,
                 'arrayItemsNullable' => $arrayItemsNullable,
             ];
         }

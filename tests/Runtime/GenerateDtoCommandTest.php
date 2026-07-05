@@ -181,6 +181,64 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromFile($specFile, $this->outputDirectory, 'DistNamespace');
     }
 
+    public function testExternalFileDefsAreFoldedAndResolved(): void
+    {
+        // An external file exposes a type under JSON Schema `$defs`; the root references it via
+        // `file#/$defs/X`. The external doc's `$defs` is folded into its components.schemas and
+        // the cross-file pointer is rewritten, so the type resolves like a normal external ref.
+        $extFile = $this->outputDirectory . '/ext-defs.yaml';
+        file_put_contents($extFile, Yaml::dump([
+            '$defs' => [
+                'ExtAddress' => [
+                    'type' => 'object',
+                    'required' => ['city'],
+                    'properties' => ['city' => ['type' => 'string']],
+                ],
+            ],
+        ]));
+
+        $rootFile = $this->outputDirectory . '/root.yaml';
+        file_put_contents($rootFile, Yaml::dump([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'ExtDefs', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ExtHolder' => [
+                        'type' => 'object',
+                        'required' => ['addr'],
+                        'properties' => [
+                            'addr' => ['$ref' => 'ext-defs.yaml#/$defs/ExtAddress'],
+                        ],
+                    ],
+                ],
+            ],
+        ]));
+
+        // Generate into a subdirectory so the spec files (siblings) are not cleared.
+        $genDir = $this->outputDirectory . '/gen';
+        $extOutDir = $genDir . '/ext';
+        $commandTester = new CommandTester(new GenerateDtoCommand());
+        $exitCode = $commandTester->execute([
+            '--file' => $rootFile,
+            '--directory' => $genDir,
+            '--namespace' => 'ExtDefsNs',
+            '--ref' => [$extFile . '=' . $extOutDir],
+            '--ref-namespace' => [$extFile . '=ExtDefsNs\Ext'],
+        ]);
+
+        $this->assertSame(0, $exitCode);
+
+        // The $defs entry was materialized as a real external DTO.
+        $addressFile = $extOutDir . '/ExtAddress.php';
+        $this->assertFileExists($addressFile);
+        $this->assertStringContainsString('class ExtAddress', (string)file_get_contents($addressFile));
+
+        // The holder imports and is typed to it (ref resolved, not dangling/inlined-empty).
+        $holder = (string)file_get_contents($genDir . '/ExtHolder.php');
+        $this->assertStringContainsString('use ExtDefsNs\Ext\ExtAddress;', $holder);
+        $this->assertStringContainsString('ExtAddress $addr', $holder);
+    }
+
     public function testOptionalArrayGetterOmitsDeadUnsetGuard(): void
     {
         $openApi = [
