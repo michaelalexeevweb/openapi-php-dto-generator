@@ -2380,6 +2380,7 @@ final class GenerateDtoCommand extends Command
                 varnames: $this->extractEnumVarnames($propertySchema, $values),
                 descriptions: $this->extractEnumDescriptions($propertySchema, $values),
             );
+            $this->recordSynthesizedOrigin($enumName, $ownerClassName, $propertyName);
             return [$enumName, $nullable];
         }
 
@@ -2489,6 +2490,7 @@ final class GenerateDtoCommand extends Command
                     $this->extractEnumVarnames($items, $values),
                     $this->extractEnumDescriptions($items, $values),
                 );
+                $this->recordSynthesizedOrigin($enumName, $ownerClassName, $propertyName, arrayItem: true);
                 return ['array<' . $itemPrefix . $enumName . '>', $nullable];
             }
 
@@ -3050,12 +3052,14 @@ final class GenerateDtoCommand extends Command
      */
     private function resolveSpecLink(string $className): ?string
     {
-        $specFile = $this->schemaSourceFiles[$className] ?? null;
+        $specFile = $this->schemaSourceFiles[$className] ?? $this->enumSourceFiles[$className] ?? null;
         if ($specFile === null) {
             return null;
         }
 
-        $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
+        $outputDirectory = $this->schemaOutputDirectories[$className]
+            ?? $this->enumOutputDirectories[$className]
+            ?? $this->baseOutputDirectory;
         if ($outputDirectory === '') {
             return null;
         }
@@ -5380,6 +5384,8 @@ final class GenerateDtoCommand extends Command
                 'enumName' => $enumName,
                 'backingType' => $backingType,
                 'cases' => $cases,
+                'sourceSpecLink' => $this->resolveSpecLink($enumName),
+                'sourceRelated' => $this->relatedByClass[$enumName] ?? null,
             ],
         );
     }

@@ -1148,6 +1148,61 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertStringNotContainsString('From:', $order);
     }
 
+    public function testDocBlockMetadataForEnums(): void
+    {
+        // Enums get the same doc metadata as DTOs: `Spec:` for every enum with a source file, and
+        // `From:` for enums synthesised from an inline (property / array-item) schema. Generated
+        // from a file so the navigable `Spec:` @see path is present and must stay style-clean.
+        $specDir = $this->outputDirectory . '/enum-src';
+        mkdir($specDir, 0o755, true);
+        $spec = $specDir . '/enums.yaml';
+        file_put_contents($spec, <<<'YAML'
+            openapi: 3.0.3
+            info:
+              title: enums
+              version: 1.0.0
+            paths: {}
+            components:
+              schemas:
+                Color:
+                  type: string
+                  enum: [red, green, blue]
+                Order:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum: [new, paid, shipped]
+                    labels:
+                      type: array
+                      items:
+                        type: string
+                        enum: [a, b, c]
+            YAML);
+
+        $tester = $this->buildTester();
+        $out = $this->outputDirectory . '/enum-out';
+        $exitCode = $tester->execute(['--file' => $spec, '--directory' => $out, '--namespace' => 'NsEnums']);
+        $this->assertSame(0, $exitCode, $tester->getDisplay());
+
+        // Top-level component enum: Spec only, no From.
+        $colorFile = $out . '/Color.php';
+        $color = (string)file_get_contents($colorFile);
+        $this->assertStringContainsString(' * Spec: @see ../enum-src/enums.yaml', $color);
+        $this->assertStringNotContainsString('From:', $color);
+
+        // Inline property enum → From: Owner.property (+ Spec).
+        $status = (string)file_get_contents($out . '/OrderStatus.php');
+        $this->assertStringContainsString(' * From: Order.status', $status);
+        $this->assertStringContainsString(' * Spec: @see ../enum-src/enums.yaml', $status);
+
+        // Inline array-item enum → From: Owner.property[].
+        $labelsItem = (string)file_get_contents($out . '/OrderLabelsItem.php');
+        $this->assertStringContainsString(' * From: Order.labels[]', $labelsItem);
+
+        $this->assertPassesProjectCodeStyle($colorFile);
+    }
+
     /**
      * Asserts a generated file is a fixed point of the project's php-cs-fixer ruleset (a dry-run
      * finds nothing to fix). Skips when the fixer binary is not installed.
