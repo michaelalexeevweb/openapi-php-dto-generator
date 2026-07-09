@@ -3099,6 +3099,13 @@ final class GenerateDtoCommand extends Command
         bool $arrayItem = false,
     ): void {
         $this->relatedByClass[$className] = $ownerClassName . '.' . $propertyName . ($arrayItem ? '[]' : '');
+
+        // A synthesised DTO belongs to exactly one operation, so it inherits its owner's endpoint
+        // (the `Route:` line). The owner's entry is already set by the time its properties resolve;
+        // for deeper nesting the owner is itself a synthesised class that inherited it in turn.
+        if (array_key_exists($ownerClassName, $this->endpointByClass)) {
+            $this->endpointByClass[$className] = $this->endpointByClass[$ownerClassName];
+        }
     }
 
     private function getClassNamespace(string $className): ?string
@@ -5384,6 +5391,7 @@ final class GenerateDtoCommand extends Command
                 'enumName' => $enumName,
                 'backingType' => $backingType,
                 'cases' => $cases,
+                'sourceEndpoint' => $this->endpointByClass[$enumName] ?? null,
                 'sourceSpecLink' => $this->resolveSpecLink($enumName),
                 'sourceRelated' => $this->relatedByClass[$enumName] ?? null,
             ],

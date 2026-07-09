@@ -1203,6 +1203,69 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertPassesProjectCodeStyle($colorFile);
     }
 
+    public function testSynthesizedDtoInheritsOwnerRoute(): void
+    {
+        // A DTO/enum synthesised from an endpoint-derived owner (params, request/response body)
+        // inherits that owner's `Route:` line — even across several nesting levels — so the endpoint
+        // is visible without hopping through the `From:` chain.
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'route propagation', 'version' => '1.0.0'],
+            'paths' => [
+                '/api/pipeline/investors' => [
+                    'get' => [
+                        'parameters' => [
+                            [
+                                'name' => 'scope',
+                                'in' => 'query',
+                                'schema' => ['type' => 'string', 'enum' => ['top', 'all']],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'OK']],
+                    ],
+                    'post' => [
+                        'requestBody' => [
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => [
+                                        'type' => 'object',
+                                        'properties' => [
+                                            'filter' => [
+                                                'type' => 'object',
+                                                'properties' => [
+                                                    'kind' => ['type' => 'string', 'enum' => ['a', 'b']],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'OK']],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsRoute');
+
+        // Inline enum off a query parameter → owner's GET route.
+        $scope = (string)file_get_contents($this->outputDirectory . '/ApiPipelineInvestorsGetQueryParamsScope.php');
+        $this->assertStringContainsString(' * Route: GET /api/pipeline/investors', $scope);
+        $this->assertStringContainsString(' * From: ApiPipelineInvestorsGetQueryParams.scope', $scope);
+
+        // Same inheritance for a nested object DTO (not just enums).
+        $filter = (string)file_get_contents($this->outputDirectory . '/ApiPipelineInvestorsPostRequestFilter.php');
+        $this->assertStringContainsString(' * Route: POST /api/pipeline/investors', $filter);
+        $this->assertStringContainsString(' * From: ApiPipelineInvestorsPostRequest.filter', $filter);
+
+        // Enum nested two levels under a request body still inherits the POST route (transitive).
+        $kind = (string)file_get_contents($this->outputDirectory . '/ApiPipelineInvestorsPostRequestFilterKind.php');
+        $this->assertStringContainsString(' * Route: POST /api/pipeline/investors', $kind);
+        $this->assertStringContainsString(' * From: ApiPipelineInvestorsPostRequestFilter.kind', $kind);
+    }
+
     /**
      * Asserts a generated file is a fixed point of the project's php-cs-fixer ruleset (a dry-run
      * finds nothing to fix). Skips when the fixer binary is not installed.
