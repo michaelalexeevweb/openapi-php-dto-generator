@@ -95,6 +95,26 @@ final class GenerateDtoCommand extends Command
     public array $enumOutputDirectories = [];
 
     /**
+     * Source endpoint (e.g. "GET /api/orders/shipment-report/{date}") of a DTO derived from an
+     * operation — path/query parameters, an inline request body, or an inline response schema —
+     * keyed by generated class name. Emitted as a `Route:` doc line so the endpoint a DTO belongs
+     * to is discoverable.
+     *
+     * @var array<string, string>
+     */
+    public array $endpointByClass = [];
+
+    /**
+     * Origin of a DTO the generator synthesised itself (an inline nested object/array-item/allOf
+     * schema that has no name in the spec), keyed by generated class name and expressed as
+     * "OwnerClass.property" (with a "[]" suffix for array-item types). Emitted as a `From:` doc line
+     * so the field a nameless DTO was inlined from is discoverable.
+     *
+     * @var array<string, string>
+     */
+    public array $relatedByClass = [];
+
+    /**
      * Cache of parsed external documents: canonical file path => [schemaName => schemaDefinition].
      *
      * @var array<string, array<string, mixed>>
@@ -672,6 +692,8 @@ final class GenerateDtoCommand extends Command
         $this->enumNamespaces = [];
         $this->enumOutputDirectories = [];
         $this->externalDocSchemas = [];
+        $this->endpointByClass = [];
+        $this->relatedByClass = [];
         $this->rootSpecFile = $rootSpecFile;
         $this->baseOutputDirectory = $outputDirectory;
         $this->baseNamespace = $namespace;
@@ -2282,6 +2304,7 @@ final class GenerateDtoCommand extends Command
                 schemaDefinition: $propertySchema,
                 sourceFile: $this->getSchemaSourceFile($ownerClassName),
             );
+            $this->recordSynthesizedOrigin($mergedClassName, $ownerClassName, $propertyName);
             return [$mergedClassName, $nullable];
         }
 
@@ -2419,6 +2442,7 @@ final class GenerateDtoCommand extends Command
                 schemaDefinition: $propertySchema,
                 sourceFile: $this->getSchemaSourceFile($ownerClassName),
             );
+            $this->recordSynthesizedOrigin($nestedClassName, $ownerClassName, $propertyName);
             return [$nestedClassName, $nullable];
         }
 
@@ -2476,6 +2500,7 @@ final class GenerateDtoCommand extends Command
                     schemaDefinition: $items,
                     sourceFile: $this->getSchemaSourceFile($ownerClassName),
                 );
+                $this->recordSynthesizedOrigin($nestedClassName, $ownerClassName, $propertyName, arrayItem: true);
                 return ['array<' . $itemPrefix . $nestedClassName . '>', $nullable];
             }
 
@@ -3016,6 +3041,62 @@ final class GenerateDtoCommand extends Command
         return $this->schemaSourceFiles[$className] ?? null;
     }
 
+    /**
+     * Spec path for a DTO's `Spec:` doc line, as a PhpStorm-navigable `@link` target relative to the
+     * generated file's own directory (so Ctrl+B / Ctrl+Click opens the source yaml). The relative
+     * geometry between the output directory and the spec file is stable across machines, so
+     * generated output stays deterministic. Returns null when no source file is known (e.g.
+     * generateFromArray).
+     */
+    private function resolveSpecLink(string $className): ?string
+    {
+        $specFile = $this->schemaSourceFiles[$className] ?? null;
+        if ($specFile === null) {
+            return null;
+        }
+
+        $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
+        if ($outputDirectory === '') {
+            return null;
+        }
+
+        return $this->makeRelativePath(
+            fromDirectory: $this->toAbsolutePath($outputDirectory),
+            toPath: $this->toAbsolutePath($specFile),
+        );
+    }
+
+    /**
+     * Resolves a path to absolute form for relative-path math. An already-absolute path is returned
+     * unchanged; a relative one is anchored at the current working directory. The shared CWD prefix
+     * cancels out in makeRelativePath, so the resulting relative link is independent of where the
+     * generator ran.
+     */
+    private function toAbsolutePath(string $path): string
+    {
+        if (str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        $cwd = getcwd();
+
+        return $cwd === false ? $path : rtrim($cwd, '/') . '/' . $path;
+    }
+
+    /**
+     * Records the field a nameless nested DTO was inlined from, as "OwnerClass.property" (with a
+     * "[]" suffix when the DTO is the item type of an array property). Surfaced as a `From:` doc
+     * line so a synthesised DTO's origin is discoverable.
+     */
+    private function recordSynthesizedOrigin(
+        string $className,
+        string $ownerClassName,
+        string $propertyName,
+        bool $arrayItem = false,
+    ): void {
+        $this->relatedByClass[$className] = $ownerClassName . '.' . $propertyName . ($arrayItem ? '[]' : '');
+    }
+
     private function getClassNamespace(string $className): ?string
     {
         return $this->schemaNamespaces[$className] ?? $this->enumNamespaces[$className] ?? null;
@@ -3092,6 +3173,9 @@ final class GenerateDtoCommand extends Command
                 'namespace' => $namespace,
                 'imports' => $useStatements,
                 'className' => $className,
+                'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
+                'sourceSpecLink' => $this->resolveSpecLink($className),
+                'sourceRelated' => $this->relatedByClass[$className] ?? null,
                 'unionMembers' => implode(
                     '|',
                     array_map(
@@ -3266,6 +3350,9 @@ final class GenerateDtoCommand extends Command
             'namespace' => $namespace,
             'imports' => $useStatements,
             'className' => $className,
+            'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($className),
+            'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'unionMembers' => null,
             'signature' => $signature,
             'implementedInterfaces' => $implementedInterfaces,
@@ -3339,6 +3426,9 @@ final class GenerateDtoCommand extends Command
             'namespace' => $namespace,
             'imports' => $useStatements,
             'className' => $className,
+            'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($className),
+            'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'extends' => null,
             'params' => $params,
         ]);
@@ -5026,8 +5116,8 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            foreach ($pathItem as $operation) {
-                if (!is_array($operation)) {
+            foreach ($pathItem as $method => $operation) {
+                if (!is_string($method) || !$this->isHttpMethod($method) || !is_array($operation)) {
                     continue;
                 }
 
@@ -5062,6 +5152,8 @@ final class GenerateDtoCommand extends Command
 
                         $schemaName = $this->generateInlineSchemaName($path, (string)$statusCode);
                         $inlineSchemas[$schemaName] = $schema;
+                        $this->endpointByClass[$this->normalizeClassName($schemaName)]
+                            = strtoupper($method) . ' ' . $path;
                     }
                 }
             }
@@ -5119,6 +5211,8 @@ final class GenerateDtoCommand extends Command
 
                     $schemaName = $this->generateInlineRequestSchemaName($path, $method);
                     $inlineSchemas[$schemaName] = $schema;
+                    $this->endpointByClass[$this->normalizeClassName($schemaName)]
+                        = strtoupper($method) . ' ' . $path;
                 }
             }
         }
@@ -5727,6 +5821,8 @@ final class GenerateDtoCommand extends Command
 
                 $schemaName = $this->generateParameterSchemaName($path, $method);
                 $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
+                $this->endpointByClass[$this->normalizeClassName($schemaName)]
+                    = strtoupper($method) . ' ' . $path;
             }
         }
 
