@@ -199,10 +199,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     public function validate(GeneratedDtoInterface $dto): array
     {
+        $visited = [];
+
         return $this->validateDtoRecursive(
             dto: $dto,
             pathPrefix: '',
-            visited: [],
+            visited: $visited,
         );
     }
 
@@ -212,13 +214,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
      * @param array<int, true> $visited
      * @return array<string>
      */
-    private function validateDtoRecursive(GeneratedDtoInterface $dto, string $pathPrefix, array $visited): array
+    private function validateDtoRecursive(GeneratedDtoInterface $dto, string $pathPrefix, array &$visited): array
     {
         $dtoId = spl_object_id($dto);
         if (array_key_exists($dtoId, $visited)) {
-            // Re-visiting an ancestor = a true cycle (siblings/DAG reuse get fresh $visited
-            // copies). Report it so validate() and serialization stay aligned: both fail on
-            // circular references instead of producing partial/corrupted output.
+            // Re-visiting an ancestor = a true cycle. $visited is shared by reference and
+            // backtracked (unset on ascent, see end of method), so siblings/DAG reuse still
+            // start clean — only genuine ancestors remain marked during a descent. Report it
+            // so validate() and serialization stay aligned: both fail on circular references
+            // instead of producing partial/corrupted output.
             $subject = $pathPrefix === '' ? 'root' : $pathPrefix;
             return ["{$subject} contains a circular reference"];
         }
@@ -266,7 +270,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     );
                 }
 
-                if ($value instanceof GeneratedDtoInterface) {
+                // Enum instances are structurally valid by construction (the type check above
+                // already confirmed the right enum class); recursing into their name/value
+                // getters only re-checks always-true invariants. Skip it — cuts validation
+                // cost on enum-heavy DTOs roughly in half.
+                if ($value instanceof GeneratedDtoInterface && !$value instanceof UnitEnum) {
                     array_push(
                         $errors,
                         ...$this->validateDtoRecursive(
@@ -277,7 +285,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     );
                 } elseif (is_array($value)) {
                     foreach ($value as $index => $itemValue) {
-                        if (!$itemValue instanceof GeneratedDtoInterface) {
+                        // Same enum short-circuit as the scalar branch. Invalid (non-enum) array
+                        // items are already reported by validateArrayItemsAgainstTypes above.
+                        if (!$itemValue instanceof GeneratedDtoInterface || $itemValue instanceof UnitEnum) {
                             continue;
                         }
 
@@ -322,6 +332,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 );
             }
         }
+
+        // Backtrack: this node is no longer an ancestor once its subtree is done, so a
+        // sibling reusing the same DTO instance (DAG) is not misreported as a cycle.
+        unset($visited[$dtoId]);
 
         return $errors;
     }

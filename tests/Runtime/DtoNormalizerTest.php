@@ -57,6 +57,19 @@ final class DtoNormalizerTest extends TestCase
         $this->assertSame($expected, $validateJsonPayload);
     }
 
+    public function testValidateReturnsEmptyForValidNestedEnums(): void
+    {
+        // Regression guard for the enum-recursion short-circuit in validateDtoRecursive:
+        // a valid single enum field AND a valid enum array item must both validate clean.
+        $normalizer = new DtoNormalizer();
+        $dto = new NormalizerEnumArrayDto(
+            availableFilters: [NormalizerFilterEnum::AVAILABLE_FILTERS],
+            primaryFilter: NormalizerFilterEnum::AVAILABLE_FILTERS,
+        );
+
+        $this->assertSame([], $normalizer->validate($dto));
+    }
+
     public function testValidateAndNormalizeToArrayRejectsInvalidEnumArrayItems(): void
     {
         $normalizer = new DtoNormalizer();
