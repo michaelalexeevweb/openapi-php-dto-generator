@@ -908,6 +908,64 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertStringContainsString("\$sources['verbose'] = 'query';", $content);
     }
 
+    public function testCollidingPathParameterEndpointsGenerateDistinctQueryParams(): void
+    {
+        // Two endpoints whose stripped (parameter-less) names collide must each get
+        // their own QueryParams DTO. The first keeps the plain name; the later one is
+        // disambiguated with a `By<Param...>` segment built from its path parameters.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'collision', 'version' => '1.0.0'],
+            'paths' => [
+                '/parent/{parentId}/child/{childId}' => [
+                    'post' => [
+                        'parameters' => [
+                            ['name' => 'parentId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']],
+                            ['name' => 'childId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']],
+                        ],
+                        'responses' => ['200' => ['description' => 'OK']],
+                    ],
+                ],
+                '/parent/{parentId}/child' => [
+                    'post' => [
+                        'parameters' => [
+                            ['name' => 'parentId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']],
+                        ],
+                        'responses' => ['200' => ['description' => 'OK']],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsCollision');
+
+        $withChild = $this->outputDirectory . '/ParentChildPostQueryParams.php';
+        $withoutChild = $this->outputDirectory . '/ParentChildByParentIdPostQueryParams.php';
+
+        $this->assertFileExists($withChild);
+        $this->assertFileExists($withoutChild);
+
+        $withChildContent = (string)file_get_contents($withChild);
+        $withoutChildContent = (string)file_get_contents($withoutChild);
+
+        // The first-registered endpoint (with {childId}) keeps the plain name and both params.
+        $this->assertStringContainsString('private readonly int $parentId', $withChildContent);
+        $this->assertStringContainsString('private readonly int $childId', $withChildContent);
+        $this->assertStringContainsString(
+            'Route: POST /parent/{parentId}/child/{childId}',
+            $withChildContent,
+        );
+
+        // The colliding endpoint is disambiguated and only carries {parentId}.
+        $this->assertStringContainsString('private readonly int $parentId', $withoutChildContent);
+        $this->assertStringNotContainsString('$childId', $withoutChildContent);
+        $this->assertStringContainsString(
+            'Route: POST /parent/{parentId}/child',
+            $withoutChildContent,
+        );
+    }
+
     public function testQueryParamsDocBlockReferencesSourceEndpoint(): void
     {
         // A path/query parameter DTO gets a `Route: METHOD /path` doc line so the endpoint it

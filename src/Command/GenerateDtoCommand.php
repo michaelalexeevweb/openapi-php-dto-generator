@@ -5834,6 +5834,13 @@ final class GenerateDtoCommand extends Command
                 }
 
                 $schemaName = $this->generateParameterSchemaName($path, $method);
+                if (array_key_exists($schemaName, $parameterSchemas)) {
+                    // Two distinct endpoints normalized to the same name because
+                    // path parameters are stripped (e.g. `/x/{a}` and `/x`). Keep the
+                    // first (non-colliding) name and disambiguate the later one by
+                    // injecting the path-parameter names.
+                    $schemaName = $this->disambiguateParameterSchemaName($path, $method, $parameterSchemas);
+                }
                 $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
                 $this->endpointByClass[$this->normalizeClassName($schemaName)]
                     = strtoupper($method) . ' ' . $path;
@@ -5920,6 +5927,64 @@ final class GenerateDtoCommand extends Command
     private function generateParameterSchemaName(string $path, string $method): string
     {
         return $this->normalizePathForSchemaName($path) . ucfirst(strtolower($method)) . 'QueryParams';
+    }
+
+    /**
+     * Builds a collision-free parameter-schema name for a path whose stripped
+     * (parameter-less) name is already taken by another endpoint. The path
+     * parameter names are injected as a `By<Param...>` segment; a numeric suffix
+     * is appended only as a last resort if that still collides.
+     *
+     * @param array<string, mixed> $existing
+     */
+    private function disambiguateParameterSchemaName(string $path, string $method, array $existing): string
+    {
+        $paramSuffix = '';
+        foreach ($this->pathParameterNames($path) as $parameterName) {
+            $paramSuffix .= $this->pascalizeSegment($parameterName);
+        }
+
+        $prefix = $this->normalizePathForSchemaName($path)
+            . ($paramSuffix !== '' ? 'By' . $paramSuffix : '')
+            . ucfirst(strtolower($method));
+
+        $candidate = $prefix . 'QueryParams';
+        $counter = 2;
+        while (array_key_exists($candidate, $existing)) {
+            $candidate = $prefix . 'QueryParams' . $counter;
+            $counter++;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Extracts the `{placeholder}` parameter names from a path, in order.
+     *
+     * @return array<int, string>
+     */
+    private function pathParameterNames(string $path): array
+    {
+        preg_match_all('/\{([^}]+)\}/', $path, $matches);
+
+        return $matches[1];
+    }
+
+    private function pascalizeSegment(string $segment): string
+    {
+        $splitResult = preg_split('/[\/\-_]+/', $segment);
+        $parts = $splitResult !== false ? $splitResult : [];
+
+        $pascalized = '';
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+
+            $pascalized .= ucfirst($part);
+        }
+
+        return $pascalized;
     }
 
     /**
