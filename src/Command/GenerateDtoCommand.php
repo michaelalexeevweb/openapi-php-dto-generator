@@ -5121,6 +5121,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $inlineSchemas = [];
+        $inlineOwners = [];
 
         foreach ($paths as $path => $pathItem) {
             if (!is_string($path) || !is_array($pathItem)) {
@@ -5161,10 +5162,16 @@ final class GenerateDtoCommand extends Command
                             continue;
                         }
 
-                        $schemaName = $this->generateInlineSchemaName($path, (string)$statusCode);
+                        $ownerKey = strtoupper($method) . ' ' . $path;
+                        $schemaName = $this->uniqueEndpointSchemaName(
+                            $path,
+                            (string)$statusCode,
+                            $ownerKey,
+                            $inlineOwners,
+                        );
                         $inlineSchemas[$schemaName] = $schema;
-                        $this->endpointByClass[$this->normalizeClassName($schemaName)]
-                            = strtoupper($method) . ' ' . $path;
+                        $inlineOwners[$schemaName] = $ownerKey;
+                        $this->endpointByClass[$this->normalizeClassName($schemaName)] = $ownerKey;
                     }
                 }
             }
@@ -5185,6 +5192,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $inlineSchemas = [];
+        $inlineOwners = [];
 
         foreach ($paths as $path => $pathItem) {
             if (!is_string($path) || !is_array($pathItem)) {
@@ -5220,10 +5228,16 @@ final class GenerateDtoCommand extends Command
                         continue;
                     }
 
-                    $schemaName = $this->generateInlineRequestSchemaName($path, $method);
+                    $ownerKey = strtoupper($method) . ' ' . $path;
+                    $schemaName = $this->uniqueEndpointSchemaName(
+                        $path,
+                        ucfirst(strtolower($method)) . 'Request',
+                        $ownerKey,
+                        $inlineOwners,
+                    );
                     $inlineSchemas[$schemaName] = $schema;
-                    $this->endpointByClass[$this->normalizeClassName($schemaName)]
-                        = strtoupper($method) . ' ' . $path;
+                    $inlineOwners[$schemaName] = $ownerKey;
+                    $this->endpointByClass[$this->normalizeClassName($schemaName)] = $ownerKey;
                 }
             }
         }
@@ -5236,9 +5250,45 @@ final class GenerateDtoCommand extends Command
         return in_array(strtolower($method), ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'], true);
     }
 
-    private function generateInlineRequestSchemaName(string $path, string $method): string
+    /**
+     * Builds a collision-free schema name for an endpoint-derived DTO
+     * (inline request/response bodies and path/query parameter DTOs).
+     *
+     * The base name strips path parameters, so distinct endpoints differing only
+     * by a path parameter (e.g. `/x/{a}` and `/x`) would otherwise collapse to the
+     * same name and silently overwrite each other. When a different endpoint wants
+     * an already-owned name, the path-parameter names are injected as a
+     * `By<Param...>` segment; a numeric suffix is appended only as a last resort.
+     *
+     * The same endpoint reclaiming its own name (e.g. several media types under one
+     * response) keeps the plain name — that is an intentional single DTO, not a
+     * collision.
+     *
+     * @param array<string, string> $owners map of already-assigned name => owner key
+     */
+    private function uniqueEndpointSchemaName(string $path, string $tail, string $ownerKey, array $owners): string
     {
-        return $this->normalizePathForSchemaName($path) . ucfirst(strtolower($method)) . 'Request';
+        $base = $this->normalizePathForSchemaName($path);
+        $name = $base . $tail;
+
+        if (($owners[$name] ?? $ownerKey) === $ownerKey) {
+            return $name;
+        }
+
+        $paramSuffix = '';
+        foreach ($this->pathParameterNames($path) as $parameterName) {
+            $paramSuffix .= $this->pascalizeSegment($parameterName);
+        }
+
+        $prefix = $base . ($paramSuffix !== '' ? 'By' . $paramSuffix : '');
+        $candidate = $prefix . $tail;
+        $counter = 2;
+        while (array_key_exists($candidate, $owners) && $owners[$candidate] !== $ownerKey) {
+            $candidate = $prefix . $tail . $counter;
+            $counter++;
+        }
+
+        return $candidate;
     }
 
     private function normalizePathForSchemaName(string $path): string
@@ -5262,11 +5312,6 @@ final class GenerateDtoCommand extends Command
         }
 
         return $normalizedPath;
-    }
-
-    private function generateInlineSchemaName(string $path, string $statusCode): string
-    {
-        return $this->normalizePathForSchemaName($path) . $statusCode;
     }
 
     /**
@@ -5810,6 +5855,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $parameterSchemas = [];
+        $parameterOwners = [];
 
         foreach ($paths as $path => $pathItem) {
             if (!is_string($path) || !is_array($pathItem)) {
@@ -5833,17 +5879,16 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                $schemaName = $this->generateParameterSchemaName($path, $method);
-                if (array_key_exists($schemaName, $parameterSchemas)) {
-                    // Two distinct endpoints normalized to the same name because
-                    // path parameters are stripped (e.g. `/x/{a}` and `/x`). Keep the
-                    // first (non-colliding) name and disambiguate the later one by
-                    // injecting the path-parameter names.
-                    $schemaName = $this->disambiguateParameterSchemaName($path, $method, $parameterSchemas);
-                }
+                $ownerKey = strtoupper($method) . ' ' . $path;
+                $schemaName = $this->uniqueEndpointSchemaName(
+                    $path,
+                    ucfirst(strtolower($method)) . 'QueryParams',
+                    $ownerKey,
+                    $parameterOwners,
+                );
                 $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
-                $this->endpointByClass[$this->normalizeClassName($schemaName)]
-                    = strtoupper($method) . ' ' . $path;
+                $parameterOwners[$schemaName] = $ownerKey;
+                $this->endpointByClass[$this->normalizeClassName($schemaName)] = $ownerKey;
             }
         }
 
@@ -5922,40 +5967,6 @@ final class GenerateDtoCommand extends Command
         }
 
         return $filtered;
-    }
-
-    private function generateParameterSchemaName(string $path, string $method): string
-    {
-        return $this->normalizePathForSchemaName($path) . ucfirst(strtolower($method)) . 'QueryParams';
-    }
-
-    /**
-     * Builds a collision-free parameter-schema name for a path whose stripped
-     * (parameter-less) name is already taken by another endpoint. The path
-     * parameter names are injected as a `By<Param...>` segment; a numeric suffix
-     * is appended only as a last resort if that still collides.
-     *
-     * @param array<string, mixed> $existing
-     */
-    private function disambiguateParameterSchemaName(string $path, string $method, array $existing): string
-    {
-        $paramSuffix = '';
-        foreach ($this->pathParameterNames($path) as $parameterName) {
-            $paramSuffix .= $this->pascalizeSegment($parameterName);
-        }
-
-        $prefix = $this->normalizePathForSchemaName($path)
-            . ($paramSuffix !== '' ? 'By' . $paramSuffix : '')
-            . ucfirst(strtolower($method));
-
-        $candidate = $prefix . 'QueryParams';
-        $counter = 2;
-        while (array_key_exists($candidate, $existing)) {
-            $candidate = $prefix . 'QueryParams' . $counter;
-            $counter++;
-        }
-
-        return $candidate;
     }
 
     /**

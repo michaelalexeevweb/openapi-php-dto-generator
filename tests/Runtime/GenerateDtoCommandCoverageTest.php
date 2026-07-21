@@ -966,6 +966,89 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         );
     }
 
+    public function testCollidingPathParameterEndpointsGenerateDistinctInlineBodies(): void
+    {
+        // Same collision root as query params, but for inline request/response bodies:
+        // two endpoints differing only by a trailing path parameter must each get their
+        // own Request and response DTOs instead of silently overwriting one another.
+        $withChildBody = ['type' => 'object', 'properties' => ['withChildBody' => ['type' => 'string']]];
+        $withChildResp = ['type' => 'object', 'properties' => ['withChildResp' => ['type' => 'string']]];
+        $plainBody = ['type' => 'object', 'properties' => ['plainBody' => ['type' => 'integer']]];
+        $plainResp = ['type' => 'object', 'properties' => ['plainResp' => ['type' => 'integer']]];
+
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'inline collision', 'version' => '1.0.0'],
+            'paths' => [
+                '/parent/{parentId}/child/{childId}' => [
+                    'post' => [
+                        'requestBody' => ['content' => ['application/json' => ['schema' => $withChildBody]]],
+                        'responses' => [
+                            '200' => ['description' => 'OK', 'content' => ['application/json' => ['schema' => $withChildResp]]],
+                        ],
+                    ],
+                ],
+                '/parent/{parentId}/child' => [
+                    'post' => [
+                        'requestBody' => ['content' => ['application/json' => ['schema' => $plainBody]]],
+                        'responses' => [
+                            '200' => ['description' => 'OK', 'content' => ['application/json' => ['schema' => $plainResp]]],
+                        ],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsInlineCollision');
+
+        // First-registered endpoint (with {childId}) keeps the plain names.
+        $childRequest = (string)file_get_contents($this->outputDirectory . '/ParentChildPostRequest.php');
+        $childResponse = (string)file_get_contents($this->outputDirectory . '/ParentChild200.php');
+        $this->assertStringContainsString('$withChildBody', $childRequest);
+        $this->assertStringContainsString('$withChildResp', $childResponse);
+
+        // Colliding endpoint is disambiguated with a By<Param...> segment.
+        $plainRequest = (string)file_get_contents($this->outputDirectory . '/ParentChildByParentIdPostRequest.php');
+        $plainResponse = (string)file_get_contents($this->outputDirectory . '/ParentChildByParentId200.php');
+        $this->assertStringContainsString('$plainBody', $plainRequest);
+        $this->assertStringContainsString('$plainResp', $plainResponse);
+        $this->assertStringNotContainsString('$withChildBody', $plainRequest);
+        $this->assertStringNotContainsString('$withChildResp', $plainResponse);
+    }
+
+    public function testMultipleResponseMediaTypesReuseSingleInlineDto(): void
+    {
+        // Several media types under one response are the same DTO, not a collision:
+        // the owner-aware naming must reuse the plain name, not spawn a numbered clone.
+        $schema = ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]];
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'media types', 'version' => '1.0.0'],
+            'paths' => [
+                '/widgets' => [
+                    'get' => [
+                        'responses' => [
+                            '200' => [
+                                'description' => 'OK',
+                                'content' => [
+                                    'application/json' => ['schema' => $schema],
+                                    'application/xml' => ['schema' => $schema],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsMediaTypes');
+
+        $this->assertFileExists($this->outputDirectory . '/Widgets200.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/Widgets2002.php');
+    }
+
     public function testQueryParamsDocBlockReferencesSourceEndpoint(): void
     {
         // A path/query parameter DTO gets a `Route: METHOD /path` doc line so the endpoint it
