@@ -3,3 +3,5 @@ vendor
 .phpunit.cache
 .php-cs-fixer.cache
 generated
+tests/*/output
+tests/*/output-*

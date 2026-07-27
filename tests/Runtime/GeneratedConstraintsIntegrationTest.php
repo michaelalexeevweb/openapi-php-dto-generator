@@ -143,6 +143,183 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
     }
 
+    /**
+     * @param array<string, mixed> $spec
+     * @return class-string<GeneratedDtoInterface>
+     */
+    private function generateFromInlineSpec(array $spec, string $namespace, string $rootClass): string
+    {
+        (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, $namespace);
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $fqcn */
+        $fqcn = '\\' . $namespace . '\\' . $rootClass;
+        return $fqcn;
+    }
+
+    public function testDependentRequiredOnNestedDtoValueIsEnforced(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['bag'],
+                        'properties' => [
+                            'bag' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'kind' => ['type' => 'string'],
+                                    'code' => ['type' => 'string'],
+                                ],
+                                'dependentRequired' => ['kind' => ['code']],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'GapDependentRequired', 'Holder');
+        $deserializer = new DtoDeserializer();
+        $normalizer = new DtoNormalizer();
+
+        // The value of `bag` is a generated DTO, not an array — the cross-field rule still applies.
+        $satisfied = $deserializer->deserialize($this->jsonPostRequest('{"bag":{"kind":"a","code":"c"}}'), $fqcn);
+        $this->assertSame([], $normalizer->validate($satisfied));
+
+        // The deserializer validates on the way in, so the violation surfaces there.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/code is required when kind is present/');
+        $deserializer->deserialize($this->jsonPostRequest('{"bag":{"kind":"a"}}'), $fqcn);
+    }
+
+    /**
+     * `unevaluatedProperties` and `additionalProperties` are defined against the keys `properties`
+     * declares. When the value is a generated DTO the validator drops `properties` (the DTO checks
+     * its own fields, and re-checking would double every message) — and it used to drop the NAMES
+     * with the rules, so every declared key counted as unevaluated: the valid payload
+     * `{"bag":{"known":"a"}}` was rejected with `has unevaluated property "known"`.
+     *
+     * What the keyword can still catch through a DTO value is bounded by the DTO itself: an
+     * undeclared key never reaches it (see
+     * `testUnknownPayloadKeysAreDroppedBeforeValidationInBothModes` in the parity suite). A rule
+     * that reads the declared keys — here `minProperties` alongside it — must keep working.
+     */
+    public function testDeclaredPropertiesAreNotReportedAsUnevaluatedOnADtoValue(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['bag'],
+                        'properties' => [
+                            'bag' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'known' => ['type' => 'string'],
+                                    'other' => ['type' => 'string'],
+                                ],
+                                'unevaluatedProperties' => false,
+                                'minProperties' => 2,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'GapUnevaluatedOnDto', 'Holder');
+        $deserializer = new DtoDeserializer();
+
+        $dto = $deserializer->deserialize($this->jsonPostRequest('{"bag":{"known":"a","other":"b"}}'), $fqcn);
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+
+        // The keywords that CAN see a DTO value still fire: one declared key is one property.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/must have at least 2 propert/');
+        $deserializer->deserialize($this->jsonPostRequest('{"bag":{"known":"a"}}'), $fqcn);
+    }
+
+    public function testDependentSchemasOnNestedDtoValueIsEnforced(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['bag'],
+                        'properties' => [
+                            'bag' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'kind' => ['type' => 'string'],
+                                    'code' => ['type' => 'string'],
+                                ],
+                                'dependentSchemas' => ['kind' => ['properties' => ['code' => ['minLength' => 4]]]],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'GapDependentSchemas', 'Holder');
+        $deserializer = new DtoDeserializer();
+        $normalizer = new DtoNormalizer();
+
+        $satisfied = $deserializer->deserialize($this->jsonPostRequest('{"bag":{"kind":"a","code":"abcd"}}'), $fqcn);
+        $this->assertSame([], $normalizer->validate($satisfied));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/at least 4 characters/');
+        $deserializer->deserialize($this->jsonPostRequest('{"bag":{"kind":"a","code":"ab"}}'), $fqcn);
+    }
+
+    public function testScalarAllOfBecomesTypedPropertyWithMergedConstraints(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Merged' => [
+                        'type' => 'object',
+                        'required' => ['code'],
+                        'properties' => [
+                            'code' => ['allOf' => [['type' => 'string'], ['minLength' => 3]]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'GapScalarAllOf', 'Merged');
+
+        // Previously the property was synthesized into a nested object class instead of a string.
+        $this->assertSame('string', (string)(new ReflectionMethod($fqcn, 'getCode'))->getReturnType());
+
+        $deserializer = new DtoDeserializer();
+        $normalizer = new DtoNormalizer();
+
+        $valid = $deserializer->deserialize($this->jsonPostRequest('{"code":"abc"}'), $fqcn);
+        $this->assertSame([], $normalizer->validate($valid));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/at least 3 characters/');
+        $deserializer->deserialize($this->jsonPostRequest('{"code":"ab"}'), $fqcn);
+    }
+
     public function testAdditionalPropertiesMapSerializesAsObjectAndRoundTrips(): void
     {
         // A `type: object` + `additionalProperties` map ({id: name}) must serialize as a JSON
@@ -570,6 +747,53 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // a provided value violating a schema constraint must still be reported.
         $invalid = $normalizer->validate(new $cls(5, note: 'hi'));
         $this->assertContains('field "note" length must be at least 3 characters', $invalid);
+    }
+
+    public function testEnumWithBoolOrNullMembersFallsBackToInlineConstraints(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Flags' => [
+                        'type' => 'object',
+                        'required' => ['boolOnly', 'mixed', 'nullableText'],
+                        'properties' => [
+                            'boolOnly' => ['type' => 'boolean', 'enum' => [true, false]],
+                            'mixed' => ['type' => 'string', 'enum' => [1, 'a', true]],
+                            'nullableText' => ['type' => ['string', 'null'], 'enum' => ['a', 'b', null]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapEnumInline');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/FlagsBoolOnly.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/FlagsMixed.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/FlagsNullableText.php');
+
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GapEnumInline\Flags';
+        $constraints = $cls::getConstraints();
+        $this->assertSame([true, false], $constraints['boolOnly']['enum'] ?? null);
+        $this->assertSame([1, 'a', true], $constraints['mixed']['enum'] ?? null);
+        $this->assertSame(['a', 'b', null], $constraints['nullableText']['enum'] ?? null);
+
+        $normalizer = new DtoNormalizer();
+        $valid = new $cls(boolOnly: true, mixed: 'a', nullableText: null);
+        $this->assertSame([], $normalizer->validate($valid));
+
+        $invalid = new $cls(boolOnly: false, mixed: 'zzz', nullableText: 'c');
+        $errors = $normalizer->validate($invalid);
+        $this->assertContains('field "mixed" must be one of: 1, "a", true', $errors);
+        $this->assertContains('field "nullableText" must be one of: "a", "b", null', $errors);
     }
 
     public function testAllNewlyAllowedConstraintKeysSurviveIntoGetConstraints(): void

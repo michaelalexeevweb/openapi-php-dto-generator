@@ -67,6 +67,24 @@ The test suite covers all major features:
 - **testNamespaceIsCorrect** - Custom namespace handling
 - **testOutputDirectoryIsCleanedBeforeGeneration** - Directory cleanup
 
+## Golden Corpus Snapshot
+
+`tests/Golden/GoldenCorpusTest.php` generates `OpenApiExamples/test.yaml` in **both** modes and
+compares the whole output, byte for byte, against `tests/Golden/snapshots/<mode>.snapshot.txt`
+(one text file per mode: a header with the file count, the total line count and the file inventory,
+then every generated file). A second test parses every generated file with `php -l`, so a snapshot
+can never pin unparsable PHP.
+
+Every emitter change shows up here as a reviewable diff — including things a fragment assertion
+cannot see, such as a file or a constant that stopped being emitted.
+
+To accept a deliberate change, regenerate the snapshots and read the diff before committing:
+
+```bash
+UPDATE_GOLDEN_CORPUS=1 php vendor/bin/phpunit --filter GoldenCorpus   # or: make golden
+git diff tests/Golden/snapshots
+```
+
 ## Test Fixtures
 
 Test YAML files are located in `tests/fixtures/`:
@@ -85,6 +103,6 @@ Test YAML files are located in `tests/fixtures/`:
 
 - Path parameters are **always required** in generated DTOs, regardless of `required` flag in spec (OpenAPI standard)
 - Query parameters respect `required` flag and support tolerant parsing (`'true'`, `'1'`, `'yes'`, `'on'`)
-- Generated DTOs use `final readonly` classes for immutability
+- Runtime-mode DTOs use `final readonly` classes for immutability; Symfony-mode DTOs keep `readonly` on required (constructor) properties and expose setters for optional ones
 - Parent classes in inheritance chains don't have `final` modifier
 

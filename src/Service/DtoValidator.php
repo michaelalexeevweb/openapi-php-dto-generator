@@ -8,6 +8,7 @@ use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
 use JsonException;
+use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Symfony\Component\HttpFoundation\File\File;
@@ -189,8 +190,22 @@ final class DtoValidator implements DtoValidatorInterface
             $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
         }
 
-        if (is_array($value) && $this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas', 'patternProperties', 'propertyNames', 'unevaluatedProperties')) {
-            $errors = [...$errors, ...$this->validateObjectConstraints(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
+        if ($this->constraintsHave($constraints, 'minProperties', 'maxProperties', 'properties', 'additionalProperties', 'required', 'dependentRequired', 'dependentSchemas', 'patternProperties', 'propertyNames', 'unevaluatedProperties')) {
+            // A generated DTO carries object data too, so cross-field keywords (dependentRequired,
+            // dependentSchemas, propertyNames, …) must see its payload instead of being skipped
+            // because the value happens to be an object rather than an array.
+            $objectValue = is_array($value) ? $value : $this->generatedDtoPayload($value);
+            if ($objectValue !== null) {
+                $errors = [...$errors, ...$this->validateObjectConstraints(
+                    subject: $subject,
+                    value: $objectValue,
+                    // `properties` is owned by the DTO itself: it validates its own fields against
+                    // its own constraints, so re-checking them here would duplicate every message —
+                    // but the declared NAMES must stay visible, see the helper.
+                    constraints: is_array($value) ? $constraints : $this->withPropertyRulesOwnedByTheDto($constraints),
+                    depth: $depth,
+                )];
+            }
         }
 
         if (
@@ -382,6 +397,9 @@ final class DtoValidator implements DtoValidatorInterface
         return match ($format) {
             'int32' => $this->validateIntegerFormat($subject, $value, -2147483648, 2147483647, 'int32'),
             'int64' => $this->validateIntegerFormat($subject, $value, PHP_INT_MIN, PHP_INT_MAX, 'int64'),
+            'uint32' => $this->validateIntegerFormat($subject, $value, 0, 4294967295, 'uint32'),
+            // 2^64-1 exceeds PHP_INT_MAX, so the upper bound can only be expressed as a float.
+            'uint64' => $this->validateIntegerFormat($subject, $value, 0, 18446744073709551615.0, 'uint64'),
             default => [],
         };
     }
@@ -389,20 +407,25 @@ final class DtoValidator implements DtoValidatorInterface
     /**
      * @return array<string>
      */
-    private function validateIntegerFormat(string $subject, int|float $value, int $min, int $max, string $format): array
+    private function validateIntegerFormat(string $subject, int|float $value, int $min, int|float $max, string $format): array
     {
+        $maxLabel = $format === 'uint64' ? '18446744073709551615' : (string)$max;
+
         if (is_float($value) && (is_nan($value) || is_infinite($value) || floor($value) !== $value)) {
             return ["{$subject} must be an integer ({$format})"];
         }
 
         // A float can't represent the int64 boundary: (float)PHP_INT_MAX rounds up to 2^63,
         // so `$value > $max` misses an overflowing float. Reject any float at/beyond 2^63.
-        if (is_float($value) && $value >= 9223372036854775808.0) {
-            return ["{$subject} must be within {$format} range ({$min} to {$max})"];
+        if (is_float($value) && $format === 'int64' && $value >= 9223372036854775808.0) {
+            return ["{$subject} must be within {$format} range ({$min} to {$maxLabel})"];
         }
 
-        if ($value < $min || $value > $max) {
-            return ["{$subject} must be within {$format} range ({$min} to {$max})"];
+        if ($value < $min) {
+            return ["{$subject} must be within {$format} range ({$min} to {$maxLabel})"];
+        }
+        if ($value > $max) {
+            return ["{$subject} must be within {$format} range ({$min} to {$maxLabel})"];
         }
 
         return [];
@@ -1326,6 +1349,75 @@ final class DtoValidator implements DtoValidatorInterface
             'NULL' => 'null',
             default => gettype($value),
         };
+    }
+
+    /**
+     * A generated DTO as an OpenAPI-named payload, or null when the value is not one (or cannot be
+     * rendered because a required field was never provided — that is reported elsewhere).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function generatedDtoPayload(mixed $value): ?array
+    {
+        if (!$value instanceof GeneratedDtoInterface || $value instanceof BackedEnum) {
+            return null;
+        }
+
+        try {
+            return $value->toArray();
+        } catch (LogicException $e) {
+            // The ONE expected failure: a required field was never provided, which the deserializer
+            // reports itself — skipping the object keywords here avoids a second, vaguer message.
+            // Anything else is a defect in the generated code and must surface: catching Throwable
+            // hid a `TypeError` from the map-item cast, so a broken response looked like a payload
+            // that simply had no object rules. Same narrow catch as `DtoNormalizer::tryFastArray()`.
+            if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
+                throw $e;
+            }
+
+            return null;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function withoutKeyword(array $constraints, string $keyword): array
+    {
+        unset($constraints[$keyword]);
+
+        return $constraints;
+    }
+
+    /**
+     * A generated DTO validates its own fields against its own constraints, so re-checking the
+     * `properties` subschemas here would report every message twice. Dropping the keyword outright
+     * was too much, though: `unevaluatedProperties` and `additionalProperties` are defined in terms
+     * of WHICH keys `properties` declares, so without it a declared, perfectly valid key counted as
+     * unevaluated — `{"known":"a"}` against `properties: {known}, unevaluatedProperties: false` was
+     * rejected with `has unevaluated property "known"`.
+     *
+     * Each declared property therefore keeps its key and loses its rules: the bookkeeping keywords
+     * still see the name, and validating a value against an empty schema produces nothing.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function withPropertyRulesOwnedByTheDto(array $constraints): array
+    {
+        $properties = $constraints['properties'] ?? null;
+        if (!is_array($properties)) {
+            return $this->withoutKeyword($constraints, 'properties');
+        }
+
+        $names = [];
+        foreach (array_keys($properties) as $propertyName) {
+            $names[(string)$propertyName] = [];
+        }
+        $constraints['properties'] = $names;
+
+        return $constraints;
     }
 
     /**

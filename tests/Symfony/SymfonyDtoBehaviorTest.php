@@ -108,7 +108,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $serializer = $this->serializer();
 
         $holder = $serializer->denormalize(['status' => 1], $holderClass);
-        $this->assertSame($statusClass::from(1), $holder->status);
+        $this->assertSame($statusClass::from(1), $holder->getStatus());
 
         // An unknown enum value is rejected when coercing to the backed enum.
         $this->expectExceptionMessageMatches('/backed enum|not a valid backing value/i');
@@ -169,15 +169,15 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymDt';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Event.php');
-        $this->assertStringContainsString('public readonly DateTimeImmutable $at', $content);
+        $this->assertStringContainsString('private readonly DateTimeImmutable $at', $content);
 
         require_once $this->outputDirectory . '/Event.php';
         $eventClass = $ns . '\Event';
         $serializer = $this->serializer();
 
         $event = $serializer->denormalize(['at' => '2026-01-02T03:04:05+00:00'], $eventClass);
-        $this->assertInstanceOf(DateTimeImmutable::class, $event->at);
-        $this->assertSame('2026-01-02T03:04:05+00:00', $event->at->format('c'));
+        $this->assertInstanceOf(DateTimeImmutable::class, $event->getAtAsDateTime());
+        $this->assertSame('2026-01-02T03:04:05+00:00', $event->getAt());
     }
 
     public function testScalarAndEnumDefaultsAreRendered(): void
@@ -206,8 +206,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymDef', 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Conf.php');
 
-        $this->assertStringContainsString('public readonly ?int $level = 5,', $content);
-        $this->assertStringContainsString('= Status::On,', $content);
+        $this->assertStringContainsString('private ?int $level = 5;', $content);
+        $this->assertStringContainsString('= Status::On;', $content);
     }
 
     public function testInheritanceIsFlattenedIntoStandaloneClass(): void
@@ -242,15 +242,18 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         // Flattened: own + inherited props in one constructor, no extends / parent::__construct.
         $this->assertStringNotContainsString('extends', $content);
-        $this->assertStringContainsString('public readonly string $id', $content);
-        $this->assertStringContainsString('public readonly ?string $extra', $content);
+        $this->assertStringContainsString('private readonly string $id', $content);
+        $this->assertStringContainsString('private ?string $extra', $content);
 
         require_once $this->outputDirectory . '/Child.php';
         $childClass = $ns . '\Child';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
-        // Inherited constraint (minLength on id) is enforced on the flattened child.
-        $this->assertCount(0, $validator->validate(new $childClass(id: 'ok', extra: 'x')));
+        // Inherited constraint (minLength on id) is enforced on the flattened child. Optional
+        // properties are set, not passed: only required ones are constructor arguments.
+        $withExtra = new $childClass(id: 'ok');
+        $withExtra->setExtra('x');
+        $this->assertCount(0, $validator->validate($withExtra));
         $this->assertGreaterThan(0, count($validator->validate(new $childClass(id: 'x'))));
     }
 
@@ -384,8 +387,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymNum';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Num.php');
-        $this->assertStringContainsString('public readonly float $ratio', $content);
-        $this->assertStringContainsString('public readonly bool $active', $content);
+        $this->assertStringContainsString('private readonly float $ratio', $content);
+        $this->assertStringContainsString('private readonly bool $active', $content);
 
         require_once $this->outputDirectory . '/Num.php';
         $numClass = $ns . '\Num';
@@ -413,7 +416,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymBin', 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Upload.php');
         $this->assertStringContainsString('use Symfony\Component\HttpFoundation\File\UploadedFile;', $content);
-        $this->assertStringContainsString('public readonly ?UploadedFile $file', $content);
+        $this->assertStringContainsString('private ?UploadedFile $file', $content);
     }
 
     public function testNullableArrayItemsRenderInDocBlock(): void
@@ -594,20 +597,19 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Order.php');
 
-        // Required $b appears before optional $a in the constructor.
-        $this->assertLessThan(
-            (int)strpos($content, 'string $a'),
-            (int)strpos($content, 'string $b'),
-            'required $b must be declared before optional $a',
-        );
+        // Required $b is a constructor parameter; optional $a is a property with a setter, so the
+        // two live in different parts of the class rather than in one argument list.
+        $this->assertStringContainsString('private readonly string $b,', $content);
+        $this->assertStringContainsString('private ?string $a = null;', $content);
+        $this->assertStringNotContainsString('string $a = null,', $content);
 
         require_once $this->outputDirectory . '/Order.php';
         $cls = $ns . '\Order';
 
         // Construction by the single required arg must work (no ArgumentCountError).
         $object = new $cls(b: 'x');
-        $this->assertSame('x', $object->b);
-        $this->assertNull($object->a);
+        $this->assertSame('x', $object->getB());
+        $this->assertNull($object->getA());
     }
 
     public function testArrayOfScalarsWithFormatValidatesEachItem(): void
@@ -712,8 +714,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         require_once $this->outputDirectory . '/Day.php';
         $cls = $ns . '\Day';
         $object = $this->serializer()->denormalize(['on' => '2026-03-04'], $cls);
-        $this->assertInstanceOf(DateTimeImmutable::class, $object->on);
-        $this->assertSame('2026-03-04', $object->on->format('Y-m-d'));
+        $this->assertInstanceOf(DateTimeImmutable::class, $object->getOnAsDateTime());
+        $this->assertSame('2026-03-04', $object->getOn());
     }
 
     public function testReservedWordAndKebabPropertyNamesGenerateValidDto(): void
@@ -757,8 +759,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $serializer = new Serializer([new ObjectNormalizer($classMetadataFactory, $nameConverter)]);
 
         $object = $serializer->denormalize(['class' => 'x', 'foo-bar' => 'y'], $fqcn);
-        $this->assertSame('x', $object->class);
-        $this->assertSame('y', $object->fooBar);
+        $this->assertSame('x', $object->getClass());
+        $this->assertSame('y', $object->getFooBar());
     }
 
     public function testCliRejectsUnknownAttributesValue(): void
@@ -781,5 +783,120 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         $this->assertNotSame(0, $exit);
         $this->assertStringContainsString('must be "runtime" or "symfony"', $tester->getDisplay());
+    }
+
+    /**
+     * The distinction a PATCH endpoint lives on: an optional property is `?T = null`, so its value
+     * alone cannot say whether the client sent the key. The generated setter records it, which is
+     * why the optional half of a Symfony DTO is not readonly.
+     */
+    public function testOptionalPropertiesReportWhetherThePayloadCarriedThem(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Patch' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'nickname' => ['type' => ['string', 'null']],
+                            'first_name' => ['type' => ['string', 'null']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $namespace = 'SymPresence';
+        $this->generator->generateFromArray($spec, $this->outputDirectory, $namespace, 'symfony');
+        require_once $this->outputDirectory . '/Patch.php';
+
+        // #[Ignore] is attribute metadata, so the flags only stay out of the output with a
+        // metadata-aware normalizer — the wiring README.symfony.md already requires.
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $serializer = new Serializer(
+            [new ObjectNormalizer($classMetadataFactory), new ArrayDenormalizer()],
+        );
+        /** @var class-string $fqcn */
+        $fqcn = $namespace . '\Patch';
+
+        $dto = $serializer->denormalize(['id' => 1, 'nickname' => null], $fqcn);
+
+        // Both are null; only one of them was sent.
+        $this->assertNull($dto->getNickname());
+        $this->assertNull($dto->getFirstName());
+        $this->assertTrue($dto->isNicknameProvided());
+        $this->assertFalse($dto->isFirstNameProvided());
+
+        // A DTO built by hand answers the same way, and the flags stay out of the output.
+        $byHand = new $fqcn(id: 2);
+        $this->assertFalse($byHand->isNicknameProvided());
+        $byHand->setNickname('nick');
+        $this->assertTrue($byHand->isNicknameProvided());
+        $this->assertArrayNotHasKey('nicknameProvided', $serializer->normalize($byHand));
+    }
+
+    /**
+     * Symfony's DateTimeNormalizer has one fixed pattern: it would turn `format: date` into a full
+     * timestamp and drop the sub-second precision of a date-time. The generated getter formats the
+     * value itself instead — the same rule runtime mode uses — and an #[Ignore]d companion still
+     * hands out the object.
+     */
+    public function testTemporalGettersFormatAsTheSchemaDeclares(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Stamp' => [
+                        'type' => 'object',
+                        'required' => ['at', 'on'],
+                        'properties' => [
+                            'at' => ['type' => 'string', 'format' => 'date-time'],
+                            'on' => ['type' => 'string', 'format' => 'date'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $namespace = 'SymTemporalFormat';
+        $this->generator->generateFromArray($spec, $this->outputDirectory, $namespace, 'symfony');
+        require_once $this->outputDirectory . '/Stamp.php';
+
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $serializer = new Serializer(
+            [new DateTimeNormalizer(), new ObjectNormalizer($classMetadataFactory), new ArrayDenormalizer()],
+        );
+        /** @var class-string $fqcn */
+        $fqcn = $namespace . '\Stamp';
+
+        $withMicroseconds = $serializer->denormalize(
+            ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
+            $fqcn,
+        );
+        $this->assertSame('2026-03-10T12:00:00.123456+03:00', $withMicroseconds->getAt());
+        $this->assertSame('2026-03-10', $withMicroseconds->getOn(), 'a date must not grow a time part');
+
+        $withoutMicroseconds = $serializer->denormalize(
+            ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
+            $fqcn,
+        );
+        $this->assertSame('2026-03-10T12:00:00+00:00', $withoutMicroseconds->getAt());
+
+        // The object is still reachable, and stays out of the serialized output.
+        $this->assertInstanceOf(DateTimeImmutable::class, $withMicroseconds->getAtAsDateTime());
+        $this->assertSame(
+            ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
+            $serializer->normalize($withMicroseconds),
+        );
     }
 }

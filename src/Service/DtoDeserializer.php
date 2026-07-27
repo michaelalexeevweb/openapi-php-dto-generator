@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Service;
 
 use BackedEnum;
+use Closure;
 use DateTimeImmutable;
 use Error;
 use JsonException;
@@ -58,7 +59,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     readOnly: bool,
      *     sourceConstraint: string|null,
      *     arrayDelimiter: non-empty-string|null,
+     *     parameterStyle: string|null,
+     *     parameterExplode: bool|null,
+     *     allowReserved: bool,
+     *     allowEmptyValue: bool|null,
      *     contentJson: bool,
+     *     formEncodedString: bool,
      *     arrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
@@ -126,12 +132,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         $this->convertParametersToAttributes($request);
 
-        // Pre-fetch all request data sources once — avoids N per-parameter array allocations.
+        // The raw query string is only needed by `allowReserved` parameters, which most documents
+        // never declare — parsing it eagerly cost every request a second pass over the query string
+        // (measured: +50% on a small DTO with a ten-parameter query). Hence a memoized provider:
+        // built at most once per request, and only if a parameter actually asks for it.
+        /** @var array<string, mixed>|null $rawQueryData */
+        $rawQueryData = null;
+        $rawQueryProvider = function () use ($request, &$rawQueryData): array {
+            return $rawQueryData ??= $this->getRawQueryData($request);
+        };
+
+        // Pre-fetch the remaining request data sources once — avoids N per-parameter allocations.
         /** @var T $dto */
         $dto = $this->deserializeInternal(
             dtoClass: $dtoClass,
             bodyData: $this->getBodyData($request),
             queryData: $request->query->all(),
+            rawQueryProvider: $rawQueryProvider,
             formData: $request->request->all(),
             request: $request,
         );
@@ -254,6 +271,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             dtoClass: $dtoClass,
             bodyData: $data,
             queryData: [],
+            rawQueryProvider: static fn(): array => [],
             formData: [],
             request: null,
         );
@@ -267,6 +285,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @param array<string, mixed> $bodyData
      * @param array<string, mixed> $queryData
+     * @param Closure(): array<string, mixed> $rawQueryProvider raw (plus-preserving) query data,
+     *        built on first use — see `deserialize()`
      * @param array<string, mixed> $formData
      * @param class-string $dtoClass
      */
@@ -274,6 +294,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $dtoClass,
         array $bodyData,
         array $queryData,
+        Closure $rawQueryProvider,
         array $formData,
         ?Request $request,
     ): object {
@@ -308,16 +329,46 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 paramName: $requestFieldName,
                 bodyData: $bodyData,
                 queryData: $queryData,
+                rawQueryProvider: $rawQueryProvider,
                 formData: $formData,
                 sourceConstraint: $paramMeta['sourceConstraint'],
+                allowReserved: $paramMeta['allowReserved'],
                 wasProvided: $rawWasProvided,
                 source: $rawSource,
             );
+
+            // OpenAPI allowEmptyValue (query parameters only). The metadata is tri-state: `false`
+            // means the spec explicitly forbids `?flag=`, `true` explicitly permits it, and a
+            // missing entry means the spec is silent — those keep the historical behaviour of
+            // casting the empty string (e.g. `?verified=` -> false for a bool).
+            if (
+                $rawWasProvided
+                && $rawSource === 'query'
+                && $rawValue === ''
+                && $paramMeta['allowEmptyValue'] === false
+            ) {
+                $errors[] = sprintf('Parameter "%s" does not allow an empty value.', $requestFieldName);
+                // Keep positional arg alignment; the collected error aborts before use.
+                $args[] = null;
+                continue;
+            }
+
+            // OAS 3.2 `in: querystring` described with a form media type: the raw query string is
+            // parsed into the array the schema expects.
+            if ($rawWasProvided && $paramMeta['formEncodedString'] && is_string($rawValue)) {
+                parse_str($rawValue, $parsedQueryString);
+                $rawValue = $parsedQueryString;
+            }
 
             // content: application/json parameter: the raw value is a JSON document encoded as
             // a string. Decode it before casting so an object/array schema validates against the
             // parsed structure rather than the literal string.
             if ($rawWasProvided && $paramMeta['contentJson'] && is_string($rawValue)) {
+                // A JSON `in: querystring` value arrives percent-encoded inside the URL.
+                if ($rawSource === 'querystring') {
+                    $rawValue = rawurldecode($rawValue);
+                }
+
                 try {
                     $rawValue = json_decode($rawValue, associative: true, flags: JSON_THROW_ON_ERROR);
                 } catch (JsonException) {
@@ -326,6 +377,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $args[] = null;
                     continue;
                 }
+            }
+
+            // OpenAPI path serialization styles (matrix/label) embed the value in the path
+            // segment itself. Decode those raw strings before normal type casting.
+            if ($rawWasProvided && is_string($rawValue)) {
+                $rawValue = $this->normalizeSerializedParameterValue(
+                    rawValue: $rawValue,
+                    paramName: $requestFieldName,
+                    source: $rawSource,
+                    paramMeta: $paramMeta,
+                    parameterStyle: $paramMeta['parameterStyle'],
+                    parameterExplode: $paramMeta['parameterExplode'],
+                );
             }
 
             // OpenAPI delimited-array serialization: a single query/header/cookie string
@@ -515,7 +579,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     readOnly: bool,
      *     sourceConstraint: string|null,
      *     arrayDelimiter: non-empty-string|null,
+     *     parameterStyle: string|null,
+     *     parameterExplode: bool|null,
+     *     allowReserved: bool,
+     *     allowEmptyValue: bool|null,
      *     contentJson: bool,
+     *     formEncodedString: bool,
      *     arrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
@@ -549,6 +618,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // Per-property OpenAPI serialization style/explode — drives delimited-array
         // splitting for query/header/cookie params. Empty for legacy DTOs.
         $parameterStyles = $this->resolveParameterStyles($reflection);
+        $parameterAllowReserved = $this->resolveParameterAllowReserved($reflection);
+        $parameterAllowEmptyValue = $this->resolveParameterAllowEmptyValue($reflection);
 
         $params = [];
         $inRequestProperties = [];
@@ -659,6 +730,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             // A content:application/json parameter carries the 'json' style sentinel: its raw
             // string value is JSON-decoded before casting (see the deserialize() loop).
             $contentJson = ($styleEntry['style'] ?? null) === 'json';
+            // OAS 3.2 `in: querystring` with a form media type: the raw string is form-decoded.
+            $formEncodedString = ($styleEntry['style'] ?? null) === 'querystring';
 
             $params[] = [
                 'name' => $paramName,
@@ -678,7 +751,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'readOnly' => ($fieldConstraints['readOnly'] ?? false) === true,
                 'sourceConstraint' => $sourceConstraint,
                 'arrayDelimiter' => $arrayDelimiter,
+                'parameterStyle' => $styleEntry['style'] ?? null,
+                'parameterExplode' => $styleEntry['explode'] ?? null,
+                'allowReserved' => ($parameterAllowReserved[$paramName] ?? false) === true,
+                'allowEmptyValue' => $parameterAllowEmptyValue[$paramName] ?? null,
                 'contentJson' => $contentJson,
+                'formEncodedString' => $formEncodedString,
                 'arrayItemsNullable' => $arrayItemsNullable,
             ];
         }
@@ -766,6 +844,71 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * Reads the optional getParameterAllowReserved() metadata that marks query params
+     * whose raw value should preserve literal plus signs.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, bool>
+     */
+    private function resolveParameterAllowReserved(ReflectionClass $reflection): array
+    {
+        $method = $this->resolveMetadataMethod(
+            className: $reflection->getName(),
+            candidateMethods: ['getParameterAllowReserved'],
+        );
+        if ($method === null) {
+            return [];
+        }
+
+        $allowReserved = call_user_func($method);
+        if (!is_array($allowReserved)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($allowReserved as $propertyName => $enabled) {
+            if (is_string($propertyName) && $enabled === true) {
+                $result[$propertyName] = true;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Reads the optional getParameterAllowEmptyValue() metadata that marks query params
+     * whose empty string value is explicitly allowed by the spec.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, bool>
+     */
+    private function resolveParameterAllowEmptyValue(ReflectionClass $reflection): array
+    {
+        $method = $this->resolveMetadataMethod(
+            className: $reflection->getName(),
+            candidateMethods: ['getParameterAllowEmptyValue'],
+        );
+        if ($method === null) {
+            return [];
+        }
+
+        $allowEmptyValue = call_user_func($method);
+        if (!is_array($allowEmptyValue)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($allowEmptyValue as $propertyName => $enabled) {
+            // Both states are meaningful here: `false` is an explicit prohibition, not a default.
+            if (is_string($propertyName) && is_bool($enabled)) {
+                $result[$propertyName] = $enabled;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Resolves the delimiter used to split a single string into array elements for the
      * given OpenAPI style/explode, or null when no splitting applies (the value is
      * already an array from Symfony query parsing, or the style is object-shaped).
@@ -785,6 +928,225 @@ final class DtoDeserializer implements DtoDeserializerInterface
             // deepObject and unknown styles: no scalar splitting.
             default => null,
         };
+    }
+
+    /**
+     * Decodes matrix/label path serialization into native PHP values before type casting.
+     *
+     * Matrix and label styles are the only OpenAPI styles that need manual path-segment
+     * parsing here; query deepObject already arrives from Symfony as a nested array.
+     *
+     * @param array{typeNames: list<string>, allowsAssociativeArray: bool, arrayItemType: string|null} $paramMeta
+     */
+    private function normalizeSerializedParameterValue(
+        string $rawValue,
+        string $paramName,
+        string $source,
+        array $paramMeta,
+        ?string $parameterStyle,
+        ?bool $parameterExplode,
+    ): mixed {
+        if ($source !== 'path' || !is_string($parameterStyle)) {
+            return $rawValue;
+        }
+
+        if (!in_array($parameterStyle, ['matrix', 'label'], true)) {
+            return $rawValue;
+        }
+
+        $expectsAssociative = $this->parameterExpectsAssociativeValue($paramMeta);
+        $expectsArray = !$expectsAssociative && ($paramMeta['arrayItemType'] ?? null) !== null;
+
+        if (!$expectsArray && !$expectsAssociative) {
+            return $this->stripSerializedScalarPrefix($rawValue, $paramName, $parameterStyle);
+        }
+
+        $tokens = $this->splitSerializedPathTokens($rawValue, $paramName, $parameterStyle, $parameterExplode === true);
+        if ($tokens === []) {
+            return [];
+        }
+
+        if ($expectsAssociative) {
+            return $this->parseSerializedPathAssociativeValue(
+                $this->stripParameterNameFromFirstToken($tokens, $paramName, $parameterExplode === true),
+                $paramName,
+            );
+        }
+
+        return $this->parseSerializedPathListValue($tokens, $paramName);
+    }
+
+    /**
+     * @param array{typeNames: list<string>, allowsAssociativeArray: bool} $paramMeta
+     */
+    private function parameterExpectsAssociativeValue(array $paramMeta): bool
+    {
+        if ($paramMeta['allowsAssociativeArray'] === true) {
+            return true;
+        }
+
+        foreach ($paramMeta['typeNames'] as $typeName) {
+            if ($this->resolveTypeKind($typeName) === 'dto') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitSerializedPathTokens(
+        string $rawValue,
+        string $paramName,
+        string $parameterStyle,
+        bool $explode,
+    ): array {
+        // Strip style prefix: matrix (;), label (.)
+        // Do NOT strip paramName.= or paramName., — those are not array/object prefixes
+        $value = match (true) {
+            $parameterStyle === 'matrix' && str_starts_with($rawValue, ';') => substr($rawValue, 1),
+            $parameterStyle === 'label' && str_starts_with($rawValue, '.') => substr($rawValue, 1),
+            default => $rawValue,
+        };
+
+        if ($value === '') {
+            return [];
+        }
+
+        $delimiter = match ($parameterStyle) {
+            'matrix' => $explode ? ';' : ',',
+            'label' => $explode ? '.' : ',',
+            default => ',',
+        };
+
+        // Split by delimiter; preserve empty strings (important for minItems/maxItems validation)
+        return explode($delimiter, $value);
+    }
+
+    private function stripSerializedScalarPrefix(string $rawValue, string $paramName, string $parameterStyle): string
+    {
+        $value = match (true) {
+            $parameterStyle === 'matrix' && str_starts_with($rawValue, ';') => substr($rawValue, 1),
+            $parameterStyle === 'label' && str_starts_with($rawValue, '.') => substr($rawValue, 1),
+            default => $rawValue,
+        };
+
+        return match (true) {
+            str_starts_with($value, $paramName . '=') => substr($value, strlen($paramName . '=')),
+            str_starts_with($value, $paramName . ',') => substr($value, strlen($paramName . ',')),
+            default => $value,
+        };
+    }
+
+    /**
+     * A NON-exploded matrix/label object carries the parameter name once, in front of the first key:
+     * `;id=kind,dog,name,Rex` (RFC 6570 matrix expansion). Left in place, `id=kind` looks like an
+     * explicit key/value pair, so the whole object collapsed to `['id' => 'kind']` and every real
+     * pair was thrown away.
+     *
+     * Only for `explode: false`: in the exploded spelling (`;kind=dog;name=Rex`) each token already
+     * IS a pair, and a key that happens to match the parameter name must not be stripped.
+     *
+     * @param list<string> $tokens
+     * @return list<string>
+     */
+    private function stripParameterNameFromFirstToken(array $tokens, string $paramName, bool $explode): array
+    {
+        if ($explode || $tokens === []) {
+            return $tokens;
+        }
+
+        $prefix = $paramName . '=';
+        if (!str_starts_with($tokens[0], $prefix)) {
+            return $tokens;
+        }
+
+        $tokens[0] = substr($tokens[0], strlen($prefix));
+
+        return $tokens;
+    }
+
+    /**
+     * @param list<string> $tokens
+     * @return array<string, mixed>
+     */
+    private function parseSerializedPathAssociativeValue(array $tokens, string $paramName): array
+    {
+        $result = [];
+        $hasExplicitKeys = false;
+
+        // First pass: look for key=value pairs (empty tokens are preserved)
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+            $pair = explode('=', $token, 2);
+            if (count($pair) === 2) {
+                $hasExplicitKeys = true;
+                [$key, $value] = $pair;
+                if ($key !== '') {
+                    $result[$key] = $value;
+                }
+            }
+        }
+
+        if ($hasExplicitKeys) {
+            return $result;
+        }
+
+        // Second pass: pair up consecutive tokens (skip empty tokens)
+        $nonEmptyTokens = array_values(array_filter($tokens, static fn(string $t): bool => $t !== ''));
+        for ($i = 0, $count = count($nonEmptyTokens); $i < $count - 1; $i += 2) {
+            $key = $nonEmptyTokens[$i];
+            $value = $nonEmptyTokens[$i + 1] ?? null;
+            if ($value !== null) {
+                $result[$key] = $value;
+            }
+        }
+
+        if ($result !== []) {
+            return $result;
+        }
+
+        return [$paramName => implode(',', $tokens)];
+    }
+
+    /**
+     * @param list<string> $tokens
+     * @return list<string>
+     */
+    private function parseSerializedPathListValue(array $tokens, string $paramName): array
+    {
+        if ($tokens === []) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                // Preserve empty strings for count validation (minItems/maxItems)
+                $values[] = '';
+                continue;
+            }
+
+            // Check if this token has paramName=value pattern
+            // (happens in explode mode: ;paramName=val1;paramName=val2)
+            if (str_contains($token, '=')) {
+                $pair = explode('=', $token, 2);
+                if ($pair[0] === $paramName) {
+                    // This is our parameter's value, strip the key
+                    $values[] = $pair[1];
+                    continue;
+                }
+            }
+
+            // Otherwise, keep the token as-is (it's a plain value, not key=value)
+            $values[] = $token;
+        }
+
+        return $values;
     }
 
     /**
@@ -841,6 +1203,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @param array<string, mixed> $bodyData
      * @param array<string, mixed> $queryData
+     * @param Closure(): array<string, mixed> $rawQueryProvider
      * @param array<string, mixed> $formData
      */
     private function resolveRawRequestValue(
@@ -848,8 +1211,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $paramName,
         array $bodyData,
         array $queryData,
+        Closure $rawQueryProvider,
         array $formData,
         ?string $sourceConstraint,
+        bool $allowReserved,
         bool &$wasProvided,
         string &$source,
     ): mixed {
@@ -859,6 +1224,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 paramName: $paramName,
                 sourceConstraint: $sourceConstraint,
                 queryData: $queryData,
+                rawQueryProvider: $rawQueryProvider,
+                allowReserved: $allowReserved,
                 wasProvided: $wasProvided,
                 source: $source,
             );
@@ -908,20 +1275,45 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * so path/query/header/cookie-bound params are simply absent.)
      *
      * @param array<string, mixed> $queryData
+     * @param Closure(): array<string, mixed> $rawQueryProvider
      */
     private function resolveFromBoundSource(
         ?Request $request,
         string $paramName,
         string $sourceConstraint,
         array $queryData,
+        Closure $rawQueryProvider,
+        bool $allowReserved,
         bool &$wasProvided,
         string &$source,
     ): mixed {
+        if ($sourceConstraint === 'querystring') {
+            // OAS 3.2: the value is the whole query string. An absent query string counts as
+            // "not provided" so optional parameters keep their default.
+            // The raw server value keeps the string exactly as sent; getQueryString() normalizes it
+            // (it appends `=` to a valueless key, which would corrupt a JSON payload).
+            $queryString = $request?->server->get('QUERY_STRING');
+            if (!is_string($queryString) || $queryString === '') {
+                $queryString = $request?->getQueryString();
+            }
+            if ($queryString === null || $queryString === '') {
+                $wasProvided = false;
+                $source = '';
+                return null;
+            }
+
+            $wasProvided = true;
+            $source = 'querystring';
+            return $queryString;
+        }
+
         if ($sourceConstraint === 'query') {
-            if (array_key_exists($paramName, $queryData)) {
+            $sourceData = $allowReserved ? ($rawQueryProvider)() : $queryData;
+
+            if (array_key_exists($paramName, $sourceData)) {
                 $wasProvided = true;
                 $source = 'query';
-                return $queryData[$paramName];
+                return $sourceData[$paramName];
             }
 
             $wasProvided = false;
@@ -1065,6 +1457,135 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $this->bodyDataCacheKey = $cacheKey;
         $this->bodyDataCacheValue = $result;
+
+        return $result;
+    }
+
+    /**
+     * Parses the raw query string without converting literal plus signs to spaces.
+     *
+     * This preserves reserved characters for allowReserved query parameters while
+     * keeping normal Symfony query parsing as the default source.
+     *
+     * @return array<string, mixed>
+     */
+    private function getRawQueryData(Request $request): array
+    {
+        $queryString = (string)$request->server->get('QUERY_STRING', '');
+        if ($queryString === '') {
+            return [];
+        }
+
+        // Parse query string while preserving + signs in values (allowReserved support).
+        // Use rawurldecode to preserve encoded plus signs (%2B) and allow literal + in values.
+        $result = [];
+        foreach (explode('&', $queryString) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+
+            $eqPos = strpos($pair, '=');
+            if ($eqPos === false) {
+                // No value: ?key → key => ''
+                $this->assignRawQueryValue($result, rawurldecode($pair), '');
+                continue;
+            }
+
+            $this->assignRawQueryValue(
+                $result,
+                rawurldecode(substr($pair, 0, $eqPos)),
+                rawurldecode(substr($pair, $eqPos + 1)),
+            );
+        }
+
+        return $this->normalizeParsedQueryData($result);
+    }
+
+    /**
+     * Places one raw query pair, following the bracket path in its key.
+     *
+     * This has to agree with `parse_str()` — the default (non-`allowReserved`) source is Symfony's
+     * own query bag — because the two must differ ONLY in how `+` is decoded, never in the shape
+     * they produce. The earlier version matched brackets with a greedy regex, so it saw
+     * `foo[bar][baz]` as one key `foo[bar]` with subkey `baz`: nesting deeper than one level came out
+     * with a bracket inside a key name. Every level is now walked.
+     *
+     * `foo[]` appends, `foo[k]` sets a key, `foo[a][b]` nests, and a key with no closing bracket is
+     * kept verbatim (as `parse_str()` also refuses to interpret it).
+     *
+     * @param array<string, mixed> $result
+     */
+    private function assignRawQueryValue(array &$result, string $key, string $value): void
+    {
+        $bracketPos = strpos($key, '[');
+        if ($bracketPos === false) {
+            $result[$key] = $value;
+
+            return;
+        }
+
+        $baseKey = substr($key, 0, $bracketPos);
+        $path = substr($key, $bracketPos);
+
+        // Only the LEADING run of well-formed groups is a path; `parse_str()` ignores whatever
+        // follows (`weird[a]x[b]` is `weird => [a => …]`), and turns a `[` that opens nothing into
+        // an underscore (`noclose[a` is `noclose_a`).
+        if (preg_match('/^((?:\[[^\[\]]*\])+)/', $path, $leading) !== 1) {
+            $result[str_replace('[', '_', $key)] = $value;
+
+            return;
+        }
+
+        preg_match_all('/\[([^\[\]]*)\]/', $leading[1], $matches);
+        /** @var array<int, string> $segments an empty segment means "append" */
+        $segments = $matches[1];
+
+        /** @var array<array-key, mixed> $cursor */
+        $cursor = &$result;
+        $cursorKey = $baseKey;
+
+        foreach ($segments as $segment) {
+            if (!is_array($cursor[$cursorKey] ?? null)) {
+                // A scalar already sitting here is replaced by the container it turns out to be —
+                // `?a=1&a[b]=2` ends up as `a => [b => 2]`, which is what parse_str() does too.
+                $cursor[$cursorKey] = [];
+            }
+            /** @var array<array-key, mixed> $next */
+            $next = &$cursor[$cursorKey];
+            $cursor = &$next;
+            unset($next);
+
+            if ($segment === '') {
+                $cursor[] = null;
+                /** @var int $lastKey */
+                $lastKey = array_key_last($cursor);
+                $cursorKey = $lastKey;
+                continue;
+            }
+
+            $cursorKey = $segment;
+        }
+
+        $cursor[$cursorKey] = $value;
+    }
+
+    /**
+     * Walks the parsed tree so the nested arrays carry a declared type.
+     *
+     * It used to SKIP non-string keys, which silently emptied every list: `?foo[]=1&foo[]=2` reached
+     * an `allowReserved` parameter as `[]`, because `foo`'s members are integer-keyed. Integer keys
+     * are kept now; only the top level is string-keyed, and that holds by construction (a query
+     * parameter always has a name).
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private function normalizeParsedQueryData(array $data): array
+    {
+        $result = [];
+        foreach ($data as $key => $value) {
+            $result[$key] = is_array($value) ? $this->normalizeParsedQueryData($value) : $value;
+        }
 
         return $result;
     }
@@ -1564,6 +2085,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 source: $source,
                 arrayItemType: null,
                 paramPath: $itemPath,
+                // An `array` item can itself be a map (a list of maps is `array<array<string, V>>`),
+                // and JSON decodes a map to stdClass — so the item must accept one. What shape it
+                // really has is the validator's business, not the cast's.
+                allowsAssociativeArray: $kind === 'array',
             );
         }
 
@@ -1808,13 +2333,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        // Matches both a list `array<V>` and a map `array<string, V>` (the optional `key,` prefix is
-        // discarded) so map values are cast to their declared value type, not left as raw scalars.
-        if (preg_match('/array<(?:[^,<>]+,\s*)?\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)>/', $docComment, $matches) !== 1) {
+        $rawType = $this->itemTypeFromDocComment($docComment);
+        if ($rawType === null) {
             return null;
         }
 
-        $rawType = ltrim($matches[1], '?\\');
         if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
             return $rawType;
         }
@@ -1832,6 +2355,68 @@ final class DtoDeserializer implements DtoDeserializerInterface
         return $reflection->getNamespaceName() !== ''
             ? $reflection->getNamespaceName() . '\\' . $rawType
             : $rawType;
+    }
+
+    /**
+     * The item type of the first `array<…>` / `list<…>` in a doc comment: `array<V>` yields `V`,
+     * and the map form `array<string, V>` yields `V` too — the key prefix is dropped so map values
+     * are cast to their declared type rather than left raw.
+     *
+     * Bracket-aware on purpose. A flat regex matches the INNERMOST generic, so a list of maps,
+     * `array<array<string, int>>`, used to report `int` as its item type and every item then failed
+     * to cast with "expects int, got object" — the whole payload was undeserializable.
+     */
+    private function itemTypeFromDocComment(string $docComment): ?string
+    {
+        if (preg_match('/\b(?:array|list)</i', $docComment, $match, PREG_OFFSET_CAPTURE) !== 1) {
+            return null;
+        }
+
+        $inner = '';
+        $depth = 1;
+        $length = strlen($docComment);
+        for ($i = $match[0][1] + strlen($match[0][0]); $i < $length; $i++) {
+            $character = $docComment[$i];
+            if ($character === '<') {
+                $depth++;
+            } elseif ($character === '>') {
+                $depth--;
+                if ($depth === 0) {
+                    break;
+                }
+            }
+            $inner .= $character;
+        }
+
+        if ($depth !== 0 || $inner === '') {
+            return null;
+        }
+
+        // Split key from value at depth 0 only: the comma inside `array<string, int>` is not ours.
+        $depth = 0;
+        $length = strlen($inner);
+        for ($i = 0; $i < $length; $i++) {
+            $character = $inner[$i];
+            if ($character === '<') {
+                $depth++;
+            } elseif ($character === '>') {
+                $depth--;
+            } elseif ($character === ',' && $depth === 0) {
+                $inner = substr($inner, $i + 1);
+                break;
+            }
+        }
+
+        $inner = trim($inner);
+
+        // A generic item (a nested list or map) is just `array` as far as casting goes.
+        if (preg_match('/^\??(?:array|list)</i', $inner) === 1) {
+            return 'array';
+        }
+
+        return preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/', $inner, $matches) === 1
+            ? $matches[1]
+            : null;
     }
 
     private function getTypeString(mixed $value): string

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Command;
 
 use JsonException;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -31,8 +33,11 @@ use Twig\Loader\FilesystemLoader;
  *   inQuery?: bool,
  *   inHeader?: bool,
  *   inCookie?: bool,
+ *   inQueryString?: bool,
  *   parameterStyle?: string|null,
  *   parameterExplode?: bool|null,
+ *   allowReserved?: bool,
+ *   allowEmptyValue?: bool|null,
  *   constraints?: array<string, mixed>,
  *   readOnly?: bool,
  *   writeOnly?: bool,
@@ -50,6 +55,21 @@ use Twig\Loader\FilesystemLoader;
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
 final class GenerateDtoCommand extends Command
 {
+    // Per-mode emitters live in their own files; everything they need (schema registries, type
+    // resolution, naming, templates) stays on this class and is shared by both.
+    use RendersRuntimeDto;
+    use RendersSymfonyDto;
+
+    /** OAS 3.2 `$self`: the document's own URI, used to recognise self-addressing `$ref`s. */
+    private ?string $documentSelfUri = null;
+
+    /**
+     * Warnings collected during generation and reported by the CLI.
+     *
+     * @var array<int, string>
+     */
+    private array $generationWarnings = [];
+
     /** Generation mode backed by this library's runtime (DtoValidator/Normalizer/Deserializer). */
     public const string ATTRIBUTE_MODE_RUNTIME = 'runtime';
 
@@ -58,6 +78,53 @@ final class GenerateDtoCommand extends Command
 
     /** @var array<int, string> */
     public const array ATTRIBUTE_MODES = [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_SYMFONY];
+
+    /**
+     * Names PHP refuses as a class name, lowercased. Two groups, one symptom: the hard keywords
+     * (`list`, `match`, `readonly`, `static`, …) make the `class X` line a parse error, while the
+     * soft-reserved type names (`int`, `string`, `mixed`, `never`, …) and `self`/`parent` fail at
+     * load time with "Cannot use X as a class name as it is reserved". A schema is free to be called
+     * any of them, so `avoidReservedPhpClassName()` renames the class, not the schema.
+     *
+     * @var array<int, string>
+     */
+    private const array PHP_RESERVED_CLASS_NAMES = [
+        'abstract', 'and', 'array', 'as', 'break', 'callable', 'case', 'catch', 'class', 'clone',
+        'const', 'continue', 'declare', 'default', 'die', 'do', 'echo', 'else', 'elseif', 'empty',
+        'enddeclare', 'endfor', 'endforeach', 'endif', 'endswitch', 'endwhile', 'enum', 'eval',
+        'exit', 'extends', 'final', 'finally', 'fn', 'for', 'foreach', 'function', 'global', 'goto',
+        'if', 'implements', 'include', 'include_once', 'instanceof', 'insteadof', 'interface',
+        'isset', 'list', 'match', 'namespace', 'new', 'or', 'print', 'private', 'protected',
+        'public', 'readonly', 'require', 'require_once', 'return', 'static', 'switch', 'throw',
+        'trait', 'try', 'unset', 'use', 'var', 'while', 'xor', 'yield',
+        // Soft-reserved: legal as an identifier elsewhere, rejected as a class name.
+        'bool', 'false', 'float', 'int', 'iterable', 'mixed', 'never', 'null', 'numeric', 'object',
+        'parent', 'resource', 'self', 'string', 'true', 'void',
+    ];
+
+    /**
+     * Keywords that give an object schema a shape even when it declares no `properties` — their
+     * presence means the schema is not free-form. See `isFreeFormObjectSchema()`.
+     *
+     * @var array<int, string>
+     */
+    private const array OBJECT_SHAPING_KEYWORDS = [
+        '$ref',
+        'allOf',
+        'anyOf',
+        'oneOf',
+        'not',
+        'if',
+        'then',
+        'else',
+        'discriminator',
+        'patternProperties',
+        'propertyNames',
+        'dependentSchemas',
+        'dependentRequired',
+        'unevaluatedProperties',
+        'required',
+    ];
 
     public ?Environment $twig = null;
 
@@ -329,6 +396,10 @@ final class GenerateDtoCommand extends Command
             );
         }
 
+        foreach ($this->generationWarnings as $warning) {
+            $io->warning($warning);
+        }
+
         $io->success(
             sprintf('Generated %d DTO class(es) in %s with namespace %s.', $count, $outputDirectory, $namespace),
         );
@@ -360,6 +431,8 @@ final class GenerateDtoCommand extends Command
             namespace: $namespace,
             rootSpecFile: $realFilePath,
         );
+        // After initializeGeneration: it resets the per-run document state this reads into.
+        $this->readDocumentLevelFields($data);
         $this->registerDocumentSchemas(openApi: $data, sourceFile: $realFilePath, includeInlineSchemas: true);
         $this->scanExternalSchemaRefs(node: $data, currentSourceFile: $realFilePath);
 
@@ -466,7 +539,7 @@ final class GenerateDtoCommand extends Command
     {
         $this->setAttributeMode($mode);
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
-
+        $this->readDocumentLevelFields($openApi);
         $openApi = $this->foldJsonSchemaDefs($openApi);
         $schemas = $this->extractSchemas($openApi);
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
@@ -484,7 +557,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            $className = $this->normalizeClassName($schemaName);
+            $className = $this->schemaClassName($schemaName);
             $this->registerSchema(className: $className, schemaDefinition: $schemaDefinition, sourceFile: null);
         }
 
@@ -682,6 +755,8 @@ final class GenerateDtoCommand extends Command
     {
         $this->dtoSchemas = [];
         $this->enumSchemas = [];
+        $this->documentSelfUri = null;
+        $this->generationWarnings = [];
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
         $this->discriminatorSchemas = [];
@@ -717,6 +792,13 @@ final class GenerateDtoCommand extends Command
         $this->expandNestedSchemas();
         $this->detectParentClasses();
         $this->detectUnionInterfaces();
+
+        // Every schema is registered by now (including nested and external ones), which is what
+        // makes the document-wide decision below reliable.
+        $this->serializationGroupsRequired = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
+            && $this->documentNeedsSerializationGroups();
+        $this->resetSymfonyReachabilityCache();
+
         $this->prepareOutputDirectory($this->baseOutputDirectory);
 
         $generatedCount = 0;
@@ -725,7 +807,12 @@ final class GenerateDtoCommand extends Command
             // A component schema whose top-level type is `array` is a type alias (a list), not an
             // object — references to it resolve to the aliased array type, so no empty DTO class
             // file is emitted for it.
-            if (($schemaDefinition['type'] ?? null) === 'array') {
+            //
+            // A free-form `{type: object}` component keeps its class on purpose. Where it is USED
+            // as a value (a property, an array item, a `$ref` target) it resolves to a map so the
+            // payload survives — but the class itself is also how a response schema is named, so
+            // deleting it would take away a type the application may reference.
+            if (($schemaDefinition['type'] ?? null) === 'array' || $this->isScalarAliasSchema($schemaDefinition)) {
                 continue;
             }
 
@@ -794,7 +881,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            $className = $this->normalizeClassName($schemaName);
+            $className = $this->schemaClassName($schemaName);
             $this->registerSchema(className: $className, schemaDefinition: $schemaDefinition, sourceFile: $sourceFile);
         }
     }
@@ -816,6 +903,48 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A named `type: string`/`type: integer` schema whose `enum` holds a member of another type
+     * cannot become a backed enum, and the fall-through is worse than a refusal: the schema is
+     * synthesized into a DTO class with no properties, so generation "succeeds" and then EVERY
+     * request carrying the field dies with `Cannot deserialize nested DTO X from non-array value`.
+     * The message here names the schema and the offending value instead.
+     *
+     * A `null` member of a `nullable` enum is not such a member — that is the ordinary way to spell
+     * an optional enum, and the property is rendered nullable.
+     *
+     * @param array<string, mixed> $schemaDefinition
+     */
+    private function assertEnumMembersMatchDeclaredType(string $className, array $schemaDefinition): void
+    {
+        $enum = $schemaDefinition['enum'] ?? null;
+        $type = $schemaDefinition['type'] ?? null;
+        if (!is_array($enum) || $enum === [] || !in_array($type, ['string', 'integer'], true)) {
+            return;
+        }
+
+        $nullable = ($schemaDefinition['nullable'] ?? false) === true;
+
+        foreach ($enum as $value) {
+            if ($value === null && $nullable) {
+                continue;
+            }
+            if ($type === 'integer' ? is_int($value) : is_string($value) || is_int($value)) {
+                continue;
+            }
+
+            throw new RuntimeException(sprintf(
+                'Enum schema %s declares type %s but contains the %s value %s. '
+                . 'A backed enum cannot represent it: fix the spec, or drop the `type` so the '
+                . 'values are validated as a plain enum constraint.',
+                $className,
+                $type,
+                get_debug_type($value),
+                json_encode($value, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR),
+            ));
+        }
+    }
+
+    /**
      * @param array<string, mixed> $schemaDefinition
      */
     private function registerSchema(string $className, array $schemaDefinition, ?string $sourceFile): void
@@ -826,6 +955,8 @@ final class GenerateDtoCommand extends Command
         // Keep the raw definition (including enums, which otherwise return early below) so a
         // referencing property can later read keywords declared on the target, e.g. `default`.
         $this->rawSchemasByClass[$className] = $schemaDefinition;
+
+        $this->assertEnumMembersMatchDeclaredType($className, $schemaDefinition);
 
         if ($this->isEnumSchema($schemaDefinition)) {
             $type = $this->resolveEnumBackingType($schemaDefinition);
@@ -1122,6 +1253,8 @@ final class GenerateDtoCommand extends Command
 
     private function ensureSchemaRefRegistered(string $ref, ?string $currentSourceFile): void
     {
+        $ref = $this->stripDocumentSelfPrefix($ref);
+
         if (str_starts_with($ref, '#/components/schemas/')) {
             // A local pointer inside an external document addresses a sibling schema of THAT file,
             // not the root spec. Register it (and its own transitive refs) against the external
@@ -1298,7 +1431,7 @@ final class GenerateDtoCommand extends Command
      */
     private function registerExternalSchema(string $externalFile, string $schemaName): void
     {
-        $className = $this->normalizeClassName($schemaName);
+        $className = $this->schemaClassName($schemaName);
         if (array_key_exists($className, $this->dtoSchemas) || array_key_exists($className, $this->enumSchemas)) {
             return;
         }
@@ -1584,7 +1717,7 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                $className = $this->normalizeClassName($schemaName);
+                $className = $this->schemaClassName($schemaName);
 
                 foreach (
                     $this->collectUnionTypes(
@@ -1749,6 +1882,15 @@ final class GenerateDtoCommand extends Command
             // silently keeping whichever branch happens to be last.
             $this->assertMergedPropertiesCompatible($allProperties, $className);
 
+            // Own properties must not collide — case-insensitively — with the inherited accessors.
+            $inheritedNames = $extends === null
+                ? []
+                : array_map(
+                    static fn(array $property): string => $property['name'],
+                    $this->getSchemaProperties($extends),
+                );
+            $allProperties = $this->dedupeCaseInsensitivePropertyNames($allProperties, $inheritedNames);
+
             return [
                 'properties' => $allProperties,
                 'extends' => $extends,
@@ -1872,6 +2014,16 @@ final class GenerateDtoCommand extends Command
                 propertyName: $openApiPropertyName,
                 propertySchema: $propertySchema,
             );
+            // Aliases are inlined FIRST: everything below reads the property's own keywords, and an
+            // `enum` that arrives with the alias has to be marked for constraint validation like any
+            // inline one — otherwise it is silently dropped and the values are never checked.
+            $propertySchema = $this->inlineFreeFormObjectRef($propertySchema);
+            $propertySchema = $this->inlineScalarAliasRef($propertySchema, $ownerClassName);
+            if (is_array($propertySchema['items'] ?? null)) {
+                // An `items: {$ref: Alias}` names the same alias one level down.
+                $propertySchema['items'] = $this->inlineScalarAliasRef($propertySchema['items'], $ownerClassName);
+            }
+            $propertySchema = $this->markInlineEnumValidation($propertySchema);
 
             [$type, $nullableBySchema] = $this->resolvePropertyType(
                 propertySchema: $propertySchema,
@@ -1900,11 +2052,17 @@ final class GenerateDtoCommand extends Command
             $isInQuery = $paramIn === 'query';
             $isInHeader = $paramIn === 'header';
             $isInCookie = $paramIn === 'cookie';
+            // OAS 3.2 `in: querystring` binds the raw query string, so it is a source of its own.
+            $isInQueryString = $paramIn === 'querystring';
             $parameterStyle = is_string($propertySchema['x-parameter-style'] ?? null)
                 ? $propertySchema['x-parameter-style']
                 : null;
             $parameterExplode = is_bool($propertySchema['x-parameter-explode'] ?? null)
                 ? $propertySchema['x-parameter-explode']
+                : null;
+            $allowReserved = (bool)($propertySchema['x-parameter-allow-reserved'] ?? false);
+            $allowEmptyValue = is_bool($propertySchema['x-parameter-allow-empty-value'] ?? null)
+                ? $propertySchema['x-parameter-allow-empty-value']
                 : null;
 
             $normalizedName = $this->normalizePropertyName($openApiPropertyName);
@@ -1918,6 +2076,7 @@ final class GenerateDtoCommand extends Command
                     $normalizedName,
                 ));
             }
+            $normalizedName = $this->disambiguateCaseInsensitiveName($normalizedName, $openApiPropertyName, $normalizedToOpenApiName);
             $normalizedToOpenApiName[$normalizedName] = $openApiPropertyName;
 
             $result[] = [
@@ -1934,8 +2093,11 @@ final class GenerateDtoCommand extends Command
                 'inQuery' => $isInQuery,
                 'inHeader' => $isInHeader,
                 'inCookie' => $isInCookie,
+                'inQueryString' => $isInQueryString,
                 'parameterStyle' => $parameterStyle,
                 'parameterExplode' => $parameterExplode,
+                'allowReserved' => $allowReserved,
+                'allowEmptyValue' => $allowEmptyValue,
                 'constraints' => $constraints,
                 'readOnly' => (bool)($propertySchema['readOnly'] ?? false),
                 'writeOnly' => (bool)($propertySchema['writeOnly'] ?? false),
@@ -2015,11 +2177,9 @@ final class GenerateDtoCommand extends Command
             'contentSchema',
         ];
 
-        // NOTE: 'enum' is intentionally NOT forwarded. A property-level enum is
-        // materialized into a PHP backed enum and the value is cast to an enum
-        // instance before constraint validation; DtoValidator's enum check uses a
-        // strict in_array() against scalar values, so forwarding it would always
-        // false-positive on the cast enum instance.
+        // NOTE: property-level enums are usually materialized to PHP backed enums and therefore
+        // don't need an explicit enum validator here. If enum synthesis is not possible
+        // (`x-php-inline-enum=true`, e.g. bool/null members), keep enum as an inline constraint.
 
         $constraints = [];
         foreach ($allowedKeys as $key) {
@@ -2028,6 +2188,14 @@ final class GenerateDtoCommand extends Command
             }
 
             $constraints[$key] = $propertySchema[$key];
+        }
+
+        if (
+            ($propertySchema['x-php-inline-enum'] ?? false) === true
+            && is_array($propertySchema['enum'] ?? null)
+            && $propertySchema['enum'] !== []
+        ) {
+            $constraints['enum'] = $propertySchema['enum'];
         }
 
         // A `string` + `format: binary` property is materialized as an UploadedFile, not a
@@ -2056,6 +2224,18 @@ final class GenerateDtoCommand extends Command
                 }
 
                 $extracted = $this->extractValidationConstraints($variant);
+                if (
+                    $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
+                    && $unionKey === 'oneOf'
+                    && $extracted === []
+                    && array_key_exists('$ref', $variant)
+                    && is_string($variant['$ref'])
+                ) {
+                    $branchClass = $this->schemaRefToClassName($variant['$ref']);
+                    if ($branchClass !== 'mixed') {
+                        $extracted = ['x-php-instanceof' => $branchClass];
+                    }
+                }
                 if ($extracted === []) {
                     $hasUnvalidatableBranch = true;
                     break;
@@ -2065,6 +2245,29 @@ final class GenerateDtoCommand extends Command
 
             if (!$hasUnvalidatableBranch && $branchConstraints !== []) {
                 $constraints[$unionKey] = $branchConstraints;
+                if ($unionKey === 'oneOf' && is_array($propertySchema['discriminator'] ?? null)) {
+                    $discriminator = $propertySchema['discriminator'];
+                    $propertyName = $discriminator['propertyName'] ?? null;
+                    $mapping = $discriminator['mapping'] ?? null;
+                    if (is_string($propertyName) && is_array($mapping) && $mapping !== []) {
+                        $classMap = [];
+                        foreach ($mapping as $discriminatorValue => $ref) {
+                            if (!is_string($discriminatorValue) || !is_string($ref)) {
+                                continue;
+                            }
+                            $mappedClass = $this->schemaRefToClassName($ref);
+                            if ($mappedClass === 'mixed') {
+                                continue;
+                            }
+                            $classMap[$discriminatorValue] = $mappedClass;
+                        }
+                        if ($classMap !== []) {
+                            $constraints['x-discriminator-property'] = $propertyName;
+                            $constraints['x-discriminator-php-property'] = $this->normalizePropertyName($propertyName);
+                            $constraints['x-discriminator-map'] = $classMap;
+                        }
+                    }
+                }
             }
         }
 
@@ -2125,6 +2328,27 @@ final class GenerateDtoCommand extends Command
         }
 
         return $constraints;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function markInlineEnumValidation(array $schema): array
+    {
+        if (
+            is_array($schema['enum'] ?? null)
+            && $schema['enum'] !== []
+            && !$this->canGenerateBackedEnumFromSchema($schema)
+        ) {
+            $schema['x-php-inline-enum'] = true;
+        }
+
+        if (is_array($schema['items'] ?? null)) {
+            $schema['items'] = $this->markInlineEnumValidation($schema['items']);
+        }
+
+        return $schema;
     }
 
     /**
@@ -2362,6 +2586,7 @@ final class GenerateDtoCommand extends Command
             array_key_exists('enum', $propertySchema) && is_array(
                 $propertySchema['enum'],
             ) && $propertySchema['enum'] !== []
+            && $this->canGenerateBackedEnumFromSchema($propertySchema)
         ) {
             $parentEnumType = $this->resolveParentEnumTypeForOverride($ownerClassName, $propertyName, $propertySchema);
             if ($parentEnumType !== null) {
@@ -2428,7 +2653,16 @@ final class GenerateDtoCommand extends Command
         }
 
         if ($type === 'object') {
-            if ($this->isAdditionalPropertiesMapSchema($propertySchema)) {
+            if ($this->isPatternPropertiesOnlyObjectSchema($propertySchema)) {
+                $mapValueType = $this->resolvePatternPropertiesValueType(
+                    propertySchema: $propertySchema,
+                    ownerClassName: $ownerClassName,
+                    propertyName: $propertyName,
+                );
+                return ['array<string, ' . $mapValueType . '>', $nullable];
+            }
+
+            if ($this->isMapLikeObjectSchema($propertySchema)) {
                 $mapValueType = $this->resolveAdditionalPropertiesValueType(
                     propertySchema: $propertySchema,
                     ownerClassName: $ownerClassName,
@@ -2478,24 +2712,52 @@ final class GenerateDtoCommand extends Command
             }
 
             if (array_key_exists('enum', $items) && is_array($items['enum']) && $items['enum'] !== []) {
-                $enumName = $ownerClassName . $this->normalizeClassName($propertyName) . 'Item';
-                $enumType = $this->resolveEnumBackingType($items);
-                /** @var array<int, string|int> $values */
-                $values = $items['enum'];
-                $this->registerEnum(
-                    $enumName,
-                    $enumType,
-                    $values,
-                    $this->getSchemaSourceFile($ownerClassName),
-                    $this->extractEnumVarnames($items, $values),
-                    $this->extractEnumDescriptions($items, $values),
-                );
-                $this->recordSynthesizedOrigin($enumName, $ownerClassName, $propertyName, arrayItem: true);
-                return ['array<' . $itemPrefix . $enumName . '>', $nullable];
+                if ($this->canGenerateBackedEnumFromSchema($items)) {
+                    $enumName = $ownerClassName . $this->normalizeClassName($propertyName) . 'Item';
+                    $enumType = $this->resolveEnumBackingType($items);
+                    /** @var array<int, string|int> $values */
+                    $values = $items['enum'];
+                    $this->registerEnum(
+                        $enumName,
+                        $enumType,
+                        $values,
+                        $this->getSchemaSourceFile($ownerClassName),
+                        $this->extractEnumVarnames($items, $values),
+                        $this->extractEnumDescriptions($items, $values),
+                    );
+                    $this->recordSynthesizedOrigin($enumName, $ownerClassName, $propertyName, arrayItem: true);
+                    return ['array<' . $itemPrefix . $enumName . '>', $nullable];
+                }
+
+                $itemEnumType = $items['type'] ?? null;
+                if ($itemEnumType === 'boolean') {
+                    return ['array<' . $itemPrefix . 'bool>', $nullable];
+                }
             }
 
             $itemsType = $items['type'] ?? null;
             if ($itemsType === 'object') {
+                // Free-form / pattern-keyed item objects have no fixed properties: synthesizing a
+                // DTO for them would yield a class with an empty constructor and the payload data
+                // would be dropped at deserialization. Keep them as maps instead.
+                if ($this->isPatternPropertiesOnlyObjectSchema($items)) {
+                    $itemValueType = $this->resolvePatternPropertiesValueType(
+                        propertySchema: $items,
+                        ownerClassName: $ownerClassName,
+                        propertyName: $propertyName . 'Item',
+                    );
+                    return ['array<array<string, ' . $itemValueType . '>>', $nullable];
+                }
+
+                if ($this->isMapLikeObjectSchema($items)) {
+                    $itemValueType = $this->resolveAdditionalPropertiesValueType(
+                        propertySchema: $items,
+                        ownerClassName: $ownerClassName,
+                        propertyName: $propertyName . 'Item',
+                    );
+                    return ['array<array<string, ' . $itemValueType . '>>', $nullable];
+                }
+
                 $nestedClassName = $ownerClassName . $this->normalizeClassName($propertyName) . 'Item';
                 $this->registerSchema(
                     className: $nestedClassName,
@@ -2684,7 +2946,14 @@ final class GenerateDtoCommand extends Command
         unset($topLevel['allOf']);
         $resolved = array_replace_recursive($resolved, $topLevel);
 
-        return $resolved !== [] ? $resolved : null;
+        // Only a merge that ends up describing a concrete value is usable here: a branch set of
+        // pure constraints (`allOf: [{minLength: 3}]`) says nothing about the PHP type, so leave
+        // such a schema to the regular object path instead of inventing a scalar.
+        $describesValue = array_key_exists('type', $resolved)
+            || array_key_exists('enum', $resolved)
+            || array_key_exists('format', $resolved);
+
+        return ($resolved !== [] && $describesValue) ? $resolved : null;
     }
 
     /**
@@ -2692,17 +2961,14 @@ final class GenerateDtoCommand extends Command
      */
     private function canFlattenAllOfPropertyItem(array $item): bool
     {
-        if (
-            array_key_exists('$ref', $item)
-            || array_key_exists('properties', $item)
-            || array_key_exists('allOf', $item)
-            || array_key_exists('oneOf', $item)
-            || array_key_exists('anyOf', $item)
-        ) {
-            return false;
-        }
-
-        return array_key_exists('type', $item) || array_key_exists('enum', $item) || array_key_exists('format', $item);
+        // Composition or an inline object means the branch is a schema in its own right — those
+        // keep the class-synthesis path. Everything else (a type, an enum, or plain constraint
+        // keywords such as `minLength` split into their own branch) merges into one property.
+        return !array_key_exists('$ref', $item)
+            && !array_key_exists('properties', $item)
+            && !array_key_exists('allOf', $item)
+            && !array_key_exists('oneOf', $item)
+            && !array_key_exists('anyOf', $item);
     }
 
     /**
@@ -2792,18 +3058,264 @@ final class GenerateDtoCommand extends Command
     /**
      * @param array<string, mixed> $propertySchema
      */
-    private function isAdditionalPropertiesMapSchema(array $propertySchema): bool
+    private function isMapLikeObjectSchema(array $propertySchema): bool
     {
-        if (!array_key_exists('additionalProperties', $propertySchema)) {
-            return false;
-        }
-
-        if (($propertySchema['additionalProperties'] ?? null) === false) {
-            return false;
-        }
-
         $properties = $propertySchema['properties'] ?? null;
-        return !is_array($properties) || $properties === [];
+        if (is_array($properties) && $properties !== []) {
+            return false;
+        }
+
+        if (array_key_exists('additionalProperties', $propertySchema)) {
+            return ($propertySchema['additionalProperties'] ?? null) !== false;
+        }
+
+        return $this->isFreeFormObjectSchema($propertySchema);
+    }
+
+    /**
+     * A property that is a pure `$ref` to a free-form object component gets the referenced schema
+     * inlined. Resolving the type alone is not enough: the constraints are read from the property
+     * schema, and a bare `$ref` carries none, so the map would lose its `type: object` and the
+     * deserializer would then reject a JSON object as "expects array".
+     *
+     * Sibling keywords on the property win over the referenced schema, per JSON Schema 2020-12.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function inlineFreeFormObjectRef(array $propertySchema): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        if (!is_string($ref)) {
+            return $propertySchema;
+        }
+
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return $propertySchema;
+        }
+
+        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+        if (!is_array($definition) || !$this->isFreeFormObjectSchema($definition)) {
+            return $propertySchema;
+        }
+
+        unset($propertySchema['$ref']);
+
+        return $propertySchema + $definition;
+    }
+
+    /**
+     * A component whose top-level `type` is a scalar is a TYPE ALIAS, exactly like a `type: array`
+     * component — `Uuid: {type: string, format: uuid}` names a string, it does not describe an
+     * object. Materializing it produced a class with no properties, the referencing property was
+     * typed with that class, and then every request carrying the field failed with
+     * `Cannot deserialize nested DTO Uuid from non-array value`. The endpoint could not be used at
+     * all, in either mode.
+     *
+     * The reference is therefore replaced by the referenced schema itself (siblings on the property
+     * win, so a local `description` or `nullable` still overrides), which puts the property back on
+     * the ordinary scalar path: the right PHP type AND the alias's own `format`/`minLength`/`enum`
+     * as constraints.
+     *
+     * A named enum that CAN become a backed enum keeps its class — `isScalarAliasSchema()` excludes
+     * it. One that cannot (a `nullable` enum carrying `null`, a `type: number` enum) is inlined and
+     * validated as an enum constraint on a scalar property, which is what the inline spelling of the
+     * same schema has always done.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function inlineScalarAliasRef(array $propertySchema, string $ownerClassName): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        $sourceFile = $this->getSchemaSourceFile($ownerClassName);
+
+        // `allOf: [{$ref: Alias}]` with nothing else is the same reference, spelled longer.
+        if (!is_string($ref) && $this->isSingleRefAllOf($propertySchema)) {
+            /** @var array<int, array<string, mixed>> $allOf */
+            $allOf = $propertySchema['allOf'];
+            $onlyRef = $allOf[0]['$ref'] ?? null;
+            if (is_string($onlyRef) && $this->scalarAliasDefinition($onlyRef, $sourceFile) !== null) {
+                unset($propertySchema['allOf']);
+                $propertySchema['$ref'] = $onlyRef;
+                $ref = $onlyRef;
+            }
+        }
+
+        if (!is_string($ref)) {
+            return $propertySchema;
+        }
+
+        $definition = $this->scalarAliasDefinition($ref, $sourceFile);
+        if ($definition === null) {
+            return $propertySchema;
+        }
+
+        unset($propertySchema['$ref']);
+
+        return $propertySchema + $definition;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private function isSingleRefAllOf(array $schema): bool
+    {
+        $allOf = $schema['allOf'] ?? null;
+
+        return is_array($allOf)
+            && count($allOf) === 1
+            && is_array($allOf[0] ?? null)
+            && array_keys($allOf[0]) === ['$ref'];
+    }
+
+    /**
+     * The definition behind a `$ref` when it names a scalar alias, otherwise null.
+     *
+     * A ref into another FILE is resolved too, the same way `resolveBinaryRefType()` does it: the
+     * alias gets no class file either, so leaving an external one on class-name typing produced a
+     * property typed with a class that is never written — a missing-class fatal instead of the
+     * previous (useless but loadable) empty class.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function scalarAliasDefinition(string $ref, ?string $currentSourceFile = null): ?array
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $currentSourceFile ?? $this->rootSpecFile);
+            if ($resolvedExternal === null) {
+                return null;
+            }
+
+            [$externalFile, $pointer] = $resolvedExternal;
+            $externalSchemaName = $this->externalPointerSchemaName($pointer);
+            if ($externalSchemaName !== null) {
+                $this->registerExternalSchema(externalFile: $externalFile, schemaName: $externalSchemaName);
+            }
+            $ref = $pointer;
+
+            if (!str_starts_with($ref, $prefix)) {
+                return null;
+            }
+        }
+
+        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+
+        return is_array($definition) && $this->isScalarAliasSchema($definition) ? $definition : null;
+    }
+
+    /**
+     * A schema that describes a scalar VALUE rather than an object: a plain top-level scalar `type`
+     * and no object shape. A backed-enum schema is excluded — it has a generated class of its own —
+     * and so is anything carrying `properties` or a composition keyword, which would make the
+     * "scalar type" a contradiction the caller should not silently resolve.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function isScalarAliasSchema(array $schema): bool
+    {
+        if (!in_array($schema['type'] ?? null, ['string', 'integer', 'number', 'boolean'], true)) {
+            return false;
+        }
+
+        if (array_key_exists('properties', $schema) || $this->isEnumSchema($schema)) {
+            return false;
+        }
+
+        foreach (self::OBJECT_SHAPING_KEYWORDS as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * `{type: object}` with nothing else on it allows any properties — it is the same free-form
+     * object as `{type: object, additionalProperties: true}`, only spelled shorter. Materializing
+     * it into a DTO class produced a class with no properties, which silently swallowed the whole
+     * payload, so it is treated as a map instead.
+     *
+     * Any keyword that gives the object a shape (composition, a reference, conditional or
+     * pattern-based subschemas) disqualifies it: those schemas do describe properties, just not
+     * inline.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function isFreeFormObjectSchema(array $schema): bool
+    {
+        if (($schema['type'] ?? null) !== 'object') {
+            return false;
+        }
+
+        $properties = $schema['properties'] ?? null;
+        if (is_array($properties) && $properties !== []) {
+            return false;
+        }
+
+        foreach (self::OBJECT_SHAPING_KEYWORDS as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * `patternProperties`-only object schemas are dictionary-shaped and should keep payload data as
+     * a map; materializing them to an empty DTO makes the dynamic keys unreachable.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    private function isPatternPropertiesOnlyObjectSchema(array $propertySchema): bool
+    {
+        if (($propertySchema['type'] ?? null) !== 'object') {
+            return false;
+        }
+
+        if (!is_array($propertySchema['patternProperties'] ?? null) || $propertySchema['patternProperties'] === []) {
+            return false;
+        }
+
+        return !is_array($propertySchema['properties'] ?? null) || $propertySchema['properties'] === [];
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    private function resolvePatternPropertiesValueType(
+        array $propertySchema,
+        string $ownerClassName,
+        string $propertyName,
+    ): string {
+        $patternProperties = $propertySchema['patternProperties'] ?? null;
+        if (!is_array($patternProperties) || $patternProperties === []) {
+            return 'mixed';
+        }
+
+        $valueTypes = [];
+        foreach ($patternProperties as $schema) {
+            if (!is_array($schema)) {
+                continue;
+            }
+            [$resolvedType] = $this->resolvePropertyType(
+                propertySchema: $schema,
+                ownerClassName: $ownerClassName,
+                propertyName: $propertyName . 'PatternValue',
+            );
+            $valueTypes[$resolvedType] = true;
+        }
+
+        $resolved = array_keys($valueTypes);
+        if ($resolved === []) {
+            return 'mixed';
+        }
+
+        return count($resolved) === 1 ? $resolved[0] : 'mixed';
     }
 
     /**
@@ -2887,7 +3399,7 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
-        $className = $this->normalizeClassName($schemaName);
+        $className = $this->schemaClassName($schemaName);
         $definition = $this->dtoSchemas[$className] ?? null;
         if (!is_array($definition)) {
             return null;
@@ -2924,9 +3436,19 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
-        $className = $this->normalizeClassName($schemaName);
+        $className = $this->schemaClassName($schemaName);
         $definition = $this->dtoSchemas[$className] ?? null;
-        if (!is_array($definition) || ($definition['type'] ?? null) !== 'array') {
+        if (!is_array($definition)) {
+            return null;
+        }
+
+        // A free-form object component is an alias too — for a map. Without this a `$ref` to
+        // `{type: object}` points at a generated class with no properties, which drops the payload.
+        if ($this->isFreeFormObjectSchema($definition)) {
+            return 'array<string, mixed>';
+        }
+
+        if (($definition['type'] ?? null) !== 'array') {
             return null;
         }
 
@@ -2958,7 +3480,7 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
-        $className = $this->normalizeClassName($schemaName);
+        $className = $this->schemaClassName($schemaName);
         $definition = $this->dtoSchemas[$className] ?? null;
         if (!is_array($definition)) {
             return null;
@@ -2993,7 +3515,7 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
-        $className = $this->normalizeClassName($schemaName);
+        $className = $this->schemaClassName($schemaName);
         $definition = $this->dtoSchemas[$className] ?? null;
         if (!is_array($definition)) {
             return null;
@@ -3015,7 +3537,7 @@ final class GenerateDtoCommand extends Command
             $schemaName = substr($ref, strlen($prefix));
 
             return $schemaName !== ''
-                ? $this->normalizeClassName($schemaName)
+                ? $this->schemaClassName($schemaName)
                 : 'mixed';
         }
 
@@ -3035,7 +3557,7 @@ final class GenerateDtoCommand extends Command
 
         $this->registerExternalSchema(externalFile: $externalFile, schemaName: $schemaName);
 
-        return $this->normalizeClassName($schemaName);
+        return $this->schemaClassName($schemaName);
     }
 
     private function getSchemaSourceFile(string $className): ?string
@@ -3118,12 +3640,6 @@ final class GenerateDtoCommand extends Command
      */
     private function renderDtoClass(string $namespace, string $className, array $schemaMetadata): string
     {
-        $properties = $schemaMetadata['properties'];
-        $extends = $schemaMetadata['extends'];
-        $unionTypes = $schemaMetadata['unionTypes'];
-        $discriminator = $schemaMetadata['discriminator'] ?? null;
-        $isAbstract = $schemaMetadata['abstract'] ?? false;
-
         if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
             // Symfony DTOs are flattened: inherited properties are merged into a single standalone
             // constructor (no `extends`/parent::__construct chaining), which maps cleanly onto the
@@ -3131,702 +3647,15 @@ final class GenerateDtoCommand extends Command
             return $this->renderSymfonyDtoClass(
                 namespace: $namespace,
                 className: $className,
-                properties: $this->flattenedSymfonyProperties($className, $properties),
-                unionTypes: $unionTypes,
+                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                unionTypes: $schemaMetadata['unionTypes'],
+                discriminator: $schemaMetadata['discriminator'] ?? null,
+                extends: $schemaMetadata['extends'],
+                isAbstract: $schemaMetadata['abstract'] ?? false,
             );
         }
 
-        // A child (allOf/extends) class re-declares its parent's properties as constructor
-        // parameters, so imports must cover their types too (e.g. an inherited DateTimeImmutable
-        // param). Scan own + parent properties — the same parent set the constructor emits.
-        $importScanProperties = $extends !== null
-            ? array_merge($this->getParentProperties($extends), $properties)
-            : $properties;
-
-        $imports = $this->collectGeneratedClassImports(
-            namespace: $namespace,
-            className: $className,
-            properties: $importScanProperties,
-            extends: $extends,
-            unionTypes: $unionTypes,
-            discriminator: $discriminator,
-        );
-
-        $useStatements = [];
-
-        $needsDateTimeImport = $this->needsDateTimeImmutableImport($importScanProperties);
-        $needsUploadedFileImport = $this->needsUploadedFileImport($importScanProperties);
-
-        if ($needsDateTimeImport) {
-            $useStatements[] = 'DateTimeImmutable';
-        }
-        if ($needsUploadedFileImport) {
-            $useStatements[] = 'Symfony\Component\HttpFoundation\File\UploadedFile';
-        }
-        foreach ($imports as $import) {
-            $useStatements[] = $import;
-        }
-        $useStatements = array_values(array_unique($useStatements));
-        sort($useStatements);
-
-        if ($unionTypes !== []) {
-            // When this union is itself a branch of another union (a nested union), its interface
-            // must extend the outer union interface so that its members satisfy the outer type too.
-            $interfaceExtends = array_values(array_unique(array_map(
-                fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                array_filter(
-                    $this->unionInterfacesByClass[$className] ?? [],
-                    static fn(string $parent): bool => $parent !== $className,
-                ),
-            )));
-
-            return $this->renderPhpTemplate('dto.php.twig', [
-                'namespace' => $namespace,
-                'imports' => $useStatements,
-                'className' => $className,
-                'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
-                'sourceSpecLink' => $this->resolveSpecLink($className),
-                'sourceRelated' => $this->relatedByClass[$className] ?? null,
-                'unionMembers' => implode(
-                    '|',
-                    array_map(
-                        fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                        $unionTypes,
-                    ),
-                ),
-                'interfaceExtends' => $interfaceExtends,
-                'signature' => null,
-                'implementedInterfaces' => [],
-                'privateProperties' => [],
-                'constructorParams' => [],
-                'parentArgs' => [],
-                'assignments' => [],
-                'methodProperties' => [],
-                'discriminator' => null,
-                'extends' => null,
-                'constraintAssignments' => [],
-                'aliasAssignments' => [],
-                'parameterSourceAssignments' => [],
-            ]);
-        }
-
-        $classModifiers = $isAbstract
-            ? 'abstract '
-            : (array_key_exists($className, $this->parentClasses) ? '' : 'final ');
-        $fqcnNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
-        if ($fqcnNamespace !== $namespace) {
-            $useStatements[] = $this->generatedDtoInterfaceImportFqcn;
-        }
-        $useStatements[] = 'JsonException';
-        $useStatements[] = 'Stringable';
-        $useStatements = array_values(array_unique($useStatements));
-        sort($useStatements);
-
-        $implementedInterfaces = array_values(array_unique([
-            ...($this->unionInterfacesByClass[$className] ?? []),
-            'GeneratedDtoInterface',
-            'Stringable',
-        ]));
-        $implementedInterfaces = array_map(
-            fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-            $implementedInterfaces,
-        );
-
-        $signature = $classModifiers . 'class ' . $className;
-        if ($extends !== null) {
-            $signature .= ' extends ' . $this->formatClassNameForNamespace($extends, $namespace);
-        }
-
-        $ownProperties = $this->deduplicatePropertiesByLastDefinition($properties);
-        $parentProperties = $extends !== null
-            ? $this->deduplicatePropertiesByLastDefinition($this->getParentProperties($extends))
-            : [];
-
-        $parentByName = $this->indexPropertiesByName($parentProperties);
-        $ownByName = $this->indexPropertiesByName($ownProperties);
-
-        foreach ($ownByName as $name => $ownProperty) {
-            if (!array_key_exists($name, $parentByName)) {
-                continue;
-            }
-
-            if (!$this->isPropertyOverrideCompatible($parentByName[$name], $ownProperty)) {
-                throw new RuntimeException(
-                    sprintf(
-                        'Property override conflict in %s extends %s for $%s: parent type %s, child type %s.',
-                        $className,
-                        (string)$extends,
-                        $name,
-                        $this->describePropertyType($parentByName[$name]),
-                        $this->describePropertyType($ownProperty),
-                    ),
-                );
-            }
-        }
-
-        $privateProperties = [];
-        foreach ($ownProperties as $ownProperty) {
-            if (array_key_exists($ownProperty['name'], $parentByName)) {
-                continue;
-            }
-
-            $privateProperties[] = $this->resolvePropertyDeclarationData($ownProperty, $namespace);
-        }
-
-        $allConstructorParams = [];
-
-        if ($extends !== null) {
-            foreach ($parentProperties as $parentProperty) {
-                $effectiveProperty = $ownByName[$parentProperty['name']] ?? $parentProperty;
-                $allConstructorParams[] = $effectiveProperty;
-            }
-        }
-
-        foreach ($ownProperties as $ownProperty) {
-            if (array_key_exists($ownProperty['name'], $parentByName)) {
-                continue;
-            }
-            $allConstructorParams[] = $ownProperty;
-        }
-
-        $constructorParams = [];
-        foreach ($allConstructorParams as $property) {
-            $tracksArgPresence = !array_key_exists($property['name'], $parentByName);
-            $constructorParams[] = $this->resolveConstructorParameterData($property, $namespace, $tracksArgPresence);
-        }
-        $requiredConstructorParams = [];
-        $optionalConstructorParams = [];
-
-        foreach ($constructorParams as $constructorParam) {
-            if ($constructorParam['defaultValue'] === '' && !$constructorParam['usesUnsetSentinel']) {
-                $requiredConstructorParams[] = $constructorParam;
-                continue;
-            }
-
-            $optionalConstructorParams[] = $constructorParam;
-        }
-
-        $constructorParams = [...$requiredConstructorParams, ...$optionalConstructorParams];
-        $constructorDocParams = array_values(
-            array_filter(
-                $constructorParams,
-                static fn(array $param): bool => $param['shouldDocument'],
-            ),
-        );
-
-        $parentArgs = [];
-        if ($extends !== null && $parentProperties !== []) {
-            foreach ($parentProperties as $parentProperty) {
-                $parentArgs[] = $parentProperty['name'];
-            }
-        }
-
-        $assignments = [];
-        foreach ($ownProperties as $ownProperty) {
-            if (array_key_exists($ownProperty['name'], $parentByName)) {
-                continue;
-            }
-            $assignments[] = $ownProperty['name'];
-        }
-
-        $allProperties = [];
-        $methodProperties = [];
-        foreach ($ownProperties as $property) {
-            if (array_key_exists($property['name'], $parentByName)) {
-                continue;
-            }
-            $methodProperties[] = $this->resolveMethodPropertyData($property, $namespace);
-        }
-
-        $discriminatorData = $discriminator !== null
-            ? $this->resolveDiscriminatorRenderData($discriminator, $namespace)
-            : null;
-
-        $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
-        $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
-        $parameterSourceAssignments = $this->resolveParameterSourceAssignments($ownProperties);
-        $parameterStyleAssignments = $this->resolveParameterStyleAssignments($ownProperties);
-
-        $needsUnsetValueImport = array_filter(
-            $constructorParams,
-            static fn(array $param): bool => $param['usesUnsetSentinel'],
-        ) !== [];
-        if ($needsUnsetValueImport) {
-            $useStatements[] = $this->unsetValueImportFqcn;
-            $useStatements = array_values(array_unique($useStatements));
-            sort($useStatements);
-        }
-
-        return $this->renderPhpTemplate('dto.php.twig', [
-            'namespace' => $namespace,
-            'imports' => $useStatements,
-            'className' => $className,
-            'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
-            'sourceSpecLink' => $this->resolveSpecLink($className),
-            'sourceRelated' => $this->relatedByClass[$className] ?? null,
-            'unionMembers' => null,
-            'signature' => $signature,
-            'implementedInterfaces' => $implementedInterfaces,
-            'privateProperties' => $privateProperties,
-            'constructorParams' => $constructorParams,
-            'constructorDocParams' => $constructorDocParams,
-            'parentArgs' => $parentArgs,
-            'assignments' => $assignments,
-            'methodProperties' => $methodProperties,
-            'discriminator' => $discriminatorData,
-            'extends' => $extends,
-            'constraintAssignments' => $constraintAssignments,
-            'aliasAssignments' => $aliasAssignments,
-            'parameterSourceAssignments' => $parameterSourceAssignments,
-            'parameterStyleAssignments' => $parameterStyleAssignments,
-        ]);
-    }
-
-    /**
-     * Renders a DTO in Symfony mode: a plain data class with promoted public readonly
-     * constructor properties decorated with Symfony Validator (#[Assert\*]) and Serializer
-     * (#[SerializedName]) attributes. No library runtime, interface, or normalization map.
-     *
-     * @param array<int, SchemaProperty> $properties
-     * @param array<int, string> $unionTypes
-     */
-    private function renderSymfonyDtoClass(
-        string $namespace,
-        string $className,
-        array $properties,
-        array $unionTypes,
-    ): string {
-        $useStatements = [];
-        if ($this->needsDateTimeImmutableImport($properties)) {
-            $useStatements[] = 'DateTimeImmutable';
-        }
-        if ($this->needsUploadedFileImport($properties)) {
-            $useStatements[] = 'Symfony\Component\HttpFoundation\File\UploadedFile';
-        }
-        foreach ($this->collectGeneratedClassImports($namespace, $className, $properties, null, $unionTypes, null) as $import) {
-            $useStatements[] = $import;
-        }
-
-        $params = [];
-        $needsSerializedName = false;
-        $needsGroups = false;
-        foreach ($properties as $property) {
-            $param = $this->resolveSymfonyParam($property, $namespace);
-            if ($param['serializedName'] !== null) {
-                $needsSerializedName = true;
-            }
-            foreach ($param['attributes'] as $attribute) {
-                if (str_contains($attribute, 'Groups(')) {
-                    $needsGroups = true;
-                }
-            }
-            $params[] = $param;
-        }
-
-        $useStatements[] = 'Symfony\Component\Validator\Constraints as Assert';
-        if ($needsSerializedName) {
-            $useStatements[] = 'Symfony\Component\Serializer\Attribute\SerializedName';
-        }
-        if ($needsGroups) {
-            $useStatements[] = 'Symfony\Component\Serializer\Attribute\Groups';
-        }
-        $useStatements = array_values(array_unique($useStatements));
-        sort($useStatements);
-
-        return $this->renderPhpTemplate('dto.symfony.php.twig', [
-            'namespace' => $namespace,
-            'imports' => $useStatements,
-            'className' => $className,
-            'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
-            'sourceSpecLink' => $this->resolveSpecLink($className),
-            'sourceRelated' => $this->relatedByClass[$className] ?? null,
-            'extends' => null,
-            'params' => $params,
-        ]);
-    }
-
-    /**
-     * Returns the full, flattened property list for a Symfony DTO: inherited properties (resolved
-     * recursively through allOf parents) followed by own ones, deduplicated by name so a child
-     * override wins. Falls back to the pre-resolved own properties when the schema is not
-     * registered (e.g. a union marker).
-     *
-     * @param array<int, SchemaProperty> $ownProperties
-     * @return array<int, SchemaProperty>
-     */
-    private function flattenedSymfonyProperties(string $className, array $ownProperties): array
-    {
-        $all = array_key_exists($className, $this->dtoSchemas)
-            ? $this->getSchemaProperties($className)
-            : $ownProperties;
-
-        $byName = [];
-        foreach ($all as $property) {
-            $byName[$property['name']] = $property;
-        }
-
-        $values = array_values($byName);
-
-        // Required params (which get no default) must precede optional ones (which get a default),
-        // otherwise PHP emits an "optional before required" deprecation and construction by the
-        // required args alone fails. usort is stable on PHP 8.3, so schema order is otherwise kept.
-        usort(
-            $values,
-            static fn(array $a, array $b): int => ($b['required'] ? 1 : 0) <=> ($a['required'] ? 1 : 0),
-        );
-
-        return $values;
-    }
-
-    /**
-     * @param SchemaProperty $property
-     * @return array{declaredType: string, docType: ?string, name: string, serializedName: ?string, default: string, attributes: array<int, string>}
-     */
-    private function resolveSymfonyParam(array $property, string $namespace): array
-    {
-        $phpType = $property['type'];
-        $docType = null;
-
-        if (str_contains($phpType, '<')) {
-            $docType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
-            $phpType = 'array';
-        } else {
-            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
-        }
-
-        $required = $property['required'];
-        $default = $property['default'] ?? null;
-
-        // Symfony mode drops the UnsetValue sentinel: an optional property becomes nullable with a
-        // default (null unless the schema declares one). PATCH partial-update semantics (present vs
-        // omitted) are intentionally not modelled here — that is a documented limitation.
-        $declaredNullable = $property['nullable'] || (!$required && $default === null);
-        $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
-
-        if ($required) {
-            $defaultLiteral = '';
-        } elseif ($default !== null) {
-            $defaultLiteral = $this->renderDefaultValue($default, $phpType, $declaredType);
-        } else {
-            $defaultLiteral = ' = null';
-        }
-
-        return [
-            'declaredType' => $declaredType,
-            'docType' => $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null,
-            'name' => $property['name'],
-            'serializedName' => $property['name'] !== $property['openApiName'] ? $property['openApiName'] : null,
-            'default' => $defaultLiteral,
-            'attributes' => $this->resolveSymfonyAttributes($property),
-        ];
-    }
-
-    /**
-     * Maps OpenAPI constraints to Symfony Validator attribute lines. Covers the common scalar,
-     * string, numeric and array constraints plus cascade validation. Composition keywords
-     * (oneOf/anyOf/allOf/discriminator/if-then-else) have no clean Symfony equivalent and are not
-     * emitted — a documented limitation of this mode.
-     *
-     * @param SchemaProperty $property
-     * @return array<int, string>
-     */
-    private function resolveSymfonyAttributes(array $property): array
-    {
-        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
-        $attributes = [];
-
-        if ($property['required'] && !$property['nullable']) {
-            $attributes[] = '#[Assert\NotNull]';
-        }
-
-        // Scalar/value-level constraints (Length, Range, Regex, EqualTo, format-based, ...).
-        foreach ($this->scalarConstraintSpecs($constraints) as $spec) {
-            $attributes[] = $spec['args'] === ''
-                ? '#[Assert\\' . $spec['name'] . ']'
-                : '#[Assert\\' . $spec['name'] . '(' . $spec['args'] . ')]';
-        }
-
-        // Array/map size — minItems/maxItems (lists) and minProperties/maxProperties (inline maps)
-        // both count elements of the backing PHP array, so they share a single Count attribute.
-        $count = [];
-        $countMin = $constraints['minItems'] ?? $constraints['minProperties'] ?? null;
-        $countMax = $constraints['maxItems'] ?? $constraints['maxProperties'] ?? null;
-        if (is_int($countMin)) {
-            $count[] = 'min: ' . $countMin;
-        }
-        if (is_int($countMax)) {
-            $count[] = 'max: ' . $countMax;
-        }
-        if ($count !== []) {
-            $attributes[] = '#[Assert\Count(' . implode(', ', $count) . ')]';
-        }
-
-        if (($constraints['uniqueItems'] ?? null) === true) {
-            $attributes[] = '#[Assert\Unique]';
-        }
-
-        // Typed map values (additionalProperties: { schema }) — validate every value via All.
-        $additionalProperties = $constraints['additionalProperties'] ?? null;
-        if (is_array($additionalProperties)) {
-            $valueExpressions = $this->valueConstraintExpressions($additionalProperties);
-            if ($valueExpressions !== []) {
-                $attributes[] = '#[Assert\All([' . implode(', ', $valueExpressions) . '])]';
-            }
-        }
-
-        // anyOf — the value must satisfy at least one branch.
-        $anyOf = $constraints['anyOf'] ?? null;
-        if (is_array($anyOf) && count($anyOf) >= 2) {
-            $branches = [];
-            $allBranchesValidatable = true;
-            foreach ($anyOf as $branch) {
-                $expressions = is_array($branch) ? $this->valueConstraintExpressions($branch) : [];
-                if ($expressions === []) {
-                    $allBranchesValidatable = false;
-                    break;
-                }
-                $branches[] = count($expressions) === 1
-                    ? $expressions[0]
-                    : 'new Assert\Sequentially([' . implode(', ', $expressions) . '])';
-            }
-            if ($allBranchesValidatable && count($branches) >= 2) {
-                $attributes[] = '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]';
-            }
-        }
-
-        // Per-item constraints for arrays of scalars (array of DTOs cascades via Valid instead).
-        $items = $constraints['items'] ?? null;
-        if (is_array($items) && !$this->symfonyPropertyCascades($property)) {
-            $itemSpecs = $this->scalarConstraintSpecs($items);
-            if ($itemSpecs !== []) {
-                $expressions = array_map(
-                    static fn(array $spec): string => 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')',
-                    $itemSpecs,
-                );
-                $attributes[] = '#[Assert\All([' . implode(', ', $expressions) . '])]';
-            }
-        }
-
-        // Serialization groups for read-only / write-only fields.
-        if (($property['readOnly'] ?? false) === true) {
-            $attributes[] = "#[Groups(['read'])]";
-        }
-        if (($property['writeOnly'] ?? false) === true) {
-            $attributes[] = "#[Groups(['write'])]";
-        }
-
-        if ($this->symfonyPropertyCascades($property)) {
-            $attributes[] = '#[Assert\Valid]';
-        }
-
-        return $attributes;
-    }
-
-    /**
-     * Maps the scalar/value-level OpenAPI constraints of a (sub)schema to Symfony constraint
-     * specs: [{name, args}]. Shared by property attributes and by #[Assert\All] item constraints.
-     * Composition keywords (oneOf/anyOf/allOf/not/if-then-else), tuple prefixItems and inline-map
-     * object constraints (minProperties/additionalProperties) have no clean Symfony equivalent and
-     * are intentionally not mapped — a documented limitation of this mode.
-     *
-     * @param array<string, mixed> $constraints
-     * @return array<int, array{name: string, args: string}>
-     */
-    private function scalarConstraintSpecs(array $constraints): array
-    {
-        $specs = [];
-
-        $length = [];
-        if (is_int($constraints['minLength'] ?? null)) {
-            $length[] = 'min: ' . $constraints['minLength'];
-        }
-        if (is_int($constraints['maxLength'] ?? null)) {
-            $length[] = 'max: ' . $constraints['maxLength'];
-        }
-        if ($length !== []) {
-            $specs[] = ['name' => 'Length', 'args' => implode(', ', $length)];
-        }
-
-        $min = $constraints['minimum'] ?? null;
-        $max = $constraints['maximum'] ?? null;
-        $exclusiveMin = $constraints['exclusiveMinimum'] ?? null;
-        $exclusiveMax = $constraints['exclusiveMaximum'] ?? null;
-
-        if (is_int($exclusiveMin) || is_float($exclusiveMin)) {
-            $specs[] = ['name' => 'GreaterThan', 'args' => $this->numericLiteral($exclusiveMin)];
-        } elseif ($exclusiveMin === true && (is_int($min) || is_float($min))) {
-            $specs[] = ['name' => 'GreaterThan', 'args' => $this->numericLiteral($min)];
-            $min = null;
-        }
-
-        if (is_int($exclusiveMax) || is_float($exclusiveMax)) {
-            $specs[] = ['name' => 'LessThan', 'args' => $this->numericLiteral($exclusiveMax)];
-        } elseif ($exclusiveMax === true && (is_int($max) || is_float($max))) {
-            $specs[] = ['name' => 'LessThan', 'args' => $this->numericLiteral($max)];
-            $max = null;
-        }
-
-        $range = [];
-        if (is_int($min) || is_float($min)) {
-            $range[] = 'min: ' . $this->numericLiteral($min);
-        }
-        if (is_int($max) || is_float($max)) {
-            $range[] = 'max: ' . $this->numericLiteral($max);
-        }
-        if ($range !== []) {
-            $specs[] = ['name' => 'Range', 'args' => implode(', ', $range)];
-        }
-
-        if (is_int($constraints['multipleOf'] ?? null) || is_float($constraints['multipleOf'] ?? null)) {
-            $specs[] = ['name' => 'DivisibleBy', 'args' => $this->numericLiteral($constraints['multipleOf'])];
-        }
-
-        if (is_string($constraints['pattern'] ?? null) && $constraints['pattern'] !== '') {
-            $delimited = '/' . str_replace('/', '\/', $constraints['pattern']) . '/';
-            $specs[] = ['name' => 'Regex', 'args' => $this->phpStringLiteral($delimited)];
-        }
-
-        if (array_key_exists('const', $constraints) && $this->isScalarConstValue($constraints['const'])) {
-            $specs[] = ['name' => 'EqualTo', 'args' => 'value: ' . $this->scalarLiteral($constraints['const'])];
-        }
-
-        $hasRange = $range !== [];
-        foreach ($this->formatConstraintSpecs($constraints['format'] ?? null) as $spec) {
-            // An explicit minimum/maximum Range already covers (and is tighter than) the format's
-            // implicit int32 bounds — avoid emitting a redundant second Range.
-            if ($spec['name'] === 'Range' && $hasRange) {
-                continue;
-            }
-            $specs[] = $spec;
-        }
-
-        return $specs;
-    }
-
-    /**
-     * Maps an OpenAPI `format` to Symfony format constraints. Formats without a clean Symfony
-     * equivalent (date/date-time are covered by the DateTimeImmutable type; duration, etc.) are skipped.
-     *
-     * @return array<int, array{name: string, args: string}>
-     */
-    private function formatConstraintSpecs(mixed $format): array
-    {
-        if (!is_string($format)) {
-            return [];
-        }
-
-        return match ($format) {
-            'email', 'idn-email' => [['name' => 'Email', 'args' => '']],
-            'uuid' => [['name' => 'Uuid', 'args' => '']],
-            'uri', 'iri', 'url' => [['name' => 'Url', 'args' => '']],
-            'hostname', 'idn-hostname' => [['name' => 'Hostname', 'args' => '']],
-            'ipv4' => [['name' => 'Ip', 'args' => "version: '4'"]],
-            'ipv6' => [['name' => 'Ip', 'args' => "version: '6'"]],
-            'int32' => [['name' => 'Range', 'args' => 'min: -2147483648, max: 2147483647']],
-            'uint32' => [['name' => 'Range', 'args' => 'min: 0, max: 4294967295']],
-            // uint64's upper bound (2^64-1) exceeds PHP's signed int, so only the lower bound
-            // is expressible; int64 is the native PHP int range and needs no constraint.
-            'uint64' => [['name' => 'Range', 'args' => 'min: 0']],
-            default => [],
-        };
-    }
-
-    /**
-     * Builds `new Assert\*(...)` expressions enforcing a (sub)schema on a value that has no own PHP
-     * type hint — array/map items and anyOf branches. Includes a Type constraint (the element type
-     * cannot be expressed in the declared `array` hint) plus the scalar constraint specs.
-     *
-     * @param array<string, mixed> $schema
-     * @return array<int, string>
-     */
-    private function valueConstraintExpressions(array $schema): array
-    {
-        $expressions = [];
-
-        $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
-        if ($symfonyType !== null) {
-            $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
-        }
-
-        foreach ($this->scalarConstraintSpecs($schema) as $spec) {
-            $expressions[] = 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')';
-        }
-
-        return $expressions;
-    }
-
-    private function openApiTypeToSymfonyType(mixed $type): ?string
-    {
-        if (!is_string($type)) {
-            return null;
-        }
-
-        return match ($type) {
-            'integer' => 'int',
-            'number' => 'float',
-            'string' => 'string',
-            'boolean' => 'bool',
-            'array', 'object' => 'array',
-            default => null,
-        };
-    }
-
-    private function isScalarConstValue(mixed $value): bool
-    {
-        return is_string($value) || is_int($value) || is_float($value) || is_bool($value);
-    }
-
-    private function scalarLiteral(mixed $value): string
-    {
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-        if (is_int($value) || is_float($value)) {
-            return $this->numericLiteral($value);
-        }
-
-        return $this->phpStringLiteral(is_string($value) ? $value : (string)$value);
-    }
-
-    /**
-     * True when the property references a generated DTO (directly or as an array of DTOs), so a
-     * cascade (#[Assert\Valid]) should be emitted. Enums validate by type and do not cascade.
-     *
-     * @param SchemaProperty $property
-     */
-    private function symfonyPropertyCascades(array $property): bool
-    {
-        $type = $property['type'];
-        if (preg_match('/^array<(.+)>$/', $type, $matches) === 1) {
-            $type = $matches[1];
-        }
-        $type = ltrim($type, '?');
-        $shortName = $this->shortClassName($type);
-
-        return array_key_exists($shortName, $this->dtoSchemas);
-    }
-
-    private function shortClassName(string $type): string
-    {
-        $parts = explode('\\', $type);
-
-        return end($parts);
-    }
-
-    private function numericLiteral(int|float $value): string
-    {
-        if (is_int($value)) {
-            return (string)$value;
-        }
-
-        $rendered = json_encode($value);
-
-        return is_string($rendered) ? $rendered : (string)$value;
-    }
-
-    private function phpStringLiteral(string $value): string
-    {
-        return "'" . $this->escapeSingleQuoted($value) . "'";
+        return $this->renderRuntimeDtoClass($namespace, $className, $schemaMetadata);
     }
 
     /**
@@ -3850,490 +3679,6 @@ final class GenerateDtoCommand extends Command
             } else {
                 $result .= $char;
             }
-        }
-
-        return $result;
-    }
-
-    /**
-     * Decides whether an optional property is modelled with the UnsetValue sentinel so it can be
-     * omitted from the serialized payload. Body fields always use it — even when they declare a
-     * default, which then only seeds the constructor value (`T|UnsetValue|null = default`), leaving
-     * `UnsetValue::UNSET` available for explicit omission. Parameters (path/query/header/cookie)
-     * with a default keep the args-only presence model instead (their presence is inferred by the
-     * deserializer), so they are excluded here.
-     *
-     * @param SchemaProperty $property
-     */
-    private function propertyUsesUnsetSentinel(array $property): bool
-    {
-        if ($property['required']) {
-            return false;
-        }
-
-        $isParameter = ($property['inPath'] ?? false) === true
-            || ($property['inQuery'] ?? false) === true
-            || ($property['inHeader'] ?? false) === true
-            || ($property['inCookie'] ?? false) === true;
-
-        if ($isParameter) {
-            return $property['default'] === null;
-        }
-
-        return true;
-    }
-
-    /**
-     * @param SchemaProperty $property
-     * @return array{description: ?string, example: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, isArray: bool, usesUnsetSentinel: bool}
-     */
-    private function resolvePropertyDeclarationData(array $property, string $namespace): array
-    {
-        $phpType = $property['type'];
-        $phpDocType = $property['type'];
-        $isArray = false;
-
-        if (str_contains($phpType, '<')) {
-            $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
-            $phpType = 'array';
-            $isArray = true;
-        } elseif ($phpType === 'array' || $phpType === '?array') {
-            // Direct array type (not generic)
-            $isArray = true;
-        } else {
-            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
-            $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
-        }
-
-        $type = $this->composePhpTypeHint($phpType, $property['nullable']);
-        $description = $property['description'] ?? null;
-        $example = $property['example'] ?? null;
-        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
-        $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
-        $docVarType = null;
-        if ($phpType !== $phpDocType) {
-            $docVarType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
-        }
-
-        return [
-            'description' => is_string($description) && $description !== '' ? $description : null,
-            'example' => is_string($example) && $example !== '' ? $example : null,
-            'constraintsLine' => $constraintsLine,
-            'docVarType' => $docVarType,
-            'type' => $type,
-            'name' => $property['name'],
-            'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
-            'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
-            'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
-            'inHeaderFlagName' => $this->normalizeInHeaderFlagName($property['name']),
-            'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
-            'isArray' => $isArray,
-            'usesUnsetSentinel' => $this->propertyUsesUnsetSentinel($property),
-        ];
-    }
-
-    /**
-     * @param SchemaProperty $property
-     * @return array{
-     *   type: string,
-     *   name: string,
-     *   defaultValue: string,
-     *   isArray: bool,
-     *   isPromoted: bool,
-     *   docType: ?string,
-     *   description: ?string,
-     *   example: ?string,
-     *   constraintsLine: ?string,
-     *   shouldDocument: bool,
-     *   tracksArgPresence: bool,
-     *   inRequestFlagName: string,
-     *   presenceFlagName: string,
-     *   usesUnsetSentinel: bool,
-     *   presenceFromArgsOnly: bool
-     * }
-     */
-    private function resolveConstructorParameterData(array $property, string $namespace, bool $tracksArgPresence): array
-    {
-        $phpType = $property['type'];
-        $phpDocType = $property['type'];
-        $isArray = false;
-
-        if (str_contains($phpType, '<')) {
-            $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
-            $phpType = 'array';
-            $isArray = true;
-        } elseif ($phpType === 'array' || $phpType === '?array') {
-            // Direct array type (not generic)
-            $isArray = true;
-        } else {
-            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
-            $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
-        }
-
-        $type = $this->composePhpTypeHint($phpType, $property['nullable']);
-        $defaultValue = $this->renderDefaultValue($property['default'], $phpType, $property['type']);
-
-        // Optional, presence-tracked properties carry the UnsetValue sentinel so they can be
-        // omitted. A declared default (if any) stays as the constructor default — the sentinel only
-        // adds the ability to pass UnsetValue::UNSET explicitly. Inherited (parent) properties are
-        // tracked by the parent, so they are excluded via $tracksArgPresence.
-        $usesUnsetSentinel = $tracksArgPresence && $this->propertyUsesUnsetSentinel($property);
-        if ($usesUnsetSentinel) {
-            // Add union type with UnsetValue and null. Strip any existing nullability first
-            // (leading ? or a null union member) so the result never has a duplicate null.
-            // null is emitted last to satisfy the ordered_types code-style rule
-            // (null_adjustment: always_last).
-            $baseType = strpos($type, '?') === 0 ? substr($type, 1) : $type;
-            $members = array_filter(
-                explode('|', $baseType),
-                static fn(string $member): bool => $member !== '' && $member !== 'null',
-            );
-            $type = implode('|', $members) . '|UnsetValue|null';
-
-            // No explicit default → the sentinel itself is the constructor default.
-            if ($defaultValue === '') {
-                $defaultValue = ' = UnsetValue::UNSET';
-            }
-        } elseif (!$property['required'] && $defaultValue === '' && $property['nullable']) {
-            $defaultValue = ' = null';
-        }
-
-        $description = $property['description'] ?? null;
-        $example = $property['example'] ?? null;
-        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
-        $constraintsLine = $this->formatConstraintsForDocBlock($constraints);
-        $docType = null;
-
-        if ($phpType !== $phpDocType) {
-            $docType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
-        }
-
-        $normalizedDescription = is_string($description) && $description !== ''
-            ? $this->stripDocAnnotationSentenceDot($description)
-            : null;
-        $normalizedExample = is_string($example) && $example !== ''
-            ? $this->stripDocAnnotationSentenceDot($example)
-            : null;
-        $shouldDocument = $normalizedDescription !== null
-            || $normalizedExample !== null
-            || $constraintsLine !== null
-            || $docType !== null;
-        $presenceFlagName = $this->resolvePresenceFlagName($property);
-
-        // An optional, default-valued parameter (path/query/header/cookie) cannot prove it
-        // was "provided" from its constructor default, so its presence flag must start false
-        // — the deserializer flips it on via reflection when the value really came in. Body
-        // fields keep starting true so a hand-built DTO still serializes its default value.
-        $isParameter = ($property['inPath'] ?? false) === true
-            || ($property['inQuery'] ?? false) === true
-            || ($property['inHeader'] ?? false) === true
-            || ($property['inCookie'] ?? false) === true;
-        $presenceFromArgsOnly = $tracksArgPresence
-            && !$usesUnsetSentinel
-            && $isParameter
-            && !$property['required'];
-
-        return [
-            'type' => $type,
-            'name' => $property['name'],
-            'defaultValue' => $defaultValue,
-            'isArray' => $isArray,
-            'isPromoted' => !$isArray && $tracksArgPresence,
-            'docType' => $docType,
-            'description' => $normalizedDescription,
-            'example' => $normalizedExample,
-            'constraintsLine' => $constraintsLine,
-            'shouldDocument' => $shouldDocument,
-            'tracksArgPresence' => $tracksArgPresence,
-            'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
-            'presenceFlagName' => $presenceFlagName,
-            'usesUnsetSentinel' => $usesUnsetSentinel,
-            'presenceFromArgsOnly' => $presenceFromArgsOnly,
-        ];
-    }
-
-    /**
-     * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, isMap: bool, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, isParameter: bool}
-     */
-    private function resolveMethodPropertyData(array $property, string $namespace): array
-    {
-        $phpType = $property['type'];
-        $phpDocType = $property['type'];
-
-        if (str_contains($phpType, '<')) {
-            $phpDocType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
-            $phpType = 'array';
-        } else {
-            $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
-            $phpDocType = $this->formatDocblockTypeForNamespace($phpDocType, $namespace);
-        }
-
-        $type = $this->composePhpTypeHint($phpType, $property['nullable']);
-        $methodName = 'get' . ucfirst($property['name']);
-        $description = $property['description'] ?? null;
-        $example = $property['example'] ?? null;
-        $temporalFormat = $property['temporalFormat'] ?? null;
-
-        $docDescriptionLines = [];
-        if ($description !== null && $description !== '') {
-            $docDescriptionLines[] = $description;
-        }
-        if (is_string($example) && $example !== '') {
-            $docDescriptionLines[] = 'Example: ' . $example;
-        }
-
-        $docReturnType = null;
-        $expectedFormat = null;
-        $returnKind = 'direct';
-        $returnType = $type;
-        $phpDateFormat = null;
-        $isNullableTemporal = false;
-        $usesUnsetSentinel = $this->propertyUsesUnsetSentinel($property);
-        $needsInRequestGuard = !$property['required']
-            && !($property['inPath'] ?? false)
-            && !($property['inQuery'] ?? false)
-            && !($property['inHeader'] ?? false)
-            && !($property['inCookie'] ?? false);
-
-        if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
-            $returnKind = 'temporal';
-            $returnType = $property['nullable'] || $usesUnsetSentinel ? '?string' : 'string';
-            $expectedFormat = $temporalFormat;
-            $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
-            $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
-        } elseif ($phpType !== $phpDocType) {
-            $docReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
-        }
-
-        if ($usesUnsetSentinel) {
-            $returnType = $this->ensureTypeAllowsNull($returnType);
-            if (is_string($docReturnType)) {
-                $docReturnType = $this->ensureTypeAllowsNull($docReturnType);
-            }
-        }
-
-        // Array fields are stored in a dedicated `?array` property (the constructor maps the
-        // UnsetValue sentinel to null), so their getter must NOT emit the sentinel guard —
-        // the property is never UnsetValue at read time. Non-array sentinel getters still do.
-        $getterUsesSentinel = $usesUnsetSentinel && $phpType !== 'array';
-
-        // Scalar temporal fields expose a second getter that returns the underlying
-        // DateTimeImmutable object (the primary getter returns a formatted string). The value
-        // is already stored as DateTimeImmutable, so this just unwraps the sentinel/null.
-        $hasObjectGetter = $returnKind === 'temporal';
-        $objectGetterMethodName = $hasObjectGetter ? 'get' . ucfirst($property['name']) . 'AsDateTime' : '';
-        $objectGetterReturnType = $isNullableTemporal ? '?DateTimeImmutable' : 'DateTimeImmutable';
-
-        return [
-            'name' => $property['name'],
-            'openApiName' => $property['openApiName'],
-            'nameSuffix' => ucfirst($property['name']),
-            'methodName' => $methodName,
-            'returnType' => $returnType,
-            'hasGuard' => $needsInRequestGuard,
-            'docDescriptionLines' => $docDescriptionLines,
-            'docReturnType' => $docReturnType,
-            'expectedFormat' => $expectedFormat,
-            'returnKind' => $returnKind,
-            'phpDateFormat' => $phpDateFormat,
-            'isNullableTemporal' => $isNullableTemporal,
-            'requiredLiteral' => $property['required'] ? 'true' : 'false',
-            'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
-            'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
-            'inHeaderFlagName' => $this->normalizeInHeaderFlagName($property['name']),
-            'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
-            'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
-            'presenceFlagName' => $this->resolvePresenceFlagName($property),
-            // A map (array<string, V>) is keyed: its adder takes ($key, $item) and it serializes
-            // as a JSON object. A list adder takes ($item) only.
-            'isMap' => $property['isMap'] ?? false,
-            'hasArrayAdder' => str_starts_with($property['type'], 'array'),
-            'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
-            'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
-            'arrayAdderItemNullable' => str_starts_with($this->resolveArrayItemPhpType($property['type']), '?'),
-            'nullableArray' => $property['nullable'],
-            'usesUnsetSentinel' => $usesUnsetSentinel,
-            'getterUsesSentinel' => $getterUsesSentinel,
-            'hasObjectGetter' => $hasObjectGetter,
-            'objectGetterMethodName' => $objectGetterMethodName,
-            'objectGetterReturnType' => $objectGetterReturnType,
-            'readOnly' => $property['readOnly'] ?? false,
-            'writeOnly' => $property['writeOnly'] ?? false,
-            'deprecated' => $property['deprecated'] ?? false,
-            // A property bound to an OpenAPI parameter source (path/query/header/cookie)
-            // is request transport, not response payload — excluded from serialization.
-            'isParameter' => ($property['inPath'] ?? false)
-                || ($property['inQuery'] ?? false)
-                || ($property['inHeader'] ?? false)
-                || ($property['inCookie'] ?? false),
-        ];
-    }
-
-    /**
-     * @param SchemaProperty $property
-     */
-    private function resolvePresenceFlagName(array $property): string
-    {
-        if (($property['inPath'] ?? false) === true) {
-            return $this->normalizeInPathFlagName($property['name']);
-        }
-
-        if (($property['inQuery'] ?? false) === true) {
-            return $this->normalizeInQueryFlagName($property['name']);
-        }
-
-        if (($property['inHeader'] ?? false) === true) {
-            return $this->normalizeInHeaderFlagName($property['name']);
-        }
-
-        if (($property['inCookie'] ?? false) === true) {
-            return $this->normalizeInCookieFlagName($property['name']);
-        }
-
-        return $this->normalizeInRequestFlagName($property['name']);
-    }
-
-    private function ensureTypeAllowsNull(string $type): string
-    {
-        if (str_starts_with($type, '?') || str_contains($type, '|null')) {
-            return $type;
-        }
-
-        if (str_contains($type, '|')) {
-            return $type . '|null';
-        }
-
-        return '?' . $type;
-    }
-
-    /**
-     * @param array{propertyName: string, mapping: array<string, string>} $discriminator
-     * @return array{propertyName: string, mappingEntries: array<int, array{value: string, targetClass: string}>}
-     */
-    private function resolveDiscriminatorRenderData(array $discriminator, string $namespace): array
-    {
-        $mappingEntries = [];
-        foreach ($discriminator['mapping'] as $value => $targetClass) {
-            $mappingEntries[] = [
-                'value' => $this->escapeSingleQuoted($value),
-                'targetClass' => $this->formatClassNameForNamespace($targetClass, $namespace),
-            ];
-        }
-
-        return [
-            'propertyName' => $this->escapeSingleQuoted($discriminator['propertyName']),
-            'mappingEntries' => $mappingEntries,
-        ];
-    }
-
-    /**
-     * Builds the property → request-source map emitted as getParameterSources().
-     * Only properties bound to an explicit OpenAPI `in:` (path/query/header/cookie)
-     * appear; body properties are omitted and fall back to the body waterfall.
-     *
-     * @param array<int, SchemaProperty> $properties
-     * @return array<int, array{name: string, source: string}>
-     */
-    private function resolveParameterSourceAssignments(array $properties): array
-    {
-        $result = [];
-
-        foreach ($properties as $property) {
-            $source = match (true) {
-                ($property['inPath'] ?? false) === true => 'path',
-                ($property['inQuery'] ?? false) === true => 'query',
-                ($property['inHeader'] ?? false) === true => 'header',
-                ($property['inCookie'] ?? false) === true => 'cookie',
-                default => null,
-            };
-
-            if ($source === null) {
-                continue;
-            }
-
-            $result[] = [
-                'name' => $property['name'],
-                'source' => $source,
-            ];
-        }
-
-        return $result;
-    }
-
-    /**
-     * Builds the property → {style, explode} map emitted as getParameterStyles().
-     * Only parameter-bound properties (path/query/header/cookie) carry serialization
-     * style; the deserializer uses it to split delimited array values.
-     *
-     * @param array<int, SchemaProperty> $properties
-     * @return array<int, array{name: string, style: string, explode: string}>
-     */
-    private function resolveParameterStyleAssignments(array $properties): array
-    {
-        $result = [];
-
-        foreach ($properties as $property) {
-            $isParameter = ($property['inPath'] ?? false) === true
-                || ($property['inQuery'] ?? false) === true
-                || ($property['inHeader'] ?? false) === true
-                || ($property['inCookie'] ?? false) === true;
-            if (!$isParameter) {
-                continue;
-            }
-
-            $style = $property['parameterStyle'] ?? null;
-            $explode = $property['parameterExplode'] ?? null;
-            if (!is_string($style) || !is_bool($explode)) {
-                continue;
-            }
-
-            $result[] = [
-                'name' => $property['name'],
-                'style' => $style,
-                'explode' => $explode ? 'true' : 'false',
-            ];
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param array<int, SchemaProperty> $properties
-     * @return array<int, array{name: string, value: string}>
-     */
-    private function resolveConstraintAssignments(array $properties): array
-    {
-        $result = [];
-
-        foreach ($properties as $property) {
-            $constraints = $property['constraints'] ?? [];
-            if ($constraints === []) {
-                continue;
-            }
-
-            $result[] = [
-                'name' => $property['name'],
-                'value' => $this->renderPhpLiteral($constraints),
-            ];
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param array<int, SchemaProperty> $properties
-     * @return array<int, array{name: string, openApiName: string}>
-     */
-    private function resolveAliasAssignments(array $properties): array
-    {
-        $result = [];
-
-        foreach ($properties as $property) {
-            $result[] = [
-                'name' => $property['name'],
-                'openApiName' => $property['openApiName'],
-            ];
         }
 
         return $result;
@@ -4525,215 +3870,6 @@ final class GenerateDtoCommand extends Command
         return $this->formatPhpTypeForNamespace($type, $currentNamespace);
     }
 
-    private function renderPhpLiteral(mixed $value): string
-    {
-        if ($value === null) {
-            return 'null';
-        }
-
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-
-        if (is_int($value) || is_float($value)) {
-            return (string)$value;
-        }
-
-        if (is_string($value)) {
-            $escaped = $this->escapeSingleQuoted($value);
-            return "'" . $escaped . "'";
-        }
-
-        if (is_array($value)) {
-            $items = [];
-            foreach ($value as $key => $item) {
-                $itemLiteral = $this->renderPhpLiteral($item);
-                if (is_string($key)) {
-                    $escapedKey = $this->escapeSingleQuoted($key);
-                    $items[] = "'" . $escapedKey . "' => " . $itemLiteral;
-                    continue;
-                }
-
-                $items[] = $itemLiteral;
-            }
-
-            return '[' . implode(', ', $items) . ']';
-        }
-
-        return 'null';
-    }
-
-    /**
-     * @param array<string, mixed> $constraints
-     */
-    private function formatConstraintsForDocBlock(array $constraints): ?string
-    {
-        if ($constraints === []) {
-            return null;
-        }
-
-        $priority = [
-            'minimum',
-            'exclusiveMinimum',
-            'maximum',
-            'exclusiveMaximum',
-            'multipleOf',
-            'minLength',
-            'maxLength',
-            'pattern',
-            'format',
-            'minItems',
-            'maxItems',
-            'uniqueItems',
-            'contains',
-            'minContains',
-            'maxContains',
-            'oneOf',
-            'anyOf',
-            'if',
-            'then',
-            'else',
-        ];
-
-        $parts = [];
-        foreach ($priority as $key) {
-            if (!array_key_exists($key, $constraints)) {
-                continue;
-            }
-
-            $value = $constraints[$key];
-            if (is_bool($value)) {
-                $parts[] = $key . '=' . ($value ? 'true' : 'false');
-                continue;
-            }
-
-            if (is_array($value)) {
-                if (in_array($key, ['oneOf', 'anyOf'], true)) {
-                    $formattedUnion = $this->formatUnionConstraintsForDocBlock($key, $value);
-                    if ($formattedUnion !== null) {
-                        $parts[] = $formattedUnion;
-                    }
-                    continue;
-                }
-
-                $parts[] = $key . '=' . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                continue;
-            }
-
-            $parts[] = $key . '=' . (string)$value;
-        }
-
-        if ($parts === []) {
-            return null;
-        }
-
-        return implode(', ', $parts);
-    }
-
-    /**
-     * @param array<int, mixed> $variants
-     */
-    private function formatUnionConstraintsForDocBlock(string $keyword, array $variants): ?string
-    {
-        $formattedVariants = [];
-
-        foreach ($variants as $variant) {
-            if (!is_array($variant)) {
-                continue;
-            }
-
-            $variantText = $this->formatFlatConstraintsForDocBlock($variant);
-            if ($variantText === null) {
-                continue;
-            }
-
-            $formattedVariants[] = '(' . $variantText . ')';
-        }
-
-        if ($formattedVariants === []) {
-            return null;
-        }
-
-        return $keyword . '=' . implode(' | ', $formattedVariants);
-    }
-
-    /**
-     * @param array<string, mixed> $constraints
-     */
-    private function formatFlatConstraintsForDocBlock(array $constraints): ?string
-    {
-        $priority = [
-            'type',
-            'minimum',
-            'exclusiveMinimum',
-            'maximum',
-            'exclusiveMaximum',
-            'multipleOf',
-            'minLength',
-            'maxLength',
-            'pattern',
-            'format',
-            'minItems',
-            'maxItems',
-            'uniqueItems',
-            'contains',
-            'minContains',
-            'maxContains',
-            'if',
-            'then',
-            'else',
-        ];
-
-        $parts = [];
-        foreach ($priority as $key) {
-            if (!array_key_exists($key, $constraints)) {
-                continue;
-            }
-
-            $value = $constraints[$key];
-            if (is_bool($value)) {
-                $parts[] = $key . '=' . ($value ? 'true' : 'false');
-                continue;
-            }
-
-            if (is_array($value)) {
-                $parts[] = $key . '=' . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                continue;
-            }
-
-            $parts[] = $key . '=' . (string)$value;
-        }
-
-        if ($parts === []) {
-            return null;
-        }
-
-        return implode(', ', $parts);
-    }
-
-    private function resolveArrayItemPhpType(string $fullType): string
-    {
-        if (!str_starts_with($fullType, 'array<')) {
-            return 'mixed';
-        }
-
-        $itemType = substr($fullType, 6, -1);
-        if ($itemType === '') {
-            return 'mixed';
-        }
-
-        // Map type `array<string, V>` — the value type is the part after the key prefix.
-        $commaPos = strpos($itemType, ', ');
-        if ($commaPos !== false) {
-            $itemType = substr($itemType, $commaPos + 2);
-        }
-
-        return match ($itemType) {
-            'int', 'float', 'string', 'bool', 'mixed', 'array' => $itemType,
-            default => $itemType,
-        };
-    }
-
     /**
      * @param array<int, SchemaProperty> $properties
      */
@@ -4829,23 +3965,6 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * @param SchemaProperty $parentProperty
-     * @param SchemaProperty $childProperty
-     */
-    private function isPropertyOverrideCompatible(array $parentProperty, array $childProperty): bool
-    {
-        if ($parentProperty['type'] !== $childProperty['type']) {
-            return false;
-        }
-
-        if (!$parentProperty['nullable'] && $childProperty['nullable']) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
      * @param SchemaProperty $property
      */
     private function describePropertyType(array $property): string
@@ -4870,21 +3989,6 @@ final class GenerateDtoCommand extends Command
         }
 
         return '?' . $type;
-    }
-
-    /**
-     * Removes the trailing period from a single-sentence PHPDoc tag description so the
-     * generated @param line is already a fixed point of the php-cs-fixer
-     * phpdoc_annotation_without_dot rule (which strips that dot otherwise). Multi-sentence
-     * text (any internal period) is left untouched — the rule does not act on it either.
-     */
-    private function stripDocAnnotationSentenceDot(string $text): string
-    {
-        if (substr_count($text, '.') === 1 && str_ends_with($text, '.')) {
-            return substr($text, 0, -1);
-        }
-
-        return $text;
     }
 
     /**
@@ -4954,10 +4058,42 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
-            return $allProperties;
+            return $this->dedupeCaseInsensitivePropertyNames($allProperties);
         }
 
         return $this->extractProperties($schemaDefinition, $className);
+    }
+
+    /**
+     * The class name for a whole schema name, safe to declare in PHP.
+     *
+     * `normalizeClassName()` is also used for FRAGMENTS that are concatenated into a larger name
+     * (`$ownerClassName . normalizeClassName($propertyName)`, route segments, `…Item`). A fragment
+     * may legitimately be a keyword — `ProbeList` is a fine class name — so the reserved-word guard
+     * belongs here, where the name stands on its own, and not in the normalizer.
+     *
+     * Every schema-name-to-class-name conversion must go through this method: `$ref` resolution looks
+     * the class up by the same derived name, so a site left on the raw normalizer would not find it.
+     */
+    private function schemaClassName(string $schemaName): string
+    {
+        return $this->avoidReservedPhpClassName($this->normalizeClassName($schemaName));
+    }
+
+    /**
+     * A schema named `Parent`, `List` or `Int` produced a file PHP cannot load at all — either
+     * `Cannot use "Parent" as a class name as it is reserved` or a parse error on the class keyword.
+     * Such a name gets a `Schema` suffix (`ParentSchema`), which is neutral about the kind: the same
+     * name may end up a DTO, an enum or a union interface.
+     *
+     * If the document ALSO declares a schema that normalizes to the suffixed name, `registerSchema()`
+     * reports it as a name collision — loudly, and with both names in the message.
+     */
+    private function avoidReservedPhpClassName(string $className): string
+    {
+        return in_array(strtolower($className), self::PHP_RESERVED_CLASS_NAMES, true)
+            ? $className . 'Schema'
+            : $className;
     }
 
     private function normalizeClassName(string $name): string
@@ -4980,6 +4116,102 @@ final class GenerateDtoCommand extends Command
         }
 
         return $normalized;
+    }
+
+    /**
+     * The same rule as `disambiguateCaseInsensitiveName()`, applied to an ALREADY assembled property
+     * list — an `allOf` merge builds its list from several branches, each with its own naming pass,
+     * so a case-only clash between two branches (or against an inherited property) only becomes
+     * visible here.
+     *
+     * `$reservedNames` are the PHP names a subclass cannot use because its parent already defines the
+     * accessor: `Discriminator` declares `name`, so `Discriminator2`'s own `NAme` must not render as
+     * `getNAme()`, which PHP would treat as an override of `getName()`.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @param array<int, string> $reservedNames
+     * @return array<int, SchemaProperty>
+     */
+    private function dedupeCaseInsensitivePropertyNames(array $properties, array $reservedNames = []): array
+    {
+        /** @var array<string, string> $assigned normalized PHP name => OpenAPI name */
+        $assigned = [];
+        foreach ($reservedNames as $reservedName) {
+            $assigned[$reservedName] = "\0reserved";
+        }
+
+        /** @var array<string, string> $namesByOpenApiName */
+        $namesByOpenApiName = [];
+
+        foreach ($properties as $index => $property) {
+            $openApiName = $property['openApiName'];
+
+            // A property repeated by two merged branches keeps one PHP name (the branches are
+            // asserted compatible elsewhere), otherwise the duplicate would be renamed to `x2`.
+            if (array_key_exists($openApiName, $namesByOpenApiName)) {
+                $properties[$index]['name'] = $namesByOpenApiName[$openApiName];
+                continue;
+            }
+
+            $name = $this->disambiguateCaseInsensitiveName($property['name'], $openApiName, $assigned);
+            $assigned[$name] = $openApiName;
+            $namesByOpenApiName[$openApiName] = $name;
+            $properties[$index]['name'] = $name;
+        }
+
+        return $properties;
+    }
+
+    /**
+     * Two OpenAPI keys that differ only in case (`name` and `NAme`) produce two DISTINCT PHP
+     * properties — property names are case-sensitive — but their accessors are not: PHP method names
+     * are case-insensitive, so `getName()` and `getNAme()` are the same method. In Symfony mode that
+     * is a fatal "Cannot redeclare"; in runtime mode the child's `getNAme()` silently OVERRIDES the
+     * parent's `getName()` (covariant return type, so it parses), and reading `name` returns the
+     * value of `NAme`. Both are wrong and both are reachable from a perfectly valid document.
+     *
+     * The second and later spellings therefore get a numeric suffix (`$nAme2`, `getNAme2()`). Only
+     * the PHP identifier changes: the wire name is carried by `#[SerializedName]` in Symfony mode
+     * and by the php-to-OpenAPI name map in runtime mode, so payloads are unaffected.
+     *
+     * An EXACT normalized collision (`first_name` and `firstName` both become `$firstName`) still
+     * throws in the caller — there the two keys are indistinguishable in PHP, and silently renaming
+     * one would hide a modelling mistake.
+     *
+     * @param array<string, string> $normalizedToOpenApiName normalized PHP name => OpenAPI name
+     */
+    private function disambiguateCaseInsensitiveName(
+        string $normalizedName,
+        string $openApiPropertyName,
+        array $normalizedToOpenApiName,
+    ): string {
+        $taken = [];
+        $takenExactly = [];
+        foreach ($normalizedToOpenApiName as $takenName => $takenOpenApiName) {
+            if ($takenOpenApiName === $openApiPropertyName) {
+                continue;
+            }
+            $taken[strtolower($takenName)] = true;
+            $takenExactly[$takenName] = true;
+        }
+
+        // An identically spelled name is a property OVERRIDE — a subclass redeclaring a parent
+        // property, or two allOf branches declaring the same one. That is a different question
+        // (answered by the override/merge compatibility checks) and must not be renamed away.
+        if (array_key_exists($normalizedName, $takenExactly)) {
+            return $normalizedName;
+        }
+
+        if (!array_key_exists(strtolower($normalizedName), $taken)) {
+            return $normalizedName;
+        }
+
+        $suffix = 2;
+        while (array_key_exists(strtolower($normalizedName . $suffix), $taken)) {
+            $suffix++;
+        }
+
+        return $normalizedName . $suffix;
     }
 
     private function normalizePropertyName(string $name): string
@@ -5011,55 +4243,6 @@ final class GenerateDtoCommand extends Command
         }
 
         return $propertyName;
-    }
-
-    private function normalizeInRequestFlagName(string $propertyName): string
-    {
-        return $this->normalizeTrackingFlagName($propertyName, 'InRequest');
-    }
-
-    private function normalizeInPathFlagName(string $propertyName): string
-    {
-        return $this->normalizeTrackingFlagName($propertyName, 'InPath');
-    }
-
-    private function normalizeInQueryFlagName(string $propertyName): string
-    {
-        return $this->normalizeTrackingFlagName($propertyName, 'InQuery');
-    }
-
-    private function normalizeInHeaderFlagName(string $propertyName): string
-    {
-        return $this->normalizeTrackingFlagName($propertyName, 'InHeader');
-    }
-
-    private function normalizeInCookieFlagName(string $propertyName): string
-    {
-        return $this->normalizeTrackingFlagName($propertyName, 'InCookie');
-    }
-
-    private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
-    {
-        $splitResult = preg_split('/[^A-Za-z0-9]+/', $propertyName);
-        $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
-
-        if ($parts === []) {
-            $camel = 'value';
-        } else {
-            $first = $parts[0];
-            $camel = strtoupper($first) === $first ? strtolower($first) : lcfirst($first);
-
-            for ($i = 1, $count = count($parts); $i < $count; $i++) {
-                $part = $parts[$i];
-                $camel .= ucfirst(strtolower($part));
-            }
-        }
-
-        if (is_numeric($camel[0])) {
-            $camel = 'value' . $camel;
-        }
-
-        return $camel . $suffix;
     }
 
     private function prepareOutputDirectory(string $outputDirectory): void
@@ -5110,24 +4293,244 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Swagger 2.0 describes payloads with a different model (`definitions`, `in: body`/`formData`,
+     * `collectionFormat`), none of which this generator reads — it would quietly emit nothing
+     * useful. Refuse such a document instead, and flag anything that is not an OpenAPI 3.x version.
+     *
+     * @param array<mixed> $openApi
+     */
+    private function assertSupportedSpecVersion(array $openApi): void
+    {
+        $swagger = $openApi['swagger'] ?? null;
+        if ($swagger !== null) {
+            throw new RuntimeException(sprintf(
+                'Swagger %s documents are not supported: this generator reads OpenAPI 3.0+ '
+                . '(components.schemas, requestBody, parameter schema/content). '
+                . 'Convert the document first, e.g. with swagger2openapi.',
+                is_scalar($swagger) ? (string)$swagger : '2.0',
+            ));
+        }
+
+        $version = $openApi['openapi'] ?? null;
+        if (!is_string($version) || $version === '') {
+            $this->generationWarnings[] = 'Document has no "openapi" version field; it is read as OpenAPI 3.x.';
+
+            return;
+        }
+
+        if (!str_starts_with($version, '3.')) {
+            $this->generationWarnings[] = sprintf(
+                'OpenAPI version "%s" is newer than this generator knows; it is read with the 3.x rules.',
+                $version,
+            );
+        }
+    }
+
+    /**
+     * Reads the document-level OAS 3.1/3.2 fields that affect how the rest is interpreted:
+     * `$self` (the document's own URI, so a `$ref` addressing it is really a local pointer) and
+     * `jsonSchemaDialect` (an unfamiliar dialect means the keyword vocabulary may differ from the
+     * one this generator implements, which is worth saying out loud rather than guessing).
+     *
+     * @param array<mixed> $openApi
+     */
+    private function readDocumentLevelFields(array $openApi): void
+    {
+        $this->assertSupportedSpecVersion($openApi);
+
+        $self = $openApi['$self'] ?? null;
+        $this->documentSelfUri = is_string($self) && $self !== '' ? rtrim($self, '#') : null;
+
+        $dialect = $openApi['jsonSchemaDialect'] ?? null;
+        if (!is_string($dialect) || $dialect === '') {
+            return;
+        }
+
+        $known = [
+            'https://spec.openapis.org/oas/3.1/dialect/base',
+            'https://spec.openapis.org/oas/3.1/dialect/2024-11-10',
+            'https://spec.openapis.org/oas/3.2/dialect/2024-11-10',
+            'https://json-schema.org/draft/2020-12/schema',
+        ];
+
+        if (!in_array(rtrim($dialect, '#'), $known, true)) {
+            $this->generationWarnings[] = sprintf(
+                'Unknown jsonSchemaDialect "%s": schemas are interpreted with the OAS 3.1 dialect (JSON Schema 2020-12).',
+                $dialect,
+            );
+        }
+    }
+
+    /**
+     * Rewrites a `$ref` that addresses this very document by its `$self` URI into the equivalent
+     * local pointer, so it resolves against the loaded document instead of being treated as an
+     * unreachable external file.
+     */
+    private function stripDocumentSelfPrefix(string $ref): string
+    {
+        if ($this->documentSelfUri === null || !str_starts_with($ref, $this->documentSelfUri)) {
+            return $ref;
+        }
+
+        $remainder = substr($ref, strlen($this->documentSelfUri));
+
+        return $remainder === '' || $remainder[0] !== '#' ? $ref : $remainder;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getGenerationWarnings(): array
+    {
+        return $this->generationWarnings;
+    }
+
+    /**
+     * Path Item Objects to walk: `paths` plus, since OAS 3.1, `webhooks`. A webhook entry is an
+     * incoming request our own endpoint receives, so its body/parameters deserve DTOs exactly like
+     * a path operation's. The key is a name, not a URL — it is used verbatim for class naming.
+     *
+     * @param array<mixed> $openApi
+     * @return array<string, array<mixed>>
+     */
+    private function collectPathItems(array $openApi): array
+    {
+        $items = [];
+
+        foreach (['paths', 'webhooks'] as $section) {
+            $group = $openApi[$section] ?? [];
+            if (!is_array($group)) {
+                continue;
+            }
+
+            foreach ($group as $key => $pathItem) {
+                if (!is_string($key) || !is_array($pathItem)) {
+                    continue;
+                }
+                // A webhook named like an existing path would otherwise overwrite it.
+                $items[$section === 'webhooks' ? 'webhook:' . $key : $key] = $pathItem;
+            }
+        }
+
+        foreach ($items as $key => $pathItem) {
+            $items[$key] = $this->foldAdditionalOperations($pathItem);
+        }
+
+        foreach ($items as $pathItem) {
+            foreach ($this->collectCallbackPathItems($pathItem) as $callbackKey => $callbackPathItem) {
+                // Two operations may declare the same callback name with different payloads.
+                $uniqueKey = $callbackKey;
+                $counter = 2;
+                while (array_key_exists($uniqueKey, $items)) {
+                    $uniqueKey = $callbackKey . $counter;
+                    $counter++;
+                }
+                $items[$uniqueKey] = $callbackPathItem;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * OAS 3.2 `additionalOperations` holds operations for methods that have no fixed field (QUERY
+     * and friends). They are operations like any other, so they are folded into the Path Item under
+     * their method name — lowercased, since every walker matches methods case-insensitively.
+     *
+     * @param array<mixed> $pathItem
+     * @return array<mixed>
+     */
+    private function foldAdditionalOperations(array $pathItem): array
+    {
+        $additional = $pathItem['additionalOperations'] ?? null;
+        unset($pathItem['additionalOperations']);
+
+        if (!is_array($additional)) {
+            return $pathItem;
+        }
+
+        foreach ($additional as $method => $operation) {
+            if (!is_string($method) || $method === '' || !is_array($operation)) {
+                continue;
+            }
+            // The spec forbids re-declaring a fixed-field method here; if one shows up anyway the
+            // fixed field wins rather than being silently overwritten.
+            $normalizedMethod = strtolower($method);
+            if (!array_key_exists($normalizedMethod, $pathItem)) {
+                $pathItem[$normalizedMethod] = $operation;
+            }
+        }
+
+        return $pathItem;
+    }
+
+    /**
+     * Path Item Objects nested under an operation's `callbacks`. The map key there is a runtime
+     * expression (`{$request.body#/callbackUrl}`), useless for naming, so the callback name is used
+     * instead — the payload is what matters here, not the URL it will be delivered to.
+     *
+     * @param array<mixed> $pathItem
+     * @return array<string, array<mixed>>
+     */
+    private function collectCallbackPathItems(array $pathItem): array
+    {
+        $collected = [];
+
+        foreach ($pathItem as $method => $operation) {
+            if (!is_string($method) || !$this->isHttpMethod($method) || !is_array($operation)) {
+                continue;
+            }
+
+            $callbacks = $operation['callbacks'] ?? null;
+            if (!is_array($callbacks)) {
+                continue;
+            }
+
+            foreach ($callbacks as $callbackName => $callback) {
+                if (!is_string($callbackName) || !is_array($callback)) {
+                    continue;
+                }
+
+                foreach ($callback as $expression => $callbackPathItem) {
+                    if (!is_string($expression) || !is_array($callbackPathItem)) {
+                        continue;
+                    }
+                    $collected['callback:' . $callbackName] = $callbackPathItem;
+                }
+            }
+        }
+
+        return $collected;
+    }
+
+    /**
+     * Naming input for a Path Item key: a `webhook:`/`callback:` marker becomes a path segment so
+     * the class name reads `WebhookNewPetPostRequest` / `CallbackOnDataPostRequest` instead of
+     * colliding with a same-named path.
+     */
+    private function pathItemNamingKey(string $key): string
+    {
+        foreach (['webhook:', 'callback:'] as $marker) {
+            if (str_starts_with($key, $marker)) {
+                return rtrim($marker, ':') . '/' . substr($key, strlen($marker));
+            }
+        }
+
+        return $key;
+    }
+
+    /**
      * @param array<mixed> $openApi
      * @return array<string, mixed>
      */
     private function extractInlineResponseSchemas(array $openApi): array
     {
-        $paths = $openApi['paths'] ?? [];
-        if (!is_array($paths)) {
-            return [];
-        }
+        $paths = $this->collectPathItems($openApi);
 
         $inlineSchemas = [];
         $inlineOwners = [];
 
         foreach ($paths as $path => $pathItem) {
-            if (!is_string($path) || !is_array($pathItem)) {
-                continue;
-            }
-
             foreach ($pathItem as $method => $operation) {
                 if (!is_string($method) || !$this->isHttpMethod($method) || !is_array($operation)) {
                     continue;
@@ -5139,6 +4542,7 @@ final class GenerateDtoCommand extends Command
                 }
 
                 foreach ($responses as $statusCode => $response) {
+                    $response = $this->resolveComponentRef($response, 'responses', $openApi);
                     if (!is_array($response)) {
                         continue;
                     }
@@ -5149,6 +4553,7 @@ final class GenerateDtoCommand extends Command
                     }
 
                     foreach ($content as $mediaTypeObject) {
+                        $mediaTypeObject = $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
                         if (!is_array($mediaTypeObject)) {
                             continue;
                         }
@@ -5164,14 +4569,14 @@ final class GenerateDtoCommand extends Command
 
                         $ownerKey = strtoupper($method) . ' ' . $path;
                         $schemaName = $this->uniqueEndpointSchemaName(
-                            $path,
+                            $this->pathItemNamingKey($path),
                             (string)$statusCode,
                             $ownerKey,
                             $inlineOwners,
                         );
                         $inlineSchemas[$schemaName] = $schema;
                         $inlineOwners[$schemaName] = $ownerKey;
-                        $this->endpointByClass[$this->normalizeClassName($schemaName)] = $ownerKey;
+                        $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                     }
                 }
             }
@@ -5186,25 +4591,18 @@ final class GenerateDtoCommand extends Command
      */
     private function extractInlineRequestSchemas(array $openApi): array
     {
-        $paths = $openApi['paths'] ?? [];
-        if (!is_array($paths)) {
-            return [];
-        }
+        $paths = $this->collectPathItems($openApi);
 
         $inlineSchemas = [];
         $inlineOwners = [];
 
         foreach ($paths as $path => $pathItem) {
-            if (!is_string($path) || !is_array($pathItem)) {
-                continue;
-            }
-
             foreach ($pathItem as $method => $operation) {
                 if (!is_string($method) || !$this->isHttpMethod($method) || !is_array($operation)) {
                     continue;
                 }
 
-                $requestBody = $operation['requestBody'] ?? null;
+                $requestBody = $this->resolveComponentRef($operation['requestBody'] ?? null, 'requestBodies', $openApi);
                 if (!is_array($requestBody)) {
                     continue;
                 }
@@ -5215,6 +4613,7 @@ final class GenerateDtoCommand extends Command
                 }
 
                 foreach ($content as $mediaTypeObject) {
+                    $mediaTypeObject = $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
                     if (!is_array($mediaTypeObject)) {
                         continue;
                     }
@@ -5228,16 +4627,18 @@ final class GenerateDtoCommand extends Command
                         continue;
                     }
 
+                    $schema = $this->applyEncodingToBodySchema($schema, $mediaTypeObject['encoding'] ?? null);
+
                     $ownerKey = strtoupper($method) . ' ' . $path;
                     $schemaName = $this->uniqueEndpointSchemaName(
-                        $path,
+                        $this->pathItemNamingKey($path),
                         ucfirst(strtolower($method)) . 'Request',
                         $ownerKey,
                         $inlineOwners,
                     );
                     $inlineSchemas[$schemaName] = $schema;
                     $inlineOwners[$schemaName] = $ownerKey;
-                    $this->endpointByClass[$this->normalizeClassName($schemaName)] = $ownerKey;
+                    $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                 }
             }
         }
@@ -5247,7 +4648,14 @@ final class GenerateDtoCommand extends Command
 
     private function isHttpMethod(string $method): bool
     {
-        return in_array(strtolower($method), ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'], true);
+        // QUERY (and other custom methods) reach a Path Item through OAS 3.2 additionalOperations,
+        // which is folded in before the walkers run — so accept any method token, not just the
+        // eight with a fixed field. Non-method keys of a Path Item are excluded explicitly.
+        if (in_array($method, ['parameters', 'servers', 'summary', 'description', '$ref', 'additionalOperations'], true)) {
+            return false;
+        }
+
+        return preg_match('/^[a-zA-Z][a-zA-Z0-9-]*$/', $method) === 1;
     }
 
     /**
@@ -5323,7 +4731,54 @@ final class GenerateDtoCommand extends Command
             && is_array($schema['enum'])
             && $schema['enum'] !== []
             && array_key_exists('type', $schema)
-            && in_array($schema['type'], ['string', 'integer'], true);
+            && in_array($schema['type'], ['string', 'integer'], true)
+            && $this->canGenerateBackedEnumFromSchema($schema, true);
+    }
+
+    /**
+     * Backed enums can represent only string/int values. Enums containing bool/null/objects
+     * stay inline on the property and are validated via constraints instead of enum synthesis.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function canGenerateBackedEnumFromSchema(array $schema, bool $requireExplicitType = false): bool
+    {
+        $enum = $schema['enum'] ?? null;
+        if (!is_array($enum) || $enum === []) {
+            return false;
+        }
+
+        foreach ($enum as $value) {
+            if (!is_string($value) && !is_int($value)) {
+                return false;
+            }
+        }
+
+        $type = $schema['type'] ?? null;
+        if (is_array($type)) {
+            return false;
+        }
+        if ($type !== null && !is_string($type)) {
+            return false;
+        }
+
+        if ($requireExplicitType && !in_array($type, ['string', 'integer'], true)) {
+            return false;
+        }
+
+        if ($type === 'integer') {
+            foreach ($enum as $value) {
+                if (!is_int($value)) {
+                    return false;
+                }
+            }
+        }
+
+        if ($type !== null && !in_array($type, ['string', 'integer'], true)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -5727,7 +5182,7 @@ final class GenerateDtoCommand extends Command
                 return null;
             }
 
-            $className = $this->normalizeClassName($schemaName);
+            $className = $this->schemaClassName($schemaName);
             $node = $this->rawSchemasByClass[$className] ?? null;
 
             return is_array($node) ? [$node, $this->getSchemaSourceFile($className)] : null;
@@ -5768,11 +5223,17 @@ final class GenerateDtoCommand extends Command
      */
     private function extractExample(array $propertySchema): ?string
     {
-        if (!array_key_exists('example', $propertySchema)) {
+        // OAS 3.2 adds `serializedExample` (the encoded form); use it when no plain example exists.
+        $exampleKey = match (true) {
+            array_key_exists('example', $propertySchema) => 'example',
+            array_key_exists('serializedExample', $propertySchema) => 'serializedExample',
+            default => null,
+        };
+        if ($exampleKey === null) {
             return null;
         }
 
-        $example = $propertySchema['example'];
+        $example = $propertySchema[$exampleKey];
 
         if (is_string($example)) {
             $normalized = trim($example);
@@ -5844,24 +5305,64 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Folds an Encoding Object into the body schema's properties.
+     *
+     * A part declared `contentType: application/json` arrives as a JSON string, so it is marked
+     * with the same `json` serialization sentinel a `content:` parameter uses — the deserializer
+     * decodes it before casting. `style`/`explode` on a form-urlencoded part describe how an array
+     * or object part is flattened into the field, i.e. exactly what the parameter style machinery
+     * already resolves. Per-part `headers` are transport metadata and carry no payload shape.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function applyEncodingToBodySchema(array $schema, mixed $encoding): array
+    {
+        if (!is_array($encoding) || $encoding === [] || !is_array($schema['properties'] ?? null)) {
+            return $schema;
+        }
+
+        foreach ($encoding as $propertyName => $partEncoding) {
+            if (!is_string($propertyName) || !is_array($partEncoding)) {
+                continue;
+            }
+            if (!array_key_exists($propertyName, $schema['properties']) || !is_array($schema['properties'][$propertyName])) {
+                continue;
+            }
+
+            $contentType = $partEncoding['contentType'] ?? null;
+            if (is_string($contentType) && $this->isJsonMediaTypeName($contentType)) {
+                $schema['properties'][$propertyName]['x-parameter-style'] = 'json';
+                $schema['properties'][$propertyName]['x-parameter-explode'] = false;
+                continue;
+            }
+
+            $style = $partEncoding['style'] ?? null;
+            if (!is_string($style) || $style === '') {
+                continue;
+            }
+
+            $schema['properties'][$propertyName]['x-parameter-style'] = $style;
+            $schema['properties'][$propertyName]['x-parameter-explode'] = is_bool($partEncoding['explode'] ?? null)
+                ? $partEncoding['explode']
+                : $style === 'form';
+        }
+
+        return $schema;
+    }
+
+    /**
      * @param array<mixed> $openApi
      * @return array<string, mixed>
      */
     private function extractParameterSchemas(array $openApi): array
     {
-        $paths = $openApi['paths'] ?? [];
-        if (!is_array($paths)) {
-            return [];
-        }
+        $paths = $this->collectPathItems($openApi);
 
         $parameterSchemas = [];
         $parameterOwners = [];
 
         foreach ($paths as $path => $pathItem) {
-            if (!is_string($path) || !is_array($pathItem)) {
-                continue;
-            }
-
             foreach ($pathItem as $method => $operation) {
                 if (!is_string($method) || !$this->isHttpMethod($method) || !is_array($operation)) {
                     continue;
@@ -5881,14 +5382,14 @@ final class GenerateDtoCommand extends Command
 
                 $ownerKey = strtoupper($method) . ' ' . $path;
                 $schemaName = $this->uniqueEndpointSchemaName(
-                    $path,
+                    $this->pathItemNamingKey($path),
                     ucfirst(strtolower($method)) . 'QueryParams',
                     $ownerKey,
                     $parameterOwners,
                 );
                 $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
                 $parameterOwners[$schemaName] = $ownerKey;
-                $this->endpointByClass[$this->normalizeClassName($schemaName)] = $ownerKey;
+                $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
             }
         }
 
@@ -5922,6 +5423,45 @@ final class GenerateDtoCommand extends Command
         }
 
         return $resolved;
+    }
+
+    /**
+     * Resolves a `$ref` to a reusable component of the given section (`requestBodies`,
+     * `responses`, …) so a referenced body/response contributes its schema like an inline one.
+     * Non-references pass through; unresolvable references yield null and are skipped by callers.
+     *
+     * @param array<mixed> $openApi
+     * @return array<mixed>|null
+     */
+    private function resolveComponentRef(mixed $node, string $section, array $openApi): ?array
+    {
+        if (!is_array($node)) {
+            return null;
+        }
+
+        $ref = $node['$ref'] ?? null;
+        if (!is_string($ref)) {
+            return $node;
+        }
+
+        $prefix = '#/components/' . $section . '/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        $component = $openApi['components'][$section][substr($ref, strlen($prefix))] ?? null;
+
+        // A component may itself be a reference; follow a short chain, guarding against cycles.
+        $guard = 0;
+        while (is_array($component) && is_string($component['$ref'] ?? null) && $guard++ < 10) {
+            $nestedRef = $component['$ref'];
+            if (!str_starts_with($nestedRef, $prefix)) {
+                return null;
+            }
+            $component = $openApi['components'][$section][substr($nestedRef, strlen($prefix))] ?? null;
+        }
+
+        return is_array($component) ? $component : null;
     }
 
     /**
@@ -5961,7 +5501,7 @@ final class GenerateDtoCommand extends Command
             }
 
             $paramIn = $parameter['in'] ?? null;
-            if (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
+            if (in_array($paramIn, ['path', 'query', 'header', 'cookie', 'querystring'], true)) {
                 $filtered[] = $parameter;
             }
         }
@@ -6033,8 +5573,23 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
+            // `deprecated`, `description` and `example` live on the Parameter Object, not on its
+            // schema; carry them over (without overwriting the schema's own) so the generated DTO
+            // documents a parameter the same way it documents a body property.
+            foreach (['deprecated', 'description', 'example'] as $annotation) {
+                if (!array_key_exists($annotation, $schema) && array_key_exists($annotation, $parameter)) {
+                    $schema[$annotation] = $parameter[$annotation];
+                }
+            }
+
             $paramIn = $parameter['in'] ?? null;
-            if (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
+            if ($paramIn === 'querystring') {
+                // OAS 3.2: the value is the entire query string, always described through
+                // `content`. The deserializer reads the raw string and decodes it per media type.
+                $schema['x-parameter-in'] = 'querystring';
+                $schema['x-parameter-style'] = $contentJson ? 'json' : 'querystring';
+                $schema['x-parameter-explode'] = false;
+            } elseif (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
                 $schema['x-parameter-in'] = $paramIn;
                 if ($contentJson) {
                     // A content:application/json parameter arrives as a JSON string; the
@@ -6048,6 +5603,12 @@ final class GenerateDtoCommand extends Command
                         $parameter,
                         $schema['x-parameter-style'],
                     );
+                }
+                $schema['x-parameter-allow-reserved'] = $this->toBoolean($parameter['allowReserved'] ?? false);
+                // Tri-state on purpose: only an explicit `allowEmptyValue` reaches the DTO, so the
+                // deserializer can tell "spec forbids an empty value" from "spec says nothing".
+                if (array_key_exists('allowEmptyValue', $parameter)) {
+                    $schema['x-parameter-allow-empty-value'] = $this->toBoolean($parameter['allowEmptyValue']);
                 }
             }
 
@@ -6104,6 +5665,13 @@ final class GenerateDtoCommand extends Command
      */
     private function resolveParameterExplode(array $parameter, string $style): bool
     {
+        if ($style === 'deepObject') {
+            // Per RFC6570, deepObject is always exploded (nested brackets like filter[name]=value).
+            // OpenAPI spec allows explicit explode: false for deepObject, but it's ignored in practice.
+            // deepObject cannot be non-exploded per the spec.
+            return true;
+        }
+
         if (array_key_exists('explode', $parameter)) {
             return $this->toBoolean($parameter['explode']);
         }

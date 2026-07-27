@@ -13,12 +13,12 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Features
 
 - 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
-- 🎯 **Two generation modes** — **runtime** (DTOs backed by this library's validator/normalizer/deserializer) or **symfony** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes, validated and (de)serialized by Symfony itself)
+- 🎯 **Two generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer) or **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes, validated and (de)serialized by Symfony itself)
 - ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
 - 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
 - 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
 - 🔌 **Framework-agnostic (PSR-7)** — deserialize any PSR-7 `ServerRequestInterface` via `DtoDeserializerPsr7` (Slim, Mezzio, Laminas, Yii3, …); Symfony `Request` covers Symfony + Laravel
-- 🔒 **Immutable by design** — all generated classes are read-only value objects
+- 🔒 **Immutable by design** — runtime-mode DTOs are read-only value objects; in Symfony mode the required half is `readonly` and the optional half has setters, which is what powers `isXxxProvided()`
 - ⚡ **Supports OpenAPI 3.0.x and 3.1.x**
 
 ## Table of Contents
@@ -28,14 +28,15 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 - [Quick Start](#quick-start)
 - [Generate DTOs](#generate-dto-classes-from-yaml-openapi-spec)
 - [Generation Modes: Runtime vs Symfony](#generation-modes-runtime-vs-symfony)
-- [Validate & Normalize](#validate-and-normalize-generated-dtos)
-- [Framework-Agnostic Deserialization (PSR-7)](#framework-agnostic-deserialization-psr-7)
-- [CLI Commands](#cli-commands)
+  - [Runtime mode guide](README.runtime.md) — request binding, presence tracking, PSR-7 / Laravel
+  - [Symfony mode guide](README.symfony.md) — attribute mapping, serialization groups, error codes
+- [Validation Notes](#validation-notes)
+- [Upgrading](#upgrading)
 
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.8.18
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.9.0
 ```
 
 ## Requirements
@@ -125,193 +126,27 @@ Parameters:
 ## Generation Modes: Runtime vs Symfony
 
 The generator emits DTOs in one of two modes, selected with `--attributes` (default: `runtime`).
+Both enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
 
-### Runtime mode (default)
+| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) |
+|---|---|---|
+| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes, no library dependency |
+| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer`, nothing of ours |
+| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` |
+| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) |
+| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply |
+| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter |
+| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass |
 
-DTOs implement `GeneratedDtoInterface` and carry the metadata methods (`toArray()`,
-`getNormalizationMap()`, `getConstraints()`, …). They are validated, normalized and deserialized
-by **this library's own services** — `DtoValidator`, `DtoNormalizer`, `DtoDeserializer` — which
-enforce the full OpenAPI vocabulary (including `oneOf`/`anyOf`/`allOf`, `if/then/else`, `not`,
-`prefixItems`, `unevaluatedProperties`/`unevaluatedItems`, `contentEncoding`/`contentMediaType`/`contentSchema`,
-object/map constraints) and track which optional fields were actually provided (PATCH-friendly
-presence tracking via the `UnsetValue` sentinel).
+Rule of thumb: **runtime** when the request itself must follow the spec (parameter styles, partial
+updates, one library end to end); **symfony** when you want plain DTOs your framework owns and
+violations in the shape Symfony already speaks.
 
-```bash
-composer openapi:generate-dto -- \
-  --file=OpenApiExamples/test.yaml \
-  --directory=generated/test \
-  --namespace=Generated\\Test
-  # --attributes=runtime is the default
-```
+Each mode has its own guide — what it can do, how to wire it, where it stops:
 
-```php
-// generated in runtime mode (excerpt)
-final class User implements GeneratedDtoInterface, Stringable
-{
-    // presence flags per property: $nameInRequest, $emailInRequest, … (what was actually sent)
+- **[README.runtime.md](README.runtime.md)**
+- **[README.symfony.md](README.symfony.md)**
 
-    /**
-     * @param string $name
-     * Constraints: minLength=2, maxLength=50
-     * @param string|UnsetValue|null $email
-     * Constraints: format=email
-     */
-    public function __construct(
-        private readonly string $name,
-        private readonly string|UnsetValue|null $email = UnsetValue::UNSET,
-        private readonly Address|UnsetValue|null $address = UnsetValue::UNSET,
-    ) {
-        $this->emailInRequest = $email !== UnsetValue::UNSET; // presence tracking (PATCH-friendly)
-        // …
-    }
-
-    public function getName(): string
-    {
-        return $this->name;
-    }
-
-    public function getEmail(): ?string
-    {
-        return $this->email !== UnsetValue::UNSET ? $this->email : null;
-    }
-
-    // + isNameInRequest()/isNameRequired()/…, toArray(), jsonSerialize(),
-    //   getNormalizationMap(), getAliases(), getConstraints() — consumed by the runtime services
-}
-```
-
-### Symfony mode (`--attributes=symfony`)
-
-DTOs are plain, immutable data classes with promoted `public readonly` constructor properties
-decorated with **Symfony Validator / Serializer attributes**. There is no library runtime: the DTOs
-are validated by `symfony/validator` and (de)serialized by `symfony/serializer` (or auto-mapped in a
-controller with `#[MapRequestPayload]` / `#[MapQueryString]`).
-
-```bash
-composer openapi:generate-dto -- \
-  --file=OpenApiExamples/test.yaml \
-  --directory=generated/test \
-  --namespace=Generated\\Test \
-  --attributes=symfony
-```
-
-```php
-// generated in symfony mode
-class User
-{
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Length(min: 2, max: 50)]
-        public readonly string $name,
-        #[Assert\Email]
-        public readonly ?string $email = null,
-        #[SerializedName('created_at')]
-        public readonly ?DateTimeImmutable $createdAt = null,
-        #[Assert\Valid]
-        public readonly ?Address $address = null,
-    ) {
-    }
-}
-```
-
-In a Symfony controller the DTO is validated and populated automatically:
-
-```php
-public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
-```
-
-**OpenAPI → Symfony attribute mapping:**
-
-| OpenAPI | Symfony attribute |
-|---|---|
-| `required` (non-nullable) | `#[Assert\NotNull]` |
-| `minLength` / `maxLength` | `#[Assert\Length(min:, max:)]` |
-| `minimum` / `maximum` | `#[Assert\Range(min:, max:)]` |
-| `exclusiveMinimum` / `exclusiveMaximum` | `#[Assert\GreaterThan]` / `#[Assert\LessThan]` |
-| `multipleOf` | `#[Assert\DivisibleBy]` |
-| `pattern` | `#[Assert\Regex]` |
-| `minItems` / `maxItems`, `minProperties` / `maxProperties` | `#[Assert\Count]` |
-| `uniqueItems` | `#[Assert\Unique]` |
-| `const` | `#[Assert\EqualTo]` |
-| `enum` | generated PHP backed `enum` (type-enforced) |
-| `format: email` / `uuid` / `uri` / `ipv4`,`ipv6` / `hostname` | `#[Assert\Email]` / `Uuid` / `Url` / `Ip` / `Hostname` |
-| `format: int32` / `uint32` / `uint64` | `#[Assert\Range]` (bounds) |
-| `format: date` / `date-time` | `DateTimeImmutable` type |
-| `format: binary` | `UploadedFile` type |
-| `items` (scalar) / `additionalProperties` | `#[Assert\All([...])]` |
-| `anyOf` | `#[Assert\AtLeastOneOf([...])]` |
-| nested DTO / array of DTOs | `#[Assert\Valid]` (cascade) |
-| property name ≠ OpenAPI name | `#[SerializedName('…')]` |
-| `readOnly` / `writeOnly` | `#[Groups(['read'])]` / `#[Groups(['write'])]` |
-
-**Symfony-mode limitations** (no clean Symfony Validator equivalent — these keywords are skipped):
-`oneOf`/`discriminator` polymorphism, `not`, `if/then/else`, `prefixItems` (tuples),
-`patternProperties`, `propertyNames`, `dependentRequired`/`dependentSchemas`, `contains`,
-`unevaluatedProperties`/`unevaluatedItems`, `contentEncoding`/`contentMediaType`/`contentSchema`. Optional
-fields become `?T = null` (no `UnsetValue` presence tracking — use runtime mode if you need
-PATCH/partial-update semantics). Note also: `format: uri`/`iri` maps to `#[Assert\Url]`, which
-expects an absolute URL (relative URIs would fail); and an `anyOf` branch that is purely
-`{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be dropped (the field stays nullable).
-
-> Requires `symfony/validator` and `symfony/serializer` in the consuming project.
-
-## Framework-Agnostic Deserialization (PSR-7)
-
-`deserialize()` accepts a Symfony `Request` — which also covers **Laravel** (its
-`Illuminate\Http\Request` extends the Symfony one). Laravel route parameters
-(`/users/{id}`) are bridged automatically: `deserialize()` reads them from
-`$request->route()->parameters()` when present, so path params resolve with no extra wiring. For any other stack (Slim, Mezzio, Laminas,
-Yii3, …) that speaks **PSR-7**, use `DtoDeserializerPsr7`: it converts a PSR-7
-`ServerRequestInterface` into a Symfony `Request` via the official
-[`symfony/psr-http-message-bridge`](https://github.com/symfony/psr-http-message-bridge) and
-delegates to the core deserializer.
-
-```php
-use OpenapiPhpDtoGenerator\Service\DtoDeserializerPsr7;
-use Psr\Http\Message\ServerRequestInterface;
-
-/** @var ServerRequestInterface $request */
-$deserializer = new DtoDeserializerPsr7();
-
-// Single object body:
-$dto = $deserializer->deserializePsr7($request, UserPostRequest::class);
-
-// Top-level JSON array body (bulk endpoints):
-$items = $deserializer->deserializeCollectionPsr7($request, Item::class);
-```
-
-Path parameters are read from PSR-7 request attributes (`$request->withAttribute('id', …)`), where
-routers typically place them — the bridge carries them over to the Symfony request.
-
-PSR-7 support requires the bridge in your project:
-
-```bash
-composer require symfony/psr-http-message-bridge
-```
-
-When vendoring the runtime into your project (`--dto-generator-directory`), pass `--with-psr7` to
-also copy `DtoDeserializerPsr7` alongside the other runtime services.
-
-### Laravel
-
-`Illuminate\Http\Request` is a Symfony `Request`, so the core `DtoDeserializer` takes it directly —
-body, query, headers, cookies and uploaded files all work, and `/users/{id}` route parameters are
-bridged automatically. No PSR-7 conversion or extra package needed.
-
-```php
-use Illuminate\Http\Request;
-use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
-
-class UserController
-{
-    public function store(Request $request)
-    {
-        // route params (/users/{id}), query, JSON body, headers, cookies and files all resolve.
-        $dto = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
-        // ... use $dto
-    }
-}
-```
 
 ## Validation Notes
 
@@ -324,3 +159,14 @@ A few behaviours worth knowing when validating against the schema:
 - **`$defs` (JSON Schema) is folded into `components.schemas`.** A `$defs` map (in the root document or an external file) and any `#/$defs/X` pointer — local `#/$defs/X` or cross-file `other.yaml#/$defs/X` — are normalized to `components.schemas` at load time, so `$defs`-style specs generate the same as `components`-style ones. (Subschema-local `$defs`, e.g. `#/components/schemas/Foo/$defs/Bar`, is not folded — prefer top-level `components.schemas`/`$defs` for shared types.)
 - **Parameters serialized via `content`.** A parameter that uses `content: {application/json: {schema}}` instead of a plain `schema` is supported: the schema is extracted and its JSON-string value is decoded before validation and casting (malformed JSON is a clear error).
 - **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
+
+## Upgrading
+
+The library itself is a drop-in replacement: **DTOs generated by 2.8.x keep working unchanged against
+2.9.0 services** (measured on 55 specs — same accept/reject verdicts, same normalized output; the two
+metadata methods added in 2.9.0 are simply absent on old DTOs and the services fall back).
+
+What changes is the code the generator EMITS — a bare `type: object` property becomes a map, a named
+scalar schema becomes a type alias, and Symfony-mode DTOs expose accessors instead of public
+properties. Every change, what it breaks and what to do about it:
+**[CHANGELOG.md](CHANGELOG.md#upgrading-from-28x)**.

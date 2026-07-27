@@ -628,7 +628,13 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsOverride');
     }
 
-    public function testIntegerEnumWithNonIntegerValueThrows(): void
+    /**
+     * The fall-through this used to pin was worse than a refusal: a `type: integer` schema with a
+     * string member became a DTO class with no properties, generation reported success, and every
+     * request carrying the field then failed with `Cannot deserialize nested DTO … from non-array
+     * value` — an error naming neither the schema nor the value. It refuses at generation time again.
+     */
+    public function testEnumMemberContradictingItsDeclaredTypeIsRefused(): void
     {
         $openApi = [
             'openapi' => '3.0.0',
@@ -644,9 +650,80 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         ];
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Integer enum contains non-integer value');
+        $this->expectExceptionMessage('Enum schema BadIntEnum declares type integer but contains the string value "two"');
 
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsBadEnum');
+    }
+
+    /**
+     * The float variant of the same contradiction, plus the two members that ARE representable in an
+     * integer enum, so the guard is not simply "reject anything unusual".
+     */
+    public function testIntegerEnumRejectsAFloatMemberAndAcceptsIntegers(): void
+    {
+        $spec = static fn(array $enum): array => [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Level' => ['type' => 'integer', 'enum' => $enum]]],
+        ];
+
+        $this->generator->generateFromArray($spec([1, 2]), $this->outputDirectory, 'NsIntEnumOk');
+        $this->assertFileExists($this->outputDirectory . '/Level.php');
+        $this->assertStringContainsString(
+            'enum Level: int',
+            (string)file_get_contents($this->outputDirectory . '/Level.php'),
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Enum schema Level declares type integer but contains the float value 2.5');
+
+        $this->generator->generateFromArray($spec([1, 2.5]), $this->outputDirectory, 'NsIntEnumBad');
+    }
+
+    /**
+     * `null` is only tolerated as a member of a NULLABLE enum. Without `nullable` the document says
+     * "a string, and one of these values", and `null` is neither — the same contradiction as a bool.
+     */
+    public function testNullMemberWithoutNullableIsRefused(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Choice' => ['type' => 'string', 'enum' => ['a', null]]]],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Enum schema Choice declares type string but contains the null value null');
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsNullNotNullable');
+    }
+
+    /**
+     * The same rule for a string-typed enum, and the case it must NOT reject: `null` inside a
+     * `nullable` enum is how an optional enum is spelled.
+     */
+    public function testStringEnumRejectsABooleanMemberButKeepsNullableNull(): void
+    {
+        $spec = static fn(array $enum, bool $nullable): array => [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Choice' => ['type' => 'string', 'nullable' => $nullable, 'enum' => $enum],
+                ],
+            ],
+        ];
+
+        // A nullable enum is accepted. It cannot be a backed enum (a case cannot be null), so it is
+        // a scalar alias: no class of its own, and the values are checked as an enum constraint
+        // wherever it is referenced — see testNamedScalarSchemasAreTypeAliasesNotEmptyClasses.
+        $this->generator->generateFromArray($spec(['a', null], true), $this->outputDirectory, 'NsNullEnum');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/Choice.php');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Enum schema Choice declares type string but contains the bool value true');
+
+        $this->generator->generateFromArray($spec(['a', true], false), $this->outputDirectory, 'NsBoolEnum');
     }
 
     public function testEnumDefaultValueRendersEnumCase(): void

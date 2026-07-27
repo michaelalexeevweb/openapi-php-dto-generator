@@ -6,9 +6,12 @@ namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use LogicException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use TypeError;
 
 enum TestStringBackedEnum: string
 {
@@ -18,6 +21,82 @@ enum TestStringBackedEnum: string
 enum TestIntBackedEnum: int
 {
     case ONE = 1;
+}
+
+/**
+ * A DTO whose `toArray()` fails for the ONE documented reason: an optional field was never provided.
+ * The validator has to skip the object keywords for such a value — the deserializer already reports
+ * the absence, and a second, vaguer message would be noise.
+ */
+final class NotProvidedDtoStub implements GeneratedDtoInterface
+{
+    public function toArray(): array
+    {
+        throw new LogicException('field "x" ' . GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE);
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return [];
+    }
+
+    public function toJson(): string
+    {
+        return '{}';
+    }
+
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+}
+
+/**
+ * A DTO whose `toArray()` fails for a reason that is a DEFECT — here the `TypeError` that the
+ * map-item cast used to throw on a nullable item. Swallowing it made a broken response look like a
+ * payload with no object rules, so it must surface.
+ */
+final class BrokenDtoStub implements GeneratedDtoInterface
+{
+    public function toArray(): array
+    {
+        throw new TypeError('Argument #1 ($item) must be of type array, null given');
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return [];
+    }
+
+    public function toJson(): string
+    {
+        return '{}';
+    }
+
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    public static function getConstraints(): array
+    {
+        return [];
+    }
 }
 
 /**
@@ -2016,6 +2095,39 @@ final class DtoValidatorTest extends TestCase
         $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
     }
 
+    public function testUint32FormatEnforcesBothBounds(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', 4294967295, ['type' => 'integer', 'format' => 'uint32']));
+
+        $this->assertContains(
+            'f must be within uint32 range (0 to 4294967295)',
+            $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint32']),
+        );
+        $this->assertContains(
+            'f must be within uint32 range (0 to 4294967295)',
+            $this->validator->validate('f', 4294967296, ['type' => 'integer', 'format' => 'uint32']),
+        );
+    }
+
+    public function testUint64FormatEnforcesBothBounds(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', 9223372036854775807, ['type' => 'integer', 'format' => 'uint64']));
+
+        // 2^64-1 exceeds PHP_INT_MAX, so the upper bound is expressed (and reported) as a literal.
+        $this->assertContains(
+            'f must be within uint64 range (0 to 18446744073709551615)',
+            $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint64']),
+        );
+        $this->assertContains(
+            'f must be within uint64 range (0 to 18446744073709551615)',
+            $this->validator->validate('f', 2.0e19, ['type' => 'number', 'format' => 'uint64']),
+        );
+        $this->assertContains(
+            'f must be an integer (uint64)',
+            $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'uint64']),
+        );
+    }
+
     public function testFloatAndDoubleFormatsCarryNoExtraRange(): void
     {
         $this->assertSame([], $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'float']));
@@ -3041,5 +3153,26 @@ final class DtoValidatorTest extends TestCase
             'c is not valid base64-encoded content',
             $this->validator->validate('c', '!!!bad!!!', $constraints),
         );
+    }
+
+    /**
+     * Object keywords are evaluated against a generated DTO by reading its `toArray()`. That call was
+     * wrapped in `catch (Throwable)`, which silently turned ANY failure into "no object rules apply".
+     * Only the documented one — an absent optional field, which the deserializer reports itself — may
+     * be swallowed; a defect has to reach the caller.
+     */
+    public function testAbsentFieldInADtoValueSkipsObjectKeywordsQuietly(): void
+    {
+        $constraints = ['type' => 'object', 'required' => ['a'], 'minProperties' => 2];
+
+        $this->assertSame([], $this->validator->validate('f', new NotProvidedDtoStub(), $constraints));
+    }
+
+    public function testADefectInsideADtoValueSurfacesInsteadOfSkippingValidation(): void
+    {
+        $this->expectException(TypeError::class);
+        $this->expectExceptionMessage('must be of type array, null given');
+
+        $this->validator->validate('f', new BrokenDtoStub(), ['type' => 'object', 'required' => ['a']]);
     }
 }

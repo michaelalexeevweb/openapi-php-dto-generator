@@ -363,6 +363,8 @@ interface {{ className }}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+{% elseif property.itemsAreMaps %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -372,6 +374,8 @@ interface {{ className }}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+{% elseif property.itemsAreMaps %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -406,6 +410,8 @@ interface {{ className }}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+{% elseif property.itemsAreMaps %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -415,6 +421,8 @@ interface {{ className }}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+{% elseif property.itemsAreMaps %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
 {% endif %}
@@ -592,6 +600,61 @@ interface {{ className }}
 {% endfor %}
 
         return $styles;
+{% endif %}
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+{% if parameterAllowReservedAssignments is empty %}
+{% if extends is not null %}
+        return parent::getParameterAllowReserved();
+{% else %}
+        return [];
+{% endif %}
+{% else %}
+{% if extends is not null %}
+        $allowReserved = parent::getParameterAllowReserved();
+{% else %}
+        $allowReserved = [];
+{% endif %}
+{% for assignment in parameterAllowReservedAssignments %}
+        $allowReserved['{{ assignment.name }}'] = true;
+{% endfor %}
+
+        return $allowReserved;
+{% endif %}
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+{% if parameterAllowEmptyValueAssignments is empty %}
+{% if extends is not null %}
+        return parent::getParameterAllowEmptyValue();
+{% else %}
+        return [];
+{% endif %}
+{% else %}
+{% if extends is not null %}
+        $allowEmptyValue = parent::getParameterAllowEmptyValue();
+{% else %}
+        $allowEmptyValue = [];
+{% endif %}
+{% for assignment in parameterAllowEmptyValueAssignments %}
+        $allowEmptyValue['{{ assignment.name }}'] = {{ assignment.allowEmptyValue ? 'true' : 'false' }};
+{% endfor %}
+
+        return $allowEmptyValue;
 {% endif %}
     }
 }

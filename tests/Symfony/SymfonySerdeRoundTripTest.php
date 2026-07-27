@@ -177,8 +177,8 @@ final class SymfonySerdeRoundTripTest extends TestCase
 
         $serializer = $this->serializer();
         $cls = $ns . '\M';
-        $this->assertSame('hi', $serializer->denormalize(['v' => 'hi'], $cls)->v);
-        $this->assertSame(7, $serializer->denormalize(['v' => 7], $cls)->v);
+        $this->assertSame('hi', $serializer->denormalize(['v' => 'hi'], $cls)->getV());
+        $this->assertSame(7, $serializer->denormalize(['v' => 7], $cls)->getV());
     }
 
     public function testArrayOfEnumsDenormalizesEachItem(): void
@@ -208,9 +208,9 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $serializer = $this->serializer();
         $bag = $serializer->denormalize(['tags' => [0, 1, 1]], $ns . '\Bag');
         $statusClass = $ns . '\Status';
-        $this->assertCount(3, $bag->tags);
-        $this->assertSame($statusClass::from(0), $bag->tags[0]);
-        $this->assertSame($statusClass::from(1), $bag->tags[2]);
+        $this->assertCount(3, $bag->getTags());
+        $this->assertSame($statusClass::from(0), $bag->getTags()[0]);
+        $this->assertSame($statusClass::from(1), $bag->getTags()[2]);
     }
 
     public function testNullableNestedDtoAndEnumDenormalizeNull(): void
@@ -242,13 +242,13 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $cls = $ns . '\Holder';
 
         $withNulls = $serializer->denormalize(['status' => null, 'inner' => null], $cls);
-        $this->assertNull($withNulls->status);
-        $this->assertNull($withNulls->inner);
+        $this->assertNull($withNulls->getStatus());
+        $this->assertNull($withNulls->getInner());
 
         $withValues = $serializer->denormalize(['status' => 1, 'inner' => ['x' => 'hi']], $cls);
-        $this->assertSame(($ns . '\Status')::from(1), $withValues->status);
-        $this->assertInstanceOf($ns . '\Inner', $withValues->inner);
-        $this->assertSame('hi', $withValues->inner->x);
+        $this->assertSame(($ns . '\Status')::from(1), $withValues->getStatus());
+        $this->assertInstanceOf($ns . '\Inner', $withValues->getInner());
+        $this->assertSame('hi', $withValues->getInner()->getX());
     }
 
     public function testDeeplyNestedGraphDenormalizes(): void
@@ -272,9 +272,9 @@ final class SymfonySerdeRoundTripTest extends TestCase
 
         $serializer = $this->serializer();
         $a = $serializer->denormalize(['b' => ['c' => ['val' => 'deep']]], $ns . '\A');
-        $this->assertInstanceOf($ns . '\B', $a->b);
-        $this->assertInstanceOf($ns . '\C', $a->b->c);
-        $this->assertSame('deep', $a->b->c->val);
+        $this->assertInstanceOf($ns . '\B', $a->getB());
+        $this->assertInstanceOf($ns . '\C', $a->getB()->getC());
+        $this->assertSame('deep', $a->getB()->getC()->getVal());
     }
 
     public function testSelfReferentialDtoDenormalizesFiniteTreeWithoutInfiniteLoop(): void
@@ -314,11 +314,11 @@ final class SymfonySerdeRoundTripTest extends TestCase
             ],
         ], $cls);
 
-        $this->assertSame('root', $root->name);
-        $this->assertNull($root->parent);
-        $this->assertCount(2, $root->children);
-        $this->assertInstanceOf($cls, $root->children[0]);
-        $this->assertSame('a1', $root->children[0]->children[0]->name);
+        $this->assertSame('root', $root->getName());
+        $this->assertNull($root->getParent());
+        $this->assertCount(2, $root->getChildren());
+        $this->assertInstanceOf($cls, $root->getChildren()[0]);
+        $this->assertSame('a1', $root->getChildren()[0]->getChildren()[0]->getName());
 
         // Normalizing a finite tree must terminate.
         $payload = $serializer->normalize($root);
@@ -349,20 +349,20 @@ final class SymfonySerdeRoundTripTest extends TestCase
 
         $order = $serializer->denormalize($payload, $ns . '\Order');
 
-        $this->assertSame('o-1', $order->id);
-        $this->assertSame(($ns . '\Status')::from(1), $order->status);
-        $this->assertInstanceOf(DateTimeImmutable::class, $order->createdAt);
-        $this->assertSame('2026-01-02T03:04:05+00:00', $order->createdAt->format('c'));
+        $this->assertSame('o-1', $order->getId());
+        $this->assertSame(($ns . '\Status')::from(1), $order->getStatus());
+        $this->assertInstanceOf(DateTimeImmutable::class, $order->getCreatedAtAsDateTime());
+        $this->assertSame('2026-01-02T03:04:05+00:00', $order->getCreatedAt());
         // Nested DTO denormalized into a typed object.
-        $this->assertInstanceOf($ns . '\Customer', $order->customer);
-        $this->assertSame('Alice', $order->customer->name);
+        $this->assertInstanceOf($ns . '\Customer', $order->getCustomer());
+        $this->assertSame('Alice', $order->getCustomer()->getName());
         // Array of DTOs denormalized via the @param array<Item> generic.
-        $this->assertCount(2, $order->items);
-        $this->assertInstanceOf($ns . '\Item', $order->items[0]);
-        $this->assertSame('A', $order->items[0]->sku);
-        $this->assertSame(5, $order->items[1]->qty);
+        $this->assertCount(2, $order->getItems());
+        $this->assertInstanceOf($ns . '\Item', $order->getItems()[0]);
+        $this->assertSame('A', $order->getItems()[0]->getSku());
+        $this->assertSame(5, $order->getItems()[1]->getQty());
         // Omitted optional defaults to null.
-        $this->assertNull($order->note);
+        $this->assertNull($order->getNote());
     }
 
     public function testNormalizesObjectGraphBackToSpecShapedPayload(): void
@@ -380,14 +380,15 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $itemClass = $ns . '\Item';
         $statusClass = $ns . '\Status';
 
+        // created_at and note are optional, so they are set rather than passed.
         $order = new $orderClass(
             id: 'o-2',
             status: $statusClass::from(2),
-            customer: new $customerClass(name: 'Bob', email: null),
+            customer: $customer = new $customerClass(name: 'Bob'),
             items: [new $itemClass(sku: 'X', qty: 1)],
-            createdAt: new DateTimeImmutable('2026-05-06T07:08:09+00:00'),
-            note: 'gift',
         );
+        $order->setCreatedAt(new DateTimeImmutable('2026-05-06T07:08:09+00:00'));
+        $order->setNote('gift');
 
         $payload = $serializer->normalize($order);
 
@@ -397,7 +398,7 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $this->assertSame('o-2', $payload['id']);
         $this->assertArrayHasKey('created_at', $payload);
         $this->assertStringStartsWith('2026-05-06T07:08:09', (string)$payload['created_at']);
-        $this->assertSame(['name' => 'Bob', 'email' => null], $payload['customer']);
+        $this->assertSame(['email' => null, 'name' => 'Bob'], $payload['customer']);
         $this->assertSame([['sku' => 'X', 'qty' => 1]], $payload['items']);
     }
 
@@ -429,6 +430,77 @@ final class SymfonySerdeRoundTripTest extends TestCase
             (new DateTimeImmutable((string)$roundTripped['created_at']))->getTimestamp(),
         );
         unset($payload['created_at'], $roundTripped['created_at']);
-        $this->assertSame($payload, $roundTripped);
+        // Key order is not part of the contract — optional properties are declared before the
+        // constructor, so they come out first — but the data and its types are.
+        $this->assertSame(self::sortedByKey($payload), self::sortedByKey($roundTripped));
+    }
+
+    /**
+     * Symfony mode flattens `allOf`, so a child's `NAme` and the parent's `name` land in the SAME
+     * class — and PHP method names are case-insensitive, so the two getters used to be one method:
+     * the file did not even parse ("Cannot redeclare Discriminator2::getNAme()"), which is how the
+     * demo corpus shipped. The PHP identifier of the second spelling is suffixed; the wire keys must
+     * both survive a real serializer in both directions.
+     */
+    public function testCaseOnlySiblingKeysRoundTripThroughTheSerializer(): void
+    {
+        if (!class_exists(Serializer::class)) {
+            $this->markTestSkipped('symfony/serializer not installed');
+        }
+
+        $ns = 'SerdeCaseOnly';
+        $this->generateAndRequire($ns, [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'CaseBase' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => ['name' => ['type' => 'string']],
+                    ],
+                    'CaseChild' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/CaseBase'],
+                            [
+                                'type' => 'object',
+                                'required' => ['NAme'],
+                                'properties' => ['NAme' => ['type' => 'string']],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], ['CaseBase', 'CaseChild']);
+
+        $child = (string)file_get_contents($this->outputDirectory . '/' . $ns . '/CaseChild.php');
+        $this->assertStringContainsString('#[SerializedName(\'NAme\')]', $child);
+        $this->assertStringContainsString('public function getNAme2(): string', $child);
+
+        $serializer = $this->serializer();
+        $payload = ['name' => 'parent value', 'NAme' => 'child value'];
+
+        $dto = $serializer->denormalize($payload, $ns . '\CaseChild');
+        $this->assertSame('parent value', $dto->getName());
+        $this->assertSame('child value', $dto->getNAme2());
+
+        // The suffix is a PHP identifier only: `nAme2` must not leak onto the wire.
+        $this->assertSame(self::sortedByKey($payload), self::sortedByKey($serializer->normalize($dto)));
+    }
+
+    /**
+     * @param array<string, mixed> $value
+     * @return array<string, mixed>
+     */
+    private static function sortedByKey(array $value): array
+    {
+        ksort($value);
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $value[$key] = self::sortedByKey($item);
+            }
+        }
+
+        return $value;
     }
 }

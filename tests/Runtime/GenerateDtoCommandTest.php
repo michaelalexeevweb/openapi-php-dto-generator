@@ -6,12 +6,15 @@ namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use FilesystemIterator;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Yaml\Yaml;
 
 final class GenerateDtoCommandTest extends TestCase
@@ -125,6 +128,472 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString("\$styles['ids'] = ['style' => 'pipeDelimited', 'explode' => false];", $content);
         // explode defaults to true for the form style when omitted.
         $this->assertStringContainsString("\$styles['exploded'] = ['style' => 'form', 'explode' => true];", $content);
+    }
+
+    public function testMatrixLabelAndDeepObjectStyleMetadataIsEmitted(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Styles', 'version' => '1.0.0'],
+            'paths' => [
+                '/styles/{ids}/{meta}' => [
+                    'get' => [
+                        'parameters' => [
+                            [
+                                'name' => 'ids',
+                                'in' => 'path',
+                                'required' => true,
+                                'style' => 'matrix',
+                                'explode' => false,
+                                'schema' => [
+                                    'type' => 'array',
+                                    'items' => ['type' => 'integer'],
+                                ],
+                            ],
+                            [
+                                'name' => 'meta',
+                                'in' => 'path',
+                                'required' => true,
+                                'style' => 'label',
+                                'explode' => true,
+                                'schema' => [
+                                    'type' => 'object',
+                                    'additionalProperties' => ['type' => 'string'],
+                                ],
+                            ],
+                            [
+                                'name' => 'filter',
+                                'in' => 'query',
+                                'style' => 'deepObject',
+                                'schema' => [
+                                    'type' => 'object',
+                                    'additionalProperties' => ['type' => 'string'],
+                                ],
+                            ],
+                            [
+                                'name' => 'reserved',
+                                'in' => 'query',
+                                'allowReserved' => true,
+                                'schema' => [
+                                    'type' => 'string',
+                                ],
+                            ],
+                            [
+                                'name' => 'emptyValue',
+                                'in' => 'query',
+                                'allowEmptyValue' => true,
+                                'schema' => [
+                                    'type' => 'string',
+                                ],
+                            ],
+                            [
+                                'name' => 'noEmptyValue',
+                                'in' => 'query',
+                                'allowEmptyValue' => false,
+                                'schema' => [
+                                    'type' => 'string',
+                                ],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'StyleNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/StylesGetQueryParams.php');
+
+        $this->assertStringContainsString("\$styles['ids'] = ['style' => 'matrix', 'explode' => false];", $content);
+        $this->assertStringContainsString("\$styles['meta'] = ['style' => 'label', 'explode' => true];", $content);
+        $this->assertStringContainsString("\$styles['filter'] = ['style' => 'deepObject', 'explode' => true];", $content);
+        $this->assertStringContainsString('public static function getParameterAllowReserved(): array', $content);
+        $this->assertStringContainsString("\$allowReserved['reserved'] = true;", $content);
+        $this->assertStringContainsString('public static function getParameterAllowEmptyValue(): array', $content);
+        $this->assertStringContainsString("\$allowEmptyValue['emptyValue'] = true;", $content);
+        // Tri-state: an explicit `false` is emitted too, silence stays out of the map.
+        $this->assertStringContainsString("\$allowEmptyValue['noEmptyValue'] = false;", $content);
+        $this->assertStringNotContainsString("\$allowEmptyValue['reserved']", $content);
+    }
+
+    public function testDereferencesComponentRequestBodiesAndResponses(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/orders' => [
+                    'post' => [
+                        'operationId' => 'createOrder',
+                        'requestBody' => ['$ref' => '#/components/requestBodies/OrderBody'],
+                        'responses' => [
+                            '200' => ['$ref' => '#/components/responses/OrderCreated'],
+                            // A component that is itself a reference must be followed too.
+                            '201' => ['$ref' => '#/components/responses/OrderCreatedAlias'],
+                        ],
+                    ],
+                ],
+            ],
+            'components' => [
+                'requestBodies' => [
+                    'OrderBody' => [
+                        'content' => [
+                            'application/json' => [
+                                'schema' => [
+                                    'type' => 'object',
+                                    'required' => ['sku'],
+                                    'properties' => ['sku' => ['type' => 'string', 'minLength' => 3]],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'responses' => [
+                    'OrderCreated' => [
+                        'description' => 'created',
+                        'content' => [
+                            'application/json' => [
+                                'schema' => ['type' => 'object', 'properties' => ['id' => ['type' => 'integer']]],
+                            ],
+                        ],
+                    ],
+                    'OrderCreatedAlias' => ['$ref' => '#/components/responses/OrderCreated'],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'RefComponents');
+
+        // Before this was resolved, a referenced body/response produced no DTO at all.
+        $this->assertFileExists($this->outputDirectory . '/OrdersPostRequest.php');
+        $this->assertFileExists($this->outputDirectory . '/Orders200.php');
+        $this->assertFileExists($this->outputDirectory . '/Orders201.php');
+
+        $request = (string)file_get_contents($this->outputDirectory . '/OrdersPostRequest.php');
+        $this->assertStringContainsString('$sku', $request);
+        $this->assertStringContainsString("'minLength' => 3", $request);
+
+        $this->assertStringContainsString('$id', (string)file_get_contents($this->outputDirectory . '/Orders200.php'));
+    }
+
+    public function testParameterObjectAnnotationsReachTheGeneratedDto(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/legacy' => [
+                    'get' => [
+                        'operationId' => 'legacy',
+                        'parameters' => [
+                            [
+                                // deprecated/description/example sit on the Parameter Object here,
+                                // not inside its schema — they used to be dropped entirely.
+                                'name' => 'old',
+                                'in' => 'query',
+                                'deprecated' => true,
+                                'description' => 'Old filter',
+                                'example' => 'abc',
+                                'schema' => ['type' => 'string'],
+                            ],
+                            [
+                                'name' => 'kept',
+                                'in' => 'query',
+                                'description' => 'Parameter description',
+                                // The schema's own annotation wins over the parameter's.
+                                'schema' => ['type' => 'string', 'description' => 'Schema description'],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ParamDocs');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/LegacyGetQueryParams.php');
+
+        $this->assertStringContainsString('@param string|UnsetValue|null $old Old filter Example: abc', $content);
+        $this->assertStringContainsString('@deprecated', $content);
+        $this->assertStringContainsString('Schema description', $content);
+        $this->assertStringNotContainsString('Parameter description', $content);
+    }
+
+    public function testWebhookPathItemsProduceDtosLikePaths(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'webhooks' => [
+                'newPet' => [
+                    'post' => [
+                        'operationId' => 'newPetHook',
+                        'parameters' => [
+                            ['name' => 'signature', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'string']],
+                        ],
+                        'requestBody' => [
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => [
+                                        'type' => 'object',
+                                        'required' => ['id'],
+                                        'properties' => ['id' => ['type' => 'integer', 'minimum' => 1]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'ok',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['type' => 'object', 'properties' => ['ack' => ['type' => 'boolean']]],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            // A path of the same name must keep its own classes.
+            'paths' => [
+                '/newPet' => [
+                    'post' => [
+                        'operationId' => 'createPet',
+                        'requestBody' => [
+                            'content' => [
+                                'application/json' => [
+                                    'schema' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+                                ],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'WebhookNs');
+
+        // A webhook is an incoming request, so it gets the same DTO set as a path operation.
+        $this->assertFileExists($this->outputDirectory . '/WebhookNewPetPostRequest.php');
+        $this->assertFileExists($this->outputDirectory . '/WebhookNewPet200.php');
+        $this->assertFileExists($this->outputDirectory . '/WebhookNewPetPostQueryParams.php');
+        $this->assertFileExists($this->outputDirectory . '/NewPetPostRequest.php');
+
+        $request = (string)file_get_contents($this->outputDirectory . '/WebhookNewPetPostRequest.php');
+        $this->assertStringContainsString('Route: POST webhook:newPet', $request);
+        $this->assertStringContainsString("'minimum' => 1", $request);
+
+        $params = (string)file_get_contents($this->outputDirectory . '/WebhookNewPetPostQueryParams.php');
+        $this->assertStringContainsString('$signature', $params);
+    }
+
+    public function testCallbackPathItemsProduceDtos(): void
+    {
+        $callbackOperation = static fn(string $property, int $minLength): array => [
+            'post' => [
+                'requestBody' => [
+                    'content' => [
+                        'application/json' => [
+                            'schema' => [
+                                'type' => 'object',
+                                'required' => [$property],
+                                'properties' => [$property => ['type' => 'string', 'minLength' => $minLength]],
+                            ],
+                        ],
+                    ],
+                ],
+                'responses' => ['200' => ['description' => 'ack']],
+            ],
+        ];
+
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/subscribe' => [
+                    'post' => [
+                        'operationId' => 'subscribe',
+                        'responses' => ['201' => ['description' => 'ok']],
+                        'callbacks' => [
+                            'onData' => ['{$request.body#/callbackUrl}' => $callbackOperation('event', 2)],
+                        ],
+                    ],
+                ],
+                '/watch' => [
+                    'post' => [
+                        'operationId' => 'watch',
+                        'responses' => ['201' => ['description' => 'ok']],
+                        // Same callback name, different payload: both must survive.
+                        'callbacks' => [
+                            'onData' => ['{$request.body#/hook}' => $callbackOperation('signal', 5)],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'CallbackNs');
+
+        $first = (string)file_get_contents($this->outputDirectory . '/CallbackOnDataPostRequest.php');
+        $this->assertStringContainsString('Route: POST callback:onData', $first);
+        $this->assertStringContainsString('$event', $first);
+
+        $second = (string)file_get_contents($this->outputDirectory . '/CallbackOnData2PostRequest.php');
+        $this->assertStringContainsString('$signal', $second);
+        $this->assertStringContainsString("'minLength' => 5", $second);
+    }
+
+    public function testAdditionalOperationsBecomeRegularOperations(): void
+    {
+        $openApi = [
+            'openapi' => '3.2.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/things' => [
+                    'get' => ['operationId' => 'list', 'responses' => ['200' => ['description' => 'ok']]],
+                    'additionalOperations' => [
+                        'QUERY' => [
+                            'operationId' => 'queryThings',
+                            'requestBody' => [
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => [
+                                            'type' => 'object',
+                                            'required' => ['filter'],
+                                            'properties' => ['filter' => ['type' => 'string', 'minLength' => 2]],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                            'responses' => [
+                                '200' => [
+                                    'description' => 'ok',
+                                    'content' => [
+                                        'application/json' => [
+                                            'schema' => ['type' => 'object', 'properties' => ['total' => ['type' => 'integer']]],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'AdditionalOps');
+
+        $request = (string)file_get_contents($this->outputDirectory . '/ThingsQueryRequest.php');
+        $this->assertStringContainsString('Route: QUERY /things', $request);
+        $this->assertStringContainsString('$filter', $request);
+        $this->assertFileExists($this->outputDirectory . '/Things200.php');
+    }
+
+    public function testDocumentLevelFieldsOfOas32AreHonoured(): void
+    {
+        $openApi = [
+            'openapi' => '3.2.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            '$self' => 'https://example.com/api/openapi.yaml',
+            'paths' => [
+                '/orders' => [
+                    'post' => [
+                        'operationId' => 'createOrder',
+                        // The media type object itself is a reusable component (3.2).
+                        'requestBody' => ['content' => ['application/json' => ['$ref' => '#/components/mediaTypes/OrderJson']]],
+                        'responses' => [
+                            '200' => [
+                                'description' => 'ok',
+                                'content' => [
+                                    'application/json' => [
+                                        // Self-addressing absolute ref: resolves against this document.
+                                        'schema' => ['$ref' => 'https://example.com/api/openapi.yaml#/components/schemas/Order'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'components' => [
+                'mediaTypes' => [
+                    'OrderJson' => [
+                        'schema' => [
+                            'type' => 'object',
+                            'required' => ['sku'],
+                            // 3.2 example variant, used when no plain `example` exists.
+                            'properties' => ['sku' => ['type' => 'string', 'minLength' => 3, 'serializedExample' => 'ABC-1']],
+                        ],
+                    ],
+                ],
+                'schemas' => ['Order' => ['type' => 'object', 'properties' => ['id' => ['type' => 'integer']]]],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'DocFields');
+
+        $request = (string)file_get_contents($this->outputDirectory . '/OrdersPostRequest.php');
+        $this->assertStringContainsString('$sku', $request);
+        $this->assertStringContainsString('Example: ABC-1', $request);
+        $this->assertFileExists($this->outputDirectory . '/Order.php');
+        $this->assertSame([], $this->generator->getGenerationWarnings());
+    }
+
+    public function testUnknownJsonSchemaDialectIsReportedAsAWarning(): void
+    {
+        $spec = static fn(?string $dialect): array => array_filter([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'jsonSchemaDialect' => $dialect,
+            'components' => ['schemas' => ['A' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']]]]],
+        ], static fn(mixed $value): bool => $value !== null);
+
+        $this->generator->generateFromArray($spec('https://example.com/custom/dialect'), $this->outputDirectory, 'DialectUnknown');
+        $warnings = $this->generator->getGenerationWarnings();
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('Unknown jsonSchemaDialect', $warnings[0]);
+
+        // The standard dialect (and an absent one) generate silently.
+        $this->generator->generateFromArray($spec('https://spec.openapis.org/oas/3.1/dialect/base'), $this->outputDirectory, 'DialectKnown');
+        $this->assertSame([], $this->generator->getGenerationWarnings());
+    }
+
+    public function testSwagger20DocumentIsRefusedWithAClearMessage(): void
+    {
+        // Swagger 2.0 models payloads differently (definitions, in: body/formData,
+        // collectionFormat); reading it as 3.x used to yield an empty DTO instead of an error.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Swagger 2\.0 documents are not supported/');
+
+        $this->generator->generateFromArray([
+            'swagger' => '2.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'definitions' => ['Pet' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]],
+        ], $this->outputDirectory, 'Swagger2');
+    }
+
+    public function testMissingOrFutureOpenApiVersionOnlyWarns(): void
+    {
+        $schemas = ['components' => ['schemas' => ['A' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']]]]]];
+
+        $this->generator->generateFromArray(
+            ['info' => ['title' => 'T', 'version' => '1.0.0']] + $schemas,
+            $this->outputDirectory,
+            'NoVersion',
+        );
+        $this->assertFileExists($this->outputDirectory . '/A.php');
+        $this->assertStringContainsString('no "openapi" version field', $this->generator->getGenerationWarnings()[0] ?? '');
+
+        $this->generator->generateFromArray(
+            ['openapi' => '4.0.0', 'info' => ['title' => 'T', 'version' => '1.0.0']] + $schemas,
+            $this->outputDirectory,
+            'FutureVersion',
+        );
+        $this->assertStringContainsString('newer than this generator knows', $this->generator->getGenerationWarnings()[0] ?? '');
     }
 
     public function testGeneratesFromJsonSpecFile(): void
@@ -1389,6 +1858,50 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('public function __construct(', $content);
         $this->assertStringContainsString('string|int $id,', $content);
         $this->assertStringContainsString('public function getId(): string|int', $content);
+    }
+
+    /**
+     * A scalar alias in ANOTHER FILE. The alias gets no class file — so if such a ref kept
+     * class-name typing, the property would point at a class that is never written: a
+     * missing-class fatal, i.e. worse than the empty class it replaced. The external pointer is
+     * therefore resolved like the local one, while an external OBJECT ref keeps its class and its
+     * import.
+     */
+    public function testExternalRefToAScalarAliasResolvesToTheScalarNotAMissingClass(): void
+    {
+        $unique = uniqid('openapi_alias_ref_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/generated';
+        mkdir($outputDir, 0o755, true);
+
+        try {
+            $this->generator->generateFromFile(
+                __DIR__ . '/../fixtures/scalar-alias-ref/root.yaml',
+                $outputDir,
+                'AliasRefNamespace',
+            );
+
+            $holderFile = $outputDir . '/Holder.php';
+            $this->assertFileExists($holderFile);
+            $holder = (string)file_get_contents($holderFile);
+
+            $this->assertStringContainsString('private readonly string $id', $holder);
+            $this->assertStringContainsString("\$constraints['id'] = ['type' => 'string', 'format' => 'uuid'];", $holder);
+            // No class, and therefore no import, for the alias.
+            $this->assertFileDoesNotExist($baseDir . '/common/Uuid.php');
+            $this->assertStringNotContainsString('Uuid;', $holder);
+
+            // The object ref beside it is untouched: class, import and property type.
+            $this->assertFileExists($baseDir . '/common/Thing.php');
+            $this->assertStringContainsString('use AliasRefNamespace\Common\Thing;', $holder);
+            $this->assertStringContainsString('private readonly Thing $thing', $holder);
+
+            $this->assertNull($this->lintError($holderFile));
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
     }
 
     public function testGeneratesExternalRefSchemasIntoSubdirectoryAndImportsThem(): void
@@ -3354,5 +3867,610 @@ final class GenerateDtoCommandTest extends TestCase
         // Inherited createdAt param is typed DateTimeImmutable → its import must be present.
         $this->assertStringContainsString('DateTimeImmutable $createdAt', $content);
         $this->assertStringContainsString('use DateTimeImmutable;', $content);
+    }
+
+    /**
+     * A bare `{type: object}` is free-form per JSON Schema — exactly the same thing as
+     * `{type: object, additionalProperties: true}`, only spelled shorter. It used to be
+     * materialized into a DTO class with no properties, which silently swallowed the payload:
+     * `{"any":{"k":1}}` came back as `[]`.
+     */
+    public function testBareObjectSchemaKeepsItsPayloadAsAMap(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['inline', 'viaRef', 'list'],
+                        'properties' => [
+                            'inline' => ['type' => 'object'],
+                            'viaRef' => ['$ref' => '#/components/schemas/FreeForm'],
+                            'list' => ['type' => 'array', 'items' => ['type' => 'object']],
+                            // A shaped object must still become its own class.
+                            'shaped' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]],
+                        ],
+                    ],
+                    'FreeForm' => ['type' => 'object'],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'FreeFormNamespace');
+
+        $probe = (string)file_get_contents($this->outputDirectory . '/Probe.php');
+        $this->assertStringContainsString('@param array<string, mixed> $inline', $probe);
+        $this->assertStringContainsString('@param array<string, mixed> $viaRef', $probe);
+        $this->assertStringContainsString('@param array<array<string, mixed>> $list', $probe);
+        // No synthesized empty class for any of the three free-form positions.
+        $this->assertFileDoesNotExist($this->outputDirectory . '/ProbeInline.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/ProbeListItem.php');
+        // …while a schema that does declare properties is unaffected.
+        $this->assertFileExists($this->outputDirectory . '/ProbeShaped.php');
+
+        // The adder for a list of maps takes a plain array: the item type used to be sliced at the
+        // inner comma of array<array<string, mixed>>, emitting the unparsable `mixed> $item`.
+        $this->assertStringContainsString('public function addItemToList(array $item): void', $probe);
+        $this->assertNull($this->lintError($this->outputDirectory . '/Probe.php'));
+    }
+
+    public function testFreeFormValuesSurviveDeserializationAndNormalization(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['inline', 'viaRef', 'list'],
+                        'properties' => [
+                            'inline' => ['type' => 'object'],
+                            'viaRef' => ['$ref' => '#/components/schemas/FreeForm'],
+                            'list' => ['type' => 'array', 'items' => ['type' => 'object']],
+                        ],
+                    ],
+                    'FreeForm' => ['type' => 'object'],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'FreeFormRoundTrip');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $json = '{"inline":{"k":1},"viaRef":{"deep":{"z":true}},"list":[{"a":1}]}';
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, 'FreeFormRoundTrip\Probe');
+
+        $this->assertSame($json, json_encode((new DtoNormalizer())->toArray($dto)));
+
+        // A map is cast to an object so it always encodes as `{}` — at property level AND inside a
+        // list. The nested case used to come back as `[]`, which contradicted the property-level
+        // behaviour on the wire for the very same schema.
+        $withEmpty = Request::create(
+            uri: '/',
+            method: 'POST',
+            parameters: [],
+            cookies: [],
+            files: [],
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"inline":{},"viaRef":{},"list":[{}]}',
+        );
+        $this->assertSame(
+            '{"inline":{},"viaRef":{},"list":[{}]}',
+            json_encode(
+                (new DtoNormalizer())->toArray(
+                    (new DtoDeserializer())->deserialize($withEmpty, 'FreeFormRoundTrip\Probe'),
+                ),
+            ),
+        );
+    }
+
+    private function lintError(string $file): ?string
+    {
+        $output = [];
+        $status = 0;
+        exec(sprintf('php -l %s 2>&1', escapeshellarg($file)), $output, $status);
+
+        return $status === 0 ? null : implode("\n", $output);
+    }
+
+    /**
+     * A list of maps, `array<array<string, V>>`. Two separate defects met here: the deserializer
+     * read the item type off the INNERMOST generic and so expected `V` for every item ("expects
+     * int, got object" — the payload could not be deserialized at all), and normalization cast a
+     * map to an object only at property level, so an empty map inside a list came back as `[]`
+     * while the same map one level up came back as `{}`.
+     */
+    public function testListOfMapsRoundTripsAndKeepsItemsAsJsonObjects(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'MapsProbe' => [
+                        'type' => 'object',
+                        'required' => ['map', 'maps'],
+                        'properties' => [
+                            'map' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                            'maps' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ListOfMaps');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $json = '{"map":{"a":1},"maps":[{},{"b":2}]}';
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, 'ListOfMaps\MapsProbe');
+
+        $this->assertSame([['b' => 2]], array_values(array_filter($dto->getMaps())));
+        $this->assertSame($json, json_encode((new DtoNormalizer())->toArray($dto)));
+    }
+
+    /**
+     * `Uuid: {type: string, format: uuid}` names a string — it is a type alias, exactly like a
+     * `type: array` component, and not an object. It used to be materialized into a class with no
+     * properties: the referencing property was typed with that class and every request carrying the
+     * field failed with `Cannot deserialize nested DTO Uuid from non-array value`, so the endpoint
+     * could not be used at all. Long-standing (2.8.18 behaves the same), fixed in 2.9.0.
+     *
+     * Covered here: property, array item, `allOf: [{$ref}]`, a parameter schema, a `nullable` enum
+     * and a `type: number` enum (neither can be a backed enum) — plus the constraints of the alias,
+     * which have to survive the inlining or the payload would be validated more weakly than the spec
+     * says.
+     */
+    public function testNamedScalarSchemasAreTypeAliasesNotEmptyClasses(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/things' => [
+                    'get' => [
+                        'operationId' => 'thingsGet',
+                        'parameters' => [
+                            ['name' => 'q', 'in' => 'query', 'required' => true, 'schema' => ['$ref' => '#/components/schemas/ShortStr']],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+            'components' => [
+                'schemas' => [
+                    'Uuid' => ['type' => 'string', 'format' => 'uuid'],
+                    'ShortStr' => ['type' => 'string', 'minLength' => 2],
+                    'Count' => ['type' => 'integer', 'minimum' => 1],
+                    'NullableChoice' => ['type' => 'string', 'nullable' => true, 'enum' => ['a', 'b', null]],
+                    'NumEnum' => ['type' => 'number', 'enum' => [1.5, 2.5]],
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['id', 'ids', 'n', 'choice', 'num', 'viaAllOf'],
+                        'properties' => [
+                            'id' => ['$ref' => '#/components/schemas/Uuid'],
+                            'ids' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Uuid']],
+                            'n' => ['$ref' => '#/components/schemas/Count'],
+                            'choice' => ['$ref' => '#/components/schemas/NullableChoice'],
+                            'num' => ['$ref' => '#/components/schemas/NumEnum'],
+                            'viaAllOf' => ['allOf' => [['$ref' => '#/components/schemas/ShortStr']]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ScalarAlias');
+
+        // No class for an alias — the same rule `type: array` components already followed.
+        foreach (['Uuid', 'ShortStr', 'Count', 'NullableChoice', 'NumEnum'] as $alias) {
+            $this->assertFileDoesNotExist($this->outputDirectory . '/' . $alias . '.php');
+        }
+
+        $holder = (string)file_get_contents($this->outputDirectory . '/Holder.php');
+        $this->assertStringContainsString('private readonly string $id', $holder);
+        $this->assertStringContainsString('@param array<string> $ids', $holder);
+        $this->assertStringContainsString('private readonly int $n', $holder);
+        $this->assertStringContainsString('private readonly ?string $choice', $holder);
+        $this->assertStringContainsString('private readonly float $num', $holder);
+        $this->assertStringContainsString('private readonly string $viaAllOf', $holder);
+
+        // The alias keywords land as constraints; an enum arriving with the alias must be marked for
+        // constraint validation exactly like an inline one, or its values are never checked.
+        $this->assertStringContainsString("\$constraints['id'] = ['type' => 'string', 'format' => 'uuid'];", $holder);
+        $this->assertStringContainsString("'enum' => ['a', 'b', null]", $holder);
+        $this->assertStringContainsString("'enum' => [1.5, 2.5]", $holder);
+
+        // A parameter referencing an alias is a plain scalar parameter too.
+        $params = (string)file_get_contents($this->outputDirectory . '/ThingsGetQueryParams.php');
+        $this->assertStringContainsString('private readonly string $q', $params);
+        $this->assertStringContainsString("'minLength' => 2", $params);
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $uuid = '7f8d4c22-3d1f-4b6e-9c5a-2b1d3e4f5a6b';
+        $valid = sprintf(
+            '{"id":"%s","ids":["%s"],"n":3,"choice":null,"num":1.5,"viaAllOf":"ok"}',
+            $uuid,
+            $uuid,
+        );
+        $dto = (new DtoDeserializer())->deserialize(
+            Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $valid),
+            'ScalarAlias\Holder',
+        );
+        $this->assertSame($valid, json_encode((new DtoNormalizer())->validateAndNormalizeToArray($dto)));
+
+        // Each inlined rule still rejects: format, item format, minimum, and both enums.
+        $rejections = [
+            'format' => [['id' => 'nope'], 'must match format uuid'],
+            'item format' => [['ids' => ['nope']], 'must match format uuid'],
+            'minimum' => [['n' => 0], 'must be greater than or equal to 1'],
+            'string enum' => [['choice' => 'zz'], 'must be one of'],
+            'number enum' => [['num' => 9.9], 'must be one of'],
+        ];
+        foreach ($rejections as $label => [$override, $expected]) {
+            /** @var array<string, mixed> $payload */
+            $payload = json_decode($valid, true);
+            $payload = array_merge($payload, $override);
+
+            try {
+                (new DtoDeserializer())->deserialize(
+                    Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], (string)json_encode($payload)),
+                    'ScalarAlias\Holder',
+                );
+                $this->fail(sprintf('%s must be rejected', $label));
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString($expected, $e->getMessage(), $label);
+            }
+        }
+    }
+
+    /**
+     * A schema may be called anything; a PHP class may not. `Parent`, `Self` and `Int` fail to load
+     * ("Cannot use X as a class name as it is reserved") and `List`, `Match`, `Readonly`, `Static`
+     * are parse errors on the `class` line — so such a document produced files that could not be
+     * used at all. The class gets a `Schema` suffix while the schema keeps its name, and every
+     * derivation (`$ref`, array items, enums) must agree on the suffixed name.
+     */
+    public function testSchemasNamedAfterPhpReservedWordsGenerateLoadableClasses(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'List' => [
+                        'type' => 'object',
+                        'required' => ['items', 'kind', 'child'],
+                        'properties' => [
+                            'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Parent']],
+                            'kind' => ['$ref' => '#/components/schemas/Match'],
+                            'child' => ['$ref' => '#/components/schemas/Parent'],
+                        ],
+                    ],
+                    'Parent' => [
+                        'type' => 'object',
+                        'required' => ['a'],
+                        'properties' => ['a' => ['type' => 'string']],
+                    ],
+                    'Match' => ['type' => 'string', 'enum' => ['one', 'two']],
+                    // A soft-reserved name fails the same way, and a normal name must be untouched.
+                    'Int' => ['type' => 'object', 'required' => ['n'], 'properties' => ['n' => ['type' => 'integer']]],
+                    'Plain' => ['type' => 'object', 'required' => ['p'], 'properties' => ['p' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ReservedNames');
+
+        foreach (['ListSchema', 'ParentSchema', 'MatchSchema', 'IntSchema', 'Plain'] as $expected) {
+            $file = $this->outputDirectory . '/' . $expected . '.php';
+            $this->assertFileExists($file);
+            $this->assertNull($this->lintError($file), $expected . ' must be loadable PHP');
+        }
+        $this->assertFileDoesNotExist($this->outputDirectory . '/List.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/Parent.php');
+
+        // References resolve to the renamed class, at property, array-item and enum position.
+        $list = (string)file_get_contents($this->outputDirectory . '/ListSchema.php');
+        $this->assertStringContainsString('private readonly ParentSchema $child', $list);
+        $this->assertStringContainsString('private readonly MatchSchema $kind', $list);
+        $this->assertStringContainsString('@param array<ParentSchema> $items', $list);
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $json = '{"items":[{"a":"x"}],"kind":"one","child":{"a":"y"}}';
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, 'ReservedNames\ListSchema');
+
+        // The wire payload is unchanged: only the PHP identifier moved.
+        $this->assertSame($json, json_encode((new DtoNormalizer())->validateAndNormalizeToArray($dto)));
+        $this->assertSame('one', $dto->getKind()->value);
+    }
+
+    /**
+     * The suffix can collide: a document may declare BOTH `Parent` and `ParentSchema`. That must not
+     * be resolved silently — one of the two would win and take the other's payload — and it is not:
+     * `registerSchema()` reports a name collision, naming the class.
+     */
+    public function testReservedNameSuffixCollidingWithARealSchemaIsRefused(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Parent' => [
+                        'type' => 'object',
+                        'required' => ['a'],
+                        'properties' => ['a' => ['type' => 'string']],
+                    ],
+                    'ParentSchema' => [
+                        'type' => 'object',
+                        'required' => ['b'],
+                        'properties' => ['b' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('DTO schema name collision for ParentSchema');
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ReservedCollision');
+    }
+
+    /**
+     * The reserved-word guard applies to a whole schema name, not to the FRAGMENTS that are
+     * concatenated into one: `ProbeList` and `ProbeListItem` are perfectly good class names, and
+     * suffixing them would rename classes for no reason.
+     */
+    public function testReservedWordAsAPropertyNameDoesNotSuffixTheSynthesizedClass(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['list', 'match'],
+                        'properties' => [
+                            'list' => [
+                                'type' => 'object',
+                                'required' => ['a'],
+                                'properties' => ['a' => ['type' => 'string']],
+                            ],
+                            'match' => [
+                                'type' => 'array',
+                                'items' => [
+                                    'type' => 'object',
+                                    'required' => ['b'],
+                                    'properties' => ['b' => ['type' => 'string']],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'FragmentNames');
+
+        $this->assertFileExists($this->outputDirectory . '/ProbeList.php');
+        $this->assertFileExists($this->outputDirectory . '/ProbeMatchItem.php');
+        $this->assertFileDoesNotExist($this->outputDirectory . '/ProbeListSchema.php');
+        $this->assertNull($this->lintError($this->outputDirectory . '/ProbeList.php'));
+    }
+
+    /**
+     * An alias is a scalar VALUE. A component that also describes an object — `properties`, or a
+     * composition keyword next to the `type` — is not one, and must keep its class: inlining it
+     * would silently drop the shape it declares.
+     */
+    public function testAScalarTypeWithAnObjectShapeIsNotTreatedAsAnAlias(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Base' => [
+                        'type' => 'object',
+                        'required' => ['a'],
+                        'properties' => ['a' => ['type' => 'string']],
+                    ],
+                    // `type: string` alongside `properties` is a contradiction in the document; the
+                    // shape wins, so this is a class, not a string.
+                    'Shaped' => [
+                        'type' => 'string',
+                        'properties' => ['a' => ['type' => 'string']],
+                    ],
+                    // A scalar `type` next to `allOf` is composition, also not an alias.
+                    'Composed' => [
+                        'type' => 'string',
+                        'allOf' => [['$ref' => '#/components/schemas/Base']],
+                    ],
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['shaped', 'composed'],
+                        'properties' => [
+                            'shaped' => ['$ref' => '#/components/schemas/Shaped'],
+                            'composed' => ['$ref' => '#/components/schemas/Composed'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ShapedScalar');
+
+        $this->assertFileExists($this->outputDirectory . '/Shaped.php');
+        $this->assertFileExists($this->outputDirectory . '/Composed.php');
+
+        $holder = (string)file_get_contents($this->outputDirectory . '/Holder.php');
+        $this->assertStringContainsString('private readonly Shaped $shaped', $holder);
+        $this->assertStringContainsString('private readonly Composed $composed', $holder);
+    }
+
+    /**
+     * A list of maps is normalized by casting every item to an object, so an empty item encodes as
+     * `{}` rather than `[]`. The cast closure took `array $item`, so a NULLABLE item schema crashed
+     * the response with a `TypeError` — after the payload had already been accepted, i.e. a 500 on a
+     * request that validates. 2.8.18 emitted no cast at all and therefore did not have this.
+     */
+    public function testNullableMapItemsNormalizeWithoutCrashing(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'NullItemProbe' => [
+                        'type' => 'object',
+                        'required' => ['maps'],
+                        'properties' => [
+                            'maps' => [
+                                'type' => 'array',
+                                'items' => [
+                                    'type' => 'object',
+                                    'nullable' => true,
+                                    'additionalProperties' => ['type' => 'integer'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NullableMapItems');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $json = '{"maps":[null,{},{"a":1}]}';
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, 'NullableMapItems\NullItemProbe');
+
+        // A null item stays null; the empty map still becomes an object, so it encodes as {}.
+        $this->assertSame($json, json_encode((new DtoNormalizer())->toArray($dto)));
+    }
+
+    /**
+     * Two keys differing only in case are two distinct JSON properties, but PHP method names are
+     * case-insensitive: a child declaring `NAme` next to the parent's `name` used to emit
+     * `getNAme()`, which PHP reads as an override of the parent's `getName()` — it parses (the return
+     * type is covariant) and then `getName()` on the child returns the value of `NAme`. The second
+     * spelling now gets a suffixed PHP identifier while the wire name stays `NAme`.
+     */
+    public function testCaseOnlySiblingOfAnInheritedPropertyGetsItsOwnAccessor(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'CaseBase' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => ['name' => ['type' => 'string']],
+                    ],
+                    'CaseChild' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/CaseBase'],
+                            [
+                                'type' => 'object',
+                                'required' => ['NAme'],
+                                'properties' => ['NAme' => ['type' => 'string']],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'CaseCollision');
+
+        $child = (string)file_get_contents($this->outputDirectory . '/CaseChild.php');
+        $this->assertStringContainsString('public function getNAme2(): string', $child);
+        $this->assertStringNotContainsString('public function getNAme(): string', $child);
+        // The OpenAPI name is untouched: only the PHP identifier is disambiguated.
+        $this->assertStringContainsString('$aliases[\'nAme2\'] = \'NAme\';', $child);
+        $this->assertNull($this->lintError($this->outputDirectory . '/CaseChild.php'));
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $json = '{"name":"parent value","NAme":"child value"}';
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, 'CaseCollision\CaseChild');
+
+        $this->assertSame('parent value', $dto->getName());
+        $this->assertSame('child value', $dto->getNAme2());
+        $this->assertSame($json, json_encode((new DtoNormalizer())->toArray($dto)));
+    }
+
+    /**
+     * The same clash inside ONE schema: no inheritance involved, both accessors are emitted by the
+     * same class.
+     *
+     * Only a case-only difference is disambiguated. Keys that normalize to the very same PHP name
+     * (`test_param` / `test-param`, or `name` / `NAME`) still refuse to generate — see
+     * `testGenerationFailsWhenTwoPropertiesNormalizeToSameCamelCaseName`.
+     */
+    public function testCaseOnlySiblingsInOneSchemaGetDistinctAccessors(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Flat' => [
+                        'type' => 'object',
+                        'required' => ['name', 'NAme'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                            'NAme' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'CaseFlat');
+
+        $flat = (string)file_get_contents($this->outputDirectory . '/Flat.php');
+        $this->assertStringContainsString('public function getName(): string', $flat);
+        $this->assertStringContainsString('public function getNAme2(): string', $flat);
+        $this->assertNull($this->lintError($this->outputDirectory . '/Flat.php'));
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require_once $file;
+        }
+
+        $json = '{"name":"a","NAme":"b"}';
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, 'CaseFlat\Flat');
+
+        $this->assertSame(['a', 'b'], [$dto->getName(), $dto->getNAme2()]);
+        $this->assertSame($json, json_encode((new DtoNormalizer())->toArray($dto)));
     }
 }

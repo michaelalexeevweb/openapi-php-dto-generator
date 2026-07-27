@@ -1,0 +1,17 @@
+openapi: 3.0.0
+info:
+  title: Root
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Holder:
+      type: object
+      required:
+        - id
+        - thing
+      properties:
+        id:
+          $ref: './common/common.yaml/#/components/schemas/Uuid'
+        thing:
+          $ref: './common/common.yaml/#/components/schemas/Thing'
