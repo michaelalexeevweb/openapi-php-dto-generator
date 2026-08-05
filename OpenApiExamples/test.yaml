@@ -349,11 +349,36 @@ components:
       required:
         - id
         - name
+        - code
       properties:
         id:
           type: integer
         name:
           type: string
+        # A union of SCALARS, unlike Animal/Animal2 below whose branches are $refs and therefore
+        # become PHP classes gated by `x-php-instanceof`. With no class to gate on, the emitted
+        # interpreter has to type-gate the branches itself, which is the only path that reaches
+        # two pieces of code the corpus otherwise never showed in any mode:
+        #   - `describeOpenApiUnionMismatch()`, the sentence naming the accepted types;
+        #   - the branch type test, where a JSON `42.0` counts as an integer (JSON Schema
+        #     2020-12 §6.1.1). A plain `type: integer` property never gets there — the PHP `int`
+        #     type already guarantees it, so `pruneConstraintsCoveredByPhpType()` drops it.
+        code:
+          oneOf:
+            - type: integer
+              minimum: 10
+              maximum: 100
+            - type: string
+              format: uuid
+        # Two formats whose emitted helpers nothing else in the corpus reaches. `uri` is ABSOLUTE (only
+        # the `*-reference` forms take a relative value) and `uri-template` needs a real RFC 6570 grammar
+        # check — both were wrong in the emitted interpreter while no snapshot covered them.
+        homepage:
+          type: string
+          format: uri
+        endpoint:
+          type: string
+          format: uri-template
     TestPatchRequest:
       type: object
       required:

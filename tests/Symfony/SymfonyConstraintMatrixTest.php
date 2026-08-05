@@ -786,16 +786,35 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $fqcn = $namespace . '\LinkPayload';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
-        $this->assertCount(0, $validator->validate(new $fqcn(uri: '/docs/page', iri: '/путь')));
+        // `uri` and `iri` are ABSOLUTE (RFC 3986 / 3987) — a scheme is required. `#[Assert\Url]` is still
+        // not used: it rejects non-ASCII, which an IRI is allowed to carry.
+        $this->assertCount(0, $validator->validate(new $fqcn(uri: 'https://a.example/docs', iri: 'https://пример.example/путь')));
 
-        $violations = $validator->validate(new $fqcn(uri: 'bad uri', iri: 'bad iri'));
-        $messages = [];
-        foreach ($violations as $violation) {
-            $messages[] = (string)$violation->getMessage();
-        }
-        $joined = implode("\n", $messages);
+        $joined = $this->messagesFor($validator->validate(new $fqcn(uri: 'bad uri', iri: 'bad iri')));
         $this->assertStringContainsString('field "uri" must match format uri', $joined);
         $this->assertStringContainsString('field "iri" must match format iri', $joined);
+
+        // A RELATIVE value belongs to `uri-reference`/`iri-reference`, not here. Both were accepted while
+        // the emitted interpreter mapped all four formats to the reference check, and the runtime
+        // validator refused them all along — see `ValidationParityTest` cases "format uri" / "format iri".
+        $relative = $this->messagesFor($validator->validate(new $fqcn(uri: '/docs/page', iri: '/путь')));
+        $this->assertStringContainsString('field "uri" must match format uri', $relative);
+        $this->assertStringContainsString('field "iri" must match format iri', $relative);
+    }
+
+    /**
+     * @param iterable<mixed> $violations
+     */
+    private function messagesFor(iterable $violations): string
+    {
+        $messages = [];
+        foreach ($violations as $violation) {
+            $messages[] = is_object($violation) && method_exists($violation, 'getMessage')
+                ? (string)$violation->getMessage()
+                : '';
+        }
+
+        return implode("\n", $messages);
     }
 
     public function testContentKeywordsValidateInCallback(): void

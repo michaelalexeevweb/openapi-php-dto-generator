@@ -614,7 +614,12 @@ final class DtoValidatorTest extends TestCase
         ]);
 
         $this->assertNotEmpty($errors);
-        $this->assertStringContainsString('does not match any anyOf branch', $errors[0]);
+        // With every branch gated out there is no branch reason to report, so the sentence names the
+        // types the union accepts instead of leaving the caller to open the spec.
+        $this->assertSame(
+            'v does not match any anyOf branch (expected integer or string, got boolean)',
+            $errors[0],
+        );
     }
 
     public function testAnyOfReturnsConstraintErrorsWhenTypeMatchesButConstraintFails(): void
@@ -670,7 +675,41 @@ final class DtoValidatorTest extends TestCase
         ]);
 
         $this->assertNotEmpty($errors);
-        $this->assertStringContainsString('does not match any oneOf branch', $errors[0]);
+        $this->assertSame(
+            'v does not match any oneOf branch (expected integer or string, got boolean)',
+            $errors[0],
+        );
+    }
+
+    public function testAUnionOfObjectAndIntegerNamesBothTypesWhenNeitherMatches(): void
+    {
+        $errors = $this->validator->validate('f', true, [
+            'oneOf' => [
+                ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]],
+                ['type' => 'integer'],
+            ],
+        ]);
+
+        // The same sentence the emitted interpreter writes, subject prefix aside.
+        $this->assertSame(
+            ['f does not match any oneOf branch (expected object or integer, got boolean)'],
+            $errors,
+        );
+    }
+
+    public function testAUnionWithNoDeclaredTypesKeepsTheBareSentence(): void
+    {
+        // Nothing to name: with no `type` on either branch the branches are always evaluated, and a
+        // parenthesis listing nothing would be noise.
+        $errors = $this->validator->validate('f', true, [
+            'oneOf' => [
+                ['const' => 'a'],
+                ['const' => 'b'],
+            ],
+        ]);
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringNotContainsString('expected', $errors[0]);
     }
 
     public function testOneOfAcceptsWhenOneOfTwoTypeMatchingBranchesFullyValidates(): void
@@ -2434,11 +2473,21 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('v', 11, $c));
     }
 
-    public function testIntegerTypeRejectsFloatValue(): void
+    /**
+     * JSON Schema 2020-12 §6.1.1: `integer` matches any NUMBER with a zero fractional part. A payload of
+     * `{"v": 1.0}` decodes to a PHP float, and rejecting it — which this test used to demand — refused a
+     * value the spec calls valid. A real fractional part is still not an integer.
+     */
+    public function testIntegerTypeAcceptsAnIntegralFloatButNotAFractionalOne(): void
     {
-        // A float (even 1.0) is not an integer.
-        $this->assertNotEmpty($this->validator->validate('v', 1.0, ['type' => 'integer']));
+        $this->assertSame([], $this->validator->validate('v', 1.0, ['type' => 'integer']));
+        $this->assertSame([], $this->validator->validate('v', -7.0, ['type' => 'integer']));
         $this->assertSame([], $this->validator->validate('v', 1, ['type' => 'integer']));
+
+        $this->assertNotEmpty($this->validator->validate('v', 1.5, ['type' => 'integer']));
+        $this->assertNotEmpty($this->validator->validate('v', INF, ['type' => 'integer']));
+        $this->assertNotEmpty($this->validator->validate('v', NAN, ['type' => 'integer']));
+
         // number accepts both int and float.
         $this->assertSame([], $this->validator->validate('v', 1.5, ['type' => 'number']));
         $this->assertSame([], $this->validator->validate('v', 2, ['type' => 'number']));

@@ -13,7 +13,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Features
 
 - 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
-- 🎯 **Two generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer) or **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes, validated and (de)serialized by Symfony itself)
+- 🎯 **Three generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer), **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes) or **[laravel](README.laravel.md)** (a plain DTO plus a `FormRequest` carrying `rules()` — nothing to install beyond the framework)
 - ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
 - 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
 - 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
@@ -27,16 +27,19 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
 - [Generate DTOs](#generate-dto-classes-from-yaml-openapi-spec)
-- [Generation Modes: Runtime vs Symfony](#generation-modes-runtime-vs-symfony)
-  - [Runtime mode guide](README.runtime.md) — request binding, presence tracking, PSR-7 / Laravel
+- [Generation Modes](#generation-modes)
+  - [Runtime mode guide](README.runtime.md) — request binding, presence tracking, PSR-7
   - [Symfony mode guide](README.symfony.md) — attribute mapping, serialization groups, error codes
+  - [Laravel mode guide](README.laravel.md) — FormRequest, rules(), what the interpreter adds
+- [Support matrix](README.support-matrix.md) — every keyword per mode, the six divergences, what is not generated at all
+- [Performance](README.performance.md) — bind / validate / normalize per mode, measured, with the benchmark to re-run it
 - [Validation Notes](#validation-notes)
 - [Upgrading](#upgrading)
 
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.9.0
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.10.0
 ```
 
 ## Requirements
@@ -118,34 +121,41 @@ Parameters:
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
 | `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
-| `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime) or `symfony` (DTOs decorated with Symfony Validator/Serializer attributes). See [Generation Modes](#generation-modes-runtime-vs-symfony). |
+| `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime), `symfony` (DTOs decorated with Symfony Validator/Serializer attributes) or `laravel` (a plain DTO plus a `FormRequest` with `rules()`). See [Generation Modes](#generation-modes). |
 | `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
 | `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
 | `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
 
-## Generation Modes: Runtime vs Symfony
+## Generation Modes
 
-The generator emits DTOs in one of two modes, selected with `--attributes` (default: `runtime`).
-Both enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
+The generator emits DTOs in one of three modes, selected with `--attributes` (default: `runtime`).
+All three enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
 
-| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) |
-|---|---|---|
-| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes, no library dependency |
-| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer`, nothing of ours |
-| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` |
-| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) |
-| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply |
-| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter |
-| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass |
+| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) | **[Laravel](README.laravel.md)** (`--attributes=laravel`) |
+|---|---|---|---|
+| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes | plain class with getters, `rules()`, `fromValidated()`, plus a `FormRequest` for every request payload |
+| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer` | nothing to install — `FormRequest` and the validator ship with Laravel |
+| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` | Laravel rules + a generated `withValidator()` |
+| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) | the framework's own 422 with its error bag |
+| Validated before the controller runs | you call the deserializer | yes, via `#[MapRequestPayload]` | yes, the FormRequest is resolved first |
+| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply | done by Laravel, same limitation |
+| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter | yes — `isXxxProvided()`, from the validated keys |
+| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass | enforced |
+| `additionalProperties: false` on a DTO-shaped schema | not enforced (the payload is bound first) | not enforced | **enforced** — the interpreter sees the raw payload |
 
 Rule of thumb: **runtime** when the request itself must follow the spec (parameter styles, partial
-updates, one library end to end); **symfony** when you want plain DTOs your framework owns and
-violations in the shape Symfony already speaks.
+updates, one library end to end); **symfony** or **laravel** when you want plain DTOs your framework
+owns, validated by the framework, with errors in the shape it already speaks.
 
 Each mode has its own guide — what it can do, how to wire it, where it stops:
 
 - **[README.runtime.md](README.runtime.md)**
 - **[README.symfony.md](README.symfony.md)**
+- **[README.laravel.md](README.laravel.md)**
+
+For the keyword-by-keyword answer — what every mode enforces, the six places they differ and why, and
+what is not generated in any of them — see the **[support matrix](README.support-matrix.md)**. It is
+derived from the parity suites, so a row that stops being true fails a test.
 
 
 ## Validation Notes
@@ -158,13 +168,30 @@ A few behaviours worth knowing when validating against the schema:
 - **`contentEncoding` / `contentMediaType` / `contentSchema` (JSON Schema 2019-09/2020-12, OpenAPI 3.1).** Enforced as assertions on strings: the value must decode under `contentEncoding` (`base64`, `base16`, `quoted-printable`, `7bit`/`8bit`/`binary`; an unknown codec such as `base32` is accepted leniently), the decoded bytes must parse when `contentMediaType` is a JSON type (`application/json` or any `+json`), and the parsed document must satisfy `contentSchema`.
 - **`$defs` (JSON Schema) is folded into `components.schemas`.** A `$defs` map (in the root document or an external file) and any `#/$defs/X` pointer — local `#/$defs/X` or cross-file `other.yaml#/$defs/X` — are normalized to `components.schemas` at load time, so `$defs`-style specs generate the same as `components`-style ones. (Subschema-local `$defs`, e.g. `#/components/schemas/Foo/$defs/Bar`, is not folded — prefer top-level `components.schemas`/`$defs` for shared types.)
 - **Parameters serialized via `content`.** A parameter that uses `content: {application/json: {schema}}` instead of a plain `schema` is supported: the schema is extracted and its JSON-string value is decoded before validation and casting (malformed JSON is a clear error).
+- **`type: integer` accepts a number with a zero fractional part** (JSON Schema 2020-12 §6.1.1), so a payload of `42.0` is a valid integer while `42.5` is not. Runtime and Laravel mode follow this end to end, hydration included. Symfony mode cannot: its serializer type-checks the `int` property before any generated constraint runs, and rejects `42.0` with a denormalization error.
+- **`type: object` refuses a JSON array.** `{"tags":[1,2]}` where the schema says object is rejected — it used to be accepted and read as a map keyed `0..n-1`. The distinction lives in the RAW body: once PHP decodes it, a JSON object whose keys are exactly `0..n-1` and a JSON array are the same value. So the check runs where the raw body is still reachable — the runtime deserializer decodes it itself, and the generated Laravel `FormRequest` hands `withValidator()` the undecoded body. Symfony mode cannot: `#[MapRequestPayload]` denormalizes first, so there it stays accepted.
+- **Error messages are the same sentence in every mode**, differing only in how the subject is named:
+
+  | Mode | Sentence |
+  |---|---|
+  | runtime | `param "tags" must contain unique items` |
+  | symfony | `field "tags" must contain unique items` |
+  | laravel | `tags must contain unique items` — keyed by `tags` in the error bag |
+
+  This holds for every keyword the interpreter owns (`oneOf`, `anyOf`, `not`, `contains`, `if`/`then`, `propertyNames`, `unevaluated*`, …) and is pinned by `tests/Parity/InterpreterMessageParityTest`. A keyword the framework has its own rule for keeps the FRAMEWORK's message — `exclusiveMinimum` reads *"This value should be greater than 3."* in Symfony mode and `multipleOf` resolves `validation.multiple_of` in Laravel mode — so your own translations still apply.
 - **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
 
 ## Upgrading
 
 The library itself is a drop-in replacement: **DTOs generated by 2.8.x keep working unchanged against
-2.9.0 services** (measured on 55 specs — same accept/reject verdicts, same normalized output; the two
+2.10.0 services** (measured on 55 specs — same accept/reject verdicts, same normalized output; the two
 metadata methods added in 2.9.0 are simply absent on old DTOs and the services fall back).
+
+**2.9.0 → 2.10.0** adds a mode and changes nothing else for existing users: runtime-mode output is
+byte-identical, Symfony-mode output differs in two lines of the emitted interpreter, and the whole 2.9.0
+test suite passes against 2.10.0 services with one intentional difference — `type: integer` now accepts
+`42.0`, which the spec always called an integer. Code that string-matches an error message should read
+the three message changes in the [CHANGELOG](CHANGELOG.md).
 
 What changes is the code the generator EMITS — a bare `type: object` property becomes a map, a named
 scalar schema becomes a type alias, and Symfony-mode DTOs expose accessors instead of public

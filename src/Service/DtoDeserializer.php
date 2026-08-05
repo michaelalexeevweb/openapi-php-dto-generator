@@ -1809,12 +1809,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // JSON should stay strict: no implicit scalar conversions.
         if ($source === 'json') {
             if ($typeName === 'int') {
-                if (!is_int($value)) {
+                // Strict still means "an integer per the spec": JSON Schema 2020-12 §6.1.1 counts a
+                // number with a zero fractional part as one, and PHP decodes `42.0` to a float. A real
+                // fractional part, an out-of-range magnitude and a numeric STRING are all still refused.
+                if (!is_int($value) && !(is_float($value) && $this->isStrictIntValue($value))) {
                     throw new RuntimeException(
                         $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
                     );
                 }
-                return $value;
+
+                return (int)$value;
             }
 
             if ($typeName === 'float') {
@@ -1846,6 +1850,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             if ($typeName === 'array') {
+                // Remembered BEFORE the conversion: `{"0":1,"1":2}` is a JSON object and decodes to a
+                // PHP list, so after `stdClassToArray()` it is indistinguishable from `[1,2]`.
+                $cameInAsJsonObject = $value instanceof stdClass;
+
                 if ($value instanceof stdClass) {
                     if (!$allowsAssociativeArray) {
                         throw new RuntimeException(
@@ -1864,6 +1872,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if (!array_is_list($value) && !$allowsAssociativeArray) {
                     throw new RuntimeException(
                         $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
+                    );
+                }
+
+                // The mirror case: `type: object` means a JSON OBJECT, and a JSON array decoded into a
+                // list would silently become a map keyed 0..n-1. Here — unlike after hydration — the two
+                // are still distinguishable, so the wire shape is checked at the source. An empty array
+                // is left alone: a pre-decoded body reports `{}` exactly that way.
+                if ($allowsAssociativeArray && !$cameInAsJsonObject && $value !== [] && array_is_list($value)) {
+                    throw new RuntimeException(
+                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
                     );
                 }
 
@@ -1996,6 +2014,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($kind === 'dto') {
             if ($value instanceof stdClass) {
                 $value = $this->stdClassToArray($value);
+            } elseif (is_array($value) && $value !== [] && array_is_list($value)) {
+                // Same rule as a map: a nested object is a JSON OBJECT, and a JSON array reaching here
+                // used to be deserialized as one — every key missing, so a schema with no required
+                // property accepted `[1,2]` as an object. `[]` is left alone: it is also how `{}` arrives
+                // from a pre-decoded body.
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
+                );
             }
             if (is_array($value)) {
                 $targetDtoClass = $this->resolveDiscriminatorTargetClass(
@@ -2008,10 +2034,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // either throws on unknown class, or returns null and we fall back to $typeName
                 // (already validated by the 'dto' kind resolution above).
                 /** @var class-string<object> $targetDtoClass */
-                return $this->deserializeFromArray(data: $value, dtoClass: $targetDtoClass);
+                try {
+                    return $this->deserializeFromArray(data: $value, dtoClass: $targetDtoClass);
+                } catch (RuntimeException $e) {
+                    throw new RuntimeException(
+                        $this->prependParamPath(message: $e->getMessage(), prefix: $paramPath),
+                        previous: $e,
+                    );
+                }
             }
             throw new RuntimeException(
-                "Cannot deserialize nested DTO {$typeName} from non-array value.",
+                "param \"{$paramPath}\": Cannot deserialize nested DTO {$typeName} from non-array value.",
             );
         }
 
@@ -2155,9 +2188,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     private function prependParamPath(string $message, string $prefix): string
     {
+        // Both spellings carry a subject: `param "x" expects int` and `Required parameter "x" not found
+        // in request.` — a nested DTO's message named the bare key, so a missing `discriminator.id`
+        // read exactly like a missing root `id`.
         return preg_replace_callback(
-            '/param "([^"]+)"/',
-            static fn(array $m): string => sprintf('param "%s.%s"', $prefix, $m[1]),
+            '/\b(param|parameter) "([^"]+)"/i',
+            static fn(array $m): string => sprintf('%s "%s.%s"', $m[1], $prefix, $m[2]),
             $message,
         ) ?? $message;
     }
@@ -2693,6 +2729,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         if (is_int($value)) {
             return true;
+        }
+
+        // JSON Schema 2020-12 §6.1.1: `integer` matches any NUMBER with a zero fractional part, so a
+        // payload of `42.0` is an integer — PHP just decodes it to a float. The magnitude still has to
+        // fit an int, or the cast would saturate silently.
+        if (is_float($value)) {
+            return is_finite($value)
+                && floor($value) === $value
+                && $value >= (float)PHP_INT_MIN
+                && $value <= (float)PHP_INT_MAX;
         }
 
         if (!is_string($value)) {

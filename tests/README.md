@@ -69,7 +69,7 @@ The test suite covers all major features:
 
 ## Golden Corpus Snapshot
 
-`tests/Golden/GoldenCorpusTest.php` generates `OpenApiExamples/test.yaml` in **both** modes and
+`tests/Golden/GoldenCorpusTest.php` generates `OpenApiExamples/test.yaml` in **all three** modes and
 compares the whole output, byte for byte, against `tests/Golden/snapshots/<mode>.snapshot.txt`
 (one text file per mode: a header with the file count, the total line count and the file inventory,
 then every generated file). A second test parses every generated file with `php -l`, so a snapshot

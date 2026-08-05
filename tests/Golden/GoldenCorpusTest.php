@@ -18,9 +18,13 @@ use Symfony\Component\Yaml\Yaml;
  * that stopped being emitted, a `use` statement that went missing, a helper method that appeared in
  * 29 files instead of 10 — all three were caught by a human reading the output, not by a test.
  *
- * The snapshot fixes that. `OpenApiExamples/test.yaml` is generated in both modes and compared
+ * The snapshot fixes that. `OpenApiExamples/test.yaml` is generated in EVERY mode and compared
  * against a committed text file per mode, so any change to the emitted code shows up as a reviewable
  * diff of the snapshot instead of as silence.
+ *
+ * The alarm only covers what the spec exercises, so the spec carries a note wherever a schema is there
+ * for coverage rather than for realism — `TestPostRequest.code` is a scalar `oneOf` because nothing else
+ * in the corpus reaches the emitted branch type matcher or the union-mismatch sentence.
  *
  * Snapshots are text (`.snapshot.txt`), not PHP files: a `.php` snapshot named `Test.php` matches
  * PHPUnit's default test-file suffix and php-cs-fixer would rewrite the very formatting under test.
@@ -104,6 +108,7 @@ final class GoldenCorpusTest extends TestCase
         return [
             'runtime mode' => ['runtime'],
             'symfony mode' => ['symfony'],
+            'laravel mode' => ['laravel'],
         ];
     }
 

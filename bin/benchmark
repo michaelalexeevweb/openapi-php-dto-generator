@@ -1,0 +1,381 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Times the three generation modes on the same payload, step by step.
+ *
+ * Not a test: it asserts nothing and is never run by PHPUnit. It exists so the numbers in
+ * README.performance.md can be reproduced and re-measured rather than trusted.
+ *
+ *   php bin/benchmark                # default: 20000 iterations
+ *   php bin/benchmark --iterations=100000
+ *   php bin/benchmark --markdown     # emit the README tables
+ *
+ * The steps are NOT the same shape in every mode, and the report says so:
+ *
+ *   - runtime and symfony bind the payload into the DTO first, then validate the OBJECT;
+ *   - laravel validates the ARRAY first and only then hydrates, because that is what a FormRequest
+ *     does — so its "validate" happens before its "hydrate", not after.
+ *
+ * Comparing "bind" against "hydrate" across modes is therefore fair; comparing the ORDER is not.
+ */
+
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
+use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
+use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
+use Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
+use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
+use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
+use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Validator\Validation;
+
+$iterations = 20000;
+$asMarkdown = false;
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--iterations=')) {
+        $iterations = max(1, (int)substr($argument, strlen('--iterations=')));
+        continue;
+    }
+    if ($argument === '--markdown') {
+        $asMarkdown = true;
+    }
+}
+
+/**
+ * One realistic payload: scalars with bounds, an enum, a date-time, a nested DTO, a list of DTOs, a
+ * free-form map, and one composition keyword so the emitted interpreter is exercised too. A schema the
+ * rules cover entirely would flatter the framework modes by skipping their second layer.
+ */
+$spec = [
+    'openapi' => '3.1.0',
+    'info' => ['title' => 'Bench', 'version' => '1.0.0'],
+    'components' => [
+        'schemas' => [
+            'Status' => ['type' => 'string', 'enum' => ['draft', 'live']],
+            'Tag' => [
+                'type' => 'object',
+                'required' => ['id', 'name'],
+                'properties' => [
+                    'id' => ['type' => 'integer', 'minimum' => 1],
+                    'name' => ['type' => 'string', 'minLength' => 2, 'maxLength' => 40],
+                ],
+            ],
+            'Author' => [
+                'type' => 'object',
+                'required' => ['id', 'email'],
+                'properties' => [
+                    'id' => ['type' => 'integer', 'minimum' => 1],
+                    'email' => ['type' => 'string', 'format' => 'email'],
+                ],
+            ],
+            'Article' => [
+                'type' => 'object',
+                'required' => ['id', 'title', 'status', 'author', 'tags', 'createdAt'],
+                'properties' => [
+                    'id' => ['type' => 'integer', 'minimum' => 1],
+                    'title' => ['type' => 'string', 'minLength' => 3, 'maxLength' => 120],
+                    'slug' => ['type' => 'string', 'pattern' => '^[a-z0-9-]+$'],
+                    'status' => ['$ref' => '#/components/schemas/Status'],
+                    'author' => ['$ref' => '#/components/schemas/Author'],
+                    'tags' => [
+                        'type' => 'array',
+                        'minItems' => 1,
+                        'maxItems' => 20,
+                        'items' => ['$ref' => '#/components/schemas/Tag'],
+                    ],
+                    'scores' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0]],
+                    'meta' => ['type' => 'object', 'additionalProperties' => ['type' => 'string']],
+                    'createdAt' => ['type' => 'string', 'format' => 'date-time'],
+                    // Not expressible as a native rule or attribute in either framework mode: this is
+                    // what puts the generated interpreter on the hot path.
+                    'kind' => [
+                        'oneOf' => [
+                            ['type' => 'integer', 'minimum' => 10, 'maximum' => 100],
+                            ['type' => 'string', 'format' => 'uuid'],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+];
+
+$payload = [
+    'id' => 42,
+    'title' => 'A benchmark article',
+    'slug' => 'a-benchmark-article',
+    'status' => 'live',
+    'author' => ['id' => 7, 'email' => 'author@example.com'],
+    'tags' => [
+        ['id' => 1, 'name' => 'php'],
+        ['id' => 2, 'name' => 'openapi'],
+        ['id' => 3, 'name' => 'dto'],
+    ],
+    'scores' => [1, 2, 3, 4, 5],
+    'meta' => ['source' => 'bench', 'region' => 'eu'],
+    'createdAt' => '2026-03-10T12:00:00+00:00',
+    'kind' => 42,
+];
+$json = json_encode($payload, JSON_THROW_ON_ERROR);
+
+$root = sys_get_temp_dir() . '/openapi-dto-bench-' . getmypid();
+$results = [];
+
+/**
+ * @param callable():mixed $operation
+ * @return float milliseconds per operation
+ */
+$time = static function (callable $operation, int $iterations): float {
+    // Warm up: first-call autoloading, opcache and Symfony metadata caches are not what we measure.
+    for ($i = 0; $i < 200; $i++) {
+        $operation();
+    }
+
+    $started = hrtime(true);
+    for ($i = 0; $i < $iterations; $i++) {
+        $operation();
+    }
+
+    return (hrtime(true) - $started) / $iterations / 1_000_000;
+};
+
+$generate = static function (array $spec, string $root, string $mode): string {
+    $namespace = 'Bench' . ucfirst($mode);
+    $target = $root . '/' . $namespace;
+    if (!is_dir($target)) {
+        mkdir($target, 0o755, true);
+    }
+
+    (new GenerateDtoCommand())->generateFromArray($spec, $target, $namespace, $mode);
+
+    spl_autoload_register(static function (string $class) use ($target, $namespace): void {
+        if (!str_starts_with($class, $namespace . '\\')) {
+            return;
+        }
+        $file = $target . '/' . substr($class, strlen($namespace) + 1) . '.php';
+        if (is_file($file)) {
+            require_once $file;
+        }
+    });
+
+    return $namespace . '\Article';
+};
+
+// ---------------------------------------------------------------- runtime
+$runtimeClass = $generate($spec, $root, 'runtime');
+$deserializer = new DtoDeserializer();
+$normalizer = new DtoNormalizer();
+$makeRequest = static fn(string $json): Request => Request::create(
+    '/bench',
+    'POST',
+    [],
+    [],
+    [],
+    ['CONTENT_TYPE' => 'application/json'],
+    $json,
+);
+
+$runtimeDto = $deserializer->deserialize($makeRequest($json), $runtimeClass);
+// The Request is built OUTSIDE the timed closure: constructing it is the caller's cost in every mode, and
+// leaving it in measured Symfony's HttpFoundation rather than this library. `deserialize()` only reads it.
+$runtimeRequest = $makeRequest($json);
+$results['runtime']['bind'] = $time(
+    static fn(): object => $deserializer->deserialize($runtimeRequest, $runtimeClass),
+    $iterations,
+);
+// What the other two modes never do: read the body, the query, the headers and the cookies according to
+// the document (parameter sources, `style`/`explode`, multipart encoding). Timed from a fresh Request.
+$results['runtime']['bind from a fresh request'] = $time(
+    static fn(): object => $deserializer->deserialize($makeRequest($json), $runtimeClass),
+    $iterations,
+);
+$results['runtime']['validate'] = $time(
+    static fn(): array => $normalizer->validate($runtimeDto),
+    $iterations,
+);
+$results['runtime']['normalize'] = $time(
+    static fn(): array => $normalizer->toArray($runtimeDto),
+    $iterations,
+);
+$results['runtime']['normalize+validate'] = $time(
+    static fn(): array => $normalizer->validateAndNormalizeToArray($runtimeDto),
+    $iterations,
+);
+
+// ---------------------------------------------------------------- symfony
+$symfonyClass = $generate($spec, $root, 'symfony');
+$classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+$typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
+$serializer = new Serializer(
+    [
+        new BackedEnumNormalizer(),
+        new DateTimeNormalizer(),
+        new ArrayDenormalizer(),
+        new ObjectNormalizer(
+            $classMetadataFactory,
+            new MetadataAwareNameConverter($classMetadataFactory),
+            null,
+            $typeExtractor,
+        ),
+    ],
+    [new JsonEncoder()],
+);
+$symfonyValidator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+
+$symfonyDto = $serializer->deserialize($json, $symfonyClass, 'json');
+$results['symfony']['bind'] = $time(
+    static fn(): mixed => $serializer->deserialize($json, $symfonyClass, 'json'),
+    $iterations,
+);
+$results['symfony']['validate'] = $time(
+    static fn(): mixed => $symfonyValidator->validate($symfonyDto),
+    $iterations,
+);
+$results['symfony']['normalize'] = $time(
+    static fn(): mixed => $serializer->normalize($symfonyDto, 'json'),
+    $iterations,
+);
+$results['symfony']['normalize+validate'] = $results['symfony']['normalize'] + $results['symfony']['validate'];
+
+// ---------------------------------------------------------------- laravel
+$laravelClass = $generate($spec, $root, 'laravel');
+$laravelFactory = new Illuminate\Validation\Factory(
+    new Illuminate\Translation\Translator(new Illuminate\Translation\ArrayLoader(), 'en'),
+);
+/** @var array<string, mixed> $laravelRules */
+$laravelRules = call_user_func([$laravelClass, 'rules']);
+$hasInterpreter = method_exists($laravelClass, 'withValidator');
+
+$validateLaravel = static function () use ($laravelFactory, $payload, $laravelRules, $laravelClass, $hasInterpreter, $json): bool {
+    $validator = $laravelFactory->make($payload, $laravelRules);
+    if ($hasInterpreter) {
+        call_user_func([$laravelClass, 'withValidator'], $validator, $json);
+    }
+
+    return $validator->passes();
+};
+
+$laravelValidated = $laravelFactory->make($payload, $laravelRules)->validated();
+$laravelDto = call_user_func([$laravelClass, 'fromValidated'], $laravelValidated);
+
+$results['laravel']['bind'] = $time(
+    static fn(): mixed => call_user_func([$laravelClass, 'fromValidated'], $laravelValidated),
+    $iterations,
+);
+$results['laravel']['validate'] = $time($validateLaravel, $iterations);
+
+// Laravel's validate step is the expensive one, so split it: how much is the framework building a
+// Validator and parsing the rule strings, and how much is the emitted interpreter? Without the split the
+// number reads as "the generated code is slow", which the measurement does not support.
+$results['laravel']['— framework, empty rules'] = $time(
+    static fn(): bool => $laravelFactory->make($payload, [])->passes(),
+    $iterations,
+);
+$results['laravel']['— framework + rules()'] = $time(
+    static fn(): bool => $laravelFactory->make($payload, $laravelRules)->passes(),
+    $iterations,
+);
+$results['laravel']['— interpreter only'] = $hasInterpreter
+    ? $time(
+        static function () use ($laravelFactory, $payload, $laravelClass, $json): bool {
+            $validator = $laravelFactory->make($payload, []);
+            call_user_func([$laravelClass, 'withValidator'], $validator, $json);
+
+            return $validator->passes();
+        },
+        $iterations,
+    )
+    : 0.0;
+$results['laravel']['normalize'] = $time(
+    static fn(): array => $laravelDto->toArray(),
+    $iterations,
+);
+$results['laravel']['normalize+validate'] = $results['laravel']['normalize'] + $results['laravel']['validate'];
+
+// ---------------------------------------------------------------- report
+$fmt = static fn(float $ms): string => number_format($ms, 4);
+$steps = ['bind', 'validate', 'normalize', 'normalize+validate'];
+$extras = [
+    'runtime' => ['bind from a fresh request'],
+    'laravel' => ['— framework, empty rules', '— framework + rules()', '— interpreter only'],
+];
+
+if ($asMarkdown) {
+    printf(
+        "PHP %s · %d iterations · opcache %s\n\n",
+        PHP_VERSION,
+        $iterations,
+        function_exists('opcache_get_status') && opcache_get_status(false) !== false ? 'on' : 'off',
+    );
+    echo "| Step | runtime | symfony | laravel |\n|---|---:|---:|---:|\n";
+    foreach ($steps as $step) {
+        printf(
+            "| %s | %s ms | %s ms | %s ms |\n",
+            $step,
+            $fmt($results['runtime'][$step]),
+            $fmt($results['symfony'][$step]),
+            $fmt($results['laravel'][$step]),
+        );
+    }
+    echo "\n| Round trip | runtime | symfony | laravel |\n|---|---:|---:|---:|\n";
+    foreach (['without validation' => false, 'with validation' => true] as $label => $withValidation) {
+        $total = [];
+        foreach (['runtime', 'symfony', 'laravel'] as $mode) {
+            $total[$mode] = $results[$mode]['bind'] + $results[$mode]['normalize']
+                + ($withValidation ? $results[$mode]['validate'] : 0.0);
+        }
+        printf(
+            "| %s | %s ms | %s ms | %s ms |\n",
+            $label,
+            $fmt($total['runtime']),
+            $fmt($total['symfony']),
+            $fmt($total['laravel']),
+        );
+    }
+    echo "\nBreakdown:\n\n| | ms |\n|---|---:|\n";
+    foreach ($extras as $mode => $rows) {
+        foreach ($rows as $row) {
+            printf("| %s: %s | %s ms |\n", $mode, $row, $fmt($results[$mode][$row]));
+        }
+    }
+} else {
+    printf("PHP %s · %d iterations, ms per operation\n\n", PHP_VERSION, $iterations);
+    printf("%-28s %10s %10s %10s\n", 'step', 'runtime', 'symfony', 'laravel');
+    foreach ($steps as $step) {
+        printf(
+            "%-28s %10s %10s %10s\n",
+            $step,
+            $fmt($results['runtime'][$step]),
+            $fmt($results['symfony'][$step]),
+            $fmt($results['laravel'][$step]),
+        );
+    }
+    echo "\nbreakdown\n";
+    foreach ($extras as $mode => $rows) {
+        foreach ($rows as $row) {
+            printf("%-28s %10s   (%s)\n", $row, $fmt($results[$mode][$row]), $mode);
+        }
+    }
+}
+
+// Leave nothing behind: the generated classes are already loaded, the files are not needed.
+foreach (glob($root . '/*') ?: [] as $directory) {
+    foreach (glob($directory . '/*.php') ?: [] as $file) {
+        @unlink($file);
+    }
+    @rmdir($directory);
+}
+@rmdir($root);

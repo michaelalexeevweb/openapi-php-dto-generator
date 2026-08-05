@@ -3916,6 +3916,71 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertNull($this->lintError($this->outputDirectory . '/Probe.php'));
     }
 
+    /**
+     * The same swallowing, one step further out: an object with no `properties` but WITH a keyword that
+     * constrains its keys was read as shaped, and materialized into a class with nothing in it.
+     *
+     * All four keywords name keys without declaring a schema for any of them, so no DTO can hold what
+     * they describe:
+     *
+     *   - `required: [a]` — `a` must be present, its value is unconstrained;
+     *   - `dependentRequired` — the same, conditionally;
+     *   - `propertyNames` — constrains the key names, values unconstrained;
+     *   - `unevaluatedProperties: false` — with no `properties` to evaluate it forbids every key, and the
+     *     empty class was wrong in the way that matters: it ACCEPTED keys and dropped them.
+     *
+     * Measured before the fix: `{"depReq":{"0":1,"1":2}}` came back as `[]` in every mode.
+     */
+    public function testAnObjectConstrainingOnlyItsKeysKeepsItsPayloadAsAMap(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['reqOnly'],
+                        'properties' => [
+                            'reqOnly' => ['type' => 'object', 'required' => ['a']],
+                            'depReq' => ['type' => 'object', 'dependentRequired' => ['kind' => ['x-1']]],
+                            'propNames' => ['type' => 'object', 'propertyNames' => ['pattern' => '^x']],
+                            'noKeys' => ['type' => 'object', 'unevaluatedProperties' => false],
+                            // A keyword that really does bring properties in keeps its class.
+                            'composed' => ['type' => 'object', 'allOf' => [['$ref' => '#/components/schemas/Shaped']]],
+                        ],
+                    ],
+                    'Shaped' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'KeyConstraintNamespace');
+
+        $probe = (string)file_get_contents($this->outputDirectory . '/Probe.php');
+        // `reqOnly` is required, the other three are optional and therefore nullable.
+        $this->assertStringContainsString('@param array<string, mixed> $reqOnly', $probe);
+        foreach (['depReq', 'propNames', 'noKeys'] as $property) {
+            $this->assertStringContainsString(
+                sprintf('@param ?array<string, mixed> $%s', $property),
+                $probe,
+                $property . ' must stay a map',
+            );
+        }
+
+        foreach (['ProbeReqOnly', 'ProbeDepReq', 'ProbePropNames', 'ProbeNoKeys'] as $class) {
+            $this->assertFileDoesNotExist(
+                $this->outputDirectory . '/' . $class . '.php',
+                $class . ' would be a class with no properties',
+            );
+        }
+
+        // Composition does declare properties, just not inline — that one is still a class.
+        $this->assertFileExists($this->outputDirectory . '/Shaped.php');
+
+        $this->assertNull($this->lintError($this->outputDirectory . '/Probe.php'));
+    }
+
     public function testFreeFormValuesSurviveDeserializationAndNormalization(): void
     {
         $openApi = [

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Command;
 
 use JsonException;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
 use RuntimeException;
@@ -55,8 +56,11 @@ use Twig\Loader\FilesystemLoader;
 #[AsCommand(name: 'openapi:generate-dto', description: 'Generate readonly DTO classes from OpenAPI components.schemas')]
 final class GenerateDtoCommand extends Command
 {
-    // Per-mode emitters live in their own files; everything they need (schema registries, type
-    // resolution, naming, templates) stays on this class and is shared by both.
+    // One emitter per mode, each in its own file; everything they need (schema registries, type
+    // resolution, naming, templates) stays on this class and is shared by all three. Laravel mode also
+    // reads `RendersSymfonyDto::renderSymfonyValidationBlock()` — the interpreter has one
+    // implementation and three packagings, see `renderLaravelInterpreterBlock()`.
+    use RendersLaravelDto;
     use RendersRuntimeDto;
     use RendersSymfonyDto;
 
@@ -70,14 +74,34 @@ final class GenerateDtoCommand extends Command
      */
     private array $generationWarnings = [];
 
+    /**
+     * Classes that describe a REQUEST payload (a request body or the query/path parameters of an
+     * operation), as opposed to a response or a plain component. Laravel mode emits a FormRequest for
+     * these and for nothing else.
+     *
+     * @var array<string, true>
+     */
+    private array $requestPayloadClasses = [];
+
     /** Generation mode backed by this library's runtime (DtoValidator/Normalizer/Deserializer). */
     public const string ATTRIBUTE_MODE_RUNTIME = 'runtime';
 
     /** Generation mode emitting Symfony Validator/Serializer attributes (no library runtime). */
     public const string ATTRIBUTE_MODE_SYMFONY = 'symfony';
 
+    /**
+     * Generation mode emitting first-party Laravel artefacts: a plain DTO carrying a `rules()` array
+     * for `illuminate/validation` (no library runtime, and nothing to install — `FormRequest` and the
+     * validator ship with the framework).
+     */
+    public const string ATTRIBUTE_MODE_LARAVEL = 'laravel';
+
     /** @var array<int, string> */
-    public const array ATTRIBUTE_MODES = [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_SYMFONY];
+    public const array ATTRIBUTE_MODES = [
+        self::ATTRIBUTE_MODE_RUNTIME,
+        self::ATTRIBUTE_MODE_SYMFONY,
+        self::ATTRIBUTE_MODE_LARAVEL,
+    ];
 
     /**
      * Names PHP refuses as a class name, lowercased. Two groups, one symptom: the hard keywords
@@ -124,6 +148,36 @@ final class GenerateDtoCommand extends Command
         'dependentRequired',
         'unevaluatedProperties',
         'required',
+    ];
+
+    /**
+     * The subset of `OBJECT_SHAPING_KEYWORDS` that constrains WHICH KEYS a payload may or must carry
+     * without declaring a schema for any of them. On an object with no `properties` these do not shape
+     * anything a DTO could hold, and materializing one produced a class with no properties that
+     * silently swallowed the whole payload — measured at four keywords, in every mode:
+     *
+     *   - `required: [a]` — `a` must be there, its value is unconstrained;
+     *   - `dependentRequired` — the same, conditionally;
+     *   - `propertyNames` — constrains key names, values unconstrained;
+     *   - `unevaluatedProperties: false` — with no `properties` to evaluate, forbids every key. The
+     *     empty class was almost right and yet wrong in the way that matters: it ACCEPTED the keys and
+     *     dropped them, instead of reporting them.
+     *
+     * So such a schema stays a map, and the keyword is enforced over the map by the validator (runtime)
+     * or the emitted interpreter (symfony, laravel) — which is where every other key-level keyword,
+     * `additionalProperties` and `patternProperties` included, is already enforced.
+     *
+     * They stay in `OBJECT_SHAPING_KEYWORDS` because `isScalarAliasSchema()` reads that list for a
+     * different question: whether a `type: string` schema is a plain alias. A `required` beside a scalar
+     * type is not, whatever it means.
+     *
+     * @var array<int, string>
+     */
+    private const array PROPERTY_KEY_CONSTRAINT_KEYWORDS = [
+        'required',
+        'dependentRequired',
+        'propertyNames',
+        'unevaluatedProperties',
     ];
 
     public ?Environment $twig = null;
@@ -262,7 +316,7 @@ final class GenerateDtoCommand extends Command
             name: 'attributes',
             shortcut: null,
             mode: InputOption::VALUE_REQUIRED,
-            description: 'Generation mode: "runtime" (default, library runtime) or "symfony" (Symfony Validator/Serializer attributes)',
+            description: 'Generation mode: "runtime" (default, library runtime), "symfony" (Symfony Validator/Serializer attributes) or "laravel" (plain DTO + Laravel validation rules)',
             default: self::ATTRIBUTE_MODE_RUNTIME,
         );
         $this->addOption(
@@ -567,7 +621,11 @@ final class GenerateDtoCommand extends Command
     private function setAttributeMode(string $mode): void
     {
         if (!in_array($mode, self::ATTRIBUTE_MODES, true)) {
-            throw new RuntimeException(sprintf('Unknown generation mode: %s (expected "runtime" or "symfony").', $mode));
+            throw new RuntimeException(sprintf(
+                'Unknown generation mode: %s (expected one of: %s).',
+                $mode,
+                implode(', ', array_map(static fn(string $known): string => '"' . $known . '"', self::ATTRIBUTE_MODES)),
+            ));
         }
 
         $this->attributeMode = $mode;
@@ -757,6 +815,7 @@ final class GenerateDtoCommand extends Command
         $this->enumSchemas = [];
         $this->documentSelfUri = null;
         $this->generationWarnings = [];
+        $this->requestPayloadClasses = [];
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
         $this->discriminatorSchemas = [];
@@ -828,6 +887,16 @@ final class GenerateDtoCommand extends Command
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . '.php';
             file_put_contents($filePath, $classCode);
             $generatedCount++;
+
+            // Laravel mode also emits the first-party entry point for an INCOMING payload, so the
+            // application type-hints it and gets a validated, typed object without writing anything.
+            if ($this->laravelEmitsFormRequestFor($className)) {
+                file_put_contents(
+                    rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . 'FormRequest.php',
+                    $this->renderLaravelFormRequestClass($namespace, $className),
+                );
+                $generatedCount++;
+            }
         }
 
         foreach ($this->enumSchemas as $enumName => $enumDefinition) {
@@ -3243,6 +3312,9 @@ final class GenerateDtoCommand extends Command
      * pattern-based subschemas) disqualifies it: those schemas do describe properties, just not
      * inline.
      *
+     * A keyword that constrains the KEYS without declaring a schema for any of them does NOT —
+     * see `PROPERTY_KEY_CONSTRAINT_KEYWORDS`.
+     *
      * @param array<string, mixed> $schema
      */
     private function isFreeFormObjectSchema(array $schema): bool
@@ -3257,7 +3329,10 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach (self::OBJECT_SHAPING_KEYWORDS as $keyword) {
-            if (array_key_exists($keyword, $schema)) {
+            if (
+                array_key_exists($keyword, $schema)
+                && !in_array($keyword, self::PROPERTY_KEY_CONSTRAINT_KEYWORDS, true)
+            ) {
                 return false;
             }
         }
@@ -3640,6 +3715,20 @@ final class GenerateDtoCommand extends Command
      */
     private function renderDtoClass(string $namespace, string $className, array $schemaMetadata): string
     {
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
+            // Laravel DTOs are flattened for the same reason Symfony ones are: the payload is
+            // validated as one flat rule set and hydrated by a single factory, so a partially
+            // initialised parent would have nothing to hydrate it.
+            return $this->renderLaravelDtoClass(
+                namespace: $namespace,
+                className: $className,
+                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                unionTypes: $schemaMetadata['unionTypes'],
+                discriminator: $schemaMetadata['discriminator'] ?? null,
+                isAbstract: $schemaMetadata['abstract'] ?? false,
+            );
+        }
+
         if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
             // Symfony DTOs are flattened: inherited properties are merged into a single standalone
             // constructor (no `extends`/parent::__construct chaining), which maps cleanly onto the
@@ -4619,7 +4708,20 @@ final class GenerateDtoCommand extends Command
                     }
 
                     $schema = $mediaTypeObject['schema'] ?? null;
-                    if (!is_array($schema) || array_key_exists('$ref', $schema)) {
+                    if (!is_array($schema)) {
+                        continue;
+                    }
+
+                    // A body that points at a named component declares no NEW class — the component
+                    // already has one — but it is still a request payload, and that is what decides
+                    // whether the class gets a FormRequest. Only a LOCAL pointer: a component in an
+                    // external file belongs to whichever run generates that file.
+                    $bodyRef = $schema['$ref'] ?? null;
+                    if (is_string($bodyRef)) {
+                        $referencedSchema = $this->externalPointerSchemaName($bodyRef);
+                        if ($referencedSchema !== null) {
+                            $this->requestPayloadClasses[$this->schemaClassName($referencedSchema)] = true;
+                        }
                         continue;
                     }
 
@@ -4639,6 +4741,7 @@ final class GenerateDtoCommand extends Command
                     $inlineSchemas[$schemaName] = $schema;
                     $inlineOwners[$schemaName] = $ownerKey;
                     $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
+                    $this->requestPayloadClasses[$this->schemaClassName($schemaName)] = true;
                 }
             }
         }
@@ -4866,9 +4969,10 @@ final class GenerateDtoCommand extends Command
             ];
         }
 
-        // Symfony mode emits a plain backed enum (no library runtime interface/methods) — the
-        // Symfony serializer handles backed enums natively via BackedEnumNormalizer.
-        $isSymfony = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY;
+        // Symfony and Laravel modes emit a plain backed enum (no library runtime interface/methods):
+        // the Symfony serializer handles backed enums natively via BackedEnumNormalizer, and in
+        // Laravel mode the generated hydration factory maps the value itself.
+        $isSymfony = $this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME;
 
         $imports = [];
         if (!$isSymfony) {
@@ -5390,6 +5494,7 @@ final class GenerateDtoCommand extends Command
                 $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
                 $parameterOwners[$schemaName] = $ownerKey;
                 $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
+                $this->requestPayloadClasses[$this->schemaClassName($schemaName)] = true;
             }
         }
 

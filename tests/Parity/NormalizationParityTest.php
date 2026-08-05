@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Illuminate\Translation\ArrayLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
@@ -27,7 +30,7 @@ use Symfony\Component\Serializer\Serializer;
 /**
  * The OTHER half of runtime/Symfony parity: the response direction.
  *
- * `RuntimeVsSymfonyParityTest` compares validation verdicts — whether a payload is accepted. It
+ * `ValidationParityTest` compares validation verdicts — whether a payload is accepted. It
  * cannot see the shape of what comes back out, because the two modes normalize through different
  * code (`DtoNormalizer` vs the Symfony Serializer). This test pins that shape: the same JSON goes
  * in, and the resulting array is asserted for BOTH modes.
@@ -36,7 +39,7 @@ use Symfony\Component\Serializer\Serializer;
  * they differ the case must say why, and `testEveryDivergenceIsDocumented` enforces that — so a new
  * divergence cannot be introduced without someone writing down the reason.
  */
-final class RuntimeVsSymfonyNormalizationParityTest extends TestCase
+final class NormalizationParityTest extends TestCase
 {
     private string $outputDirectory;
 
@@ -83,6 +86,7 @@ final class RuntimeVsSymfonyNormalizationParityTest extends TestCase
         array $expectedRuntime,
         array $expectedSymfony,
         ?string $divergenceReason,
+        ?string $laravelReason,
     ): void {
         $spec = self::spec($schema, $extraSchemas);
 
@@ -100,6 +104,26 @@ final class RuntimeVsSymfonyNormalizationParityTest extends TestCase
         if ($divergenceReason === null) {
             $this->assertSame($expectedRuntime, $expectedSymfony, sprintf('modes must agree on "%s"', $key));
         }
+
+        // Laravel mode has no third set of expectations: its `toArray()` was written to mirror runtime
+        // semantics (omit an unprovided optional, format a temporal value as the schema declares), so it
+        // is compared against the RUNTIME expectation and any difference must carry its own reason.
+        $laravel = $this->laravelNormalization($spec, $key, $json);
+        if ($laravelReason === null) {
+            $this->assertSame(
+                $expectedRuntime,
+                $laravel,
+                sprintf('laravel must normalize like runtime on "%s" (or declare a reason)', $key),
+            );
+
+            return;
+        }
+
+        $this->assertNotSame(
+            $expectedRuntime,
+            $laravel,
+            sprintf('"%s" declares a laravel divergence but there is none — drop the reason', $key),
+        );
     }
 
     /**
@@ -120,6 +144,7 @@ final class RuntimeVsSymfonyNormalizationParityTest extends TestCase
         array $expectedRuntime,
         array $expectedSymfony,
         ?string $divergenceReason,
+        ?string $laravelReason,
     ): void {
         if ($expectedRuntime === $expectedSymfony) {
             $this->assertNull(
@@ -401,6 +426,7 @@ final class RuntimeVsSymfonyNormalizationParityTest extends TestCase
                 $case['runtime'],
                 $case['symfony'],
                 $case['reason'] ?? null,
+                $case['laravelReason'] ?? null,
             ];
         }
 
@@ -464,6 +490,37 @@ final class RuntimeVsSymfonyNormalizationParityTest extends TestCase
         }
 
         return $value;
+    }
+
+    /**
+     * Laravel mode: the DTO is built the way a controller builds it — from the validated payload — and
+     * then asked for its array form.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<string, mixed>
+     */
+    private function laravelNormalization(array $spec, string $key, string $json): array
+    {
+        $fqcn = $this->generate($spec, 'NormLv' . $this->namespaceSuffix($key), 'laravel');
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode($json, true);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+
+        $validator = (new Factory(new Translator(new ArrayLoader(), 'en')))->make($payload, $rules);
+        if (method_exists($fqcn, 'withValidator')) {
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+        }
+
+        /** @var array<string, mixed> $validated */
+        $validated = $validator->validated();
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validated);
+
+        /** @var array<string, mixed> $normalized */
+        $normalized = $this->canonicalize($dto->toArray());
+
+        return $normalized;
     }
 
     /**

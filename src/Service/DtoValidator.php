@@ -288,9 +288,74 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         $kind = $isOneOf ? 'oneOf' : 'anyOf';
+
+        // Every branch was gated out by its type, so there is no branch reason to report. Naming the
+        // types the union does accept turns an unactionable sentence into one the caller can act on.
+        $expected = $this->describeUnionBranchTypes($branches);
+
         return [
-            "{$subject} does not match any {$kind} branch",
+            $expected === null
+                ? "{$subject} does not match any {$kind} branch"
+                : sprintf(
+                    '%s does not match any %s branch (expected %s, got %s)',
+                    $subject,
+                    $kind,
+                    $expected,
+                    $this->describeOpenApiTypeOfValue($value),
+                ),
         ];
+    }
+
+    /**
+     * The types a union declares, in document order and without repeats — `integer or string`. Null when
+     * no branch declares one, in which case there is nothing to name.
+     *
+     * @param array<int, mixed> $branches
+     */
+    private function describeUnionBranchTypes(array $branches): ?string
+    {
+        $types = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            /** @var array<int, mixed> $declared */
+            $declared = is_array($branch['type'] ?? null) ? $branch['type'] : [$branch['type'] ?? null];
+            foreach ($declared as $type) {
+                if (is_string($type) && $type !== '' && !in_array($type, $types, true)) {
+                    $types[] = $type;
+                }
+            }
+        }
+
+        if ($types === []) {
+            return null;
+        }
+
+        if (count($types) === 1) {
+            return $types[0];
+        }
+
+        $last = array_pop($types);
+
+        return implode(', ', $types) . ' or ' . $last;
+    }
+
+    /**
+     * The value's type as OpenAPI names it, so both halves of the message speak one vocabulary.
+     */
+    private function describeOpenApiTypeOfValue(mixed $value): string
+    {
+        return match (true) {
+            $value === null => 'null',
+            is_bool($value) => 'boolean',
+            is_int($value) => 'integer',
+            is_float($value) => 'number',
+            is_string($value) => 'string',
+            is_array($value) => array_is_list($value) ? 'array' : 'object',
+            default => 'object',
+        };
     }
 
     private function matchesOpenApiType(mixed $value, mixed $type): bool
@@ -316,14 +381,21 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return match ($type) {
-            'integer' => is_int($value) || ($value instanceof BackedEnum && is_int($value->value)),
+            // JSON Schema 2020-12 §6.1.1: "integer" matches any NUMBER with a zero fractional part, so
+            // `42.0` in a payload is an integer. PHP decodes it to a float, which is why the naive
+            // `is_int()` rejected a value the spec calls valid.
+            'integer' => is_int($value)
+                || (is_float($value) && is_finite($value) && floor($value) === $value)
+                || ($value instanceof BackedEnum && is_int($value->value)),
             'number' => is_int($value) || is_float($value) || ($value instanceof BackedEnum && is_int($value->value)),
             'string' => is_string($value) || ($value instanceof BackedEnum && is_string($value->value)),
             'boolean' => is_bool($value),
             'array' => is_array($value) && array_is_list($value),
             // A map (type: object + additionalProperties) is held as a PHP array. When its keys are
             // dense integers (0, 1, 2, …) the array is a list, yet it still represents a JSON object
-            // — PHP cannot tell the two apart — so any array satisfies `object`.
+            // — PHP cannot tell the two apart — so any array satisfies `object`. The wire shape IS
+            // checked, where it is still knowable: DtoDeserializer refuses a JSON array for a
+            // `type: object` property before it ever becomes a PHP value.
             'object' => is_array($value) || is_object($value),
             'null' => $value === null,
             default => true,

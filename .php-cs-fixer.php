@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 $finder = PhpCsFixer\Finder::create()
-    ->in([__DIR__ . '/src', __DIR__ . '/tests']);
+    ->in([__DIR__ . '/src', __DIR__ . '/tests'])
+    // `bin/benchmark` is a script, not a class, so it lives outside src/ — but it is still code in this
+    // repository and there is no reason for it to drift from the same style.
+    ->append([__DIR__ . '/bin/benchmark']);
 
 return (new PhpCsFixer\Config())
     ->registerCustomFixers(new PhpCsFixerCustomFixers\Fixers())

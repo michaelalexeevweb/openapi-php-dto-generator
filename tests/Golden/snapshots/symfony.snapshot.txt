@@ -1,4 +1,4 @@
-# symfony mode — 35 files, 1604 lines
+# symfony mode — 35 files, 2085 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1453,7 +1453,9 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1461,11 +1463,64 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class TestPostRequest
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'properties' => [
+            'id' => [],
+            'name' => [],
+            'code' => [
+                'oneOf' => [
+                    [
+                        'type' => 'integer',
+                        'minimum' => 10,
+                        'maximum' => 100,
+                    ],
+                    [
+                        'type' => 'string',
+                        'format' => 'uuid',
+                    ],
+                ],
+            ],
+            'homepage' => [
+                'format' => 'uri',
+            ],
+            'endpoint' => [
+                'format' => 'uri-template',
+            ],
+        ],
+    ];
+
+    private const array OPENAPI_PHP_TO_NAME_MAP = [
+        'id' => 'id',
+        'name' => 'name',
+        'code' => 'code',
+        'homepage' => 'homepage',
+        'endpoint' => 'endpoint',
+    ];
+
+    private const array OPENAPI_PROVIDED_FLAGS = [
+        'homepage' => 'homepageProvided',
+        'endpoint' => 'endpointProvided',
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
+    private ?string $homepage = null;
+
+    #[Ignore]
+    private bool $homepageProvided = false;
+
+    private ?string $endpoint = null;
+
+    #[Ignore]
+    private bool $endpointProvided = false;
+
     public function __construct(
         #[Assert\NotNull]
         private readonly int $id,
         #[Assert\NotNull]
         private readonly string $name,
+        #[Assert\NotNull]
+        private readonly int|string $code,
     ) {
     }
 
@@ -1477,6 +1532,432 @@ final class TestPostRequest
     public function getName(): string
     {
         return $this->name;
+    }
+
+    public function getCode(): int|string
+    {
+        return $this->code;
+    }
+
+    public function getHomepage(): ?string
+    {
+        return $this->homepage;
+    }
+
+    public function setHomepage(?string $homepage): void
+    {
+        $this->homepage = $homepage;
+        $this->homepageProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isHomepageProvided(): bool
+    {
+        return $this->homepageProvided;
+    }
+
+    public function getEndpoint(): ?string
+    {
+        return $this->endpoint;
+    }
+
+    public function setEndpoint(?string $endpoint): void
+    {
+        $this->endpoint = $endpoint;
+        $this->endpointProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isEndpointProvided(): bool
+    {
+        return $this->endpointProvided;
+    }
+
+    #[Assert\Callback]
+    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
+    {
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $context->buildViolation($error)->addViolation();
+        }
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload — machinery for the generated validation, not an API to
+     * call. It is public only because an enclosing DTO is a different class and needs this view of
+     * a nested one. For output, use the Symfony serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        foreach (self::OPENAPI_PHP_TO_NAME_MAP as $phpName => $openApiName) {
+            // A required property always exists. An optional one belongs in the payload only when
+            // it was actually provided — its presence flag says so, which is also what keeps the
+            // flags themselves out of the payload (iterating the object's properties would put
+            // them in and trip `additionalProperties: false`).
+            $flag = self::OPENAPI_PROVIDED_FLAGS[$phpName] ?? null;
+            if ($flag !== null && $this->{$flag} !== true) {
+                continue;
+            }
+            $payload[$openApiName] = $this->{$phpName};
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (is_array($schema['oneOf'] ?? null)) {
+            $matchingBranches = 0;
+            $branchErrors = [];
+            foreach ($schema['oneOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
+                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    if (is_object($value) && $value instanceof $branchFqcn) {
+                        $matchingBranches++;
+                    }
+                    continue;
+                }
+
+                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                    continue;
+                }
+                // Keep why each branch failed: with no match at all those reasons are far more
+                // useful than "does not match any oneOf branch".
+                $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
+                if ($errorsForBranch === []) {
+                    $matchingBranches++;
+                    continue;
+                }
+
+                $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches > 1) {
+                $errors[] = sprintf('%s matches more than one allowed oneOf branch', $path);
+            } elseif ($matchingBranches === 0) {
+                $errors = $branchErrors === []
+                    ? [...$errors, $this->describeOpenApiUnionMismatch($path, 'oneOf', $schema['oneOf'], $value)]
+                    : [...$errors, ...array_values(array_unique($branchErrors))];
+            }
+
+            if ($matchingBranches === 1) {
+                $discriminatorProperty = is_string($schema['x-discriminator-property'] ?? null)
+                    ? $schema['x-discriminator-property']
+                    : null;
+                $discriminatorPhpProperty = is_string($schema['x-discriminator-php-property'] ?? null)
+                    ? $schema['x-discriminator-php-property']
+                    : null;
+                $discriminatorMap = is_array($schema['x-discriminator-map'] ?? null)
+                    ? $schema['x-discriminator-map']
+                    : null;
+
+                if ($discriminatorProperty !== null && $discriminatorMap !== null && is_object($value)) {
+                    $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
+                    // The DTO keeps its state private: read the discriminator from the payload it
+                    // reports, keyed by the OpenAPI name, and fall back to a public property for a
+                    // hand-written object.
+                    $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
+                    $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
+                        $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
+                    } else {
+                        $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
+                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
+                        if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
+                            $errors[] = sprintf(
+                                '%s discriminator %s must be one of: %s',
+                                $path,
+                                $discriminatorProperty,
+                                implode(', ', array_keys($discriminatorMap)),
+                            );
+                        } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
+                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            if (!$value instanceof $expectedFqcn) {
+                                $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'])) {
+            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $maximum = $this->toFloatConstraint($schema['maximum'] ?? null);
+
+            $exclusiveMinimum = $schema['exclusiveMinimum'] ?? null;
+            if (is_numeric($exclusiveMinimum)) {
+                $minExclusive = (float)$exclusiveMinimum;
+                if (!($normalizedValue > $minExclusive)) {
+                    $errors[] = sprintf('%s must be greater than %s', $path, $this->stringifyOpenApiNumber($minExclusive));
+                }
+            } elseif ($minimum !== null) {
+                if (($schema['exclusiveMinimum'] ?? null) === true) {
+                    if (!($normalizedValue > $minimum)) {
+                        $errors[] = sprintf('%s must be greater than %s', $path, $this->stringifyOpenApiNumber($minimum));
+                    }
+                } elseif (!($normalizedValue >= $minimum)) {
+                    $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
+                }
+            }
+
+            $exclusiveMaximum = $schema['exclusiveMaximum'] ?? null;
+            if (is_numeric($exclusiveMaximum)) {
+                $maxExclusive = (float)$exclusiveMaximum;
+                if (!($normalizedValue < $maxExclusive)) {
+                    $errors[] = sprintf('%s must be less than %s', $path, $this->stringifyOpenApiNumber($maxExclusive));
+                }
+            } elseif ($maximum !== null) {
+                if (($schema['exclusiveMaximum'] ?? null) === true) {
+                    if (!($normalizedValue < $maximum)) {
+                        $errors[] = sprintf('%s must be less than %s', $path, $this->stringifyOpenApiNumber($maximum));
+                    }
+                } elseif (!($normalizedValue <= $maximum)) {
+                    $errors[] = sprintf('%s must be less than or equal to %s', $path, $this->stringifyOpenApiNumber($maximum));
+                }
+            }
+
+            $multipleOf = $this->toFloatConstraint($schema['multipleOf'] ?? null);
+            if ($multipleOf !== null && $multipleOf > 0.0) {
+                $ratio = $normalizedValue / $multipleOf;
+                if (abs($ratio - round($ratio)) > 1e-9) {
+                    $errors[] = sprintf('%s must be a multiple of %s', $path, $this->stringifyOpenApiNumber($multipleOf));
+                }
+            }
+        }
+
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+    }
+
+    /**
+     * Every branch was gated out by its declared type, so no branch has a reason to report. Naming the
+     * types the union does accept turns an unactionable sentence into one the caller can act on. Same
+     * wording as the runtime validator, so a payload reads the same whichever mode answered it.
+     *
+     * @param array<int, mixed> $branches
+     */
+    private function describeOpenApiUnionMismatch(string $path, string $kind, array $branches, mixed $value): string
+    {
+        $types = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $declared = is_array($branch['type'] ?? null) ? $branch['type'] : [$branch['type'] ?? null];
+            foreach ($declared as $type) {
+                if (is_string($type) && $type !== '' && !in_array($type, $types, true)) {
+                    $types[] = $type;
+                }
+            }
+        }
+
+        if ($types === []) {
+            return sprintf('%s does not match any %s branch', $path, $kind);
+        }
+
+        $last = array_pop($types);
+        $expected = $types === [] ? $last : implode(', ', $types) . ' or ' . $last;
+
+        return sprintf(
+            '%s does not match any %s branch (expected %s, got %s)',
+            $path,
+            $kind,
+            $expected,
+            match (true) {
+                $value === null => 'null',
+                is_bool($value) => 'boolean',
+                is_int($value) => 'integer',
+                is_float($value) => 'number',
+                is_string($value) => 'string',
+                is_array($value) => array_is_list($value) ? 'array' : 'object',
+                default => 'object',
+            },
+        );
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
+            'string' => is_string($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function toFloatConstraint(mixed $value): ?float
+    {
+        return is_int($value) || is_float($value) ? (float)$value : null;
+    }
+
+    private function stringifyOpenApiNumber(float $value): string
+    {
+        $rendered = json_encode($value);
+        return is_string($rendered) ? $rendered : (string)$value;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
+            'uri-template' => $this->isValidOpenApiUriTemplate($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', $value) === 1;
+    }
+
+    private function isValidOpenApiUriReference(string $value): bool
+    {
+        return preg_match('/[\s\x00-\x1F\x7F]/u', $value) !== 1;
+    }
+
+    private function isValidOpenApiUriTemplate(string $value): bool
+    {
+        // RFC 6570: a URI-reference that may embed {expression} blocks. Every brace has to belong to a
+        // well-formed expression — an optional operator followed by a comma-separated list of varspecs,
+        // each a varname with an optional ":" prefix-length or "*" explode modifier. Strip the valid
+        // expressions; a surviving brace means the template is malformed.
+        if (!$this->isValidOpenApiUriReference($value)) {
+            return false;
+        }
+
+        if (!str_contains($value, '{')) {
+            return !str_contains($value, '}');
+        }
+
+        $expression = '\{[+#./;?&=,!@|]?(?:[\p{L}\p{N}_%]+(?::[1-9][0-9]{0,3}|\*)?)'
+            . '(?:,[\p{L}\p{N}_%]+(?::[1-9][0-9]{0,3}|\*)?)*\}';
+        $stripped = preg_replace('~' . $expression . '~u', '', $value);
+
+        return $stripped !== null && !str_contains($stripped, '{') && !str_contains($stripped, '}');
     }
 }
 

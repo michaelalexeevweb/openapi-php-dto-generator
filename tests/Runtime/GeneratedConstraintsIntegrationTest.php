@@ -2072,4 +2072,68 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // The ambiguous member extends neither base (graceful: no wrong parent picked).
         $this->assertFalse((new ReflectionClass('TwoUnionNs\SharedVariant'))->getParentClass());
     }
+
+    /**
+     * Each nesting level is deserialized by its own pass, so an error from four levels down used to name
+     * only the innermost key: `Required parameter "n" not found in request.` on a payload whose root
+     * declares no `n` at all. Every message family has to carry the whole path.
+     */
+    public function testAnErrorFourLevelsDownNamesTheWholePath(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'A' => [
+                    'type' => 'object',
+                    'required' => ['b'],
+                    'properties' => ['b' => ['$ref' => '#/components/schemas/B']],
+                ],
+                'B' => [
+                    'type' => 'object',
+                    'required' => ['cs'],
+                    'properties' => ['cs' => [
+                        'type' => 'array',
+                        'items' => ['$ref' => '#/components/schemas/C'],
+                    ]],
+                ],
+                'C' => [
+                    'type' => 'object',
+                    'required' => ['d'],
+                    'properties' => ['d' => ['$ref' => '#/components/schemas/D']],
+                ],
+                'D' => [
+                    'type' => 'object',
+                    'required' => ['n'],
+                    'properties' => ['n' => ['type' => 'integer', 'minimum' => 10]],
+                ],
+            ]],
+        ];
+
+        (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, 'DeepPathNs');
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        $cases = [
+            // missing key, wrong type, failed constraint, non-object where a DTO is expected
+            '{"b":{"cs":[{"d":{}}]}}' => 'Required parameter "b.cs.0.d.n" not found in request.',
+            '{"b":{"cs":[{"d":{"n":"x"}}]}}' => 'param "b.cs.0.d.n" expects int, got string',
+            '{"b":{"cs":[{"d":{"n":3}}]}}' => 'param "b.cs.0.d.n" must be greater than or equal to 10',
+            '{"b":{"cs":[{"d":"nope"}]}}' => 'param "b.cs.0.d": Cannot deserialize nested DTO',
+        ];
+
+        foreach ($cases as $json => $expected) {
+            $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+
+            try {
+                /** @var class-string $fqcn */
+                $fqcn = 'DeepPathNs\A';
+                (new DtoDeserializer())->deserialize($request, $fqcn);
+                $this->fail(sprintf('%s was accepted', $json));
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString($expected, $exception->getMessage(), $json);
+            }
+        }
+    }
 }

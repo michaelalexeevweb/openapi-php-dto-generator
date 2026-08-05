@@ -1,4 +1,4 @@
-# runtime mode — 35 files, 8885 lines
+# runtime mode — 35 files, 9099 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7423,6 +7423,7 @@ namespace GoldenCorpus;
 
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
 /**
@@ -7441,13 +7442,44 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
     private bool $nameInQuery = false;
     private bool $nameInHeader = false;
     private bool $nameInCookie = false;
+    private bool $codeInRequest = false;
+    private bool $codeInPath = false;
+    private bool $codeInQuery = false;
+    private bool $codeInHeader = false;
+    private bool $codeInCookie = false;
+    private bool $homepageInRequest = false;
+    private bool $homepageInPath = false;
+    private bool $homepageInQuery = false;
+    private bool $homepageInHeader = false;
+    private bool $homepageInCookie = false;
+    private bool $endpointInRequest = false;
+    private bool $endpointInPath = false;
+    private bool $endpointInQuery = false;
+    private bool $endpointInHeader = false;
+    private bool $endpointInCookie = false;
 
+    /**
+     * @param int|string $code
+     * Constraints: oneOf=(type=integer, minimum=10, maximum=100) | (type=string, format=uuid)
+     * @param string|UnsetValue|null $homepage
+     * Constraints: format=uri
+     * @param string|UnsetValue|null $endpoint
+     * Constraints: format=uri-template
+     */
     public function __construct(
         private readonly int $id,
         private readonly string $name,
+        private readonly int|string $code,
+        private readonly string|UnsetValue|null $homepage = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $endpoint = UnsetValue::UNSET,
     ) {
         $this->idInRequest = true;
         $this->nameInRequest = true;
+        $this->codeInRequest = true;
+        // Track if parameter was explicitly passed
+        $this->homepageInRequest = $homepage !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->endpointInRequest = $endpoint !== UnsetValue::UNSET;
     }
 
     public function getId(): int
@@ -7520,6 +7552,111 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         return $this->nameInRequest;
     }
 
+    public function getCode(): int|string
+    {
+        return $this->code;
+    }
+
+    public function isCodeRequired(): bool
+    {
+        return true;
+    }
+
+    public function isCodeInPath(): bool
+    {
+        return $this->codeInPath;
+    }
+
+    public function isCodeInQuery(): bool
+    {
+        return $this->codeInQuery;
+    }
+
+    public function isCodeInHeader(): bool
+    {
+        return $this->codeInHeader;
+    }
+
+    public function isCodeInCookie(): bool
+    {
+        return $this->codeInCookie;
+    }
+
+    public function isCodeInRequest(): bool
+    {
+        return $this->codeInRequest;
+    }
+
+    public function getHomepage(): ?string
+    {
+        return $this->homepage !== UnsetValue::UNSET ? $this->homepage : null;
+    }
+
+    public function isHomepageRequired(): bool
+    {
+        return false;
+    }
+
+    public function isHomepageInPath(): bool
+    {
+        return $this->homepageInPath;
+    }
+
+    public function isHomepageInQuery(): bool
+    {
+        return $this->homepageInQuery;
+    }
+
+    public function isHomepageInHeader(): bool
+    {
+        return $this->homepageInHeader;
+    }
+
+    public function isHomepageInCookie(): bool
+    {
+        return $this->homepageInCookie;
+    }
+
+    public function isHomepageInRequest(): bool
+    {
+        return $this->homepageInRequest;
+    }
+
+    public function getEndpoint(): ?string
+    {
+        return $this->endpoint !== UnsetValue::UNSET ? $this->endpoint : null;
+    }
+
+    public function isEndpointRequired(): bool
+    {
+        return false;
+    }
+
+    public function isEndpointInPath(): bool
+    {
+        return $this->endpointInPath;
+    }
+
+    public function isEndpointInQuery(): bool
+    {
+        return $this->endpointInQuery;
+    }
+
+    public function isEndpointInHeader(): bool
+    {
+        return $this->endpointInHeader;
+    }
+
+    public function isEndpointInCookie(): bool
+    {
+        return $this->endpointInCookie;
+    }
+
+    public function isEndpointInRequest(): bool
+    {
+        return $this->endpointInRequest;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -7528,6 +7665,13 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         $result = [];
         $result['id'] = $this->id;
         $result['name'] = $this->name;
+        $result['code'] = $this->code;
+        if ($this->homepageInRequest) {
+            $result['homepage'] = $this->getHomepage();
+        }
+        if ($this->endpointInRequest) {
+            $result['endpoint'] = $this->getEndpoint();
+        }
 
         return $result;
     }
@@ -7540,6 +7684,13 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         $result = [];
         $result['id'] = $this->id;
         $result['name'] = $this->name;
+        $result['code'] = $this->code;
+        if ($this->homepageInRequest) {
+            $result['homepage'] = $this->getHomepage();
+        }
+        if ($this->endpointInRequest) {
+            $result['endpoint'] = $this->getEndpoint();
+        }
 
         return $result;
     }
@@ -7605,6 +7756,63 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['code'] = [
+            'getter' => 'getCode',
+            'type' => 'int|string',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'code',
+                'required' => true,
+                'inPathFlagGetter' => 'isCodeInPath',
+                'inQueryFlagGetter' => 'isCodeInQuery',
+                'inHeaderFlagGetter' => 'isCodeInHeader',
+                'inCookieFlagGetter' => 'isCodeInCookie',
+                'inRequestFlagGetter' => 'isCodeInRequest',
+                'constraints' => $constraints['code'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['homepage'] = [
+            'getter' => 'getHomepage',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'homepage',
+                'required' => false,
+                'inPathFlagGetter' => 'isHomepageInPath',
+                'inQueryFlagGetter' => 'isHomepageInQuery',
+                'inHeaderFlagGetter' => 'isHomepageInHeader',
+                'inCookieFlagGetter' => 'isHomepageInCookie',
+                'inRequestFlagGetter' => 'isHomepageInRequest',
+                'constraints' => $constraints['homepage'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['endpoint'] = [
+            'getter' => 'getEndpoint',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'endpoint',
+                'required' => false,
+                'inPathFlagGetter' => 'isEndpointInPath',
+                'inQueryFlagGetter' => 'isEndpointInQuery',
+                'inHeaderFlagGetter' => 'isEndpointInHeader',
+                'inCookieFlagGetter' => 'isEndpointInCookie',
+                'inRequestFlagGetter' => 'isEndpointInRequest',
+                'constraints' => $constraints['endpoint'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
 
         return $map;
     }
@@ -7617,6 +7825,9 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         $aliases = [];
         $aliases['id'] = 'id';
         $aliases['name'] = 'name';
+        $aliases['code'] = 'code';
+        $aliases['homepage'] = 'homepage';
+        $aliases['endpoint'] = 'endpoint';
 
         return $aliases;
     }
@@ -7629,6 +7840,9 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         $constraints = [];
         $constraints['id'] = ['type' => 'integer'];
         $constraints['name'] = ['type' => 'string'];
+        $constraints['code'] = ['oneOf' => [['type' => 'integer', 'minimum' => 10, 'maximum' => 100], ['type' => 'string', 'format' => 'uuid']]];
+        $constraints['homepage'] = ['type' => 'string', 'format' => 'uri'];
+        $constraints['endpoint'] = ['type' => 'string', 'format' => 'uri-template'];
 
         return $constraints;
     }

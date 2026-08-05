@@ -1,6 +1,6 @@
 # Runtime mode
 
-[← back to the main README](README.md) · [the other mode: Symfony](README.symfony.md)
+[← back to the main README](README.md) · other modes: [symfony](README.symfony.md) · [laravel](README.laravel.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
 
 The default mode (`--attributes=runtime`, or simply omitted). DTOs implement `GeneratedDtoInterface`
 and carry metadata methods; **this library's own services** do the work:
@@ -193,6 +193,6 @@ class UserController
 - A map normalizes to `stdClass` so it always encodes as a JSON object — except a map nested inside
   a list, which stays a PHP array and therefore encodes as `[]` when empty.
 
-The schema semantics both modes share (list vs object, branch order in `oneOf`/`anyOf`,
+The schema semantics all three modes share (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
 [Validation Notes](README.md#validation-notes).

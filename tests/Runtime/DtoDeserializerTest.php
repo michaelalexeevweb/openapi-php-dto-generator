@@ -1175,9 +1175,90 @@ final class DtoDeserializerTest extends TestCase
 
         $this->deserializer->deserialize($request, MultipartFilesDto::class);
     }
+
+    /**
+     * A nested DTO is deserialized by its own pass, which knows only its own keys. Its message named the
+     * bare key, so a payload missing `child.name` reported `Required parameter "name" not found in
+     * request.` — indistinguishable from the root missing a `name` it does not even declare.
+     */
+    public function testAMissingKeyInsideANestedObjectNamesThePathToIt(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'child' => ['id' => 2],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "child.name" not found in request');
+
+        $this->deserializer->deserialize($request, NestedObjectHolderDto::class);
+    }
+
+    public function testAMissingKeyInsideAListItemNamesTheIndexedPath(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'name' => 'root',
+            'tags' => [['id' => 2]],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Required parameter "tags.0.name" not found in request');
+
+        $this->deserializer->deserialize($request, NestedArrayDto::class);
+    }
+
+    public function testANestedObjectGivenAScalarNamesTheProperty(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'child' => 'not-an-object',
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('param "child": Cannot deserialize nested DTO');
+
+        $this->deserializer->deserialize($request, NestedObjectHolderDto::class);
+    }
+
+    public function testAConstraintFailureInsideANestedObjectKeepsThePath(): void
+    {
+        $request = new Request([], [], [], [], [], [], json_encode([
+            'id' => 1,
+            'child' => ['id' => 'nope', 'name' => 'n'],
+        ]));
+        $request->headers->set('Content-Type', 'application/json');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('param "child.id" expects int, got string');
+
+        $this->deserializer->deserialize($request, NestedObjectHolderDto::class);
+    }
 }
 
 // Test DTOs
+final class NestedObjectHolderDto
+{
+    public function __construct(
+        private int $id,
+        private NestedArrayItemDto $child,
+    ) {
+    }
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function getChild(): NestedArrayItemDto
+    {
+        return $this->child;
+    }
+}
+
 final class SimpleTestDto
 {
     public function __construct(

@@ -20,6 +20,66 @@ namespace OpenapiPhpDtoGenerator\Command\Rendering;
 trait RendersSymfonyDto
 {
     /**
+     * Every `format` the emitted interpreter can actually check, as the match arm that checks it and
+     * the helpers that arm needs. A format absent from this map — or present with a `true` arm — is
+     * one no mode enforces, which is what `openApiInterpreterChecksFormat()` reports.
+     *
+     * @var array<string, array{0: string, 1: array<int, string>}>
+     */
+    private const array OPENAPI_FORMAT_ARMS = [
+        'date' => ['$this->isValidOpenApiDateFormat($value)', ['date']],
+        'date-time' => ['$this->isValidOpenApiDateTimeFormat($value)', ['date-time']],
+        'datetime' => ['$this->isValidOpenApiDateTimeFormat($value)', ['date-time']],
+        'time' => ['$this->isValidOpenApiTimeFormat($value)', ['time']],
+        'email' => ['filter_var($value, FILTER_VALIDATE_EMAIL) !== false', []],
+        'idn-email' => ['filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false', []],
+        'uuid' => ['$this->isValidOpenApiUuid($value)', ['uuid']],
+        // `uri` and `iri` are ABSOLUTE — only the `*-reference` forms allow a relative value, and the
+        // runtime validator has always drawn that line. Mapping all four to the reference check made the
+        // emitted interpreter accept `/rel/path` for `format: uri` in both framework modes.
+        'uri' => ['filter_var($value, FILTER_VALIDATE_URL) !== false', []],
+        'iri' => ['$this->isValidOpenApiIri($value)', ['iri']],
+        'uri-reference' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
+        'iri-reference' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
+        'uri-template' => ['$this->isValidOpenApiUriTemplate($value)', ['uri-reference', 'uri-template']],
+        'duration' => ['$this->isValidOpenApiDuration($value)', ['duration']],
+        'json-pointer' => ['$this->isValidOpenApiJsonPointer($value)', ['json-pointer']],
+        'relative-json-pointer' => ['$this->isValidOpenApiRelativeJsonPointer($value)', ['relative-json-pointer']],
+        'regex' => ['$this->isValidOpenApiRegexFormat($value)', ['regex']],
+        'hostname' => ['filter_var($value, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false', []],
+        'idn-hostname' => ['$this->isValidOpenApiIdnHostname($value)', ['idn-hostname']],
+        'ipv4' => ['filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false', []],
+        'ipv6' => ['filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false', []],
+        'byte' => ['$this->isValidOpenApiBase64($value)', ['base64']],
+        'password' => ['true', []],
+        'binary' => ['true', []],
+    ];
+
+    /**
+     * The numeric formats, checked by their own emitted bounds block rather than by a `match` arm in
+     * `isValidOpenApiStringFormat()`.
+     *
+     * @var array<int, string>
+     */
+    private const array OPENAPI_NUMERIC_FORMATS = ['int32', 'int64', 'uint32', 'uint64'];
+
+    /**
+     * Whether the emitted interpreter enforces this `format` at all. A custom or unlisted one
+     * (`uppercase`, `slug`, …) falls through to the permissive default, exactly as the runtime
+     * validator does — so putting it in a constraint map buys nothing but an emitted interpreter.
+     */
+    private function openApiInterpreterChecksFormat(string $format): bool
+    {
+        if (in_array($format, self::OPENAPI_NUMERIC_FORMATS, true)) {
+            return true;
+        }
+
+        $arm = self::OPENAPI_FORMAT_ARMS[$format] ?? null;
+
+        return $arm !== null && $arm[0] !== 'true';
+    }
+
+    /**
      * Whether the generated Symfony DTOs carry `read`/`write` serialization groups. Set once per
      * run from the whole schema set — see `documentNeedsSerializationGroups()` for why it is all
      * classes or none.
@@ -386,6 +446,16 @@ PHP;
      * @param array<string, string> $phpToOpenApiNameMap PHP name -> OpenAPI name mapping
      * @param array<string, string> $providedFlags PHP name -> presence flag property, optional properties only
      * @param array{enum: bool, temporal: bool} $valueKinds non-scalar value kinds the callback can meet
+     * @param bool $payloadIsHydratedObject whether the interpreter runs over THIS object once it is built,
+     *                                      as in Symfony mode. False for a mode that enters the interpreter
+     *                                      its own way and feeds it the raw decoded payload, where neither
+     *                                      the `#[Assert\Callback]` entry point, the object-payload view it
+     *                                      needs, nor any nested-DTO handling can apply — see
+     *                                      `RendersLaravelDto::renderLaravelInterpreterBlock()`.
+     * @param array<string, mixed> $recursiveSchemas folded schemas a `x-openapi-recurse` marker points
+     *                                               back into, keyed by class name. A recursive schema
+     *                                               cannot be written out inline — the literal would be
+     *                                               infinite — so it is emitted once and re-entered.
      * @return array{consts: string, methods: string, imports: array<int, string>}
      */
     private function renderSymfonyValidationBlock(
@@ -393,6 +463,8 @@ PHP;
         array $phpToOpenApiNameMap,
         array $providedFlags,
         array $valueKinds,
+        bool $payloadIsHydratedObject = true,
+        array $recursiveSchemas = [],
     ): array {
         if ($constraints === []) {
             return ['consts' => '', 'methods' => '', 'imports' => []];
@@ -401,7 +473,20 @@ PHP;
         $constraintsLiteral = $this->renderPhpArrayLiteral($constraints, 1);
         $nameMapLiteral = $this->renderPhpArrayLiteral($phpToOpenApiNameMap, 1);
         $providedFlagsLiteral = $this->renderPhpArrayLiteral($providedFlags, 1);
-        $methods = $this->renderSymfonyValidationMethods($constraints, $valueKinds);
+        // Which keyword blocks to emit is decided over the folded schemas as well: a `not` that appears
+        // ONLY inside a recursive fold still has to have its block emitted, or the re-entered schema
+        // would reference logic that is not there.
+        $keywordSource = $constraints;
+        foreach ($recursiveSchemas as $foldedClass => $fold) {
+            $keywordSource['x-openapi-fold-' . $foldedClass] = $fold;
+        }
+
+        $methods = $this->renderSymfonyValidationMethods(
+            constraints: $keywordSource,
+            valueKinds: $valueKinds,
+            payloadIsHydratedObject: $payloadIsHydratedObject,
+            resolvesRecursiveRefs: $recursiveSchemas !== [],
+        );
 
         // The emitted helpers reference these classes unqualified, so the DTO needs the matching
         // imports — which ones depends on the keyword blocks that were actually emitted.
@@ -412,14 +497,40 @@ PHP;
             }
         }
 
-        return [
-            'consts' => <<<PHP
-    private const array OPENAPI_VALIDATION_CONSTRAINTS = {$constraintsLiteral};
+        // The name map and the presence flags exist only for `toOpenApiValidationPayload()`, which
+        // turns THIS object into a payload. A mode validating a raw array never calls it, and the
+        // two constants would be emitted empty and read by nobody.
+        $payloadViewConsts = $payloadIsHydratedObject
+            ? <<<PHP
 
     private const array OPENAPI_PHP_TO_NAME_MAP = {$nameMapLiteral};
 
     private const array OPENAPI_PROVIDED_FLAGS = {$providedFlagsLiteral};
 
+PHP
+            : '';
+
+        $recursiveSchemaConsts = '';
+        if ($recursiveSchemas !== []) {
+            $recursiveLiteral = $this->renderPhpArrayLiteral($recursiveSchemas, 1);
+            $recursiveSchemaConsts = <<<PHP
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = {$recursiveLiteral};
+
+PHP;
+        }
+
+        return [
+            'consts' => <<<PHP
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = {$constraintsLiteral};
+{$payloadViewConsts}{$recursiveSchemaConsts}
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 PHP,
             'methods' => $methods,
@@ -431,8 +542,12 @@ PHP,
      * @param array<string, mixed> $constraints
      * @param array{enum: bool, temporal: bool} $valueKinds
      */
-    private function renderSymfonyValidationMethods(array $constraints, array $valueKinds): string
-    {
+    private function renderSymfonyValidationMethods(
+        array $constraints,
+        array $valueKinds,
+        bool $payloadIsHydratedObject = true,
+        bool $resolvesRecursiveRefs = false,
+    ): string {
         $hasConst = $this->schemaUsesKeyword($constraints, 'const');
         $hasType = $this->schemaUsesKeyword($constraints, 'type');
         $hasEnum = $this->schemaUsesKeyword($constraints, 'enum');
@@ -490,7 +605,7 @@ PHP,
         $hasUnionType = $this->schemaKeywordHasListValue($constraints, 'type');
         $usedFormats = $this->collectSchemaKeywordStrings($constraints, 'format');
         $usedContentEncodings = array_map('strtolower', $this->collectSchemaKeywordStrings($constraints, 'contentEncoding'));
-        $usedNumericFormats = array_values(array_intersect($usedFormats, ['int32', 'int64', 'uint32', 'uint64']));
+        $usedNumericFormats = array_values(array_intersect($usedFormats, self::OPENAPI_NUMERIC_FORMATS));
         $needsNumericFormatValidation = $usedNumericFormats !== [];
         $hasMinContains = $this->schemaUsesKeyword($constraints, 'minContains');
         $hasMaxContains = $this->schemaUsesKeyword($constraints, 'maxContains');
@@ -517,10 +632,39 @@ PHP,
             || $hasUniqueItems
             || $needsCollectionCountValidation
             || $hasOneOf;
-        $needsGeneratedDtoSkip = $hasProperties || $hasPrefixItems || $hasItems || $hasAdditionalProperties;
+        // Skipping a nested DTO — it validates its own schema through its own callback — is a question
+        // only a hydrated payload can raise. Over a raw decoded payload every value is an array or a
+        // scalar, so the helper would be emitted to answer `false` at four call sites.
+        $needsGeneratedDtoSkip = $payloadIsHydratedObject
+            && ($hasProperties || $hasPrefixItems || $hasItems || $hasAdditionalProperties);
+        // The guard at each of the four places a nested value is walked into, emitted only when such a
+        // value can be a DTO at all.
+        $skipNestedDto = static function (
+            string $accessor,
+            string $indent = '                ',
+            string $extraBeforeContinue = '',
+        ) use ($needsGeneratedDtoSkip): string {
+            if (!$needsGeneratedDtoSkip) {
+                return '';
+            }
+
+            return sprintf(
+                "%sif (\$this->isGeneratedOpenApiDtoObject(%s)) {\n%s%s    continue;\n%s}\n",
+                $indent,
+                $accessor,
+                $extraBeforeContinue,
+                $indent,
+                $indent,
+            );
+        };
 
         $sections = [];
-        $sections[] = <<<'PHP'
+        // The Symfony entry point and the object-payload view it feeds the interpreter. A mode that
+        // enters the interpreter differently and hands it a raw array (Laravel) must not carry them:
+        // the attribute would reference constraint classes the DTO does not import, and the payload
+        // view reads instance properties that the static packaging cannot reach.
+        if ($payloadIsHydratedObject) {
+            $sections[] = <<<'PHP'
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -556,17 +700,36 @@ PHP,
         return $payload;
     }
 
-    /**
-     * @param array<string, mixed> $schema
-     * @return array<int, string>
-     */
-    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
-    {
-        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+PHP;
         }
 
-        $errors = [];
+        // A self-referential schema is stored once and pointed at. Resolved here, at the single entry
+        // point of the walk, so every position that can hold one — a property, an item, a branch — gets
+        // it for free. The local keywords win over the stored ones: `nullable` is added at the marker.
+        $resolveRecursiveRef = $resolvesRecursiveRefs
+            ? <<<'PHP'
+
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
+PHP
+            : '';
+
+        $sections[] = <<<PHP
+    /**
+     * @param array<string, mixed> \$schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed \$value, array \$schema, string \$path, int \$depth): array
+    {
+        if (\$depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+{$resolveRecursiveRef}
+        \$errors = [];
 PHP;
 
         // The local setup lines belong to the same statement group as `$errors = []`, so they are
@@ -603,6 +766,7 @@ PHP;
                 static function (mixed $allowedValue): string {
                     $json = json_encode($allowedValue);
                     return $json !== false ? $json : var_export($allowedValue, true);
+                },
                 $schema['enum'],
             ));
             $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
@@ -653,7 +817,7 @@ PHP
                 \$errors[] = sprintf('%s matches more than one allowed oneOf branch', \$path);
             } elseif (\$matchingBranches === 0) {
                 \$errors = \$branchErrors === []
-                    ? [...\$errors, sprintf('%s does not match any oneOf branch', \$path)]
+                    ? [...\$errors, \$this->describeOpenApiUnionMismatch(\$path, 'oneOf', \$schema['oneOf'], \$value)]
                     : [...\$errors, ...array_values(array_unique(\$branchErrors))];
             }
 
@@ -970,6 +1134,7 @@ PHP;
             $trackDefined = $needsObjectTracking
                 ? "                \$definedProperties[\$propertyName] = true;\n"
                 : '';
+            $skipNestedDtoProperty = $skipNestedDto('$structuredValue[$propertyName]');
             $sections[] = <<<PHP
         if (is_array(\$schema['properties'] ?? null) && is_array(\$structuredValue)) {
             foreach (\$schema['properties'] as \$propertyName => \$propertySchema) {
@@ -979,10 +1144,7 @@ PHP;
 {$trackDefined}                if (!array_key_exists(\$propertyName, \$structuredValue)) {
                     continue;
                 }
-                if (\$this->isGeneratedOpenApiDtoObject(\$structuredValue[\$propertyName])) {
-                    continue;
-                }
-                \$errors = [
+{$skipNestedDtoProperty}                \$errors = [
                     ...\$errors,
                     ...\$this->validateOpenApiNode(\$structuredValue[\$propertyName], \$propertySchema, \$this->openApiChildPath(\$path, \$propertyName), \$depth + 1),
                 ];
@@ -1102,16 +1264,14 @@ PHP;
             $trackPrefixIndex = $needsItemIndexTracking
                 ? "                \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
+            $skipNestedDtoPrefixItem = $skipNestedDto('$value[$index]');
             $sections[] = <<<PHP
         if (\$listValue && is_array(\$schema['prefixItems'] ?? null)) {
 {$prefixOffsetAssignment}            foreach (\$schema['prefixItems'] as \$index => \$itemSchema) {
                 if (!is_array(\$itemSchema) || !array_key_exists(\$index, \$value)) {
                     continue;
                 }
-{$trackPrefixIndex}                if (\$this->isGeneratedOpenApiDtoObject(\$value[\$index])) {
-                    continue;
-                }
-                \$errors = [
+{$trackPrefixIndex}{$skipNestedDtoPrefixItem}                \$errors = [
                     ...\$errors,
                     ...\$this->validateOpenApiNode(\$value[\$index], \$itemSchema, \$path . '[' . \$index . ']', \$depth + 1),
                 ];
@@ -1127,13 +1287,11 @@ PHP;
             $trackItemIndex = $needsItemIndexTracking
                 ? "                \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
+            $skipNestedDtoItem = $skipNestedDto('$itemValue');
             $sections[] = <<<PHP
         if (\$listValue && is_array(\$schema['items'] ?? null)) {
             foreach (\$value as \$index => \$itemValue) {
-{$skipPrefixItems}{$trackItemIndex}                if (\$this->isGeneratedOpenApiDtoObject(\$itemValue)) {
-                    continue;
-                }
-                \$errors = [
+{$skipPrefixItems}{$trackItemIndex}{$skipNestedDtoItem}                \$errors = [
                     ...\$errors,
                     ...\$this->validateOpenApiNode(\$itemValue, \$schema['items'], \$path . '[' . \$index . ']', \$depth + 1),
                 ];
@@ -1210,7 +1368,7 @@ PHP
 
             if (!\$anyOfMatched) {
                 \$errors = \$anyOfErrors === []
-                    ? [...\$errors, sprintf('%s does not match any anyOf branch', \$path)]
+                    ? [...\$errors, \$this->describeOpenApiUnionMismatch(\$path, 'anyOf', \$schema['anyOf'], \$value)]
                     : [...\$errors, ...array_values(array_unique(\$anyOfErrors))];
             }
         }
@@ -1239,25 +1397,26 @@ PHP;
 PHP;
 
             if ($hasAdditionalProperties) {
-                $sections[] = <<<'PHP'
-            if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
-                foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                $skipNestedDtoExtra = $skipNestedDto(
+                    '$propertyValue',
+                    '                    ',
+                    "                        \$evaluatedProperties[\$propertyName] = true;\n",
+                );
+                $sections[] = <<<PHP
+            if (\$extraPropertySchema === false || is_array(\$extraPropertySchema)) {
+                foreach (\$structuredValue as \$propertyName => \$propertyValue) {
+                    if (!is_string(\$propertyName) || array_key_exists(\$propertyName, \$evaluatedProperties)) {
                         continue;
                     }
-                    if ($extraPropertySchema === false) {
-                        $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
+                    if (\$extraPropertySchema === false) {
+                        \$errors[] = sprintf('%s has additional property "%s" which is not allowed', \$path, \$propertyName);
                         continue;
                     }
-                    if ($this->isGeneratedOpenApiDtoObject($propertyValue)) {
-                        $evaluatedProperties[$propertyName] = true;
-                        continue;
-                    }
-                    $errors = [
-                        ...$errors,
-                        ...$this->validateOpenApiNode($propertyValue, $extraPropertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+{$skipNestedDtoExtra}                    \$errors = [
+                        ...\$errors,
+                        ...\$this->validateOpenApiNode(\$propertyValue, \$extraPropertySchema, \$this->openApiChildPath(\$path, \$propertyName), \$depth + 1),
                     ];
-                    $evaluatedProperties[$propertyName] = true;
+                    \$evaluatedProperties[\$propertyName] = true;
                 }
             }
 PHP;
@@ -1301,13 +1460,78 @@ PHP;
 PHP;
         }
 
+        if ($hasOneOf || $hasAnyOf) {
+            $enumUnwrapInDescription = $canHoldEnum
+                ? <<<'PHP'
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+
+PHP
+                : '';
+            $sections[] = <<<PHP
+
+    /**
+     * Every branch was gated out by its declared type, so no branch has a reason to report. Naming the
+     * types the union does accept turns an unactionable sentence into one the caller can act on. Same
+     * wording as the runtime validator, so a payload reads the same whichever mode answered it.
+     *
+     * @param array<int, mixed> \$branches
+     */
+    private function describeOpenApiUnionMismatch(string \$path, string \$kind, array \$branches, mixed \$value): string
+    {
+        \$types = [];
+        foreach (\$branches as \$branch) {
+            if (!is_array(\$branch)) {
+                continue;
+            }
+
+            \$declared = is_array(\$branch['type'] ?? null) ? \$branch['type'] : [\$branch['type'] ?? null];
+            foreach (\$declared as \$type) {
+                if (is_string(\$type) && \$type !== '' && !in_array(\$type, \$types, true)) {
+                    \$types[] = \$type;
+                }
+            }
+        }
+
+        if (\$types === []) {
+            return sprintf('%s does not match any %s branch', \$path, \$kind);
+        }
+
+        \$last = array_pop(\$types);
+        \$expected = \$types === [] ? \$last : implode(', ', \$types) . ' or ' . \$last;
+{$enumUnwrapInDescription}
+        return sprintf(
+            '%s does not match any %s branch (expected %s, got %s)',
+            \$path,
+            \$kind,
+            \$expected,
+            match (true) {
+                \$value === null => 'null',
+                is_bool(\$value) => 'boolean',
+                is_int(\$value) => 'integer',
+                is_float(\$value) => 'number',
+                is_string(\$value) => 'string',
+                is_array(\$value) => array_is_list(\$value) ? 'array' : 'object',
+                default => 'object',
+            },
+        );
+    }
+PHP;
+        }
+
         if ($needsTypeMatcher) {
             $typeTests = [
-                'integer' => 'is_int($value)',
+                // A JSON `42.0` is an integer per JSON Schema 2020-12 §6.1.1 — a number with a zero
+                // fractional part — and PHP decodes it to a float.
+                'integer' => 'is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value)',
                 'number' => 'is_int($value) || is_float($value)',
                 'string' => 'is_string($value)',
                 'boolean' => 'is_bool($value)',
                 'array' => 'is_array($value) && array_is_list($value)',
+                // A map is a PHP array by the time a constraint runs, and a dense-integer-key map is
+                // indistinguishable from a list, so any array satisfies `object` here. Only the runtime
+                // deserializer sees the raw JSON and can refuse an array for a `type: object` property.
                 'object' => 'is_array($value) || is_object($value)',
                 'null' => '$value === null',
             ];
@@ -1394,23 +1618,30 @@ PHP;
         }
 
         if ($needsStructuralNormalization) {
-            $sections[] = <<<'PHP'
-
-    private function normalizeOpenApiStructuralValue(mixed $value): mixed
-    {
-        if (is_array($value) || !is_object($value)) {
-            return $value;
-        }
+            // The DTO branch belongs to the mode whose payload IS a DTO. Where the interpreter reads a
+            // raw decoded payload, no value has a `toOpenApiValidationPayload()` to call — the method
+            // is not even emitted there.
+            $dtoPayloadView = $payloadIsHydratedObject
+                ? <<<'PHP'
 
         // Generated DTOs expose their OpenAPI-named payload themselves.
         if (method_exists($value, 'toOpenApiValidationPayload')) {
             return $value->toOpenApiValidationPayload();
         }
+PHP
+                : '';
+            $sections[] = <<<PHP
 
+    private function normalizeOpenApiStructuralValue(mixed \$value): mixed
+    {
+        if (is_array(\$value) || !is_object(\$value)) {
+            return \$value;
+        }
+{$dtoPayloadView}
         // Any other object: only its public state is visible, under PHP property names.
         return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+            get_object_vars(\$value),
+            static fn(mixed \$propertyValue): bool => \$propertyValue !== null,
         );
     }
 PHP;
@@ -1511,33 +1742,7 @@ PHP;
         }
 
         if ($usedFormats !== [] || $usedContentEncodings !== []) {
-            // One arm (and one helper) per format the constant actually mentions; unknown formats
-            // fall through to the permissive default like the runtime validator does.
-            $formatArms = [
-                'date' => ['$this->isValidOpenApiDateFormat($value)', ['date']],
-                'date-time' => ['$this->isValidOpenApiDateTimeFormat($value)', ['date-time']],
-                'datetime' => ['$this->isValidOpenApiDateTimeFormat($value)', ['date-time']],
-                'time' => ['$this->isValidOpenApiTimeFormat($value)', ['time']],
-                'email' => ['filter_var($value, FILTER_VALIDATE_EMAIL) !== false', []],
-                'idn-email' => ['filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false', []],
-                'uuid' => ['$this->isValidOpenApiUuid($value)', ['uuid']],
-                'uri' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
-                'iri' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
-                'uri-reference' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
-                'iri-reference' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
-                'uri-template' => ['$this->isValidOpenApiUriTemplate($value)', ['uri-reference', 'uri-template']],
-                'duration' => ['$this->isValidOpenApiDuration($value)', ['duration']],
-                'json-pointer' => ['$this->isValidOpenApiJsonPointer($value)', ['json-pointer']],
-                'relative-json-pointer' => ['$this->isValidOpenApiRelativeJsonPointer($value)', ['relative-json-pointer']],
-                'regex' => ['$this->isValidOpenApiRegexFormat($value)', ['regex']],
-                'hostname' => ['filter_var($value, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false', []],
-                'idn-hostname' => ['$this->isValidOpenApiIdnHostname($value)', ['idn-hostname']],
-                'ipv4' => ['filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false', []],
-                'ipv6' => ['filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false', []],
-                'byte' => ['$this->isValidOpenApiBase64($value)', ['base64']],
-                'password' => ['true', []],
-                'binary' => ['true', []],
-            ];
+            $formatArms = self::OPENAPI_FORMAT_ARMS;
 
             $arms = '';
             $neededHelpers = [];
@@ -2037,7 +2242,36 @@ PHP,
 
     private function isValidOpenApiUriTemplate(string $value): bool
     {
-        return $this->isValidOpenApiUriReference($value) && preg_match('/\{[^{}]*\}/', $value) !== false;
+        // RFC 6570: a URI-reference that may embed {expression} blocks. Every brace has to belong to a
+        // well-formed expression — an optional operator followed by a comma-separated list of varspecs,
+        // each a varname with an optional ":" prefix-length or "*" explode modifier. Strip the valid
+        // expressions; a surviving brace means the template is malformed.
+        if (!$this->isValidOpenApiUriReference($value)) {
+            return false;
+        }
+
+        if (!str_contains($value, '{')) {
+            return !str_contains($value, '}');
+        }
+
+        $expression = '\{[+#./;?&=,!@|]?(?:[\p{L}\p{N}_%]+(?::[1-9][0-9]{0,3}|\*)?)'
+            . '(?:,[\p{L}\p{N}_%]+(?::[1-9][0-9]{0,3}|\*)?)*\}';
+        $stripped = preg_replace('~' . $expression . '~u', '', $value);
+
+        return $stripped !== null && !str_contains($stripped, '{') && !str_contains($stripped, '}');
+    }
+PHP,
+            'iri' => <<<'PHP'
+
+    private function isValidOpenApiIri(string $value): bool
+    {
+        // RFC 3987 ABSOLUTE IRI: a scheme is required, and a scheme alone ("a:") is not usable.
+        // `FILTER_VALIDATE_URL` cannot stand in — it rejects non-ASCII.
+        if ($value === '' || preg_match('/[\s\x00-\x1F\x7F]/u', $value) === 1) {
+            return false;
+        }
+
+        return preg_match('/^[a-zA-Z][a-zA-Z0-9+.\-]*:.+/', $value) === 1;
     }
 PHP,
             'duration' => <<<'PHP'
@@ -2220,6 +2454,7 @@ PHP,
         array $constraints,
         bool $allowScalarKeywords = false,
         array $forceScalarOnProperties = [],
+        bool $isPropertySchema = false,
     ): array {
         $constraints = $this->foldScalarAllOfConstraints($constraints);
         $filtered = [];
@@ -2236,6 +2471,7 @@ PHP,
                             $filtered[$key][$name] = $this->filterSymfonyValidationConstraints(
                                 $schema,
                                 $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
+                                isPropertySchema: true,
                             );
                         }
                     }
@@ -2329,7 +2565,13 @@ PHP,
                     $filtered[$key] = $value;
                     break;
                 case 'required':
-                    if ($allowScalarKeywords && is_array($value)) {
+                    // At the CLASS level the constructor enforces it: a required property is a
+                    // parameter without a default, so repeating it in the callback would only
+                    // double-report. Inside a property's schema nothing does when that schema stayed a
+                    // map — an object constraining only its keys never becomes a DTO. Where it did
+                    // become one, the emitted `isGeneratedOpenApiDtoObject()` guard skips the value
+                    // here and lets the nested class report for itself.
+                    if (is_array($value) && ($allowScalarKeywords || $isPropertySchema)) {
                         $filtered[$key] = $value;
                     }
                     break;

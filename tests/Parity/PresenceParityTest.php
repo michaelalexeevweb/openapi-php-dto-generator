@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Illuminate\Translation\ArrayLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -26,8 +29,8 @@ use Symfony\Component\Serializer\Serializer;
  * The third parity axis: "was this field sent at all" — the question PATCH and JSON-Merge-Patch are
  * built on.
  *
- * The two existing parity suites cannot see it. `RuntimeVsSymfonyParityTest` compares accept/reject,
- * `RuntimeVsSymfonyNormalizationParityTest` compares the response array — and in the response an
+ * The two existing parity suites cannot see it. `ValidationParityTest` compares accept/reject,
+ * `NormalizationParityTest` compares the response array — and in the response an
  * absent optional and one sent as `null` look the same in Symfony mode by design (documented there).
  * Presence used to be a runtime-only feature; since it became the default shape of a Symfony DTO
  * (private property + setter-recorded flag) nothing compared the two implementations.
@@ -37,7 +40,7 @@ use Symfony\Component\Serializer\Serializer;
  * optional property (`isNicknameProvided()`). What must agree is the ANSWER: absent is false, present
  * is true, and "present as null" counts as present in both.
  */
-final class RuntimeVsSymfonyPresenceParityTest extends TestCase
+final class PresenceParityTest extends TestCase
 {
     private string $outputDirectory;
 
@@ -64,6 +67,7 @@ final class RuntimeVsSymfonyPresenceParityTest extends TestCase
 
         $this->assertSame($expected, $this->runtimePresence($json), 'runtime presence');
         $this->assertSame($expected, $this->symfonyPresence($json), 'symfony presence');
+        $this->assertSame($expected, $this->laravelPresence($json), 'laravel presence');
     }
 
     /**
@@ -92,9 +96,11 @@ final class RuntimeVsSymfonyPresenceParityTest extends TestCase
 
         $runtime = $this->runtimeNestedPresence($json);
         $symfony = $this->symfonyNestedPresence($json);
+        $laravel = $this->laravelNestedPresence($json);
 
         $this->assertSame(['kept' => true, 'dropped' => false], $runtime, 'runtime nested presence');
-        $this->assertSame($runtime, $symfony, 'the two modes must agree inside a nested DTO');
+        $this->assertSame($runtime, $symfony, 'symfony must agree inside a nested DTO');
+        $this->assertSame($runtime, $laravel, 'laravel must agree inside a nested DTO');
     }
 
     /**
@@ -124,6 +130,47 @@ final class RuntimeVsSymfonyPresenceParityTest extends TestCase
     }
 
     /**
+     * Laravel needs no sentinel and no flag written by a setter: `validated()` returns only the keys the
+     * payload carried, and the generated DTO records that key set.
+     *
+     * @return array<string, bool>
+     */
+    private function laravelPresence(string $json): array
+    {
+        $dto = $this->laravelDto(self::patchSpec(), 'Patch', $json);
+
+        return [
+            'nickname' => $dto->isNicknameProvided(),
+            'note' => $dto->isNoteProvided(),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     */
+    private function laravelDto(array $spec, string $rootClass, string $json): object
+    {
+        $fqcn = $this->generate($spec, 'PresLv' . $this->namespaceSuffix($json . $rootClass), 'laravel', $rootClass);
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode($json, true);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+
+        $validator = (new Factory(new Translator(new ArrayLoader(), 'en')))->make($payload, $rules);
+        if (method_exists($fqcn, 'withValidator')) {
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+        }
+
+        // The DTO is built from `validated()`, exactly as a FormRequest's `toDto()` does — anything else
+        // would measure a shape the application never sees.
+        /** @var array<string, mixed> $validated */
+        $validated = $validator->validated();
+
+        return call_user_func([$fqcn, 'fromValidated'], $validated);
+    }
+
+    /**
      * @return array<string, bool>
      */
     private function runtimeNestedPresence(string $json): array
@@ -139,6 +186,16 @@ final class RuntimeVsSymfonyPresenceParityTest extends TestCase
     private function symfonyNestedPresence(string $json): array
     {
         $child = $this->symfonyDto(self::nestedSpec(), 'Owner', $json)->getChild();
+
+        return ['kept' => $child->isKeptProvided(), 'dropped' => $child->isDroppedProvided()];
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function laravelNestedPresence(string $json): array
+    {
+        $child = $this->laravelDto(self::nestedSpec(), 'Owner', $json)->getChild();
 
         return ['kept' => $child->isKeptProvided(), 'dropped' => $child->isDroppedProvided()];
     }

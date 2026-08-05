@@ -1,6 +1,6 @@
 # Symfony mode
 
-[← back to the main README](README.md) · [the other mode: runtime](README.runtime.md)
+[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [laravel](README.laravel.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
 
 Generated with `--attributes=symfony`. DTOs are plain data classes decorated with **Symfony
 Validator / Serializer attributes**. There is no library runtime: `symfony/validator` validates them
@@ -191,6 +191,8 @@ Measured against `RequestPayloadValueResolver` with a validator attached:
 | unparsable body | **400** `Request payload contains invalid "json" data.` |
 | unknown JSON key | **accepted** — the key is dropped before validation, which is why `additionalProperties: false` / `unevaluatedProperties: false` are near no-ops here; they still fire on a hand-built payload array |
 | unknown JSON key with `ALLOW_EXTRA_ATTRIBUTES => false` | **500** — `ExtraAttributesException` is neither of the two exception types the resolver catches. Map it yourself if you want strict rejection |
+| a JSON array for a `type: object` property | **accepted**, read as a map keyed `0..n-1`. The denormalizer turns both a JSON object and a JSON array into a PHP array before any constraint runs, and a map with keys `0..n-1` is a legitimate payload — so the two cannot be told apart here. [runtime](README.runtime.md) and [laravel](README.laravel.md) mode refuse it: both still hold the raw body |
+| `42.0` for a `type: integer` property | **422** — the spec counts it as an integer (JSON Schema 2020-12 §6.1.1) and [runtime](README.runtime.md) / [laravel](README.laravel.md) mode accept it, but the serializer refuses the float before any constraint runs. The one conformance gap this mode cannot close from generated code |
 
 The 422 messages for those first three come from Symfony, not from the schema, so they are generic
 (an unknown enum member reads `This value should be of type int|string.`). Anything the
@@ -282,7 +284,7 @@ tell an empty map from an empty list — so an empty one encodes as `[]` where t
 object:
 
 ```json
-{"tags": {"a": 1}}   // identical in both modes
+{"tags": {"a": 1}}   // identical in runtime and symfony mode
 {"tags": {}}         // symfony mode: {"tags": []}   runtime mode: {"tags": {}}
 ```
 
@@ -318,7 +320,7 @@ One more asymmetry, in this mode's favour: a polymorphic schema becomes an inter
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
 
-The schema semantics both modes share (list vs object, branch order in `oneOf`/`anyOf`,
+The schema semantics all three modes share (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
 [Validation Notes](README.md#validation-notes).
 
