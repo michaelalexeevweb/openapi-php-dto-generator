@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Golden;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
@@ -101,15 +102,20 @@ final class GoldenCorpusTest extends TestCase
     }
 
     /**
+     * Every mode, from `GenerationMode` — so a mode added there gets its own snapshot column here
+     * without this suite naming it. The snapshot file is `snapshots/<mode value>.snapshot.txt`, so the
+     * enum value is also the file name.
+     *
      * @return array<string, array{string}>
      */
     public static function modeProvider(): array
     {
-        return [
-            'runtime mode' => ['runtime'],
-            'symfony mode' => ['symfony'],
-            'laravel mode' => ['laravel'],
-        ];
+        $provided = [];
+        foreach (GenerationMode::cases() as $mode) {
+            $provided[$mode->value . ' mode'] = [$mode->value];
+        }
+
+        return $provided;
     }
 
     private function generateCorpusSnapshot(string $mode): string

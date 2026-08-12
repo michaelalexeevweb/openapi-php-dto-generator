@@ -448,7 +448,15 @@ trait RendersRuntimeDto
                 explode('|', $baseType),
                 static fn(string $member): bool => $member !== '' && $member !== 'null',
             );
-            $type = implode('|', $members) . '|UnsetValue|null';
+
+            // `mixed` cannot take part in a union: `mixed|UnsetValue|null` is a COMPILE-TIME fatal, so an
+            // optional property with no type in its schema (an empty schema, or one carrying only a
+            // description) used to emit a class that could not be loaded at all. `mixed` already admits
+            // the sentinel and null, so it stands alone and the presence tracking is unaffected — the
+            // constructor default is still `UnsetValue::UNSET`.
+            $type = in_array('mixed', $members, true)
+                ? 'mixed'
+                : implode('|', $members) . '|UnsetValue|null';
 
             // No explicit default → the sentinel itself is the constructor default.
             if ($defaultValue === '') {
@@ -659,6 +667,12 @@ trait RendersRuntimeDto
 
     private function ensureTypeAllowsNull(string $type): string
     {
+        // `mixed` already includes null, and saying so twice is a fatal: "Type mixed cannot be marked as
+        // nullable since mixed already includes null". Same reason `composePhpTypeHint()` special-cases it.
+        if ($type === 'mixed') {
+            return 'mixed';
+        }
+
         if (str_starts_with($type, '?') || str_contains($type, '|null')) {
             return $type;
         }

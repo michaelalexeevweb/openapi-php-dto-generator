@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Command;
 
 use JsonException;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDataDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
@@ -60,6 +61,7 @@ final class GenerateDtoCommand extends Command
     // resolution, naming, templates) stays on this class and is shared by all three. Laravel mode also
     // reads `RendersSymfonyDto::renderSymfonyValidationBlock()` — the interpreter has one
     // implementation and three packagings, see `renderLaravelInterpreterBlock()`.
+    use RendersLaravelDataDto;
     use RendersLaravelDto;
     use RendersRuntimeDto;
     use RendersSymfonyDto;
@@ -96,11 +98,22 @@ final class GenerateDtoCommand extends Command
      */
     public const string ATTRIBUTE_MODE_LARAVEL = 'laravel';
 
+    /**
+     * Generation mode emitting `spatie/laravel-data` classes: ONE `Data` subclass per schema instead of
+     * the FormRequest + DTO pair, hydrated and normalized by that package's own pipeline.
+     *
+     * Opt-in rather than default, and the only mode whose output needs a third-party package installed.
+     * What it buys is presence tracking as a language-level fact: an unprovided optional property IS a
+     * `Spatie\LaravelData\Optional`, so PATCH semantics need no emitted flag array.
+     */
+    public const string ATTRIBUTE_MODE_LARAVEL_DATA = 'laravel-data';
+
     /** @var array<int, string> */
     public const array ATTRIBUTE_MODES = [
         self::ATTRIBUTE_MODE_RUNTIME,
         self::ATTRIBUTE_MODE_SYMFONY,
         self::ATTRIBUTE_MODE_LARAVEL,
+        self::ATTRIBUTE_MODE_LARAVEL_DATA,
     ];
 
     /**
@@ -316,7 +329,7 @@ final class GenerateDtoCommand extends Command
             name: 'attributes',
             shortcut: null,
             mode: InputOption::VALUE_REQUIRED,
-            description: 'Generation mode: "runtime" (default, library runtime), "symfony" (Symfony Validator/Serializer attributes) or "laravel" (plain DTO + Laravel validation rules)',
+            description: 'Generation mode: "runtime" (default, library runtime), "symfony" (Symfony Validator/Serializer attributes), "laravel" (plain DTO + Laravel validation rules) or "laravel-data" (spatie/laravel-data Data classes)',
             default: self::ATTRIBUTE_MODE_RUNTIME,
         );
         $this->addOption(
@@ -356,7 +369,10 @@ final class GenerateDtoCommand extends Command
             : self::ATTRIBUTE_MODE_RUNTIME;
 
         if (!in_array($mode, self::ATTRIBUTE_MODES, true)) {
-            $io->error('Option --attributes must be "runtime" or "symfony".');
+            $io->error(sprintf(
+                'Option --attributes must be one of: %s.',
+                implode(', ', array_map(static fn(string $known): string => '"' . $known . '"', self::ATTRIBUTE_MODES)),
+            ));
             return Command::FAILURE;
         }
 
@@ -859,6 +875,7 @@ final class GenerateDtoCommand extends Command
         $this->resetSymfonyReachabilityCache();
 
         $this->prepareOutputDirectory($this->baseOutputDirectory);
+        $this->warnAboutClassNamesTheEmittedCodeAlsoUses();
 
         $generatedCount = 0;
 
@@ -876,6 +893,7 @@ final class GenerateDtoCommand extends Command
             }
 
             $schemaMetadata = $this->analyzeSchema(className: $className, schemaDefinition: $schemaDefinition);
+            $this->warnAboutUnhydratableUnionProperties($className, $schemaMetadata['properties']);
             $namespace = $this->schemaNamespaces[$className] ?? $this->baseNamespace;
             $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
             $classCode = $this->renderDtoClass(
@@ -2313,6 +2331,16 @@ final class GenerateDtoCommand extends Command
             }
 
             if (!$hasUnvalidatableBranch && $branchConstraints !== []) {
+                // `nullable: true` NEXT TO a union says the same thing as spelling a `{type: null}`
+                // variant inside it, and only the spelled form reached the emitted interpreter. So a
+                // document written the first way had its own `null` refused — "does not match any oneOf
+                // branch (expected integer or string, got null)" — in every mode but runtime, which reads
+                // the schema directly and always accepted it. Normalising the one spelling into the other
+                // is what closes that, and it reuses the branch matching that already worked.
+                if ($this->schemaAllowsNull($propertySchema) && !$this->unionBranchesAcceptNull($branchConstraints)) {
+                    $branchConstraints[] = ['type' => 'null'];
+                }
+
                 $constraints[$unionKey] = $branchConstraints;
                 if ($unionKey === 'oneOf' && is_array($propertySchema['discriminator'] ?? null)) {
                     $discriminator = $propertySchema['discriminator'];
@@ -3729,6 +3757,20 @@ final class GenerateDtoCommand extends Command
             );
         }
 
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL_DATA) {
+            // Flattened for the same reason, and one more: laravel-data reads the CONSTRUCTOR to learn
+            // a class's properties, so an inherited property that never reaches this constructor would
+            // not be hydrated at all.
+            return $this->renderLaravelDataDtoClass(
+                namespace: $namespace,
+                className: $className,
+                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                unionTypes: $schemaMetadata['unionTypes'],
+                discriminator: $schemaMetadata['discriminator'] ?? null,
+                isAbstract: $schemaMetadata['abstract'] ?? false,
+            );
+        }
+
         if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
             // Symfony DTOs are flattened: inherited properties are merged into a single standalone
             // constructor (no `extends`/parent::__construct chaining), which maps cleanly onto the
@@ -4464,6 +4506,216 @@ final class GenerateDtoCommand extends Command
         $remainder = substr($ref, strlen($this->documentSelfUri));
 
         return $remainder === '' || $remainder[0] !== '#' ? $ref : $remainder;
+    }
+
+    /**
+     * Whether the DOCUMENT allows null for this schema — either spelling.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function schemaAllowsNull(array $schema): bool
+    {
+        if (($schema['nullable'] ?? null) === true) {
+            return true;
+        }
+
+        $type = $schema['type'] ?? null;
+
+        return is_array($type) && in_array('null', $type, true);
+    }
+
+    /**
+     * Whether a union's branches already have one that accepts null, so it is not added twice.
+     *
+     * @param array<int, array<string, mixed>> $branches
+     */
+    private function unionBranchesAcceptNull(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            $type = $branch['type'] ?? null;
+            if ($type === 'null' || (is_array($type) && in_array('null', $type, true))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Reports a schema whose CLASS NAME is one the emitted code already uses for a library class.
+     *
+     * The generator carries a PHP type as a short name — `UploadedFile` is what `format: binary`
+     * resolves to, `DateTimeImmutable` what `format: date-time` does — so a component schema of that
+     * name is, from there on, indistinguishable from the library class. What the emitted file then does
+     * depends on where the name lands, and none of it is what the document asked for:
+     *
+     *     the file DECLARING it     `use X;` beside `class X` is a fatal — the file never loads
+     *     any SIBLING file          the import wins over the same-namespace class, so the property is
+     *                               typed with the library's class and its payload is a TypeError
+     *     a resolved TYPE           `format: binary` and a `$ref` to a schema named UploadedFile
+     *                               produce the same string, so the property is treated as an upload
+     *
+     * Only the first two are fixable from the import list, and laravel-data mode does exactly that
+     * (`laravelDataLibraryRef()`). The third is not: it would take a type representation that keeps a
+     * class's namespace all the way through, which this generator does not have. So the collision is
+     * named at BUILD time instead of surfacing as a fatal or a wrong type at request time — the same
+     * bargain as `warnAboutUnhydratableUnionProperties()`.
+     */
+    private function warnAboutClassNamesTheEmittedCodeAlsoUses(): void
+    {
+        // Keyed by the short name a document must not take, valued by what the emitted code uses it for.
+        // Two are shared by every mode because they are what a schema KEYWORD resolves to; the rest are
+        // the classes a mode's own emitted file imports.
+        $reserved = [
+            'DateTimeImmutable' => 'the type `format: date-time` and `format: date` resolve to',
+            'UploadedFile' => 'the type `format: binary` resolves to',
+        ];
+
+        $byMode = [
+            self::ATTRIBUTE_MODE_RUNTIME => [
+                'UnsetValue' => 'the sentinel every optional property defaults to',
+                'GeneratedDtoInterface' => 'the interface every generated DTO implements',
+                'JsonException' => 'the exception the emitted decoder declares',
+                'Stringable' => 'the interface an emitted string wrapper implements',
+            ],
+            self::ATTRIBUTE_MODE_SYMFONY => [
+                'Assert' => 'the alias of Symfony\Component\Validator\Constraints in every emitted attribute',
+                'Ignore' => 'the serializer attribute a writeOnly property carries',
+                'SerializedName' => 'the serializer attribute a renamed property carries',
+                'ExecutionContextInterface' => 'the parameter type of the emitted #[Assert\Callback]',
+            ],
+            self::ATTRIBUTE_MODE_LARAVEL => [
+                'Validator' => 'the parameter type of the emitted withValidator()',
+                'Rule' => 'the facade an enum or a discriminator rule is built with',
+                'FormRequest' => 'the base class of the emitted FormRequest',
+                'stdClass' => 'the type the emitted code casts a JSON map to',
+            ],
+            // laravel-data resolves its own imports against the document (`laravelDataLibraryRef()`),
+            // so only the two shared type names are left to warn about there.
+            self::ATTRIBUTE_MODE_LARAVEL_DATA => [],
+        ];
+
+        $reserved = [...$reserved, ...$byMode[$this->attributeMode] ?? []];
+
+        foreach ([...array_keys($this->dtoSchemas), ...array_keys($this->enumSchemas)] as $generatedClass) {
+            $usedFor = $reserved[$generatedClass] ?? null;
+            if ($usedFor === null) {
+                continue;
+            }
+
+            $warning = sprintf(
+                'Schema "%s" is generated as class %s, which is also %s in %s mode. The emitted code '
+                    . 'cannot tell the two apart — rename the schema, or move it to a namespace of its '
+                    . 'own with --ref-namespace.',
+                $generatedClass,
+                $generatedClass,
+                $usedFor,
+                $this->attributeMode,
+            );
+
+            if (!in_array($warning, $this->generationWarnings, true)) {
+                $this->generationWarnings[] = $warning;
+            }
+        }
+    }
+
+    /**
+     * Reports a property whose schema is a union of OBJECTS with no `discriminator`.
+     *
+     * Such a union is emitted as an interface its members implement, and NOTHING can turn a payload back
+     * into one of them: the document does not say which member a given object is, and picking by structure
+     * would be a guess two overlapping branches could not settle. Every mode therefore fails on a payload
+     * the document allows, and each fails differently and late — measured:
+     *
+     *     runtime       RuntimeException: Unsupported type: Shape
+     *     symfony       NotNormalizableValueException: … must be one of "Shape" ("array" given)
+     *     laravel       Error: Call to undefined method Shape::fromValidated()
+     *     laravel-data  TypeError: Argument #1 ($shape) must be of type Shape, array given
+     *
+     * A 500 at request time for a shape the generator could see at build time is the actual defect, so it
+     * is named here instead. Generation still succeeds: the interface and its members are useful as types,
+     * and a document may reference the union only in a response, which never gets hydrated.
+     *
+     * The remedy is in the document — add a `discriminator` — and then every mode resolves it: runtime and
+     * laravel switch on the mapping in generated hydration, Symfony uses the serializer's discriminator
+     * map, and laravel-data gets an abstract `Data` base with `morph()`.
+     *
+     * @param array<int, SchemaProperty> $properties
+     */
+    private function warnAboutUnhydratableUnionProperties(string $className, array $properties): void
+    {
+        foreach ($properties as $property) {
+            $target = $this->undiscriminatedUnionTypeOf($property);
+            if ($target === null) {
+                continue;
+            }
+
+            $warning = sprintf(
+                'Property "%s" of %s refers to %s, an undiscriminated %s union: no mode can hydrate a '
+                    . 'payload into it. Add a discriminator to %s, or type the property as one member.',
+                $property['openApiName'],
+                $className,
+                $target['class'],
+                $target['keyword'],
+                $target['class'],
+            );
+
+            if (!in_array($warning, $this->generationWarnings, true)) {
+                $this->generationWarnings[] = $warning;
+            }
+        }
+    }
+
+    /**
+     * The union base a property (or its array items) resolves to, when that base has no discriminator.
+     *
+     * @param SchemaProperty $property
+     * @return array{class: string, keyword: string}|null
+     */
+    private function undiscriminatedUnionTypeOf(array $property): ?array
+    {
+        foreach ([$this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $candidate) {
+            if ($candidate === null || array_key_exists($candidate, $this->discriminatorSchemas)) {
+                continue;
+            }
+
+            $schema = $this->dtoSchemas[$candidate] ?? null;
+            if (!is_array($schema)) {
+                continue;
+            }
+
+            foreach (['oneOf', 'anyOf'] as $keyword) {
+                if (array_key_exists($keyword, $schema) && $this->collectsObjectUnionMembers($schema[$keyword])) {
+                    return ['class' => $candidate, 'keyword' => $keyword];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a union's variants are `$ref`s to schemas of their own — the case that becomes an interface.
+     * A union of SCALARS becomes a PHP union type (`int|string`) instead, which hydrates fine.
+     */
+    private function collectsObjectUnionMembers(mixed $variants): bool
+    {
+        if (!is_array($variants)) {
+            return false;
+        }
+
+        foreach ($variants as $variant) {
+            if (!is_array($variant) || !is_string($variant['$ref'] ?? null)) {
+                continue;
+            }
+
+            $memberClass = $this->schemaRefToClassName($variant['$ref']);
+            if (array_key_exists($memberClass, $this->dtoSchemas)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

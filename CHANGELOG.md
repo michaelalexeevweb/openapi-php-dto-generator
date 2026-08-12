@@ -3,6 +3,155 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.11.0 — 2026-08-13
+
+- add laravel-data generation mode
+- one Data class per schema
+- Optional for presence, no emitted flags
+- null and Optional as independent types
+- reuse the laravel rule translator and interpreter
+- no MergeValidationRules: rules() is the truth
+- morph base for discriminated unions
+- #[Hidden] for writeOnly
+- schema formats on the date cast
+- suppress inferred nested rules
+- one message per mistake in laravel-data mode
+- 39% off the laravel-data validate step
+- mode list is data, not three columns
+- fourth column in every parity suite
+- fourth golden corpus snapshot
+- guard every emitted attribute resolves
+- laravel-data container without testbench
+- add README.laravel-data.md
+- fourth column in the benchmark
+- list every mode in the --attributes error
+- warn on an undiscriminated object union
+- accept null beside a union
+- fix `mixed` inside a union type
+- map a discriminator's wire name
+- enforce a self-recursive root schema
+- drop an unused generated import
+- survive a schema named like an import
+- warn on a schema named like a used class
+- pin what a schema `default` normalizes to
+
+`--attributes=laravel-data` emits ONE `spatie/laravel-data` class per schema instead of the FormRequest +
+DTO pair `--attributes=laravel` emits. It is the only mode whose generated code needs a third-party
+package, which is why it is opt-in and why first-party Laravel stays the default. What it buys is presence
+as a language-level fact: an optional property is `string|Optional`, an unprovided one IS an `Optional`,
+and laravel-data omits it from `toArray()` — no flag array, no `fromValidated()` factory, no hydration code
+of ours. `null` and `Optional` are separate union members, so `nullable` follows the document alone. The
+rule translator and the interpreter are the SAME code laravel mode uses, so the messages are identical:
+[README.laravel-data.md](README.laravel-data.md).
+
+Discriminated unions are the one place the emitted class SHAPE differs between modes. laravel-data cannot
+hydrate an interface, so the base is an abstract `Data` implementing `PropertyMorphableData`, its `morph()`
+maps the discriminator value to a member, and members `extends` it and forward the discriminator. An
+unmapped value comes back as a 422 rather than an exception to translate.
+
+Two decisions are measurements, not preferences. The class carries no `#[MergeValidationRules]`: with it,
+laravel-data's inferred rules are merged into ours, duplicating them and prepending a `nullable` the schema
+never asked for. And a nested-`Data` property carries `#[WithoutValidation]`: overriding `rules()` does not
+stop laravel-data injecting its own nested rule resolution, which reported one missing nested key twice —
+once as `validation.present`, once as the interpreter's `tags[0].id is required`. Removing it also took 39%
+off the validate step and 45% off `from($request)`.
+
+A property whose schema is a union of OBJECTS with no `discriminator` is now named at GENERATION time.
+Nothing can hydrate one — the document does not say which member a payload is — and every mode used to
+find that out at request time, late and differently: `Unsupported type: Shape` in runtime mode, a
+`NotNormalizableValueException` in symfony, and in the two Laravel modes a `Call to undefined method
+Shape::fromValidated()` and a `TypeError`, both of which read as bugs in the generated code rather than as
+a gap in the document. Generation still succeeds — the interface is a useful type, and a union referenced
+only in a response is never hydrated — and the warning names the property and the remedy. The demo corpus
+has one such property, which is how ordinary the shape turns out to be.
+
+`nullable: true` NEXT TO a `oneOf`/`anyOf` now means what it says. It is the same statement as spelling a
+`{type: null}` variant INSIDE the union, but only the spelled form reached the emitted interpreter — so a
+document written the first way had its own `null` refused with "does not match any oneOf branch (expected
+integer or string, got null)" in symfony, laravel and laravel-data mode. Runtime mode reads the schema
+directly and always accepted it, so three modes were wrong about a value the document explicitly allows.
+Both spellings are now held to one verdict by `ValidationParityTest`.
+
+A property with NO type in its schema — an empty schema, or one carrying only a description or an
+extension keyword — no longer breaks RUNTIME mode. It resolves to `mixed`, `mixed` cannot take part in a
+union or be marked nullable, and the emitted class said `mixed|UnsetValue|null` and `?mixed`: two
+compile-time fatals, so the file could not be loaded at all. `mixed` already admits the sentinel and null,
+so it now stands alone and presence tracking is unaffected. laravel-data mode has the same constraint from
+the other side — it is the one property shape with no `|Optional` to mark absence with, so an unprovided
+one is echoed as `null`, a divergence now declared in the parity suite.
+
+A `discriminator` whose `propertyName` is not already a PHP identifier — `pet_type`, the name OpenAPI's own
+Pet example uses — works in laravel-data mode now. The morph base reads the discriminator BEFORE there is
+an object to read it from, and `DataMorphClassResolver` looks the value up by the property name and by its
+INPUT-MAPPED name; the base carried `#[PropertyForMorph]` but no `#[MapName]`, so neither name matched the
+payload and a document the other three modes hydrate came back as `validation.required` on a key nobody
+sent. `NormalizationParityTest` now runs the union under both spellings, and `MorphDiscriminatorTest`
+every case twice.
+
+A schema that refers to ITSELF from the root class is enforced at every depth in the two Laravel modes.
+Both halves of the pair had a hole exactly where they met: the flat rules cannot expand a cycle, so no
+`children.*` path was emitted, while the interpreter treated the first `$ref` back to the root as a fresh
+class — expanded one level and PRUNED of everything the rules were assumed to cover. Measured: a child
+violating `minimum: 1` was ACCEPTED, and a child sending a string for an integer surfaced as a `TypeError`
+from the constructor rather than a 422. The cycle guard is now seeded with the owner class, so the root
+folds like any other recursive class. The recursion suite only ever reached such a schema through a
+non-recursive root, which is why it saw none of this; it now covers both entries.
+
+A document may call a schema `Data`, `Optional`, `Request`, `Validator` or `Container`, and laravel-data
+mode imports classes with all five of those short names. PHP then resolved the clash two ways, neither of
+them the document's: the file DECLARING that class did not load at all (`Cannot redeclare X\Data,
+previously declared as local import`), and in a SIBLING file the `use` quietly won over the
+same-namespace class, so a property typed `Request` was Illuminate's and the payload meant for it a
+`TypeError`. Every class this mode needs is now spelled fully qualified when the document has taken its
+name, and imported only when it has not — `EmissionEdgeCasesTest` drives all five through the package.
+
+An eleventh divergence was there all along and nothing measured it: an unprovided optional property is
+left out of `toArray()` by runtime, laravel and laravel-data, and comes back as `null` from Symfony —
+as the schema's `default` where the document declared one, because the constructor default IS that
+property's value there. `isXxxProvided()` still answers the question on the object. Pinned by
+`NormalizationParityTest` and listed in the support matrix, which had claimed "everything else about the
+response shape is identical in all four".
+
+The same clash in the OTHER modes is now named at generation time instead of being discovered at
+request time. Only laravel-data can resolve it from the import list; a generator that carries a PHP type
+as a SHORT name cannot tell `format: binary` from a schema the document called `UploadedFile`, and no
+import list fixes that. So each mode declares the names its emitted code already uses — `UnsetValue`,
+`GeneratedDtoInterface`, `JsonException`, `Stringable` in runtime; `Assert`, `Ignore`, `SerializedName`,
+`ExecutionContextInterface` in symfony; `Validator`, `Rule`, `FormRequest`, `stdClass` in laravel;
+`DateTimeImmutable` and `UploadedFile` in all four — and a schema of that name gets a warning naming the
+clash and the remedy. Generation still succeeds, as with the undiscriminated-union warning above.
+
+The mode list stopped being three hardcoded columns. `tests/GenerationMode` is data, the parity suites
+iterate it, and a `match` over modes has no `default` arm anywhere — so a mode is either measured in every
+case or it fails loudly. Adding the fourth column surfaced one thing the old shape had hidden:
+`additionalProperties: false` on a DTO-shaped schema is enforced by the two rule-based modes and invisible
+to the two that hydrate first.
+
+### Upgrading from 2.10.0
+
+For the new mode, `composer require spatie/laravel-data` — the generated classes need `^4.0`.
+
+One change reaches LARAVEL mode as well, because both modes read the same predicate for "is this property
+nullable per the document". `$property['nullable']` conflates schema-nullable with optional (the walker sets
+it for every optional property so the other modes have somewhere to put "absent"), and the keyword check
+that replaced it cannot see a nullable `$ref` — its constraint map carries no `type`. So for a REQUIRED
+nullable property written as `$ref` or `oneOf: [$ref, {type: null}]`, laravel mode now emits `nullable`
+where it emitted nothing:
+
+    'child' => ['present']              // 2.10.0
+    'child' => ['present', 'nullable']  // 2.11.0
+
+`nullable` only tells the validator to skip the remaining rules when the value IS null, which the schema
+says is allowed — so this widens nothing that was refused before. The demo corpus contains no property of
+that shape, which is why every golden snapshot but the new mode's is unchanged byte for byte. Regenerate
+anyway if your document has one.
+
+The recursion fix reaches LARAVEL mode the same way, and it NARROWS what is accepted: a document whose
+ROOT schema refers to itself gets an interpreter fold it did not have, so payloads that used to slip
+through below the first level are now 422s. That is the point — they violate the schema — but a client
+relying on the old leniency will notice. The demo corpus has no self-recursive root either, so the laravel
+snapshot is unchanged byte for byte here too.
+
 ## 2.10.0 — 2026-08-06
 
 - add laravel generation mode

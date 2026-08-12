@@ -172,7 +172,7 @@ trait RendersLaravelDto
         // the authority on the rest of the schema.
         $objectShapePaths = array_values(array_unique($objectShapePaths));
 
-        $interpreterConstraints = $this->laravelInterpreterConstraints($properties);
+        $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $interpreter = $this->renderLaravelInterpreterBlock(
             $interpreterConstraints,
             // A class whose fold carries no assertion needs no entry: the marker pointing at it resolves
@@ -396,6 +396,36 @@ trait RendersLaravelDto
     }
 
     /**
+     * Whether the SCHEMA declares the property nullable — which is not what `$property['nullable']`
+     * says. The walker sets that flag for every OPTIONAL property too, because the other modes need
+     * somewhere to put "absent" and use `null` for it (`$nullable = $nullableBySchema || !$isRequired`).
+     *
+     * Reading the flag instead of the document is a bug with a history: it emitted a `nullable` rule for
+     * every optional property, and `sometimes` already covers an absent key — so all `nullable` added
+     * was permission to send a null the schema never allowed (fixed 2026-08-11). laravel-data mode asks
+     * the same question of its property TYPE, where `null` and `Optional` are separate union members, so
+     * the predicate lives here instead of inside its one caller.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelSchemaDeclaresNullable(array $property): bool
+    {
+        // For a REQUIRED property the flag is unambiguous: it is `$nullableBySchema || !$isRequired`, and
+        // the second half is false, so the flag IS the document. This is the only reading that covers a
+        // nullable `$ref` — its constraint map carries no `type`, so the keyword check below cannot see
+        // it, and a required nullable nested DTO was typed non-nullable until this branch existed.
+        if ($property['required'] === true) {
+            return $property['nullable'] === true;
+        }
+
+        $constraints = $this->laravelConstraintsFor($property);
+        $declaredType = $constraints['type'] ?? null;
+
+        return ($constraints['nullable'] ?? null) === true
+            || (is_array($declaredType) && in_array('null', $declaredType, true));
+    }
+
+    /**
      * The rules for one property AND the keywords they actually enforce.
      *
      * The second half matters as much as the first: the interpreter is pruned by what the rules
@@ -410,11 +440,7 @@ trait RendersLaravelDto
     {
         $constraints = $this->laravelConstraintsFor($property);
         $declaredType = $constraints['type'] ?? null;
-        // The SCHEMA's nullability, not the property's. `$property['nullable']` is the PHP type's:
-        // the walker turns every optional property nullable so it can default to null. Reading it
-        // here would emit `nullable` for every optional property — see below.
-        $nullable = ($constraints['nullable'] ?? null) === true
-            || (is_array($declaredType) && in_array('null', $declaredType, true));
+        $nullable = $this->laravelSchemaDeclaresNullable($property);
 
         // OpenAPI `required` means "the key is there". Laravel's `required` means "present and NOT
         // EMPTY": it rejects null, `""`, `[]` and `{}`. Those are all legal values for a required
@@ -1102,9 +1128,14 @@ trait RendersLaravelDto
      * stays as small as the document allows and a plain DTO gets none at all.
      *
      * @param array<int, SchemaProperty> $properties
+     * @param string $ownerClass the class these properties belong to, which seeds the cycle guard: a
+     *        schema that refers back to ITSELF from the root is a cycle like any other, and treating it
+     *        as a fresh class expanded it one level with the pruning of a level the dotted rules cover —
+     *        which they do not, because `laravelNestedRules()` cannot expand a cycle either. A child
+     *        violating `minimum` was then enforced by nobody.
      * @return array<string, mixed>
      */
-    private function laravelInterpreterConstraints(array $properties): array
+    private function laravelInterpreterConstraints(array $properties, string $ownerClass): array
     {
         $this->laravelRecursiveFolds = [];
         $constraints = [];
@@ -1113,7 +1144,7 @@ trait RendersLaravelDto
             // unenforced by itself, while the class behind it may declare `contains` or
             // `dependentRequired` that only the interpreter can check. An empty result means the rules
             // cover the property after all.
-            $folded = $this->laravelInterpreterSchemaFor($property);
+            $folded = $this->laravelInterpreterSchemaFor($property, [$ownerClass]);
             if ($folded === []) {
                 continue;
             }

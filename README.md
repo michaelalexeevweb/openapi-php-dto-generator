@@ -13,7 +13,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Features
 
 - 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
-- 🎯 **Three generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer), **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes) or **[laravel](README.laravel.md)** (a plain DTO plus a `FormRequest` carrying `rules()` — nothing to install beyond the framework)
+- 🎯 **Four generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer), **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes), **[laravel](README.laravel.md)** (a plain DTO plus a `FormRequest` carrying `rules()` — nothing to install beyond the framework) or **[laravel-data](README.laravel-data.md)** (one `spatie/laravel-data` class per schema, with `Optional` for presence)
 - ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
 - 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
 - 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
@@ -31,7 +31,8 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
   - [Runtime mode guide](README.runtime.md) — request binding, presence tracking, PSR-7
   - [Symfony mode guide](README.symfony.md) — attribute mapping, serialization groups, error codes
   - [Laravel mode guide](README.laravel.md) — FormRequest, rules(), what the interpreter adds
-- [Support matrix](README.support-matrix.md) — every keyword per mode, the six divergences, what is not generated at all
+  - [laravel-data mode guide](README.laravel-data.md) — `Data` classes, `Optional` presence, morph unions
+- [Support matrix](README.support-matrix.md) — every keyword per mode, the eleven divergences, what is not generated at all
 - [Performance](README.performance.md) — bind / validate / normalize per mode, measured, with the benchmark to re-run it
 - [Validation Notes](#validation-notes)
 - [Upgrading](#upgrading)
@@ -39,7 +40,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.10.0
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.11.0
 ```
 
 ## Requirements
@@ -128,32 +129,34 @@ Parameters:
 
 ## Generation Modes
 
-The generator emits DTOs in one of three modes, selected with `--attributes` (default: `runtime`).
-All three enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
+The generator emits DTOs in one of four modes, selected with `--attributes` (default: `runtime`).
+All four enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
 
-| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) | **[Laravel](README.laravel.md)** (`--attributes=laravel`) |
-|---|---|---|---|
-| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes | plain class with getters, `rules()`, `fromValidated()`, plus a `FormRequest` for every request payload |
-| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer` | nothing to install — `FormRequest` and the validator ship with Laravel |
-| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` | Laravel rules + a generated `withValidator()` |
-| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) | the framework's own 422 with its error bag |
-| Validated before the controller runs | you call the deserializer | yes, via `#[MapRequestPayload]` | yes, the FormRequest is resolved first |
-| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply | done by Laravel, same limitation |
-| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter | yes — `isXxxProvided()`, from the validated keys |
-| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass | enforced |
-| `additionalProperties: false` on a DTO-shaped schema | not enforced (the payload is bound first) | not enforced | **enforced** — the interpreter sees the raw payload |
+| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) | **[Laravel](README.laravel.md)** (`--attributes=laravel`) | **[laravel-data](README.laravel-data.md)** (`--attributes=laravel-data`) |
+|---|---|---|---|---|
+| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes | plain class with getters, `rules()`, `fromValidated()`, plus a `FormRequest` for every request payload | one `Data` subclass: promoted `public readonly`, `rules()`, `withValidator()` |
+| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer` | nothing to install — `FormRequest` and the validator ship with Laravel | `spatie/laravel-data` |
+| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` | Laravel rules + a generated `withValidator()` | the same rules and the same `withValidator()`, run by laravel-data |
+| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) | the framework's own 422 with its error bag | the framework's own 422 with its error bag |
+| Validated before the controller runs | you call the deserializer | yes, via `#[MapRequestPayload]` | yes, the FormRequest is resolved first | yes, on `Data::from($request)` |
+| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply | done by Laravel, same limitation | done by Laravel, same limitation |
+| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter | yes — `isXxxProvided()`, from the validated keys | yes — `Optional`, the property's own type |
+| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass | enforced | `writeOnly` enforced (`#[Hidden]`), `readOnly` input echoed back |
+| `additionalProperties: false` on a DTO-shaped schema | not enforced (the payload is bound first) | not enforced | **enforced** — the interpreter sees the raw payload | **enforced** — same interpreter |
 
 Rule of thumb: **runtime** when the request itself must follow the spec (parameter styles, partial
 updates, one library end to end); **symfony** or **laravel** when you want plain DTOs your framework
-owns, validated by the framework, with errors in the shape it already speaks.
+owns, validated by the framework, with errors in the shape it already speaks; **laravel-data** when your
+application already runs that package and you want generated classes to match the ones you write.
 
 Each mode has its own guide — what it can do, how to wire it, where it stops:
 
 - **[README.runtime.md](README.runtime.md)**
 - **[README.symfony.md](README.symfony.md)**
 - **[README.laravel.md](README.laravel.md)**
+- **[README.laravel-data.md](README.laravel-data.md)**
 
-For the keyword-by-keyword answer — what every mode enforces, the six places they differ and why, and
+For the keyword-by-keyword answer — what every mode enforces, the eleven places they differ and why, and
 what is not generated in any of them — see the **[support matrix](README.support-matrix.md)**. It is
 derived from the parity suites, so a row that stops being true fails a test.
 

@@ -1,6 +1,6 @@
 # Symfony mode
 
-[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [laravel](README.laravel.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
+[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
 
 Generated with `--attributes=symfony`. DTOs are plain data classes decorated with **Symfony
 Validator / Serializer attributes**. There is no library runtime: `symfony/validator` validates them
@@ -320,7 +320,7 @@ One more asymmetry, in this mode's favour: a polymorphic schema becomes an inter
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
 
-The schema semantics all three modes share (list vs object, branch order in `oneOf`/`anyOf`,
+The schema semantics every mode shares (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
 [Validation Notes](README.md#validation-notes).
 

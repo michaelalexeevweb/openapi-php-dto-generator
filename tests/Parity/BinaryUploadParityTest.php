@@ -9,6 +9,8 @@ use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -94,15 +96,15 @@ final class BinaryUploadParityTest extends TestCase
     /**
      * @return array{0: class-string, 1: string}
      */
-    private function generate(string $mode): array
+    private function generate(GenerationMode $mode): array
     {
-        $namespace = 'Bin' . ucfirst($mode);
+        $namespace = 'Bin' . $mode->tag();
         $target = $this->outputDirectory . '/' . $namespace;
         if (!is_dir($target)) {
             mkdir($target, 0o755, true);
         }
 
-        (new GenerateDtoCommand())->generateFromArray(self::uploadSpec(), $target, $namespace, $mode);
+        (new GenerateDtoCommand())->generateFromArray(self::uploadSpec(), $target, $namespace, $mode->value);
 
         spl_autoload_register(static function (string $class) use ($target, $namespace): void {
             if (!str_starts_with($class, $namespace . '\\')) {
@@ -121,7 +123,7 @@ final class BinaryUploadParityTest extends TestCase
     }
 
     #[DataProvider('modeProvider')]
-    public function testTheTypeHintAndItsImportAreEmitted(string $mode): void
+    public function testTheTypeHintAndItsImportAreEmitted(GenerationMode $mode): void
     {
         [, $file] = $this->generate($mode);
         $source = (string)file_get_contents($file);
@@ -132,39 +134,47 @@ final class BinaryUploadParityTest extends TestCase
 
         // Without the import the hint resolves inside the DTO's own namespace, and every upload dies
         // with "must be of type <Namespace>\UploadedFile".
-        $this->assertStringNotContainsString("namespace {$mode}", $source);
+        $this->assertStringNotContainsString(sprintf('namespace %s', $mode->value), $source);
     }
 
     #[DataProvider('modeProvider')]
-    public function testANonFilePayloadIsRejectedRatherThanCrashing(string $mode): void
+    public function testANonFilePayloadIsRejectedRatherThanCrashing(GenerationMode $mode): void
     {
         [$fqcn] = $this->generate($mode);
         $payload = ['doc' => 'not-a-file', 'note' => 'x'];
 
+        // No `default` arm: a mode added to GenerationMode without a rejection path here fails loudly.
         $rejection = match ($mode) {
-            'runtime' => $this->runtimeRejection($fqcn, $payload),
-            'symfony' => $this->symfonyRejection($fqcn, $payload),
-            default => $this->laravelRejection($fqcn, $payload),
+            GenerationMode::Runtime => $this->runtimeRejection($fqcn, $payload),
+            GenerationMode::Symfony => $this->symfonyRejection($fqcn, $payload),
+            GenerationMode::Laravel => $this->laravelRejection($fqcn, $payload),
+            GenerationMode::LaravelData => $this->laravelDataRejection($fqcn, $payload),
         };
 
-        $this->assertNotNull($rejection, sprintf('%s mode accepted a string for a binary property', $mode));
+        $this->assertNotNull(
+            $rejection,
+            sprintf('%s mode accepted a string for a binary property', $mode->value),
+        );
         $this->assertStringNotContainsString(
             'TypeError',
             $rejection,
-            sprintf('%s mode rejected it with a TypeError, which is a 500 rather than a 422', $mode),
+            sprintf('%s mode rejected it with a TypeError, which is a 500 rather than a 422', $mode->value),
         );
     }
 
     /**
-     * @return array<string, array{0: string}>
+     * Every mode, from the enum — so a mode added there is measured here without editing this suite.
+     *
+     * @return array<string, array{0: GenerationMode}>
      */
     public static function modeProvider(): array
     {
-        return [
-            'runtime mode' => ['runtime'],
-            'symfony mode' => ['symfony'],
-            'laravel mode' => ['laravel'],
-        ];
+        $provided = [];
+        foreach (GenerationMode::cases() as $mode) {
+            $provided[$mode->value . ' mode'] = [$mode];
+        }
+
+        return $provided;
     }
 
     /**
@@ -207,6 +217,26 @@ final class BinaryUploadParityTest extends TestCase
 
         try {
             $serializer->denormalize($payload, $fqcn);
+        } catch (Throwable $e) {
+            return get_class($e) . ': ' . $e->getMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * laravel-data validates and hydrates in one call, so both halves of the question — "is a string
+     * refused" and "is it refused with a 422 rather than a TypeError" — are answered by it.
+     *
+     * @param class-string $fqcn
+     * @param array<string, mixed> $payload
+     */
+    private function laravelDataRejection(string $fqcn, array $payload): ?string
+    {
+        LaravelDataContainer::boot();
+
+        try {
+            $fqcn::validateAndCreate($payload);
         } catch (Throwable $e) {
             return get_class($e) . ': ' . $e->getMessage();
         }

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -26,18 +29,20 @@ use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
+use Throwable;
 
 /**
- * The OTHER half of runtime/Symfony parity: the response direction.
+ * The OTHER half of parity: the response direction.
  *
- * `ValidationParityTest` compares validation verdicts — whether a payload is accepted. It
- * cannot see the shape of what comes back out, because the two modes normalize through different
- * code (`DtoNormalizer` vs the Symfony Serializer). This test pins that shape: the same JSON goes
- * in, and the resulting array is asserted for BOTH modes.
+ * `ValidationParityTest` compares validation verdicts — whether a payload is accepted. It cannot see
+ * the shape of what comes back out, because the modes normalize through different code
+ * (`DtoNormalizer`, the Symfony Serializer, the emitted `toArray()`). This test pins that shape: the
+ * same JSON goes in, and the resulting array is asserted for every mode.
  *
- * Expectations are written out per mode on purpose. Where they are equal the modes agree; where
- * they differ the case must say why, and `testEveryDivergenceIsDocumented` enforces that — so a new
- * divergence cannot be introduced without someone writing down the reason.
+ * A case states ONE expectation — the reference mode's — and any mode that cannot meet it declares
+ * its own expectation plus a reason. So a mode says nothing at all when it agrees, which is what
+ * makes the mode list additive; and `testEveryDivergenceIsDocumented` enforces the reason, so a new
+ * divergence cannot be introduced without someone writing down why.
  */
 final class NormalizationParityTest extends TestCase
 {
@@ -74,56 +79,73 @@ final class NormalizationParityTest extends TestCase
     /**
      * @param array<string, mixed> $schema
      * @param array<string, array<string, mixed>> $extraSchemas
-     * @param array<string, mixed> $expectedRuntime
-     * @param array<string, mixed> $expectedSymfony
+     * @param array<string, array<string, mixed>> $expectedByMode keyed by mode value; the reference
+     *        mode's entry is the common expectation, another mode's entry is a declared divergence
+     * @param array<string, string> $reasonByMode keyed by mode value
      */
     #[DataProvider('normalizationProvider')]
-    public function testBothModesNormalizeTheSameWay(
+    public function testEveryModeNormalizesTheSameWay(
         string $key,
         array $schema,
         array $extraSchemas,
         string $json,
-        array $expectedRuntime,
-        array $expectedSymfony,
-        ?string $divergenceReason,
-        ?string $laravelReason,
+        array $expectedByMode,
+        array $reasonByMode,
+        array $unsupported,
     ): void {
         $spec = self::spec($schema, $extraSchemas);
+        $common = $expectedByMode[GenerationMode::reference()->value];
 
-        $this->assertSame(
-            $expectedRuntime,
-            $this->runtimeNormalization($spec, $key, $json),
-            sprintf('runtime normalization changed for "%s"', $key),
-        );
-        $this->assertSame(
-            $expectedSymfony,
-            $this->symfonyNormalization($spec, $key, $json),
-            sprintf('symfony normalization changed for "%s"', $key),
-        );
+        foreach (GenerationMode::cases() as $mode) {
+            $unsupportedReason = $unsupported[$mode->value] ?? null;
+            if ($unsupportedReason !== null) {
+                // A declared gap, pinned rather than skipped: the mode must still FAIL, so the day it
+                // starts working this assertion breaks and the declaration has to go.
+                $this->assertNotNull(
+                    $this->normalizationFailure($mode, $spec, $key, $json),
+                    sprintf(
+                        '"%s" is declared unsupported in %s mode but it worked — drop the declaration: %s',
+                        $key,
+                        $mode->value,
+                        $unsupportedReason,
+                    ),
+                );
 
-        if ($divergenceReason === null) {
-            $this->assertSame($expectedRuntime, $expectedSymfony, sprintf('modes must agree on "%s"', $key));
-        }
+                continue;
+            }
 
-        // Laravel mode has no third set of expectations: its `toArray()` was written to mirror runtime
-        // semantics (omit an unprovided optional, format a temporal value as the schema declares), so it
-        // is compared against the RUNTIME expectation and any difference must carry its own reason.
-        $laravel = $this->laravelNormalization($spec, $key, $json);
-        if ($laravelReason === null) {
-            $this->assertSame(
-                $expectedRuntime,
-                $laravel,
-                sprintf('laravel must normalize like runtime on "%s" (or declare a reason)', $key),
+            $observed = $this->normalization($mode, $spec, $key, $json);
+            $declared = $expectedByMode[$mode->value] ?? null;
+            $reason = $reasonByMode[$mode->value] ?? null;
+
+            if ($declared !== null) {
+                $this->assertSame(
+                    $declared,
+                    $observed,
+                    sprintf('%s normalization changed for "%s"', $mode->value, $key),
+                );
+
+                continue;
+            }
+
+            // No expectation of its own: the mode is held to the common one, unless it declares a
+            // reason — in which case the difference must actually be there, or the reason is stale.
+            if ($reason === null) {
+                $this->assertSame(
+                    $common,
+                    $observed,
+                    sprintf('%s must normalize like %s on "%s" (or declare a reason)', $mode->value, GenerationMode::reference()->value, $key),
+                );
+
+                continue;
+            }
+
+            $this->assertNotSame(
+                $common,
+                $observed,
+                sprintf('"%s" declares a %s divergence but there is none — drop the reason', $key, $mode->value),
             );
-
-            return;
         }
-
-        $this->assertNotSame(
-            $expectedRuntime,
-            $laravel,
-            sprintf('"%s" declares a laravel divergence but there is none — drop the reason', $key),
-        );
     }
 
     /**
@@ -132,8 +154,8 @@ final class NormalizationParityTest extends TestCase
      *
      * @param array<string, mixed> $schema
      * @param array<string, array<string, mixed>> $extraSchemas
-     * @param array<string, mixed> $expectedRuntime
-     * @param array<string, mixed> $expectedSymfony
+     * @param array<string, array<string, mixed>> $expectedByMode
+     * @param array<string, string> $reasonByMode
      */
     #[DataProvider('normalizationProvider')]
     public function testEveryDivergenceIsDocumented(
@@ -141,29 +163,52 @@ final class NormalizationParityTest extends TestCase
         array $schema,
         array $extraSchemas,
         string $json,
-        array $expectedRuntime,
-        array $expectedSymfony,
-        ?string $divergenceReason,
-        ?string $laravelReason,
+        array $expectedByMode,
+        array $reasonByMode,
+        array $unsupported,
     ): void {
-        if ($expectedRuntime === $expectedSymfony) {
-            $this->assertNull(
-                $divergenceReason,
-                sprintf('"%s" declares a divergence but the two modes agree — drop the reason', $key),
-            );
-
-            return;
-        }
-
-        $this->assertNotNull(
-            $divergenceReason,
-            sprintf(
-                "\"%s\" normalizes differently and says nothing about it\n runtime: %s\n symfony: %s",
-                $key,
-                json_encode($expectedRuntime),
-                json_encode($expectedSymfony),
-            ),
+        $reference = GenerationMode::reference();
+        $common = $expectedByMode[$reference->value];
+        $this->assertArrayNotHasKey(
+            $reference->value,
+            $reasonByMode,
+            sprintf('"%s" gives the reference mode a divergence reason — it IS the expectation', $key),
         );
+
+        foreach (GenerationMode::others() as $mode) {
+            if (array_key_exists($mode->value, $unsupported)) {
+                continue;
+            }
+
+            $declared = $expectedByMode[$mode->value] ?? null;
+            if ($declared === null) {
+                continue;
+            }
+
+            if ($declared === $common) {
+                $this->assertArrayNotHasKey(
+                    $mode->value,
+                    $reasonByMode,
+                    sprintf('"%s" declares a %s divergence but the expectations agree — drop the reason', $key, $mode->value),
+                );
+
+                continue;
+            }
+
+            $this->assertArrayHasKey(
+                $mode->value,
+                $reasonByMode,
+                sprintf(
+                    "\"%s\" normalizes differently in %s mode and says nothing about it\n %s: %s\n %s: %s",
+                    $key,
+                    $mode->value,
+                    $reference->value,
+                    json_encode($common),
+                    $mode->value,
+                    json_encode($declared),
+                ),
+            );
+        }
     }
 
     /**
@@ -230,6 +275,15 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"at":"2026-03-10T12:00:00.123456+03:00"}',
                 'runtime' => ['at' => '2026-03-10T12:00:00.123456+03:00'],
                 'symfony' => ['at' => '2026-03-10T12:00:00.123456+03:00'],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['at' => '2026-03-10T12:00:00+03:00'],
+                        'reason' => 'a laravel-data transformer takes ONE format string, so it cannot '
+                            . 'say "keep the sub-second precision the payload carried" — the emitted '
+                            . '#[WithCast] accepts all four patterns on the way in, and the way out is '
+                            . 'ATOM',
+                    ],
+                ],
             ],
             'enum' => [
                 'schema' => self::object(['e' => ['type' => 'string', 'enum' => ['a', 'b']]], ['e']),
@@ -258,6 +312,40 @@ final class NormalizationParityTest extends TestCase
             // This used to drop the whole value in BOTH modes: a bare `type: object` was
             // materialized into an empty DTO class. It is now a map in both, and the only
             // remaining difference is the stdClass/array one below.
+            // A property with NO type at all — the one shape that cannot carry `Optional`, because PHP
+            // refuses `mixed|Optional`. So laravel-data has nowhere to put "absent" and fills it with null.
+            'untyped optional property missing' => [
+                'schema' => self::object(['s' => ['type' => 'string'], 'any' => ['description' => 'anything']], ['s']),
+                'json' => '{"s":"a"}',
+                'runtime' => ['s' => 'a'],
+                'symfony' => ['any' => null, 's' => 'a'],
+                'reason' => $nullOmission,
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['s' => 'a', 'any' => null],
+                        'reason' => 'an untyped property is plain `mixed`, and `mixed` cannot take part in a '
+                            . 'union type — so this is the only property shape with no `|Optional` to mark '
+                            . 'absence with. laravel-data fills the missing key with null and echoes it, the '
+                            . 'same limitation Symfony mode has for every optional property.',
+                    ],
+                ],
+            ],
+            // A `default` is what the SERVER may assume, not something the wire said. The three modes
+            // that track presence report the key as absent and leave the default to the application;
+            // Symfony fills the property from the constructor default and cannot tell the two apart —
+            // the same limitation as every other optional property there, reached from a new direction.
+            'optional property with a default, absent' => [
+                'schema' => self::object(
+                    ['id' => ['type' => 'integer'], 'limit' => ['type' => 'integer', 'default' => 25]],
+                    ['id'],
+                ),
+                'json' => '{"id":1}',
+                'runtime' => ['id' => 1],
+                'symfony' => ['limit' => 25, 'id' => 1],
+                'reason' => 'the constructor default IS the Symfony DTO\'s value for an absent key, so a '
+                    . 'schema default is indistinguishable from one the client sent — the response '
+                    . 'direction of the same missing presence tracking',
+            ],
             'free-form object' => [
                 'schema' => self::object(['any' => ['type' => 'object']], ['any']),
                 'json' => '{"any":{"k":[1,{"z":null}]}}',
@@ -265,6 +353,14 @@ final class NormalizationParityTest extends TestCase
                 'symfony' => ['any' => ['k' => [1, ['z' => null]]]],
                 'reason' => 'same stdClass-vs-array difference as the map cases, applied at every '
                     . 'level of a free-form value',
+                'diverges' => [
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
+                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
+                            . 'as [] rather than {}',
+                    ],
+                ],
             ],
             'additionalProperties map' => [
                 'schema' => self::object(['map' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]], ['map']),
@@ -274,6 +370,14 @@ final class NormalizationParityTest extends TestCase
                 'reason' => 'runtime normalizes a map to stdClass so it always encodes as a JSON '
                     . 'object, Symfony keeps the PHP array — identical JSON while the map has keys, '
                     . 'see the empty-map case for where it stops being identical',
+                'diverges' => [
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
+                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
+                            . 'as [] rather than {}',
+                    ],
+                ],
             ],
             'empty map' => [
                 'schema' => self::object(['map' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]], ['map']),
@@ -282,6 +386,14 @@ final class NormalizationParityTest extends TestCase
                 'symfony' => ['map' => []],
                 'reason' => 'the stdClass/array difference becomes visible on the wire: runtime '
                     . 'encodes {} (an object, as the schema says), Symfony encodes [] (an array)',
+                'diverges' => [
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
+                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
+                            . 'as [] rather than {}',
+                    ],
+                ],
             ],
             // Runtime used to fail this outright: the item type was read off the innermost generic,
             // so `{"maps":[{}]}` could not be deserialized at all, and an empty map inside a list
@@ -297,6 +409,13 @@ final class NormalizationParityTest extends TestCase
                 'reason' => 'the same stdClass-vs-array difference as the map cases, one level deeper: '
                     . 'runtime casts every map — including one inside a list — so an empty item '
                     . 'encodes as {}, Symfony leaves the PHP array and encodes []',
+                'diverges' => [
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does, '
+                            . 'inside a list too',
+                    ],
+                ],
             ],
             'aliased property names' => [
                 'schema' => self::object(
@@ -376,6 +495,46 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"shape":{"kind":"circle","r":3}}',
                 'runtime' => ['shape' => ['kind' => 'circle', 'r' => 3]],
                 'symfony' => ['shape' => ['kind' => 'circle', 'r' => 3]],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['shape' => ['r' => 3, 'kind' => 'circle']],
+                        'reason' => 'the discriminated base is an abstract Data class here, not an '
+                            . 'interface, so the discriminator is an INHERITED property — and PHP '
+                            . 'reflection lists a class\'s own properties before its parent\'s, which is '
+                            . 'the order laravel-data normalizes in. Same keys and same values; JSON '
+                            . 'object order carries no meaning, and assertSame is the only thing that '
+                            . 'sees a difference here.',
+                    ],
+                ],
+            ],
+            // The same union with a discriminator whose wire name is NOT a PHP identifier. laravel-data
+            // reads the discriminator before it has an object — `DataMorphClassResolver` looks the value
+            // up by the property name and by its input-mapped name — so the mapping attribute has to be
+            // on the morph base as well, or a payload every other mode hydrates comes back a 422.
+            'discriminated union with a mapped discriminator name' => [
+                'schema' => self::object(['shape' => ['$ref' => '#/components/schemas/Shape']], ['shape']),
+                'extra' => [
+                    'Shape' => [
+                        'oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']],
+                        'discriminator' => [
+                            'propertyName' => 'pet_type',
+                            'mapping' => ['circle' => '#/components/schemas/Circle', 'square' => '#/components/schemas/Square'],
+                        ],
+                    ],
+                    'Circle' => self::object(['pet_type' => ['type' => 'string'], 'r' => ['type' => 'integer']], ['pet_type', 'r']),
+                    'Square' => self::object(['pet_type' => ['type' => 'string'], 'a' => ['type' => 'integer']], ['pet_type', 'a']),
+                ],
+                'json' => '{"shape":{"pet_type":"circle","r":3}}',
+                'runtime' => ['shape' => ['pet_type' => 'circle', 'r' => 3]],
+                'symfony' => ['shape' => ['pet_type' => 'circle', 'r' => 3]],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['shape' => ['r' => 3, 'pet_type' => 'circle']],
+                        'reason' => 'the inherited-discriminator key order of the case above, unchanged '
+                            . 'by the name mapping: PHP reflection lists a class\'s own properties '
+                            . 'before its parent\'s, and the discriminator lives on the abstract base.',
+                    ],
+                ],
             ],
             'big integer' => [
                 'schema' => self::object(['n' => ['type' => 'integer', 'format' => 'int64']], ['n']),
@@ -413,20 +572,57 @@ final class NormalizationParityTest extends TestCase
                 'reason' => 'runtime ignores a readOnly value coming from the client, so the property '
                     . 'stays unset and is omitted; Symfony denormalizes it unless the caller passes '
                     . '[\'groups\' => \'write\'], which this case deliberately does not',
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['name' => 'n', 'id' => 1],
+                        'reason' => 'writeOnly has an exact counterpart in laravel-data (#[Hidden], which '
+                            . 'the emitter uses) and readOnly has none: nothing says "hydrate everything '
+                            . 'except this key". The value therefore arrives and is echoed back, as in '
+                            . 'Symfony mode without a write group.',
+                    ],
+                ],
             ],
         ];
 
         $provided = [];
         foreach ($cases as $key => $case) {
+            $expectedByMode = [
+                GenerationMode::Runtime->value => $case['runtime'],
+                GenerationMode::Symfony->value => $case['symfony'],
+            ];
+
+            // A reason is only ever attached to a mode that is NOT the reference: `reason` has always
+            // meant "why Symfony differs", and `laravelReason` its Laravel counterpart.
+            $reasonByMode = [];
+            if (($case['reason'] ?? null) !== null) {
+                $reasonByMode[GenerationMode::Symfony->value] = $case['reason'];
+            }
+            if (($case['laravelReason'] ?? null) !== null) {
+                $reasonByMode[GenerationMode::Laravel->value] = $case['laravelReason'];
+            }
+
+            // The general form, for any mode: its own expectation and why it differs. The two keys above
+            // predate it and are kept because they read well for the two modes that use them most.
+            foreach ($case['diverges'] ?? [] as $modeValue => $divergence) {
+                if (array_key_exists('expected', $divergence)) {
+                    $expectedByMode[$modeValue] = $divergence['expected'];
+                }
+                if (array_key_exists('like', $divergence)) {
+                    // "differs from the reference in exactly the way that mode does" — said once instead
+                    // of copying its expectation, which would then have to be kept in step by hand.
+                    $expectedByMode[$modeValue] = $expectedByMode[$divergence['like']];
+                }
+                $reasonByMode[$modeValue] = $divergence['reason'];
+            }
+
             $provided[$key] = [
                 $key,
                 $case['schema'],
                 $case['extra'] ?? [],
                 $case['json'],
-                $case['runtime'],
-                $case['symfony'],
-                $case['reason'] ?? null,
-                $case['laravelReason'] ?? null,
+                $expectedByMode,
+                $reasonByMode,
+                $case['unsupported'] ?? [],
             ];
         }
 
@@ -463,7 +659,7 @@ final class NormalizationParityTest extends TestCase
      */
     private function runtimeNormalization(array $spec, string $key, string $json): array
     {
-        $fqcn = $this->generate($spec, 'NormRt' . $this->namespaceSuffix($key), 'runtime');
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Runtime, $key), 'runtime');
         $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
         $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
 
@@ -493,6 +689,62 @@ final class NormalizationParityTest extends TestCase
     }
 
     /**
+     * The exception a mode dies with on this case, or null if it survived — the observation an
+     * `unsupported` declaration is checked against.
+     *
+     * @param array<string, mixed> $spec
+     */
+    private function normalizationFailure(GenerationMode $mode, array $spec, string $key, string $json): ?string
+    {
+        try {
+            $this->normalization($mode, $spec, $key, $json);
+        } catch (Throwable $exception) {
+            return $exception::class . ': ' . $exception->getMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * The one place a mode name turns into a normalization path. No `default` arm on purpose: a mode
+     * added to `GenerationMode` without an entry here fails with `UnhandledMatchError` rather than going
+     * unmeasured.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<string, mixed>
+     */
+    private function normalization(GenerationMode $mode, array $spec, string $key, string $json): array
+    {
+        return match ($mode) {
+            GenerationMode::Runtime => $this->runtimeNormalization($spec, $key, $json),
+            GenerationMode::Symfony => $this->symfonyNormalization($spec, $key, $json),
+            GenerationMode::Laravel => $this->laravelNormalization($spec, $key, $json),
+            GenerationMode::LaravelData => $this->laravelDataNormalization($spec, $key, $json),
+        };
+    }
+
+    /**
+     * laravel-data mode: built through the package's own request entry point and normalized by its own
+     * pipeline. None of the array-building is ours here, which is the trade the mode makes.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<string, mixed>
+     */
+    private function laravelDataNormalization(array $spec, string $key, string $json): array
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');
+        LaravelDataContainer::boot();
+
+        /** @var array<string, mixed> $normalized */
+        $normalized = LaravelDataContainer::withRequest(
+            $json,
+            fn(LaravelRequest $request): mixed => $this->canonicalize($fqcn::from($request)->toArray()),
+        );
+
+        return $normalized;
+    }
+
+    /**
      * Laravel mode: the DTO is built the way a controller builds it — from the validated payload — and
      * then asked for its array form.
      *
@@ -501,7 +753,7 @@ final class NormalizationParityTest extends TestCase
      */
     private function laravelNormalization(array $spec, string $key, string $json): array
     {
-        $fqcn = $this->generate($spec, 'NormLv' . $this->namespaceSuffix($key), 'laravel');
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Laravel, $key), 'laravel');
 
         /** @var array<string, mixed> $payload */
         $payload = json_decode($json, true);
@@ -529,7 +781,7 @@ final class NormalizationParityTest extends TestCase
      */
     private function symfonyNormalization(array $spec, string $key, string $json): array
     {
-        $fqcn = $this->generate($spec, 'NormSy' . $this->namespaceSuffix($key), 'symfony');
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, $key), 'symfony');
         $serializer = $this->serializer();
 
         /** @var array<string, mixed> $normalized */
@@ -589,6 +841,11 @@ final class NormalizationParityTest extends TestCase
         $fqcn = $namespace . '\Probe';
 
         return $fqcn;
+    }
+
+    private function namespaceFor(GenerationMode $mode, string $key): string
+    {
+        return 'Norm' . $mode->tag() . $this->namespaceSuffix($key);
     }
 
     private function namespaceSuffix(string $key): string

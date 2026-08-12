@@ -1,6 +1,6 @@
 # Laravel mode
 
-[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
+[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel-data](README.laravel-data.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
 
 ```bash
 composer openapi:generate-dto -- \
@@ -177,7 +177,7 @@ $dto->getNickname();          // null
 $dto->isNicknameProvided();   // true — sent, explicitly as null
 ```
 
-No sentinel value and no setter is involved, which makes this the simplest of the three presence
+No sentinel value and no setter is involved, which makes this the simplest of the emitted presence
 implementations. `toArray()` omits a property that was never provided, so a PATCH response mirrors the
 request.
 
@@ -209,7 +209,7 @@ Every claim above is measured, not reasoned:
   `tests/Laravel/LaravelRulesEnforcementTest` — 27 keyword cases, 9 interpreter cases and 7 that assert one
   message per mistake, each feeding a valid payload AND an invalid one so a rule that accepts everything
   cannot pass unnoticed;
-- the mode is a third column in every parity suite (validation verdicts, response shape, presence, message
+- the mode is a column in every parity suite (validation verdicts, response shape, presence, message
   wording, binary uploads), so it cannot drift away from runtime and Symfony mode without a test failing — see the
   [support matrix](README.support-matrix.md), which is generated from those suites;
 - the demo corpus is snapshotted in this mode too (`tests/Golden/snapshots/laravel.snapshot.txt`), and

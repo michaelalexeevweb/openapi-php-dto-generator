@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Spatie\LaravelData\Optional;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
@@ -42,6 +47,8 @@ use Symfony\Component\Serializer\Serializer;
  */
 final class PresenceParityTest extends TestCase
 {
+    use ComparesModes;
+
     private string $outputDirectory;
 
     protected function setUp(): void
@@ -58,16 +65,16 @@ final class PresenceParityTest extends TestCase
     }
 
     #[DataProvider('payloadProvider')]
-    public function testBothModesAgreeOnWhatWasProvided(
+    public function testEveryModeAgreesOnWhatWasProvided(
         string $json,
         bool $nicknameProvided,
         bool $noteProvided,
     ): void {
-        $expected = ['nickname' => $nicknameProvided, 'note' => $noteProvided];
-
-        $this->assertSame($expected, $this->runtimePresence($json), 'runtime presence');
-        $this->assertSame($expected, $this->symfonyPresence($json), 'symfony presence');
-        $this->assertSame($expected, $this->laravelPresence($json), 'laravel presence');
+        $this->assertEveryModeYields(
+            ['nickname' => $nicknameProvided, 'note' => $noteProvided],
+            fn(GenerationMode $mode): array => $this->presence($mode, $json),
+            context: $json,
+        );
     }
 
     /**
@@ -90,17 +97,44 @@ final class PresenceParityTest extends TestCase
      * A nested DTO tracks presence of its own fields — in runtime mode because the nested DTO is
      * deserialized by the same code, in Symfony mode because the serializer calls the nested setter.
      */
-    public function testBothModesTrackPresenceInsideANestedDto(): void
+    public function testEveryModeTracksPresenceInsideANestedDto(): void
     {
         $json = '{"id":1,"child":{"kept":"k"}}';
 
-        $runtime = $this->runtimeNestedPresence($json);
-        $symfony = $this->symfonyNestedPresence($json);
-        $laravel = $this->laravelNestedPresence($json);
+        $this->assertEveryModeYields(
+            ['kept' => true, 'dropped' => false],
+            fn(GenerationMode $mode): array => $this->nestedPresence($mode, $json),
+            context: 'nested ' . $json,
+        );
+    }
 
-        $this->assertSame(['kept' => true, 'dropped' => false], $runtime, 'runtime nested presence');
-        $this->assertSame($runtime, $symfony, 'symfony must agree inside a nested DTO');
-        $this->assertSame($runtime, $laravel, 'laravel must agree inside a nested DTO');
+    /**
+     * No `default` arm: a mode added to `GenerationMode` without an answer here fails loudly rather than
+     * going unmeasured.
+     *
+     * @return array<string, bool>
+     */
+    private function presence(GenerationMode $mode, string $json): array
+    {
+        return match ($mode) {
+            GenerationMode::Runtime => $this->runtimePresence($json),
+            GenerationMode::Symfony => $this->symfonyPresence($json),
+            GenerationMode::Laravel => $this->laravelPresence($json),
+            GenerationMode::LaravelData => $this->laravelDataPresence($json),
+        };
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function nestedPresence(GenerationMode $mode, string $json): array
+    {
+        return match ($mode) {
+            GenerationMode::Runtime => $this->runtimeNestedPresence($json),
+            GenerationMode::Symfony => $this->symfonyNestedPresence($json),
+            GenerationMode::Laravel => $this->laravelNestedPresence($json),
+            GenerationMode::LaravelData => $this->laravelDataNestedPresence($json),
+        };
     }
 
     /**
@@ -146,11 +180,58 @@ final class PresenceParityTest extends TestCase
     }
 
     /**
+     * laravel-data needs no generated presence API at all: an unprovided optional IS an `Optional`, so
+     * the question is answered by the property's own type. That is the reason the mode exists.
+     *
+     * @return array<string, bool>
+     */
+    private function laravelDataPresence(string $json): array
+    {
+        $dto = $this->laravelDataDto(self::patchSpec(), 'Patch', $json);
+
+        return [
+            'nickname' => !$dto->nickname instanceof Optional,
+            'note' => !$dto->note instanceof Optional,
+        ];
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function laravelDataNestedPresence(string $json): array
+    {
+        $child = $this->laravelDataDto(self::nestedSpec(), 'Owner', $json)->child;
+
+        return ['kept' => !$child->kept instanceof Optional, 'dropped' => !$child->dropped instanceof Optional];
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     */
+    private function laravelDataDto(array $spec, string $rootClass, string $json): object
+    {
+        $fqcn = $this->generate(
+            $spec,
+            $this->namespaceFor(GenerationMode::LaravelData, $json . $rootClass),
+            'laravel-data',
+            $rootClass,
+        );
+        LaravelDataContainer::boot();
+
+        $dto = LaravelDataContainer::withRequest(
+            $json,
+            static fn(LaravelRequest $request): object => $fqcn::from($request),
+        );
+
+        return is_object($dto) ? $dto : throw new RuntimeException('laravel-data returned no object');
+    }
+
+    /**
      * @param array<string, mixed> $spec
      */
     private function laravelDto(array $spec, string $rootClass, string $json): object
     {
-        $fqcn = $this->generate($spec, 'PresLv' . $this->namespaceSuffix($json . $rootClass), 'laravel', $rootClass);
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Laravel, $json . $rootClass), 'laravel', $rootClass);
 
         /** @var array<string, mixed> $payload */
         $payload = json_decode($json, true);
@@ -205,7 +286,7 @@ final class PresenceParityTest extends TestCase
      */
     private function runtimeDto(array $spec, string $rootClass, string $json): object
     {
-        $fqcn = $this->generate($spec, 'PresRt' . $this->namespaceSuffix($json . $rootClass), 'runtime', $rootClass);
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Runtime, $json . $rootClass), 'runtime', $rootClass);
         $request = Request::create('/', 'PATCH', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
 
         return (new DtoDeserializer())->deserialize($request, $fqcn);
@@ -216,7 +297,7 @@ final class PresenceParityTest extends TestCase
      */
     private function symfonyDto(array $spec, string $rootClass, string $json): object
     {
-        $fqcn = $this->generate($spec, 'PresSy' . $this->namespaceSuffix($json . $rootClass), 'symfony', $rootClass);
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, $json . $rootClass), 'symfony', $rootClass);
 
         return $this->serializer()->deserialize($json, $fqcn, 'json');
     }
@@ -326,6 +407,11 @@ final class PresenceParityTest extends TestCase
         $fqcn = $namespace . '\\' . $rootClass;
 
         return $fqcn;
+    }
+
+    private function namespaceFor(GenerationMode $mode, string $key): string
+    {
+        return 'Pres' . $mode->tag() . $this->namespaceSuffix($key);
     }
 
     private function namespaceSuffix(string $key): string

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -29,16 +32,23 @@ use Symfony\Component\Validator\Validation;
 use Throwable;
 
 /**
- * Both generation modes must agree on what a payload means.
+ * Every generation mode must agree on what a payload means.
  *
- * Every case is generated twice from the same spec and fed the same valid/invalid JSON — runtime
- * through `DtoDeserializer` + `DtoNormalizer`, Symfony through the serializer + validator — and the
- * two verdicts are compared. A keyword implemented in only one mode (or implemented differently)
- * fails here, which is how the four historical divergences (dependentRequired/dependentSchemas on
- * DTO values, uint32/uint64 bounds, scalar `allOf`) were found.
+ * Each case is generated once per `GenerationMode` from the same spec and fed the same valid/invalid JSON
+ * — runtime through `DtoDeserializer` + `DtoNormalizer`, Symfony through the serializer + validator,
+ * Laravel through the emitted rules and `withValidator()` — and the verdicts are compared. A keyword
+ * implemented in only one mode (or implemented differently) fails here, which is how the four
+ * historical divergences (dependentRequired/dependentSchemas on DTO values, uint32/uint64 bounds,
+ * scalar `allOf`) were found.
+ *
+ * The modes come from `GenerationMode::cases()`, so a mode added there is enrolled in every case below
+ * without touching them; a mode that genuinely cannot give the common answer says so through
+ * `diverges()`, with the reason.
  */
 final class ValidationParityTest extends TestCase
 {
+    use ComparesModes;
+
     private string $outputDirectory;
 
     protected function setUp(): void
@@ -73,50 +83,22 @@ final class ValidationParityTest extends TestCase
      * @param array<string, mixed> $propertySchema
      */
     #[DataProvider('keywordProvider')]
-    public function testBothModesAgree(string $key, array $propertySchema, string $validJson, string $invalidJson): void
+    public function testEveryModeAgrees(string $key, array $propertySchema, string $validJson, string $invalidJson): void
     {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
         }
 
-        $spec = [
-            'openapi' => '3.1.0',
-            'info' => ['title' => 'T', 'version' => '1.0.0'],
-            'components' => [
-                'schemas' => [
-                    'Probe' => [
-                        'type' => 'object',
-                        'required' => ['f'],
-                        'properties' => ['f' => $propertySchema],
-                    ],
-                ],
-            ],
-        ];
+        $spec = self::probeSpec($propertySchema);
 
-        $runtime = $this->runtimeVerdict($spec, $key, $validJson, $invalidJson);
-        $symfony = $this->symfonyVerdict($spec, $key, $validJson, $invalidJson);
-        $laravel = $this->laravelVerdict($spec, $key, $validJson, $invalidJson);
-
-        $describe = static fn(array $verdict): string => sprintf(
-            'valid=%s invalid=%s',
-            $verdict['valid'] ? 'accepted' : 'REJECTED',
-            $verdict['invalid'] ? 'ACCEPTED' : 'rejected',
+        // The expectation is the DISCRIMINATING verdict, not merely "the modes agree": a case where
+        // every mode accepts everything would compare equal for the wrong reason, and a rule that
+        // enforces nothing is invisible otherwise.
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            context: $key,
         );
-        $message = sprintf(
-            "modes disagree on %s\n runtime: %s\n symfony: %s\n laravel: %s",
-            $key,
-            $describe($runtime),
-            $describe($symfony),
-            $describe($laravel),
-        );
-
-        $this->assertSame($runtime, $symfony, $message);
-        $this->assertSame($runtime, $laravel, $message);
-
-        // Sanity: a case that accepts everything (or nothing) would compare equal for the wrong
-        // reason, so both modes must actually discriminate between the two payloads.
-        $this->assertTrue($runtime['valid'], 'the valid payload must be accepted');
-        $this->assertFalse($runtime['invalid'], 'the invalid payload must be rejected');
     }
 
     /**
@@ -316,39 +298,30 @@ final class ValidationParityTest extends TestCase
             $this->markTestSkipped('symfony/validator not installed');
         }
 
-        $spec = [
-            'openapi' => '3.1.0',
-            'info' => ['title' => 'T', 'version' => '1.0.0'],
-            'components' => [
-                'schemas' => [
-                    'Probe' => [
-                        'type' => 'object',
-                        'required' => ['f'],
-                        'properties' => ['f' => [
-                            'type' => 'object',
-                            'additionalProperties' => ['type' => 'integer'],
-                        ]],
-                    ],
-                ],
-            ],
-        ];
-
+        $spec = self::probeSpec(['type' => 'object', 'additionalProperties' => ['type' => 'integer']]);
         $key = 'object vs array';
         $asArray = '{"f":[1,2]}';
 
+        $symfonyIsBlind = self::diverges(
+            GenerationMode::Symfony,
+            ['valid' => true, 'invalid' => true],
+            'the serializer denormalizes before any constraint runs, so the array IS the map by then',
+        );
+
         // A plain map is accepted, the array is not.
-        $expected = ['valid' => true, 'invalid' => false];
-        $this->assertSame($expected, $this->runtimeVerdict($spec, $key, '{"f":{"a":1}}', $asArray));
-        $this->assertSame($expected, $this->laravelVerdict($spec, $key, '{"f":{"a":1}}', $asArray));
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"a":1}}', $asArray),
+            $symfonyIsBlind,
+            $key,
+        );
 
         // And a JSON object whose keys are 0..n-1 stays an object — the check must not overreach.
-        $this->assertSame($expected, $this->runtimeVerdict($spec, $key . ' dense', '{"f":{"0":1,"1":2}}', $asArray));
-        $this->assertSame($expected, $this->laravelVerdict($spec, $key . ' dense', '{"f":{"0":1,"1":2}}', $asArray));
-
-        // Symfony mode accepts both: by the time the constraint runs, the array IS the map.
-        $this->assertSame(
-            ['valid' => true, 'invalid' => true],
-            $this->symfonyVerdict($spec, $key, '{"f":{"a":1}}', $asArray),
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key . ' dense', '{"f":{"0":1,"1":2}}', $asArray),
+            $symfonyIsBlind,
+            $key . ' dense',
         );
 
         // The same question for a SCHEMA-shaped object, which becomes a nested DTO: with no required
@@ -371,8 +344,12 @@ final class ValidationParityTest extends TestCase
             ],
         ];
 
-        $this->assertSame($expected, $this->runtimeVerdict($nested, 'nested object', '{"f":{"a":1}}', $asArray));
-        $this->assertSame($expected, $this->laravelVerdict($nested, 'nested object', '{"f":{"a":1}}', $asArray));
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $nested, 'nested object', '{"f":{"a":1}}', $asArray),
+            $symfonyIsBlind,
+            'nested object',
+        );
     }
 
     /**
@@ -391,51 +368,44 @@ final class ValidationParityTest extends TestCase
             $this->markTestSkipped('symfony/validator not installed');
         }
 
-        $spec = [
-            'openapi' => '3.1.0',
-            'info' => ['title' => 'T', 'version' => '1.0.0'],
-            'components' => [
-                'schemas' => [
-                    'Probe' => [
-                        'type' => 'object',
-                        'required' => ['f'],
-                        'properties' => ['f' => ['type' => 'integer', 'minimum' => 10]],
-                    ],
-                ],
-            ],
-        ];
-
+        $spec = self::probeSpec(['type' => 'integer', 'minimum' => 10]);
         $key = 'integral float';
-        $integral = '{"f":42.0}';
-        $fractional = '{"f":42.5}';
 
-        $expected = ['valid' => true, 'invalid' => false];
-        $this->assertSame($expected, $this->runtimeVerdict($spec, $key, $integral, $fractional));
-        $this->assertSame($expected, $this->laravelVerdict($spec, $key, $integral, $fractional));
-
-        // Both rejected — the serializer never hands the value to a constraint.
-        $this->assertSame(
-            ['valid' => false, 'invalid' => false],
-            $this->symfonyVerdict($spec, $key, $integral, $fractional),
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":42.0}', '{"f":42.5}'),
+            // Both rejected — the serializer never hands the value to a constraint.
+            self::diverges(
+                GenerationMode::Symfony,
+                ['valid' => false, 'invalid' => false],
+                'the serializer type-checks `int $f` first, so 42.0 is refused before generated code runs',
+            ),
+            $key,
         );
     }
 
     /**
      * The keyword matrix above cannot host `additionalProperties: false` or
-     * `unevaluatedProperties: false` on a DTO-shaped schema, because neither mode rejects the
-     * payload the keyword forbids — the case would fail the "must discriminate" sanity check. That
-     * is worth stating explicitly rather than leaving as a hole in the matrix.
+     * `unevaluatedProperties: false` on a DTO-shaped schema, because the modes do not agree on the
+     * payload the keyword forbids — the case would fail the "must discriminate" sanity check in two
+     * modes and pass in the third. That is worth stating explicitly rather than leaving as a hole.
      *
-     * Both modes bind the payload into a typed object BEFORE validating it, and an undeclared key has
-     * nowhere to go: the Symfony serializer drops it, and the runtime deserializer only reads the
-     * properties the schema declares. So the rule can only fire where the value stays an array — a
-     * map (`additionalProperties: {…}`), which the matrix does cover.
+     * Runtime and Symfony bind the payload into a typed object BEFORE validating it, and an undeclared
+     * key has nowhere to go: the Symfony serializer drops it, and the runtime deserializer only reads
+     * the properties the schema declares. So for them the rule can only fire where the value stays an
+     * array — a map (`additionalProperties: {…}`), which the matrix does cover.
+     *
+     * Laravel mode does reject it, and that surfaced only once this suite iterated its modes instead of
+     * naming two of them: the emitted interpreter runs over the raw payload before anything is
+     * hydrated, so `extra` is still there to be seen (`f has additional property "extra" which is not
+     * allowed`). It is the reading the schema asked for; the other two are the ones falling short, and
+     * closing that gap is a change to the runtime deserializer, not to this test.
      *
      * A rule that reads the declared keys still works on a DTO value; see
      * `GeneratedConstraintsIntegrationTest::testDeclaredPropertiesAreNotReportedAsUnevaluatedOnADtoValue`,
      * where dropping those names made a valid payload fail.
      */
-    public function testUnknownPayloadKeysAreDroppedBeforeValidationInBothModes(): void
+    public function testUnknownPayloadKeysAreDroppedWhereverThePayloadIsHydratedBeforeValidation(): void
     {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
@@ -464,10 +434,27 @@ final class ValidationParityTest extends TestCase
 
         $key = 'unknown keys are dropped';
         $withExtra = '{"f":{"known":"a","extra":"b"}}';
-        $expected = ['valid' => true, 'invalid' => true];
 
-        $this->assertSame($expected, $this->runtimeVerdict($spec, $key, '{"f":{"known":"a"}}', $withExtra));
-        $this->assertSame($expected, $this->symfonyVerdict($spec, $key, '{"f":{"known":"a"}}', $withExtra));
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => true],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"known":"a"}}', $withExtra),
+            [
+                ...self::diverges(
+                    GenerationMode::Laravel,
+                    ['valid' => true, 'invalid' => false],
+                    'the emitted interpreter reads the raw payload, where the undeclared key still '
+                        . 'exists, so it enforces `additionalProperties: false` the hydrating modes '
+                        . 'cannot see',
+                ),
+                ...self::diverges(
+                    GenerationMode::LaravelData,
+                    ['valid' => true, 'invalid' => false],
+                    'same interpreter as Laravel mode, reading the same raw payload — the two rule-based '
+                        . 'modes agree with each other here and not with the two that hydrate first',
+                ),
+            ],
+            $key,
+        );
     }
 
     /**
@@ -510,26 +497,119 @@ final class ValidationParityTest extends TestCase
         $valid = '{"keep":"x","f":["a"]}';
         $asNull = '{"keep":"x","f":null}';
 
-        $expected = ['valid' => true, 'invalid' => false];
-        $this->assertSame($expected, $this->runtimeVerdict($spec, $key, $valid, $asNull));
-        $this->assertSame($expected, $this->laravelVerdict($spec, $key, $valid, $asNull));
-
-        $this->assertSame(
-            ['valid' => true, 'invalid' => true],
-            $this->symfonyVerdict($spec, $key, $valid, $asNull),
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $asNull),
+            self::diverges(
+                GenerationMode::Symfony,
+                ['valid' => true, 'invalid' => true],
+                'an optional property has a nullable PHP type, so no #[Assert\NotNull] is emitted for it',
+            ),
+            $key,
         );
 
-        // The same property WITH `nullable` must accept the null in every mode, or the fix above
+        // The same property WITH `nullable` must accept the null in every mode, or the assertion above
         // would read as "laravel rejects null", which is not what the schema asked for.
         $nullableSpec = $spec;
         $nullableSpec['components']['schemas']['Probe']['properties']['f']['nullable'] = true;
-        foreach (['runtimeVerdict', 'laravelVerdict', 'symfonyVerdict'] as $mode) {
-            $this->assertSame(
-                ['valid' => true, 'invalid' => true],
-                $this->{$mode}($nullableSpec, $key . ' nullable', $valid, $asNull),
-                $mode . ' must accept null for a nullable property',
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => true],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $nullableSpec, $key . ' nullable', $valid, $asNull),
+            context: $key . ' nullable',
+        );
+    }
+
+    /**
+     * `nullable: true` NEXT TO a union means the same as a `{type: null}` variant INSIDE it, and only the
+     * spelled form used to reach the emitted interpreter.
+     *
+     * So a document written the first way had its own `null` refused — "does not match any oneOf branch
+     * (expected integer or string, got null)" — in symfony, laravel and laravel-data mode, while runtime
+     * mode read the schema directly and always accepted it. Three modes wrong about a value the document
+     * explicitly allows, and no case in the matrix could see it: every probe there is either a union
+     * without `nullable` or a `nullable` without a union.
+     */
+    public function testNullableNextToAUnionMeansTheSameAsANullBranch(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        // Both spellings, held to the same verdict — that equivalence IS the assertion.
+        $spellings = [
+            'nullable beside the union' => [
+                'oneOf' => [['type' => 'integer', 'minimum' => 10], ['type' => 'string']],
+                'nullable' => true,
+            ],
+            'a null branch inside the union' => [
+                'oneOf' => [['type' => 'integer', 'minimum' => 10], ['type' => 'string'], ['type' => 'null']],
+            ],
+        ];
+
+        foreach ($spellings as $key => $propertySchema) {
+            $spec = self::probeSpec($propertySchema);
+
+            // `null` is allowed; an integer below the branch's own minimum is not.
+            $this->assertEveryModeYields(
+                ['valid' => true, 'invalid' => false],
+                fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":null}', '{"f":5}'),
+                context: $key,
             );
         }
+    }
+
+    /**
+     * A REQUIRED property that is nullable through a `$ref` — `oneOf: [$ref, {type: null}]`, the only way
+     * a document can say "this nested object may be null".
+     *
+     * The keyword matrix cannot host it: its probes are scalars, and the nullability of a `$ref` is not
+     * visible in the property's constraint map at all — there is no `type` there to carry a `null` member.
+     * Reading it instead off `$property['nullable']` is wrong for the opposite reason: the walker sets that
+     * flag for every OPTIONAL property, so it cannot be trusted unless the property is required.
+     *
+     * Which is exactly the case this pins, and it is not hypothetical: laravel-data mode needs the answer
+     * for its property TYPE (`Child|null` versus `Child`, where a wrong answer is a TypeError on a payload
+     * the schema allows), and the fix moved laravel mode's emitted rules too — `['present']` became
+     * `['present', 'nullable']`.
+     */
+    public function testARequiredPropertyNullableThroughARefIsAcceptedAsNullInEveryMode(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['child'],
+                        'properties' => [
+                            'child' => [
+                                'oneOf' => [
+                                    ['$ref' => '#/components/schemas/Child'],
+                                    ['type' => 'null'],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'Child' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer', 'minimum' => 5]],
+                    ],
+                ],
+            ],
+        ];
+
+        // `null` is what the schema allows; an object missing the child's own required key is not.
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable ref', '{"child":null}', '{"child":{}}'),
+            context: 'required property nullable through a $ref',
+        );
     }
 
     /**
@@ -579,11 +659,12 @@ final class ValidationParityTest extends TestCase
         ];
 
         $valid = '{"f":{"id":1,"label":"ok","children":[{"id":2}]}}';
-        $expected = ['valid' => true, 'invalid' => false];
 
-        $this->assertSame($expected, $this->runtimeVerdict($spec, 'rec rt ' . $key, $valid, $invalidJson));
-        $this->assertSame($expected, $this->symfonyVerdict($spec, 'rec sy ' . $key, $valid, $invalidJson));
-        $this->assertSame($expected, $this->laravelVerdict($spec, 'rec lv ' . $key, $valid, $invalidJson));
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'rec ' . $key, $valid, $invalidJson),
+            context: 'recursive ' . $key,
+        );
     }
 
     /**
@@ -604,6 +685,78 @@ final class ValidationParityTest extends TestCase
             'grandchild not' => '{"f":{"id":1,"children":[{"id":2,"children":[{"id":3,"label":"forbidden"}]}]}}',
             'child required' => '{"f":{"id":1,"children":[{"label":"x"}]}}',
             'grandchild required' => '{"f":{"id":1,"children":[{"id":2,"children":[{"label":"x"}]}]}}',
+        ];
+
+        $provided = [];
+        foreach ($cases as $key => $invalidJson) {
+            $provided[$key] = [$key, $invalidJson];
+        }
+
+        return $provided;
+    }
+
+    /**
+     * The same cycle, entered from the class that IS the cycle: `Probe.children` is a list of `Probe`.
+     *
+     * The case above always reaches the recursive schema through a non-recursive root, and that is the
+     * only shape the suite ever measured — which hid a hole the same size as the one it was written for.
+     * Seen from the root, the first `$ref` back to the root looked like a fresh class: it was expanded
+     * one level and PRUNED of everything the dotted rules were assumed to cover, while
+     * `laravelNestedRules()` had emitted no `children.*` path at all, because it cannot expand a cycle
+     * either. Measured: a child violating `minimum: 1` was ACCEPTED in laravel and laravel-data mode, and
+     * a child sending a string for an integer died as a `TypeError` in the constructor rather than as a
+     * 422. Runtime and Symfony walk the real schema and were right all along.
+     */
+    #[DataProvider('rootRecursiveDepthProvider')]
+    public function testARecursiveSchemaIsEnforcedWhenItIsTheRootClassItself(string $key, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => ['type' => 'integer', 'minimum' => 1],
+                            'label' => ['type' => 'string', 'not' => ['const' => 'forbidden']],
+                            'children' => [
+                                'type' => 'array',
+                                'items' => ['$ref' => '#/components/schemas/Probe'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $valid = '{"id":1,"label":"ok","children":[{"id":2,"children":[{"id":3}]}]}';
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'rootrec ' . $key, $valid, $invalidJson),
+            context: 'root-recursive ' . $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function rootRecursiveDepthProvider(): array
+    {
+        $cases = [
+            'root minimum' => '{"id":0}',
+            'child minimum' => '{"id":1,"children":[{"id":0}]}',
+            'grandchild minimum' => '{"id":1,"children":[{"id":2,"children":[{"id":0}]}]}',
+            'child type' => '{"id":1,"children":[{"id":"nope"}]}',
+            'child required' => '{"id":1,"children":[{"label":"x"}]}',
+            'child not' => '{"id":1,"children":[{"id":2,"label":"forbidden"}]}',
+            'grandchild not' => '{"id":1,"children":[{"id":2,"children":[{"id":3,"label":"forbidden"}]}]}',
         ];
 
         $provided = [];
@@ -700,14 +853,56 @@ final class ValidationParityTest extends TestCase
         ];
 
         $valid = '{"f":{"aid":1,"b":{"bid":10,"a":{"aid":2,"b":{"bid":11}}}}}';
-        $expected = ['valid' => true, 'invalid' => false];
 
         // The violation sits three hops in, past two turns of the A -> B -> A cycle.
         $invalid = '{"f":{"aid":1,"b":{"bid":10,"a":{"aid":2,"b":{"bid":9}}}}}';
 
-        $this->assertSame($expected, $this->runtimeVerdict($spec, 'mutual rt', $valid, $invalid));
-        $this->assertSame($expected, $this->symfonyVerdict($spec, 'mutual sy', $valid, $invalid));
-        $this->assertSame($expected, $this->laravelVerdict($spec, 'mutual lv', $valid, $invalid));
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'mutual', $valid, $invalid),
+            context: 'mutual recursion',
+        );
+    }
+
+    /**
+     * The one place a mode name turns into an implementation. No `default` arm on purpose: a mode
+     * added to `GenerationMode` without a verdict here fails with `UnhandledMatchError` instead of
+     * quietly going unmeasured.
+     *
+     * @param array<string, mixed> $spec
+     * @return array{valid: bool, invalid: bool}
+     */
+    private function verdict(GenerationMode $mode, array $spec, string $key, string $validJson, string $invalidJson): array
+    {
+        return match ($mode) {
+            GenerationMode::Runtime => $this->runtimeVerdict($spec, $key, $validJson, $invalidJson),
+            GenerationMode::Symfony => $this->symfonyVerdict($spec, $key, $validJson, $invalidJson),
+            GenerationMode::Laravel => $this->laravelVerdict($spec, $key, $validJson, $invalidJson),
+            GenerationMode::LaravelData => $this->laravelDataVerdict($spec, $key, $validJson, $invalidJson),
+        };
+    }
+
+    /**
+     * The shape almost every case shares: one required property `f` carrying the schema under test.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private static function probeSpec(array $propertySchema): array
+    {
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => ['f' => $propertySchema],
+                    ],
+                ],
+            ],
+        ];
     }
 
     /**
@@ -716,8 +911,7 @@ final class ValidationParityTest extends TestCase
      */
     private function runtimeVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
     {
-        $namespace = 'ParityRt' . $this->namespaceSuffix($key);
-        $fqcn = $this->generate($spec, $namespace, 'runtime');
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Runtime, $key), 'runtime');
         $deserializer = new DtoDeserializer();
         $normalizer = new DtoNormalizer();
 
@@ -742,8 +936,7 @@ final class ValidationParityTest extends TestCase
      */
     private function laravelVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
     {
-        $namespace = 'ParityLv' . $this->namespaceSuffix($key);
-        $fqcn = $this->generate($spec, $namespace, 'laravel');
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Laravel, $key), 'laravel');
         $factory = new Factory(new Translator(new ArrayLoader(), 'en'));
 
         $accepts = static function (string $json) use ($factory, $fqcn): bool {
@@ -783,13 +976,44 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * laravel-data mode goes through the package's own entry point, and through a REQUEST: its default
+     * `validation_strategy` is `OnlyRequests`, so `from($array)` would hydrate without validating
+     * anything and every case would "pass". The request is also where the emitted interpreter finds the
+     * raw body it needs for the `type: object` check.
+     *
+     * @param array<string, mixed> $spec
+     * @return array{valid: bool, invalid: bool}
+     */
+    private function laravelDataVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');
+        LaravelDataContainer::boot();
+
+        $accepts = static fn(string $json): bool => (bool)LaravelDataContainer::withRequest(
+            $json,
+            static function (LaravelRequest $request) use ($fqcn): bool {
+                try {
+                    // Hydration is part of the verdict, as in every other mode: a payload the rules
+                    // accept but the object cannot hold is not "accepted" in any useful sense.
+                    $fqcn::from($request);
+                } catch (Throwable) {
+                    return false;
+                }
+
+                return true;
+            },
+        );
+
+        return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
+    }
+
+    /**
      * @param array<string, mixed> $spec
      * @return array{valid: bool, invalid: bool}
      */
     private function symfonyVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
     {
-        $namespace = 'ParitySy' . $this->namespaceSuffix($key);
-        $fqcn = $this->generate($spec, $namespace, 'symfony');
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, $key), 'symfony');
 
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
@@ -842,6 +1066,11 @@ final class ValidationParityTest extends TestCase
         $fqcn = $namespace . '\Probe';
 
         return $fqcn;
+    }
+
+    private function namespaceFor(GenerationMode $mode, string $key): string
+    {
+        return 'Parity' . $mode->tag() . $this->namespaceSuffix($key);
     }
 
     private function namespaceSuffix(string $key): string

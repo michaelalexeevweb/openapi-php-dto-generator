@@ -62,12 +62,18 @@
         "illuminate/routing": "^11 || ^12",
         "kubawerlos/php-cs-fixer-custom-fixers": "^3.37",
         "illuminate/validation": "^11 || ^12",
-        "illuminate/translation": "^11 || ^12"
+        "illuminate/translation": "^11 || ^12",
+        "spatie/laravel-data": "^4.23",
+        "illuminate/config": "^11 || ^12",
+        "illuminate/container": "^11 || ^12",
+        "illuminate/events": "^11 || ^12",
+        "illuminate/filesystem": "^11 || ^12"
     },
     "suggest": {
         "symfony/psr-http-message-bridge": "To deserialize PSR-7 ServerRequest objects via DtoDeserializerPsr7 (non-Symfony stacks: Slim, Mezzio, Laminas, Yii3, …).",
         "symfony/validator": "To use the generated DTOs in Symfony attribute mode (--attributes=symfony).",
-        "symfony/serializer": "To (de)serialize Symfony attribute-mode DTOs via the Symfony serializer."
+        "symfony/serializer": "To (de)serialize Symfony attribute-mode DTOs via the Symfony serializer.",
+        "spatie/laravel-data": "To use the generated Data classes in laravel-data mode (--attributes=laravel-data)."
     },
     "bin": [
         "bin/console"

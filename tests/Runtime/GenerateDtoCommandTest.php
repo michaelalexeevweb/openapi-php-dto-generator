@@ -8,6 +8,7 @@ use FilesystemIterator;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -560,6 +561,86 @@ final class GenerateDtoCommandTest extends TestCase
         // The standard dialect (and an absent one) generate silently.
         $this->generator->generateFromArray($spec('https://spec.openapis.org/oas/3.1/dialect/base'), $this->outputDirectory, 'DialectKnown');
         $this->assertSame([], $this->generator->getGenerationWarnings());
+    }
+
+    /**
+     * A schema NAMED like a class the emitted code uses is named at build time, per mode.
+     *
+     * The generator carries a PHP type as a short name, so `UploadedFile` — what `format: binary`
+     * resolves to — and a component schema of that name become the same string, and the emitted file
+     * either refuses to load (`use X;` beside `class X`) or types the property with the library's class
+     * and takes a TypeError for the payload. Neither is visible from the document, so the collision is
+     * reported instead of discovered at request time.
+     *
+     * Mode-specific on purpose: `UnsetValue` means nothing in Laravel mode, and laravel-data resolves
+     * its OWN imports against the document (`laravelDataLibraryRef()`), so `Data` is safe there.
+     */
+    #[DataProvider('collidingSchemaNameProvider')]
+    public function testASchemaNamedLikeAClassTheEmittedCodeUsesIsReported(
+        string $schemaName,
+        string $mode,
+        bool $expectedWarning,
+    ): void {
+        $this->generator->generateFromArray(
+            [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['it'],
+                        'properties' => ['it' => ['$ref' => '#/components/schemas/' . $schemaName]],
+                    ],
+                    $schemaName => [
+                        'type' => 'object',
+                        'required' => ['n'],
+                        'properties' => ['n' => ['type' => 'integer']],
+                    ],
+                ]],
+            ],
+            $this->outputDirectory,
+            'Collide' . $schemaName . str_replace('-', '', ucwords($mode, '-')),
+            $mode,
+        );
+
+        $collisions = array_values(array_filter(
+            $this->generator->getGenerationWarnings(),
+            static fn(string $warning): bool => str_contains($warning, 'is generated as class'),
+        ));
+
+        if (!$expectedWarning) {
+            $this->assertSame([], $collisions);
+
+            return;
+        }
+
+        $this->assertCount(1, $collisions);
+        $this->assertStringContainsString($schemaName, $collisions[0]);
+        $this->assertStringContainsString($mode . ' mode', $collisions[0]);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string, 2: bool}>
+     */
+    public static function collidingSchemaNameProvider(): array
+    {
+        $cases = [];
+
+        // `format: binary` resolves to it in every mode, so every mode has to say so.
+        foreach (GenerateDtoCommand::ATTRIBUTE_MODES as $mode) {
+            $cases['UploadedFile in ' . $mode . ' mode'] = ['UploadedFile', $mode, true];
+        }
+
+        // Each mode's own emitted code, and a mode that has no use for the same name.
+        $cases['UnsetValue is runtime-only'] = ['UnsetValue', 'runtime', true];
+        $cases['UnsetValue means nothing in laravel mode'] = ['UnsetValue', 'laravel', false];
+        $cases['Assert is symfony-only'] = ['Assert', 'symfony', true];
+        $cases['Assert means nothing in runtime mode'] = ['Assert', 'runtime', false];
+        $cases['Validator is laravel-only'] = ['Validator', 'laravel', true];
+        $cases['Data is resolved, not warned, in laravel-data mode'] = ['Data', 'laravel-data', false];
+        $cases['an ordinary schema name is silent'] = ['Pet', 'laravel-data', false];
+
+        return $cases;
     }
 
     public function testSwagger20DocumentIsRefusedWithAClearMessage(): void

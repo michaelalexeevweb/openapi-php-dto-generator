@@ -153,7 +153,8 @@ $time = static function (callable $operation, int $iterations): float {
 };
 
 $generate = static function (array $spec, string $root, string $mode): string {
-    $namespace = 'Bench' . ucfirst($mode);
+    // `laravel-data` is not a namespace segment: BenchLaravel-data would not parse.
+    $namespace = 'Bench' . str_replace('-', '', ucwords($mode, '-'));
     $target = $root . '/' . $namespace;
     if (!is_dir($target)) {
         mkdir($target, 0o755, true);
@@ -305,13 +306,64 @@ $results['laravel']['normalize'] = $time(
 );
 $results['laravel']['normalize+validate'] = $results['laravel']['normalize'] + $results['laravel']['validate'];
 
+// ---------------------------------------------------------------- laravel-data
+// Skipped rather than faked when the package is absent: this is the one mode whose generated code needs
+// a third-party dependency, and a dist install has no tests/ directory to take the container from.
+$laravelDataContainer = OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer::class;
+$laravelDataAvailable = class_exists(Spatie\LaravelData\Data::class) && class_exists($laravelDataContainer);
+
+if ($laravelDataAvailable) {
+    $laravelDataClass = $generate($spec, $root, 'laravel-data');
+    $laravelDataContainer::boot();
+
+    // `from($array)` hydrates WITHOUT validating (validation_strategy: OnlyRequests), which is exactly
+    // the "bind" the other modes are measured on.
+    $laravelDataDto = $laravelDataClass::from($payload);
+
+    $results['laravel-data']['bind'] = $time(
+        static fn(): mixed => $laravelDataClass::from($payload),
+        $iterations,
+    );
+    $results['laravel-data']['validate'] = $time(
+        static fn(): mixed => $laravelDataClass::validate($payload),
+        $iterations,
+    );
+    $results['laravel-data']['normalize'] = $time(
+        static fn(): array => $laravelDataDto->toArray(),
+        $iterations,
+    );
+    $results['laravel-data']['normalize+validate'] = $results['laravel-data']['normalize']
+        + $results['laravel-data']['validate'];
+
+    // The call an application actually writes: one entry point that validates AND hydrates. Worth its
+    // own row because the sum of the two steps above is not the same code path.
+    $laravelDataRequest = Illuminate\Http\Request::create(
+        '/',
+        'POST',
+        [],
+        [],
+        [],
+        ['CONTENT_TYPE' => 'application/json'],
+        $json,
+    );
+    Illuminate\Container\Container::getInstance()->instance('request', $laravelDataRequest);
+    $results['laravel-data']['— from(request): validate + hydrate'] = $time(
+        static fn(): mixed => $laravelDataClass::from($laravelDataRequest),
+        $iterations,
+    );
+}
+
 // ---------------------------------------------------------------- report
 $fmt = static fn(float $ms): string => number_format($ms, 4);
 $steps = ['bind', 'validate', 'normalize', 'normalize+validate'];
+$modes = array_keys($results);
 $extras = [
     'runtime' => ['bind from a fresh request'],
     'laravel' => ['— framework, empty rules', '— framework + rules()', '— interpreter only'],
 ];
+if ($laravelDataAvailable) {
+    $extras['laravel-data'] = ['— from(request): validate + hydrate'];
+}
 
 if ($asMarkdown) {
     printf(
@@ -320,30 +372,23 @@ if ($asMarkdown) {
         $iterations,
         function_exists('opcache_get_status') && opcache_get_status(false) !== false ? 'on' : 'off',
     );
-    echo "| Step | runtime | symfony | laravel |\n|---|---:|---:|---:|\n";
+    printf("| Step | %s |\n|---|%s\n", implode(' | ', $modes), str_repeat('---:|', count($modes)));
     foreach ($steps as $step) {
         printf(
-            "| %s | %s ms | %s ms | %s ms |\n",
+            "| %s | %s |\n",
             $step,
-            $fmt($results['runtime'][$step]),
-            $fmt($results['symfony'][$step]),
-            $fmt($results['laravel'][$step]),
+            implode(' | ', array_map(static fn(string $mode): string => $fmt($results[$mode][$step]) . ' ms', $modes)),
         );
     }
-    echo "\n| Round trip | runtime | symfony | laravel |\n|---|---:|---:|---:|\n";
+    printf("\n| Round trip | %s |\n|---|%s\n", implode(' | ', $modes), str_repeat('---:|', count($modes)));
     foreach (['without validation' => false, 'with validation' => true] as $label => $withValidation) {
-        $total = [];
-        foreach (['runtime', 'symfony', 'laravel'] as $mode) {
-            $total[$mode] = $results[$mode]['bind'] + $results[$mode]['normalize']
+        $cells = [];
+        foreach ($modes as $mode) {
+            $total = $results[$mode]['bind'] + $results[$mode]['normalize']
                 + ($withValidation ? $results[$mode]['validate'] : 0.0);
+            $cells[] = $fmt($total) . ' ms';
         }
-        printf(
-            "| %s | %s ms | %s ms | %s ms |\n",
-            $label,
-            $fmt($total['runtime']),
-            $fmt($total['symfony']),
-            $fmt($total['laravel']),
-        );
+        printf("| %s | %s |\n", $label, implode(' | ', $cells));
     }
     echo "\nBreakdown:\n\n| | ms |\n|---|---:|\n";
     foreach ($extras as $mode => $rows) {
@@ -353,15 +398,20 @@ if ($asMarkdown) {
     }
 } else {
     printf("PHP %s · %d iterations, ms per operation\n\n", PHP_VERSION, $iterations);
-    printf("%-28s %10s %10s %10s\n", 'step', 'runtime', 'symfony', 'laravel');
+    printf('%-28s', 'step');
+    foreach ($modes as $mode) {
+        printf(' %13s', $mode);
+    }
+    echo "\n";
     foreach ($steps as $step) {
-        printf(
-            "%-28s %10s %10s %10s\n",
-            $step,
-            $fmt($results['runtime'][$step]),
-            $fmt($results['symfony'][$step]),
-            $fmt($results['laravel'][$step]),
-        );
+        printf('%-28s', $step);
+        foreach ($modes as $mode) {
+            printf(' %13s', $fmt($results[$mode][$step]));
+        }
+        echo "\n";
+    }
+    if (!$laravelDataAvailable) {
+        echo "\nlaravel-data: skipped (spatie/laravel-data or the test container is not installed)\n";
     }
     echo "\nbreakdown\n";
     foreach ($extras as $mode => $rows) {

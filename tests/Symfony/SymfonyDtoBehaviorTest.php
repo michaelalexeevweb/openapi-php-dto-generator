@@ -782,7 +782,14 @@ final class SymfonyDtoBehaviorTest extends TestCase
         ]);
 
         $this->assertNotSame(0, $exit);
-        $this->assertStringContainsString('must be "runtime" or "symfony"', $tester->getDisplay());
+
+        // The message lists ATTRIBUTE_MODES rather than spelling two of them out: it used to say
+        // "runtime" or "symfony" long after laravel mode shipped, so a rejected mode name was told the
+        // wrong set of alternatives.
+        $display = $tester->getDisplay();
+        foreach (GenerateDtoCommand::ATTRIBUTE_MODES as $mode) {
+            $this->assertStringContainsString('"' . $mode . '"', $display);
+        }
     }
 
     /**
