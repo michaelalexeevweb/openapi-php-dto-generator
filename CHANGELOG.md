@@ -3,6 +3,26 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.12.0 — 2026-08-17
+
+- add `deserializeValue()`
+- deserialize one decoded JSON value
+- per-element errors for batch endpoints
+- new method on `DtoDeserializerInterface`
+
+`deserializeCollection()` is all-or-nothing: it aggregates every element's error into one exception, so
+a single malformed element fails the whole body. `deserializeValue($data, $type, $path)` exposes the
+per-element cast on its own — no `Request`, one already-decoded JSON value in, one DTO (or scalar, enum,
+date) out, discriminator resolution included. A batch endpoint loops over the decoded body itself,
+catches each `RuntimeException` and answers "element 3 was rejected, the rest were accepted". `$path`
+names the value in the error message, so pass the element's position; it defaults to `value`. Example:
+[README.runtime.md](README.runtime.md#batch-endpoints-accepting-the-good-elements-reporting-the-bad-ones).
+
+**Breaking for implementors of `DtoDeserializerInterface`.** The method was added to the interface, not
+only to `DtoDeserializer`, so a class of your own implementing that interface must add it. Consumers of
+the interface (type hints, DI) are unaffected, and generated DTOs are unchanged — output is byte-identical
+to 2.11.0 in all four modes.
+
 ## 2.11.0 — 2026-08-13
 
 - add laravel-data generation mode

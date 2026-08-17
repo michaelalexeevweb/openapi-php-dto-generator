@@ -1566,6 +1566,317 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer->deserializeCollection($this->jsonPostRequest('{"id":1}'), $itemClass);
     }
 
+    public function testDeserializeValueCastsScalarsAndDateTimes(): void
+    {
+        // deserializeValue() is the per-element cast on its own: no Request, no JSON body,
+        // just one already-decoded value.
+        $deserializer = new DtoDeserializer();
+
+        $this->assertSame(1, $deserializer->deserializeValue(1, 'int'));
+        // JSON Schema 2020-12 §6.1.1: a number with a zero fractional part IS an integer.
+        $this->assertSame(42, $deserializer->deserializeValue(42.0, 'int'));
+        $this->assertSame(1.5, $deserializer->deserializeValue(1.5, 'float'));
+        $this->assertSame('test', $deserializer->deserializeValue('test', 'string'));
+        $this->assertTrue($deserializer->deserializeValue(true, 'bool'));
+        $this->assertSame('anything', $deserializer->deserializeValue('anything', 'mixed'));
+
+        // `array` in this position means a MAP (a list of maps is array<array<string, V>>), so it
+        // takes the stdClass a JSON object decodes to — and refuses a JSON array, exactly like
+        // `type: object` does anywhere else.
+        $this->assertSame(['a' => 1], $deserializer->deserializeValue(json_decode('{"a":1}', false), 'array'));
+        try {
+            $deserializer->deserializeValue(json_decode('[1,2]', false), 'array');
+            $this->fail('Expected a JSON array to be refused where an object is expected.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('expects object, got array', $e->getMessage());
+        }
+
+        $date = $deserializer->deserializeValue('2026-03-10T12:00:00+00:00', DateTimeImmutable::class);
+        $this->assertInstanceOf(DateTimeImmutable::class, $date);
+        $this->assertSame('2026-03-10T12:00:00+00:00', $date->format('c'));
+
+        // The mirror case: a wrong-typed value is rejected, so the cast is not a no-op.
+        try {
+            $deserializer->deserializeValue('x', 'int');
+            $this->fail('Expected a type error for the non-int value.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('param "value"', $e->getMessage());
+            $this->assertStringContainsString('expects int', $e->getMessage());
+        }
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('expects a valid date-time');
+        $deserializer->deserializeValue('10.03.2026', DateTimeImmutable::class);
+    }
+
+    public function testDeserializeValueCastsEnumMembers(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Value enum', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'StageEnum' => [
+                        'type' => 'string',
+                        'enum' => ['early', 'late'],
+                    ],
+                ],
+            ],
+        ];
+        $this->generateFromInlineSpec($openApi, 'GenValueEnum', 'StageEnum');
+
+        /** @var class-string $enumClass */
+        $enumClass = '\GenValueEnum\StageEnum';
+        $deserializer = new DtoDeserializer();
+
+        $this->assertSame($enumClass::EARLY, $deserializer->deserializeValue('early', $enumClass));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Allowed: early, late');
+        $deserializer->deserializeValue('WRONG', $enumClass);
+    }
+
+    public function testDeserializeValueBuildsADtoFromStdClassAndFromArray(): void
+    {
+        // json_decode($json, false) hands over a stdClass for an object — the shape the
+        // docblock promises — while an assoc-decoded payload arrives as a plain array.
+        // Both must land on the same DTO.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Value dto', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Item' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'tag' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $itemClass = $this->generateFromInlineSpec($openApi, 'GenValueDto', 'Item');
+        $deserializer = new DtoDeserializer();
+
+        $fromStdClass = $deserializer->deserializeValue(
+            json_decode('{"id":1,"tag":"a"}', false),
+            $itemClass,
+        );
+        $fromArray = $deserializer->deserializeValue(['id' => 1, 'tag' => 'a'], $itemClass);
+
+        $this->assertInstanceOf($itemClass, $fromStdClass);
+        $this->assertInstanceOf($itemClass, $fromArray);
+        $this->assertSame($fromStdClass->toArray(), $fromArray->toArray());
+        $this->assertSame(['id' => 1, 'tag' => 'a'], $fromStdClass->toArray());
+
+        // A missing required property still fails — the element is validated, not just built.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('parameter "value.id"');
+        $deserializer->deserializeValue(json_decode('{"tag":"a"}', false), $itemClass);
+    }
+
+    public function testDeserializeValueResolvesTheDiscriminator(): void
+    {
+        // Same guarantee deserializeCollection() gives per element: you pass the BASE class
+        // and the discriminator property picks the concrete subtype.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Value discriminator', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Pet' => [
+                        'type' => 'object',
+                        'required' => ['petType'],
+                        'properties' => ['petType' => ['type' => 'string']],
+                        'discriminator' => [
+                            'propertyName' => 'petType',
+                            'mapping' => [
+                                'dog' => '#/components/schemas/Dog',
+                                'cat' => '#/components/schemas/Cat',
+                            ],
+                        ],
+                    ],
+                    'Dog' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/Pet'],
+                            ['type' => 'object', 'required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                        ],
+                    ],
+                    'Cat' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/Pet'],
+                            ['type' => 'object', 'required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $namespace = 'GenValueDiscriminated';
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
+
+        // Autoload by class name so parent classes load before their subtypes (require-order safe).
+        spl_autoload_register(function (string $class) use ($namespace): void {
+            if (!str_starts_with($class, $namespace . '\\')) {
+                return;
+            }
+            $file = $this->outputDirectory . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        });
+
+        /** @var class-string<GeneratedDtoInterface> $baseClass */
+        $baseClass = '\\' . $namespace . '\Pet';
+        $deserializer = new DtoDeserializer();
+
+        $this->assertInstanceOf(
+            '\\' . $namespace . '\Dog',
+            $deserializer->deserializeValue(json_decode('{"petType":"dog","bark":"woof"}', false), $baseClass),
+        );
+        $this->assertInstanceOf(
+            '\\' . $namespace . '\Cat',
+            $deserializer->deserializeValue(json_decode('{"petType":"cat","meow":"mew"}', false), $baseClass),
+        );
+    }
+
+    public function testDeserializeValueNamesThePathInEveryError(): void
+    {
+        // $path is what a batch endpoint uses to say WHICH element went wrong; the default
+        // keeps the message readable when there is no position to name.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Value path', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Item' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer']],
+                    ],
+                ],
+            ],
+        ];
+        $itemClass = $this->generateFromInlineSpec($openApi, 'GenValuePath', 'Item');
+        $deserializer = new DtoDeserializer();
+
+        try {
+            $deserializer->deserializeValue(json_decode('{"id":"x"}', false), $itemClass, '3');
+            $this->fail('Expected a type error for the non-int id.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('param "3.id"', $e->getMessage());
+        }
+
+        try {
+            $deserializer->deserializeValue(json_decode('{"id":"x"}', false), $itemClass);
+            $this->fail('Expected a type error for the non-int id.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('param "value.id"', $e->getMessage());
+        }
+
+        // A scalar names the value itself, not a property of it.
+        try {
+            $deserializer->deserializeValue('x', 'int', 'items.7');
+            $this->fail('Expected a type error for the non-int element.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('param "items.7"', $e->getMessage());
+        }
+    }
+
+    public function testDeserializeValueLetsABatchEndpointReportPerElementErrors(): void
+    {
+        // The reason the method exists. deserializeCollection() aggregates every element
+        // error into one exception, so one bad element fails the whole body; a batch
+        // endpoint loops instead and keeps the good elements.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Value batch', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Item' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer']],
+                    ],
+                ],
+            ],
+        ];
+        $itemClass = $this->generateFromInlineSpec($openApi, 'GenValueBatch', 'Item');
+        $deserializer = new DtoDeserializer();
+
+        /** @var array<int, mixed> $elements */
+        $elements = json_decode('[{"id":1},{},{"id":3},{"id":"x"}]', false);
+
+        $accepted = [];
+        $rejected = [];
+        foreach ($elements as $index => $element) {
+            try {
+                $accepted[$index] = $deserializer->deserializeValue($element, $itemClass, (string)$index);
+            } catch (RuntimeException $e) {
+                $rejected[$index] = $e->getMessage();
+            }
+        }
+
+        $this->assertSame([0, 2], array_keys($accepted));
+        $this->assertSame([1, 3], array_keys($rejected));
+        $this->assertSame([1, 3], array_map(static fn(object $i): int => $i->getId(), array_values($accepted)));
+        $this->assertStringContainsString('parameter "1.id"', $rejected[1]);
+        $this->assertStringContainsString('param "3.id"', $rejected[3]);
+
+        // The same body through deserializeCollection() fails as a whole — that is the
+        // difference the method is there to remove.
+        try {
+            $deserializer->deserializeCollection(
+                $this->jsonPostRequest('[{"id":1},{},{"id":3},{"id":"x"}]'),
+                $itemClass,
+            );
+            $this->fail('Expected the collection path to fail on the invalid elements.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('element 3', $e->getMessage());
+        }
+    }
+
+    public function testDeserializeValueMatchesDeserializeCollectionElementForElement(): void
+    {
+        // Both entry points go through the same per-element cast, so a valid body must
+        // produce the same DTOs either way.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Value parity', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Item' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'tag' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $itemClass = $this->generateFromInlineSpec($openApi, 'GenValueParity', 'Item');
+        $deserializer = new DtoDeserializer();
+        $body = '[{"id":1,"tag":"a"},{"id":2}]';
+
+        $viaCollection = $deserializer->deserializeCollection($this->jsonPostRequest($body), $itemClass);
+
+        /** @var array<int, mixed> $elements */
+        $elements = json_decode($body, false);
+        $viaValue = [];
+        foreach ($elements as $index => $element) {
+            $viaValue[] = $deserializer->deserializeValue($element, $itemClass, (string)$index);
+        }
+
+        $this->assertSame(
+            array_map(static fn(GeneratedDtoInterface $i): array => $i->toArray(), $viaCollection),
+            array_map(static fn(GeneratedDtoInterface $i): array => $i->toArray(), $viaValue),
+        );
+    }
+
     public function testDateTimeSubSecondPrecisionRoundTrips(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/datetime-precision.yaml');
