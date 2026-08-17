@@ -67,6 +67,9 @@ $dto = $deserializer->deserialize($request, UserPostRequest::class);
 // a top-level JSON array body (bulk endpoints)
 $items = $deserializer->deserializeCollection($request, Item::class);
 
+// one already-decoded JSON value, without a Request (batch endpoints, see below)
+$item = $deserializer->deserializeValue($decodedElement, Item::class, '3');
+
 // response: validate then normalize, or normalize alone when the data is already trusted
 $payload = $normalizer->validateAndNormalizeToArray($dto);
 $payload = $normalizer->toArray($dto);
@@ -78,6 +81,33 @@ $errors = $normalizer->validate($dto);
 
 Errors are thrown as a `RuntimeException` whose message aggregates every violation, each naming the
 OpenAPI rule that failed (`field "tags"[0] length must be at least 3 characters`).
+
+### Batch endpoints: accepting the good elements, reporting the bad ones
+
+`deserializeCollection()` is all-or-nothing — it collects every element's error and throws them as one
+exception, so a single malformed element fails the whole request. A batch endpoint that must answer
+"element 3 was rejected, the rest were accepted" loops over the decoded body itself and takes one
+element at a time with `deserializeValue()`:
+
+```php
+$elements = json_decode($request->getContent(), false);
+
+$accepted = [];
+$errors   = [];
+foreach ($elements as $index => $element) {
+    try {
+        // Same cast one element of a collection body goes through: scalars, enums, dates,
+        // nested DTOs, discriminator resolution. $index names the element in the message.
+        $accepted[] = $deserializer->deserializeValue($element, Item::class, (string)$index);
+    } catch (RuntimeException $e) {
+        $errors[$index] = $e->getMessage();   // param "3.id" expects int, got string
+    }
+}
+```
+
+The third argument is what every error message names the value by; omit it and the message reads
+`param "value"`. `$data` is a value produced by `json_decode($json, false)` — a `stdClass` for an
+object, a list for an array, a scalar otherwise.
 
 ## What sets this mode apart
 
