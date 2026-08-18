@@ -109,6 +109,50 @@ The third argument is what every error message names the value by; omit it and t
 `param "value"`. `$data` is a value produced by `json_decode($json, false)` — a `stdClass` for an
 object, a list for an array, a scalar otherwise.
 
+One wording caveat on this path: a missing required field on a nested DTO reports `Required parameter
+"3.id" not found in request.` even though no `Request` is involved — the text comes from the shared
+deserialization core, where it is accurate. Read "in request" as "in the payload".
+
+#### Element shapes the items schema knows and a bare type name does not
+
+A DTO property infers `nullable` items and a `format: date` item type from its own schema. `$itemType`
+and `$type` here are bare type names with no owning property, so nothing is there to infer from and the
+two facts are passed in — without them a date-only element or a `null` element cannot be deserialized
+at all:
+
+```php
+// items: {type: string, format: date}       — 'Y-m-d' for format: date, null (default) for date-time
+$day = $deserializer->deserializeValue('2026-03-10', DateTimeImmutable::class, '3', false, 'Y-m-d');
+
+// items: {type: integer, nullable: true}    — a null element is kept instead of being rejected
+$maybe = $deserializer->deserializeValue(null, 'int', '3', true);
+
+// the same two arguments on the all-or-nothing path
+$days = $deserializer->deserializeCollection($request, DateTimeImmutable::class, false, 'Y-m-d');
+$ints = $deserializer->deserializeCollection($request, 'int', true);
+```
+
+Both are opt-in and both default to the strict behaviour, so a call that omits them is unchanged.
+`'Y-m-d'` narrows the cast rather than disabling it: `2026-13-99` still fails, and the message names
+the narrowed format.
+
+The declared return follows the nullable flag, so leaving it off keeps elements non-null for your
+static analysis and turning it on makes it insist on a null check:
+
+```php
+$items = $deserializer->deserializeCollection($request, Item::class);        // array<int, Item>
+$items = $deserializer->deserializeCollection($request, Item::class, true);  // array<int, Item|null>
+```
+
+Both arguments are on `DtoDeserializerInterface` as well as on the service, so the types behave the
+same whichever you type-hint. That is why they are there: a conditional return needs the flag in
+scope to condition on. Adding them was breaking for classes implementing the contract — see
+[Upgrading](README.md#upgrading).
+
+PSR-7 applications call `deserializeValue()` on `DtoDeserializer` directly — there is no
+`deserializeValuePsr7()`, because the method takes an already-decoded value and no request, so there
+would be nothing for the wrapper to convert.
+
 ## What sets this mode apart
 
 ### Presence tracking (PATCH / partial updates)
@@ -179,7 +223,14 @@ $dto = $deserializer->deserializePsr7($request, UserPostRequest::class);
 
 // Top-level JSON array body (bulk endpoints):
 $items = $deserializer->deserializeCollectionPsr7($request, Item::class);
+
+// …carrying the two items-schema facts, exactly as on the Symfony path:
+$days = $deserializer->deserializeCollectionPsr7($request, DateTimeImmutable::class, false, 'Y-m-d');
 ```
+
+There is no `deserializeValuePsr7()`. Every method here exists to convert a PSR-7 request into a
+Symfony one, and `deserializeValue()` takes an already-decoded value and no request at all — call it
+on `DtoDeserializer` directly.
 
 Path parameters are read from PSR-7 request attributes (`$request->withAttribute('id', …)`), where
 routers typically place them — the bridge carries them over to the Symfony request.

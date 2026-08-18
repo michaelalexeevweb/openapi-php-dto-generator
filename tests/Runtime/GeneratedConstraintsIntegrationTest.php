@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 use BackedEnum;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
@@ -14,6 +15,7 @@ use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
+use ReflectionParameter;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
@@ -1607,6 +1609,166 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('expects a valid date-time');
         $deserializer->deserializeValue('10.03.2026', DateTimeImmutable::class);
+    }
+
+    public function testDeserializeValueHonoursNullableAndTemporalFormat(): void
+    {
+        // A DTO property infers both facts from its own items schema. A bare $type has no owning
+        // property to infer from, so they are parameters — without them a `format: date` element
+        // and a nullable element are undeserializable, which is what these two used to be.
+        $deserializer = new DtoDeserializer();
+
+        $date = $deserializer->deserializeValue('2026-03-10', DateTimeImmutable::class, 'value', false, 'Y-m-d');
+        $this->assertInstanceOf(DateTimeImmutable::class, $date);
+        $this->assertSame('2026-03-10', $date->format('Y-m-d'));
+
+        $this->assertNull($deserializer->deserializeValue(null, 'int', 'value', true));
+        $this->assertNull($deserializer->deserializeValue(null, DateTimeImmutable::class, 'value', true));
+
+        // Both are opt-in: the defaults keep rejecting, so nothing loosened for existing callers.
+        try {
+            $deserializer->deserializeValue('2026-03-10', DateTimeImmutable::class);
+            $this->fail('Expected a date-only string to be refused without a temporal format.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('expects a valid date-time', $e->getMessage());
+        }
+
+        try {
+            $deserializer->deserializeValue(null, 'int');
+            $this->fail('Expected null to be refused without $nullable.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('expects int, got null', $e->getMessage());
+        }
+
+        // 'Y-m-d' narrows the cast, it does not disable it: a malformed date still fails, and the
+        // message names the narrowed format rather than the date-time one.
+        try {
+            $deserializer->deserializeValue('2026-13-99', DateTimeImmutable::class, 'value', false, 'Y-m-d');
+            $this->fail('Expected an invalid date to be refused under Y-m-d.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('expects a date in Y-m-d format', $e->getMessage());
+        }
+    }
+
+    public function testDeserializeCollectionHonoursNullableAndTemporalFormat(): void
+    {
+        // The same two holes existed on the collection path since it was written — deserializeValue()
+        // inherited them rather than introduced them, so both entry points carry the fix.
+        $deserializer = new DtoDeserializer();
+
+        $dates = $deserializer->deserializeCollection(
+            $this->jsonPostRequest('["2026-03-10","2026-03-11"]'),
+            DateTimeImmutable::class,
+            false,
+            'Y-m-d',
+        );
+        $this->assertCount(2, $dates);
+        $this->assertSame(
+            ['2026-03-10', '2026-03-11'],
+            array_map(static fn(DateTimeImmutable $d): string => $d->format('Y-m-d'), $dates),
+        );
+
+        $this->assertSame(
+            [1, null, 3],
+            $deserializer->deserializeCollection($this->jsonPostRequest('[1,null,3]'), 'int', true),
+        );
+
+        // Defaults unchanged: a null element without itemsNullable still fails, still by index.
+        try {
+            $deserializer->deserializeCollection($this->jsonPostRequest('[1,null,3]'), 'int');
+            $this->fail('Expected a null element to be refused without $itemsNullable.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('element 1', $e->getMessage());
+        }
+
+        $this->assertSame(
+            [1, 2, 3],
+            $deserializer->deserializeCollection($this->jsonPostRequest('[1,2,3]'), 'int'),
+        );
+    }
+
+    public function testDeserializeValueKeepsObjectAndArrayApartUnderAssocInput(): void
+    {
+        // The docblock promises a value from json_decode($json, false), but a plain assoc array is
+        // accepted too (a DTO from an assoc payload is asserted elsewhere in this file). What that
+        // tolerance costs is the point of this test, and it is NOT a weakened `type: object`: the
+        // check reads array_is_list() plus whether the value arrived as a JSON object, so under
+        // assoc input it errs toward REFUSING. Nothing shaped like an array is silently accepted.
+        //
+        // The price is paid in the other direction, on one exotic-but-legal document: an object
+        // whose keys are sequential integers decodes assoc to a list and is refused, while the same
+        // document decoded to stdClass is accepted. Pinned here so the asymmetry is a visible
+        // choice — six months from now someone passes `true` to json_decode and this says what
+        // changes.
+        $deserializer = new DtoDeserializer();
+
+        // Objects pass either way.
+        $this->assertSame(['a' => 1], $deserializer->deserializeValue(json_decode('{"a":1}', false), 'array'));
+        $this->assertSame(['a' => 1], $deserializer->deserializeValue(['a' => 1], 'array'));
+
+        // Arrays are refused either way — the object-vs-array line holds under assoc input.
+        foreach ([json_decode('[1,2]', false), [1, 2]] as $arrayShaped) {
+            try {
+                $deserializer->deserializeValue($arrayShaped, 'array');
+                $this->fail('Expected an array-shaped value to be refused where an object is expected.');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('expects object, got array', $e->getMessage());
+            }
+        }
+
+        // The asymmetry: {"0":1,"1":2} is an OBJECT, and only the stdClass decoding survives as one.
+        $this->assertSame([1, 2], $deserializer->deserializeValue(json_decode('{"0":1,"1":2}', false), 'array'));
+        try {
+            $deserializer->deserializeValue(json_decode('{"0":1,"1":2}', true), 'array');
+            $this->fail('Expected an integer-keyed object decoded assoc to be refused.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('expects object, got array', $e->getMessage());
+        }
+
+        // An empty object is left alone in both decodings — a pre-decoded body reports `{}` as [].
+        $this->assertSame([], $deserializer->deserializeValue(json_decode('{}', false), 'array'));
+        $this->assertSame([], $deserializer->deserializeValue([], 'array'));
+    }
+
+    public function testContractAndServiceDeclareTheSameSignatures(): void
+    {
+        // 2.13.0 put the two items-schema arguments on the CONTRACT rather than on the service
+        // alone. That is a breaking change for implementors — and the reason to pay it is that a
+        // contract without them cannot state the null honestly: an implementation may not widen a
+        // return type the interface narrows, so the flag-aware return only works if the flag is
+        // part of the declaration. This test is the guard: interface and service must not drift.
+        $this->assertInstanceOf(DtoDeserializerInterface::class, new DtoDeserializer());
+
+        $signature = static function (string $class, string $method): array {
+            return array_map(
+                static fn(ReflectionParameter $p): string => $p->getName(),
+                (new ReflectionMethod($class, $method))->getParameters(),
+            );
+        };
+
+        foreach (
+            [
+                'deserializeValue' => ['data', 'type', 'path', 'nullable', 'temporalFormat'],
+                'deserializeCollection' => ['request', 'itemType', 'itemsNullable', 'itemTemporalFormat'],
+            ] as $method => $expected
+        ) {
+            $this->assertSame($expected, $signature(DtoDeserializerInterface::class, $method));
+            $this->assertSame($expected, $signature(DtoDeserializer::class, $method));
+        }
+
+        // Everything past the pre-2.13.0 arity stays optional, so no existing CALL site has to change
+        // — only implementors of the interface do.
+        foreach (['deserializeValue' => 3, 'deserializeCollection' => 2] as $method => $requiredBefore) {
+            foreach ((new ReflectionMethod(DtoDeserializerInterface::class, $method))->getParameters() as $parameter) {
+                if ($parameter->getPosition() < $requiredBefore) {
+                    continue;
+                }
+                $this->assertTrue(
+                    $parameter->isOptional(),
+                    sprintf('DtoDeserializerInterface::%s($%s) must stay optional.', $method, $parameter->getName()),
+                );
+            }
+        }
     }
 
     public function testDeserializeValueCastsEnumMembers(): void

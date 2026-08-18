@@ -40,7 +40,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.12.0
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.13.0
 ```
 
 ## Requirements
@@ -185,6 +185,32 @@ A few behaviours worth knowing when validating against the schema:
 - **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
 
 ## Upgrading
+
+**2.12.0 → 2.13.0** fixes two element shapes that could not be deserialized at all and changes nothing
+in the generated output (byte-identical in all four modes). `deserializeValue()` and
+`deserializeCollection()` never passed the items schema's `nullable` / `format` down to the per-element
+cast, so a `format: date` element and a `null` element were both rejected; both now take
+`$nullable`/`$itemsNullable` and a temporal format, defaulting to the old strict behaviour so **every
+existing call site keeps working unchanged**.
+
+**Breaking for classes of YOUR OWN implementing `DtoDeserializerInterface`** — the two methods gained
+optional parameters there, so an implementation still declaring the 2.12.0 arity fatals at autoload
+with *"Declaration … must be compatible with …"*. Copy the new signatures:
+
+```php
+public function deserializeCollection(
+    Request $request, string $itemType, bool $itemsNullable = false, ?string $itemTemporalFormat = null,
+): array;
+
+public function deserializeValue(
+    mixed $data, string $type, string $path = 'value', bool $nullable = false, ?string $temporalFormat = null,
+): mixed;
+```
+
+The parameters had to go on the contract rather than on the service alone: the declared return follows
+the nullable flag (`T` off, `T|null` on), and an implementation may not widen a return type its
+interface narrows — so a contract without the flag could not tell the truth about null. Consumers,
+type hints and DI are unaffected. See the [CHANGELOG](CHANGELOG.md).
 
 **2.11.0 → 2.12.0** adds one method and changes nothing else: generated output is byte-identical in all
 four modes, and `DtoDeserializer::deserializeValue()` deserializes a single already-decoded JSON value so

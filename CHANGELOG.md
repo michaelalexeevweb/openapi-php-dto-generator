@@ -3,6 +3,71 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.13.0 — 2026-08-18
+
+- carry the items schema into per-element casts
+- `format: date` and nullable elements now deserialize
+- fix `deserializeCollection()` the same way
+- put the two flags on the contract
+- return type follows the nullable flag
+- pin object-vs-array under assoc input
+- say what "in request" means without a request
+
+**`format: date` elements and nullable elements were undeserializable.** `castArrayItemValue()` takes
+`itemsNullable` and `arrayItemTemporalFormat`; neither `deserializeValue()` nor `deserializeCollection()`
+passed them, so a `type: string, format: date` collection was rejected element by element
+(`expects a valid date-time …, got "2026-03-10"`) and a nullable element was rejected as a type error.
+A bare type name has no owning DTO property, so the two facts cannot be inferred at these call sites —
+they are now parameters:
+
+```php
+$deserializer->deserializeValue('2026-03-10', DateTimeImmutable::class, '3', false, 'Y-m-d');
+$deserializer->deserializeValue(null, 'int', '3', true);
+$deserializer->deserializeCollection($request, DateTimeImmutable::class, false, 'Y-m-d');
+$deserializer->deserializeCollection($request, 'int', true);
+```
+
+**The declared return follows the nullable flag, so static analysis sees the null.** With
+`$nullable`/`$itemsNullable` on, these methods really can hand back `null` (or a list containing
+`null`). The types now say it, and this stops passing PHPStan:
+
+```php
+$dt = $deserializer->deserializeValue(null, DateTimeImmutable::class, '3', true);
+$dt->format('c');   // DateTimeImmutable|null — reported, was silently accepted
+```
+
+Leave the flag off and the type stays non-null, resolving to the exact class as before.
+
+Both flags default to the strict behaviour, so existing calls are unchanged. `'Y-m-d'` narrows the cast
+rather than disabling it — an invalid date still fails, naming the narrowed format. Not a 2.12.0
+regression: `deserializeCollection()` had the same two holes since it was written, which is why both
+entry points are fixed together. `deserializeCollectionPsr7()` forwards the two arguments.
+
+**Breaking for implementors of `DtoDeserializerInterface`.** The new parameters are on the CONTRACT,
+not on the service alone, so a class of your own still declaring the 2.12.0 arity fatals at autoload:
+*"Declaration … must be compatible with …"*. Copy the signatures from the interface. Consumers, type
+hints and DI are unaffected, and no existing CALL site changes — every added parameter is optional.
+
+Putting them on the service alone was built first and abandoned, because it cannot be made honest.
+A conditional return needs the flag in scope, and an implementation may not widen a return type its
+interface narrows: with the flag only on the service, either the service lies about null
+(`method.childReturnType` if it does not) or the contract admits a null that its own signature makes
+unreachable, taxing every interface-typed call site with checks it can never need. Both were measured;
+the contract change is the only shape where each declaration says exactly what its caller can get.
+`tests/Runtime/GeneratedConstraintsIntegrationTest` pins interface and service to the same signatures
+so they cannot drift apart again.
+
+Generated DTOs are unchanged — output is byte-identical to 2.12.0 in all four modes.
+
+Two behaviours are now pinned rather than changed. A missing required field on the Request-free path
+still reports `Required parameter "3.id" not found in request.`; the text comes from the shared
+deserialization core, where it is accurate and where changing it would change the Request paths too, so
+it stays and the docblocks say to read "in request" as "in the payload". And `deserializeValue()` still
+accepts a plain assoc array beside the promised `json_decode($json, false)` output: under assoc input
+the object-vs-array check errs toward refusing, so nothing array-shaped is silently accepted — the cost
+is one exotic document, an object with sequential integer keys (`{"0":1,"1":2}`), which survives as an
+object only in the stdClass decoding. A test now names that asymmetry.
+
 ## 2.12.0 — 2026-08-17
 
 - add `deserializeValue()`

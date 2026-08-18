@@ -16,6 +16,11 @@ use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
  * coupling: the bridge dependency lives only in this optional class.
  *
  * Requires symfony/psr-http-message-bridge (a `suggest` dependency — not pulled in by default).
+ *
+ * There is deliberately NO `deserializeValuePsr7()`. Every method here exists to convert a PSR-7
+ * request into a Symfony one; {@see DtoDeserializer::deserializeValue()} takes an already-decoded
+ * value and no request at all, so there is nothing to convert and a delegate would only forward.
+ * PSR-7 applications call that method on {@see DtoDeserializer} directly.
  */
 final class DtoDeserializerPsr7
 {
@@ -51,17 +56,28 @@ final class DtoDeserializerPsr7
 
     /**
      * Deserializes a top-level JSON array PSR-7 ServerRequest body into a list of items.
-     * See {@see DtoDeserializer::deserializeCollection()}.
+     * See {@see DtoDeserializer::deserializeCollection()}, including why the two items-schema
+     * facts are parameters rather than inference.
+     *
+     * The return type follows `$itemsNullable`, identically to the method this delegates to.
      *
      * @template T of object
      * @param class-string<T>|string $itemType
-     * @return ($itemType is class-string<T> ? array<int, T> : array<int, mixed>)
+     * @return ($itemType is class-string<T>
+     *     ? ($itemsNullable is true ? array<int, T|null> : array<int, T>)
+     *     : array<int, mixed>)
      */
-    public function deserializeCollectionPsr7(ServerRequestInterface $request, string $itemType): array
-    {
+    public function deserializeCollectionPsr7(
+        ServerRequestInterface $request,
+        string $itemType,
+        bool $itemsNullable = false,
+        ?string $itemTemporalFormat = null,
+    ): array {
         return $this->deserializer->deserializeCollection(
             request: $this->httpFoundationFactory->createRequest($request),
             itemType: $itemType,
+            itemsNullable: $itemsNullable,
+            itemTemporalFormat: $itemTemporalFormat,
         );
     }
 }
