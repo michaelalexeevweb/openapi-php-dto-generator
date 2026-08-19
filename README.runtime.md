@@ -1,6 +1,6 @@
 # Runtime mode
 
-[← back to the main README](README.md) · other modes: [symfony](README.symfony.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
+[← back to the main README](README.md) · other modes: [symfony](README.symfony.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md) · [yii3](README.yii3.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
 
 The default mode (`--attributes=runtime`, or simply omitted). DTOs implement `GeneratedDtoInterface`
 and carry metadata methods; **this library's own services** do the work:

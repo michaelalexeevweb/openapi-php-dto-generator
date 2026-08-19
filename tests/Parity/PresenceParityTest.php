@@ -12,6 +12,7 @@ use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -121,6 +122,7 @@ final class PresenceParityTest extends TestCase
             GenerationMode::Symfony => $this->symfonyPresence($json),
             GenerationMode::Laravel => $this->laravelPresence($json),
             GenerationMode::LaravelData => $this->laravelDataPresence($json),
+            GenerationMode::Yii3 => $this->yii3Presence($json),
         };
     }
 
@@ -134,6 +136,7 @@ final class PresenceParityTest extends TestCase
             GenerationMode::Symfony => $this->symfonyNestedPresence($json),
             GenerationMode::Laravel => $this->laravelNestedPresence($json),
             GenerationMode::LaravelData => $this->laravelDataNestedPresence($json),
+            GenerationMode::Yii3 => $this->yii3NestedPresence($json),
         };
     }
 
@@ -203,6 +206,41 @@ final class PresenceParityTest extends TestCase
         $child = $this->laravelDataDto(self::nestedSpec(), 'Owner', $json)->child;
 
         return ['kept' => !$child->kept instanceof Optional, 'dropped' => !$child->dropped instanceof Optional];
+    }
+
+    /**
+     * Presence in yii3 mode is the framework's own `DataSetInterface::hasProperty()`, and underneath
+     * it PHP's own `ReflectionProperty::isInitialized()`: the emitted class has no constructor, so a
+     * key the payload did not carry leaves its property uninitialised. No sentinel, no flag array.
+     *
+     * @return array<string, bool>
+     */
+    private function yii3Presence(string $json): array
+    {
+        $dto = $this->yii3Dto(self::patchSpec(), 'Patch', $json);
+
+        return ['nickname' => $dto->hasProperty('nickname'), 'note' => $dto->hasProperty('note')];
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function yii3NestedPresence(string $json): array
+    {
+        $child = $this->yii3Dto(self::nestedSpec(), 'Owner', $json)->getChild();
+
+        return ['kept' => $child->hasProperty('kept'), 'dropped' => $child->hasProperty('dropped')];
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     */
+    private function yii3Dto(array $spec, string $rootClass, string $json): object
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $json . $rootClass), 'yii3', $rootClass);
+        $payload = json_decode($json, true);
+
+        return (new Yii3Container())->hydrate($fqcn, is_array($payload) ? $payload : []);
     }
 
     /**

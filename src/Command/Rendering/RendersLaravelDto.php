@@ -701,6 +701,14 @@ trait RendersLaravelDto
     }
 
     /**
+     * `min:`/`max:` for a bound Laravel can express, and the keywords those rules consume.
+     *
+     * A bound carrying the OpenAPI 3.0 EXCLUSIVE modifier (`minimum: 3` next to
+     * `exclusiveMinimum: true`) is left alone: `min:` is inclusive and has no exclusive spelling, so
+     * emitting it and consuming the keyword accepted the boundary value AND took `minimum` away from
+     * the interpreter, which does implement the pairing. Measured on `{"f":3}` against
+     * `minimum: 3, exclusiveMinimum: true` — accepted here, refused by every other mode.
+     *
      * @param array<string, mixed> $schema
      * @return array{rules: array<int, string>, consumed: array<int, string>}
      */
@@ -711,11 +719,14 @@ trait RendersLaravelDto
         $min = $schema[$minKey] ?? null;
         $max = $schema[$maxKey] ?? null;
 
-        if (is_int($min) || is_float($min)) {
+        $exclusiveMin = ($schema['exclusiveMinimum'] ?? null) === true && $minKey === 'minimum';
+        $exclusiveMax = ($schema['exclusiveMaximum'] ?? null) === true && $maxKey === 'maximum';
+
+        if (!$exclusiveMin && (is_int($min) || is_float($min))) {
             $rules[] = sprintf("'min:%s'", $this->laravelNumberLiteral($min));
             $consumed[] = $minKey;
         }
-        if (is_int($max) || is_float($max)) {
+        if (!$exclusiveMax && (is_int($max) || is_float($max))) {
             $rules[] = sprintf("'max:%s'", $this->laravelNumberLiteral($max));
             $consumed[] = $maxKey;
         }

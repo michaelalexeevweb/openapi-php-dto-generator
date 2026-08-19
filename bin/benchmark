@@ -353,6 +353,51 @@ if ($laravelDataAvailable) {
     );
 }
 
+// ---------------------------------------------------------------- yii3
+// Skipped rather than faked when the packages are absent: like laravel-data, this mode's output needs
+// third-party dependencies, and a dist install has no tests/ directory to take the container from.
+$yii3Container = OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container::class;
+// ext-intl is part of the requirement, not an optional extra: a temporal property is emitted with
+// `#[ToDateTime]`, and yiisoft/hydrator lists ext-intl as what that attribute needs. The benchmark
+// spec has one, so without the extension there is nothing to measure rather than something slower.
+$yii3Available = class_exists(Yiisoft\Validator\Validator::class)
+    && class_exists($yii3Container)
+    && extension_loaded('intl');
+
+if ($yii3Available) {
+    $yii3Class = $generate($spec, $root, 'yii3');
+    $yii3 = new $yii3Container();
+    $yii3Dto = $yii3->hydrate($yii3Class, $payload);
+
+    // "bind" is hydration alone, the same step the other modes are measured on. Yii3 does not
+    // validate as part of it — that is the mode's defining difference, and it is why the two rows
+    // below are genuinely separate code paths rather than one split in two.
+    $results['yii3']['bind'] = $time(
+        static fn(): mixed => $yii3->hydrate($yii3Class, $payload),
+        $iterations,
+    );
+    $results['yii3']['validate'] = $time(
+        static fn(): mixed => $yii3->validate($yii3Dto),
+        $iterations,
+    );
+    // No response normalizer ships with Yii3, so the array form is the data set the class exposes.
+    $results['yii3']['normalize'] = $time(
+        static fn(): ?array => $yii3Dto->getData(),
+        $iterations,
+    );
+    $results['yii3']['normalize+validate'] = $results['yii3']['normalize'] + $results['yii3']['validate'];
+
+    // What an action actually does: hydrate, then read the verdict itself.
+    $results['yii3']['— hydrate + read getValidationResult()'] = $time(
+        static function () use ($yii3, $yii3Class, $payload): mixed {
+            $input = $yii3->hydrate($yii3Class, $payload);
+
+            return $yii3->validate($input)->isValid();
+        },
+        $iterations,
+    );
+}
+
 // ---------------------------------------------------------------- report
 $fmt = static fn(float $ms): string => number_format($ms, 4);
 $steps = ['bind', 'validate', 'normalize', 'normalize+validate'];
@@ -363,6 +408,9 @@ $extras = [
 ];
 if ($laravelDataAvailable) {
     $extras['laravel-data'] = ['— from(request): validate + hydrate'];
+}
+if ($yii3Available) {
+    $extras['yii3'] = ['— hydrate + read getValidationResult()'];
 }
 
 if ($asMarkdown) {

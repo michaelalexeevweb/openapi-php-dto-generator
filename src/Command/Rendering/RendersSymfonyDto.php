@@ -456,6 +456,10 @@ PHP;
      *                                               back into, keyed by class name. A recursive schema
      *                                               cannot be written out inline — the literal would be
      *                                               infinite — so it is emitted once and re-entered.
+     * @param bool $ownsPayloadView whether the CALLER writes its own `toOpenApiValidationPayload()` and
+     *                              replaces the one emitted here. Yii3 mode does: presence there is an
+     *                              uninitialised property, not a boolean flag. Its two constants are read
+     *                              by nothing once that swap happens, so they are not emitted either.
      * @return array{consts: string, methods: string, imports: array<int, string>}
      */
     private function renderSymfonyValidationBlock(
@@ -465,6 +469,7 @@ PHP;
         array $valueKinds,
         bool $payloadIsHydratedObject = true,
         array $recursiveSchemas = [],
+        bool $ownsPayloadView = false,
     ): array {
         if ($constraints === []) {
             return ['consts' => '', 'methods' => '', 'imports' => []];
@@ -500,7 +505,7 @@ PHP;
         // The name map and the presence flags exist only for `toOpenApiValidationPayload()`, which
         // turns THIS object into a payload. A mode validating a raw array never calls it, and the
         // two constants would be emitted empty and read by nobody.
-        $payloadViewConsts = $payloadIsHydratedObject
+        $payloadViewConsts = $payloadIsHydratedObject && !$ownsPayloadView
             ? <<<PHP
 
     private const array OPENAPI_PHP_TO_NAME_MAP = {$nameMapLiteral};
@@ -563,6 +568,10 @@ PHP,
         $hasMinItems = $this->schemaUsesKeyword($constraints, 'minItems');
         $hasMaxItems = $this->schemaUsesKeyword($constraints, 'maxItems');
         $hasUniqueItems = $this->schemaUsesKeyword($constraints, 'uniqueItems');
+        // `nullable` reaches the interpreter only where the mode has no other way to express it —
+        // symfony and laravel carry nullability in the PHP type and the filter drops the keyword, so
+        // this stays false there and the guard below is not emitted at all.
+        $hasNullable = $this->schemaUsesKeyword($constraints, 'nullable');
         $hasMinProperties = $this->schemaUsesKeyword($constraints, 'minProperties');
         $hasMaxProperties = $this->schemaUsesKeyword($constraints, 'maxProperties');
         $hasRequired = $this->schemaUsesKeyword($constraints, 'required');
@@ -735,6 +744,15 @@ PHP;
         // The local setup lines belong to the same statement group as `$errors = []`, so they are
         // appended to that section instead of becoming blank-line separated sections of their own.
         $prologue = [];
+        if ($hasNullable) {
+            // A null the schema explicitly allows satisfies the node outright. Every other keyword
+            // here describes a string, a number or a container, so running them against null only
+            // produces a second message about a value the document permits.
+            $prologue[] = '        if ($value === null && ($schema[\'nullable\'] ?? false) === true) {';
+            $prologue[] = '            return [];';
+            $prologue[] = '        }';
+            $prologue[] = '';
+        }
         if ($needsValueNormalization) {
             // With neither enums nor dates in play there is nothing to normalize, so skip the hop.
             $prologue[] = $canHoldEnum || $canHoldTemporal
@@ -904,43 +922,89 @@ PHP;
         }
 
         if ($needsNumericValidation) {
-            $sections[] = <<<'PHP'
-        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
-            $maximum = $this->toFloatConstraint($schema['maximum'] ?? null);
+            // Per keyword, like the string block below. One shared gate emitted all five checks for
+            // a schema carrying one of them, so a `minimum: 10` property was also asked about
+            // `exclusiveMinimum`, `exclusiveMaximum` and `multipleOf` — keywords the document never
+            // wrote. The verdict was the same; the generated method was 40 lines longer than the spec.
+            $numericKeywords = array_values(array_filter(
+                ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
+                fn(string $keyword): bool => $this->schemaUsesKeyword($constraints, $keyword),
+            ));
+            $numericKeywordList = "'" . implode("', '", $numericKeywords) . "'";
 
-            $exclusiveMinimum = $schema['exclusiveMinimum'] ?? null;
-            if (is_numeric($exclusiveMinimum)) {
-                $minExclusive = (float)$exclusiveMinimum;
-                if (!($normalizedValue > $minExclusive)) {
-                    $errors[] = sprintf('%s must be greater than %s', $path, $this->stringifyOpenApiNumber($minExclusive));
+            // Three shapes per bound, because `exclusiveMinimum` has two spellings: a NUMBER
+            // (JSON Schema 2020-12) and a boolean modifier on `minimum` (OpenAPI 3.0). Only the
+            // spellings this document actually wrote are emitted — a schema saying `minimum: 10`
+            // has no runtime way to grow an `exclusiveMinimum`, so those branches would be dead.
+            $bound = static function (
+                bool $hasInclusive,
+                bool $hasExclusive,
+                string $inclusiveKey,
+                string $exclusiveKey,
+                string $reader,
+                string $comparison,
+                string $exclusiveMessage,
+                string $inclusiveMessage,
+            ): string {
+                if ($hasInclusive && $hasExclusive) {
+                    return <<<PHP
+            \${$exclusiveKey} = \$schema['{$exclusiveKey}'] ?? null;
+            if (is_numeric(\${$exclusiveKey})) {
+                \$bound = (float)\${$exclusiveKey};
+                if (!(\$normalizedValue {$comparison} \$bound)) {
+                    \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\$bound));
                 }
-            } elseif ($minimum !== null) {
-                if (($schema['exclusiveMinimum'] ?? null) === true) {
-                    if (!($normalizedValue > $minimum)) {
-                        $errors[] = sprintf('%s must be greater than %s', $path, $this->stringifyOpenApiNumber($minimum));
+            } elseif (\${$reader} !== null) {
+                if ((\$schema['{$exclusiveKey}'] ?? null) === true) {
+                    if (!(\$normalizedValue {$comparison} \${$reader})) {
+                        \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\${$reader}));
                     }
-                } elseif (!($normalizedValue >= $minimum)) {
-                    $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
+                } elseif (!(\$normalizedValue {$comparison}= \${$reader})) {
+                    \$errors[] = sprintf('%s {$inclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\${$reader}));
                 }
             }
 
-            $exclusiveMaximum = $schema['exclusiveMaximum'] ?? null;
-            if (is_numeric($exclusiveMaximum)) {
-                $maxExclusive = (float)$exclusiveMaximum;
-                if (!($normalizedValue < $maxExclusive)) {
-                    $errors[] = sprintf('%s must be less than %s', $path, $this->stringifyOpenApiNumber($maxExclusive));
+PHP;
                 }
-            } elseif ($maximum !== null) {
-                if (($schema['exclusiveMaximum'] ?? null) === true) {
-                    if (!($normalizedValue < $maximum)) {
-                        $errors[] = sprintf('%s must be less than %s', $path, $this->stringifyOpenApiNumber($maximum));
-                    }
-                } elseif (!($normalizedValue <= $maximum)) {
-                    $errors[] = sprintf('%s must be less than or equal to %s', $path, $this->stringifyOpenApiNumber($maximum));
-                }
+
+                if ($hasExclusive) {
+                    return <<<PHP
+            \${$exclusiveKey} = \$schema['{$exclusiveKey}'] ?? null;
+            if (is_numeric(\${$exclusiveKey}) && !(\$normalizedValue {$comparison} (float)\${$exclusiveKey})) {
+                \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber((float)\${$exclusiveKey}));
             }
 
+PHP;
+                }
+
+                if ($hasInclusive) {
+                    return <<<PHP
+            \${$reader} = \$this->toFloatConstraint(\$schema['{$inclusiveKey}'] ?? null);
+            if (\${$reader} !== null && !(\$normalizedValue {$comparison}= \${$reader})) {
+                \$errors[] = sprintf('%s {$inclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\${$reader}));
+            }
+
+PHP;
+                }
+
+                return '';
+            };
+
+            // The bound reader is shared by both branches of the two-spelling shape, so it is hoisted
+            // there and inlined in the single-spelling one.
+            $numericChecks = '';
+            if ($hasMinimum && $hasExclusiveMinimum) {
+                $numericChecks .= "            \$minimum = \$this->toFloatConstraint(\$schema['minimum'] ?? null);\n\n";
+            }
+            $numericChecks .= $bound($hasMinimum, $hasExclusiveMinimum, 'minimum', 'exclusiveMinimum', 'minimum', '>', 'must be greater than', 'must be greater than or equal to');
+
+            if ($hasMaximum && $hasExclusiveMaximum) {
+                $numericChecks .= "            \$maximum = \$this->toFloatConstraint(\$schema['maximum'] ?? null);\n\n";
+            }
+            $numericChecks .= $bound($hasMaximum, $hasExclusiveMaximum, 'maximum', 'exclusiveMaximum', 'maximum', '<', 'must be less than', 'must be less than or equal to');
+
+            if ($hasMultipleOf) {
+                $numericChecks .= <<<'PHP'
             $multipleOf = $this->toFloatConstraint($schema['multipleOf'] ?? null);
             if ($multipleOf !== null && $multipleOf > 0.0) {
                 $ratio = $normalizedValue / $multipleOf;
@@ -948,8 +1012,15 @@ PHP;
                     $errors[] = sprintf('%s must be a multiple of %s', $path, $this->stringifyOpenApiNumber($multipleOf));
                 }
             }
-        }
+
 PHP;
+            }
+
+            $sections[] = sprintf(
+                "        if ((is_int(\$normalizedValue) || is_float(\$normalizedValue)) && \$this->schemaHasAnyOpenApiKey(\$schema, [%s])) {\n%s        }",
+                $numericKeywordList,
+                rtrim($numericChecks, "\n") . "\n",
+            );
         }
 
         if ($needsNumericFormatValidation) {

@@ -1,6 +1,6 @@
 # Performance
 
-[← back to the main README](README.md) · [support matrix](README.support-matrix.md) · mode guides: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md)
+[← back to the main README](README.md) · [support matrix](README.support-matrix.md) · mode guides: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md) · [yii3](README.yii3.md)
 
 How long a payload takes to bind, validate and normalize in each mode — measured, with the benchmark in
 the repository so you can re-measure on your own hardware instead of believing this page.
@@ -38,35 +38,48 @@ mode does at all.
 | symfony | denormalize into the DTO → validate the OBJECT → normalize |
 | laravel | validate the ARRAY → hydrate from the validated keys → `toArray()` |
 | laravel-data | validate the ARRAY → hydrate through laravel-data's pipeline → its `toArray()` |
+| yii3 | hydrate the OBJECT → validate it → `getData()` |
 
 Comparing `bind` to `bind` is fair. Comparing the ORDER is not — a Laravel FormRequest validates before
 anything is hydrated, by design.
 
-Numbers below: **PHP 8.4.14, Apple M3 Pro, opcache off, JIT off, 20000 iterations.** Absolute values will
-differ on your machine; the ratios have been stable across runs and across opcache on/off (opcache buys
-roughly 10% everywhere).
+Numbers below: **PHP 8.5.9 in the project's Linux container on an Apple M3 Pro, opcache off, JIT off,
+20000 iterations**, all five modes from ONE run of `bin/benchmark` so the columns are comparable. It
+runs in the project's container image because yii3 needs **ext-intl** — the shared spec has a
+`date-time` property, yii3 emits it with `#[ToDateTime]`, and `yiisoft/hydrator` lists the extension
+as what that attribute needs. Without it
+`bin/benchmark` drops the yii3 column rather than faking it.
+
+Absolute values will differ on your machine, and some ratios move between runs — the yii3-to-runtime
+one moved from 1.2× to 1.6× across two runs of the same command. Re-measure rather than quote.
 
 
 ## Per step
 
-| Step | runtime | symfony | laravel | laravel-data |
-|---|---:|---:|---:|---:|
-| bind / hydrate | 0.1369 ms | 0.2330 ms | **0.0029 ms** | 0.0825 ms |
-| validate | 0.1111 ms | 0.1436 ms | 1.0854 ms | 1.4128 ms |
-| normalize | 0.0121 ms | 0.1077 ms | **0.0019 ms** | 0.0492 ms |
-| normalize + validate | 0.1225 ms | 0.2513 ms | 1.0873 ms | 1.4620 ms |
+| Step | runtime | symfony | laravel | laravel-data | yii3 |
+|---|---:|---:|---:|---:|---:|
+| bind / hydrate | 0.1786 ms | 0.3435 ms | **0.0042 ms** | 0.1236 ms | 0.1539 ms |
+| validate | 0.1589 ms | 0.2386 ms | 1.9135 ms | 2.3927 ms | 0.3981 ms |
+| normalize | 0.0215 ms | 0.1373 ms | **0.0036 ms** | 0.0689 ms | 0.0182 ms |
+| normalize + validate | 0.1792 ms | 0.3760 ms | 1.9171 ms | 2.4616 ms | 0.4164 ms |
+
+yii3 is the one mode whose `bind` does NOT validate — that is its defining difference, so the two rows
+are separate code paths rather than one split in two. What an action actually pays, hydrate plus reading
+the verdict itself, is measured as its own row: **0.5285 ms**.
+
 
 ## Round trip
 
 Bind + normalize, then the same with validation added:
 
-| | runtime | symfony | laravel | laravel-data |
-|---|---:|---:|---:|---:|
-| without validation | 0.1490 ms | 0.3407 ms | **0.0048 ms** | 0.1317 ms |
-| with validation | **0.2602 ms** | 0.4844 ms | 1.0902 ms | 1.5445 ms |
+| | runtime | symfony | laravel | laravel-data | yii3 |
+|---|---:|---:|---:|---:|---:|
+| without validation | 0.2001 ms | 0.4808 ms | **0.0078 ms** | 0.1925 ms | 0.1721 ms |
+| with validation | **0.3590 ms** | 0.7195 ms | 1.9213 ms | 2.5853 ms | 0.5703 ms |
 
-So validation roughly **doubles** a runtime round trip, adds ~40% to a Symfony one, and dominates both
-rule-based ones completely. Which is worth one more measurement before drawing a conclusion.
+So validation adds ~80% to a runtime round trip, ~50% to a Symfony one, and roughly triples a yii3 one —
+and dominates both rule-based modes completely. Which is worth one more measurement before drawing a
+conclusion.
 
 
 ## Where Laravel's millisecond goes
@@ -75,18 +88,18 @@ Splitting the Laravel validate step:
 
 | | ms |
 |---|---:|
-| the framework alone, empty rule set | 0.0110 ms |
-| the framework + the generated `rules()` | 1.0557 ms |
-| the generated interpreter alone (`withValidator()`) | **0.0313 ms** |
+| the framework alone, empty rule set | 0.0160 ms |
+| the framework + the generated `rules()` | 1.8483 ms |
+| the generated interpreter alone (`withValidator()`) | **0.0483 ms** |
 
 **The cost is `illuminate/validation` evaluating the rules, not the generated code.** Building a
 `Validator` is free; running ~20 rule entries — parsing rule strings, resolving messages, expanding the
 dotted and `*` wildcard paths, `Rule::enum` — is what takes the millisecond. The emitted interpreter, the
-part this library actually wrote, is 3% of the step.
+part this library actually wrote, is 2.5% of the step.
 
-That also makes the interpreter the fastest validator here for the same schema — 0.031 ms against
-runtime's 0.111 and Symfony's 0.144 — for a boring reason: it is a specialized walk over a literal
-`const` array, with no reflection, no metadata cache and no per-property object graph.
+That also makes the interpreter the fastest validator here for the same schema — 0.048 ms against
+runtime's 0.159, yii3's 0.398 and Symfony's 0.239 — for a boring reason: it is a specialized walk over a
+literal `const` array, with no reflection, no metadata cache and no per-property object graph.
 
 If Laravel validation cost matters for your throughput, the lever is the rule set, not this library: fewer
 paths in `rules()` (Laravel evaluates each one) has a far bigger effect than anything the generator emits.
@@ -99,10 +112,10 @@ checked:
 
 | | laravel | laravel-data | ratio |
 |---|---:|---:|---:|
-| hydrate | 0.0029 ms | 0.0825 ms | 28× |
-| validate | 1.0854 ms | 1.4128 ms | 1.3× |
-| `toArray()` | 0.0019 ms | 0.0492 ms | 26× |
-| `from($request)` — validate + hydrate in one call | — | 1.4718 ms | — |
+| hydrate | 0.0042 ms | 0.1236 ms | 29× |
+| validate | 1.9135 ms | 2.3927 ms | 1.25× |
+| `toArray()` | 0.0036 ms | 0.0689 ms | 19× |
+| `from($request)` — validate + hydrate in one call | — | 2.5562 ms | — |
 
 The hydration and normalization ratios are the expected shape of the trade: laravel mode runs
 straight-line generated code over an array, laravel-data runs a reflective pipeline over a cached
@@ -110,8 +123,13 @@ straight-line generated code over an array, laravel-data runs a reflective pipel
 things the generator no longer has to emit, and both numbers are still well under a tenth of a
 millisecond.
 
-The VALIDATE step used to be 2.0× — 2.3182 ms — and the reason was not extra checking either. Splitting it
-(4000 iterations, same schema and payload) is how that was found and then closed:
+The VALIDATE step used to be 2.0× and the reason was not extra checking either. Splitting it is how that
+was found and then closed.
+
+**The five rows below are a SEPARATE, older measurement** — a one-off split during the 2.11.0
+investigation, 4000 iterations on the host rather than in the container, so read them against each other
+and not against the tables above. They are kept because the shape of the gap is the point, not its
+absolute size:
 
 | | ms |
 |---|---:|
@@ -122,7 +140,7 @@ The VALIDATE step used to be 2.0× — 2.3182 ms — and the reason was not extr
 | `validate()` end to end | 1.3556 ms |
 
 The two rule sets now have the same entries and cost the same to evaluate, so what is left is
-laravel-data's own resolution — 13% of the step — plus its pipeline. Before `#[WithoutValidation]` was
+laravel-data's own resolution — 13% of that step — plus its pipeline. Before `#[WithoutValidation]` was
 emitted on nested-`Data` properties the resolved set was ours PLUS a `Closure` on `tags.*`, its nested-data
 rule resolution, which Laravel ran once per item of the collection while the `tags.*.id` paths this
 generator emitted were still evaluated on top: 1.9635 ms to evaluate instead of 1.0586 ms. That was found
@@ -131,21 +149,26 @@ and 45% off `from($request)`. See [README.laravel-data.md](README.laravel-data.m
 
 So the lever is the same as in laravel mode: **the rule set, not the generated code.**
 
-`from($request)` (1.4718 ms) is not cheaper than doing the two steps separately (0.0825 + 1.4128 =
-1.4953 ms) — it is the same work plus reading and decoding the request body. It is one call, not a faster
+`from($request)` (2.5562 ms) is not cheaper than doing the two steps separately (0.1236 + 2.3927 =
+2.5163 ms) — it is the same work plus reading and decoding the request body. It is one call, not a faster
 one.
 
 
 ## Reading the rest of the table
 
-- **Laravel hydration is ~50× faster than runtime and Symfony** because `fromValidated()` is straight-line
-  generated code over an array it already has. Runtime binds from an HTTP request (sources, casts,
-  presence tracking); the Symfony serializer and laravel-data both resolve types by reflection.
-- **`toArray()` is ~60× faster than the Symfony serializer** for the same object, and ~6× faster than
-  runtime's normalizer. Same reason: emitted code versus a generic, reflective one.
-- **Runtime pays for what only it does.** Its extra row — binding from a freshly built request, 0.1473 ms
-  against 0.1369 ms — is parameter sources, `style`/`explode` and multipart encoding. No other mode can do
+- **Laravel hydration is ~40× faster than runtime and ~80× faster than Symfony** because
+  `fromValidated()` is straight-line generated code over an array it already has. Runtime binds from an
+  HTTP request (sources, casts, presence tracking); the Symfony serializer and laravel-data both
+  resolve types by reflection.
+- **`toArray()` is ~40× faster than the Symfony serializer** for the same object, ~6× faster than
+  runtime's normalizer and ~19× faster than laravel-data's. Same reason: emitted code versus a generic,
+  reflective one. yii3's `getData()` is the same shape of code and lands beside runtime's, at 0.018 ms.
+- **Runtime pays for what only it does.** Its extra row — binding from a freshly built request, 0.1890 ms
+  against 0.1786 ms — is parameter sources, `style`/`explode` and multipart encoding. No other mode can do
   that at any price; see the [support matrix](README.support-matrix.md).
+- **yii3 sits between runtime and Symfony end to end**, and 3–4× under Laravel. It has no serializer in
+  the path and no rule array to walk: the work is `yiisoft/validator` attributes over an object, plus the
+  one `#[Callback]` the interpreter lives behind.
 
 
 ## What this is not

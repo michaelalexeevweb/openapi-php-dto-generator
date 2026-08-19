@@ -14,6 +14,7 @@ use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -363,6 +364,9 @@ final class InterpreterMessageParityTest extends TestCase
             GenerationMode::Laravel => 'f ',
             // Same as Laravel mode: the error bag is keyed by path, so the sentence carries a bare path.
             GenerationMode::LaravelData => 'f ',
+            // The interpreter is entered from a class-level #[Callback] with the OBJECT payload — the
+            // same view Symfony mode feeds it — so the sentence names the field the same way.
+            GenerationMode::Yii3 => 'field "f" ',
         };
 
         return str_starts_with($message, $prefix) ? substr($message, strlen($prefix)) : $message;
@@ -379,6 +383,7 @@ final class InterpreterMessageParityTest extends TestCase
             GenerationMode::Symfony => $this->symfonyMessages($spec, $key, $json),
             GenerationMode::Laravel => $this->laravelMessages($spec, $key, $json),
             GenerationMode::LaravelData => $this->laravelDataMessages($spec, $key, $json),
+            GenerationMode::Yii3 => $this->yii3Messages($spec, $key, $json),
         };
     }
 
@@ -477,6 +482,40 @@ final class InterpreterMessageParityTest extends TestCase
      * @param array<string, mixed> $spec
      * @return array<int, string>
      */
+    /**
+     * The messages the emitted interpreter produces in yii3 mode.
+     *
+     * Only the interpreter's own are compared: a native `yiisoft/validator` rule speaks Yii's language
+     * (and your translations), exactly as the other framework modes speak theirs, so those are not
+     * parity material. The interpreter's sentences ARE ours in every mode and must match.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<int, string>
+     */
+    private function yii3Messages(array $spec, string $key, string $json): array
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
+        $payload = json_decode($json, true);
+        if (!is_array($payload)) {
+            return [];
+        }
+
+        $container = new Yii3Container();
+
+        try {
+            $result = $container->validate($container->hydrate($fqcn, $payload));
+        } catch (Throwable) {
+            return [];
+        }
+
+        $messages = [];
+        foreach ($result->getErrors() as $error) {
+            $messages[] = $error->getMessage();
+        }
+
+        return $messages;
+    }
+
     private function laravelDataMessages(array $spec, string $key, string $json): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');

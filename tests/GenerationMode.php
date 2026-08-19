@@ -25,6 +25,16 @@ enum GenerationMode: string
     case LaravelData = 'laravel-data';
 
     /**
+     * Yii3 MUST stay LAST.
+     *
+     * Two parity suites skip the yii3 arm when ext-intl is missing, and `markTestSkipped()` aborts
+     * the whole test method — so any mode listed after it would silently stop being measured on
+     * those cases. Last means the other four are already asserted by the time the skip fires, and
+     * `ComparesModes::assertSkippableModeIsLast()` fails loudly if this is ever reordered.
+     */
+    case Yii3 = 'yii3';
+
+    /**
      * The mode the others are compared against.
      *
      * Runtime mode owns the schema walk this package implements, so it is the reading of the OpenAPI
@@ -33,6 +43,19 @@ enum GenerationMode: string
     public static function reference(): self
     {
         return self::Runtime;
+    }
+
+    /**
+     * Whether this mode is the last case — see the note on `Yii3` for why that matters.
+     *
+     * A suite that may `markTestSkipped()` for one mode asserts this first: the skip aborts the whole
+     * test method, so a mode listed after the skippable one silently stops being measured.
+     */
+    public function isLast(): bool
+    {
+        $cases = self::cases();
+
+        return $this === $cases[array_key_last($cases)];
     }
 
     public function isReference(): bool
@@ -51,6 +74,7 @@ enum GenerationMode: string
             self::Symfony => 'Sy',
             self::Laravel => 'Lv',
             self::LaravelData => 'Ld',
+            self::Yii3 => 'Yi',
         };
     }
 

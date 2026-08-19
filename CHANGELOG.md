@@ -3,6 +3,72 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.14.0 — 2026-08-19
+
+- add yii3 generation mode
+- one `AbstractInput` per schema
+- presence from uninitialised typed properties
+- no sentinel, no helper class of ours
+- `DataSetInterface` + `RulesProviderInterface` together
+- `getRules()` or nothing is validated
+- yiisoft rules for what they express
+- class-level `#[Callback]` for the rest
+- keep scalar keywords for the interpreter
+- prune what a rule already covers
+- `skipOnEmpty: WhenNull` on every rule
+- one message for an absent required property
+- one message for an explicit null
+- `#[Data]` binds an aliased wire name
+- `#[Collection]` hydrates lists of DTOs
+- `#[ToDateTime]` hydrates temporal properties
+- `#[UploadedFiles]` with PSR-7, not Symfony
+- `#[FromBody]` only on a request payload
+- query and path bind to their own attributes
+- `nullable` is the document's, not the type's
+- free-form property as a written-out union
+- `readOnly` and `writeOnly` out of `getData()`
+- interpreter honours an explicit `nullable`
+- yii3 keeps sub-second precision, like runtime
+- fifth column in every parity suite
+- fifth golden corpus snapshot
+- fifth column in the benchmark
+- add README.yii3.md
+- yii3 rows in the support matrix
+- fix an exclusive bound in laravel mode
+- emit only the numeric checks a schema uses
+- drop two constants nothing read
+- constants before properties in yii3 output
+- no deprecation on a schema without a type
+- stack the wire formats a temporal hydrates from
+- write a temporal back in its schema's shape
+- leave `format: time` to the interpreter
+
+`--attributes=yii3` emits one `yiisoft/input-http` input per schema: `yiisoft/hydrator` fills it from the
+request and `yiisoft/validator` reads the emitted attributes. It is the only mode that does NOT turn a
+failed validation into a 422 — Yii3 hands the action a `Result` and the action decides, which is how the
+framework works and is left alone on purpose. Presence needs no invention either: the class has no
+constructor, so an unsent key leaves a typed property uninitialised and `hasProperty()` answers from
+`ReflectionProperty::isInitialized()`. The interpreter behind the class-level `#[Callback]` is the same
+code Symfony and Laravel mode run, so the messages are identical:
+[README.yii3.md](README.yii3.md).
+
+Three changes reach the FOUR existing modes. `minimum: 3` next to `exclusiveMinimum: true` — the
+OpenAPI 3.0 spelling of an exclusive bound — was translated to Laravel's inclusive `min:3`, and that
+also took the keyword away from the interpreter, so laravel mode ACCEPTED the boundary value every
+other mode refused; laravel-data inherited it. The emitted interpreter now steps aside for a `null`
+the document explicitly allows instead of adding a second message about it, and it emits only the
+numeric checks a schema actually uses rather than all five whenever one is present. runtime-mode
+output is byte-identical.
+
+Three temporal bugs in yii3 mode were found by CI, which has **ext-intl** where the development machine
+did not, so the cases that catch them were skipped locally. `#[ToDateTime]` takes ONE format and was
+emitted with one pattern: `2026-03-10T12:00:00.123456+03:00` parsed as none of it, the hydrator skipped
+the property, and the request came back as `field "at" is required` for a value the client had sent.
+Several are now STACKED — measured, the hydrator tries each in turn — covering exactly
+`GeneratedDtoInterface::DATE_TIME_FORMATS`. `getData()` also wrote a full timestamp for a `format: date`,
+where every other mode writes `2026-03-10`. And `format: time` carried a `#[Time]` rule that rejects any
+plain string, including the legal `13:45:00Z`; that format goes to the interpreter instead.
+
 ## 2.13.0 — 2026-08-18
 
 - carry the items schema into per-element casts

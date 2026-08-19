@@ -9,6 +9,7 @@ use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDataDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersYii3Dto;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -65,6 +66,7 @@ final class GenerateDtoCommand extends Command
     use RendersLaravelDto;
     use RendersRuntimeDto;
     use RendersSymfonyDto;
+    use RendersYii3Dto;
 
     /** OAS 3.2 `$self`: the document's own URI, used to recognise self-addressing `$ref`s. */
     private ?string $documentSelfUri = null;
@@ -108,12 +110,29 @@ final class GenerateDtoCommand extends Command
      */
     public const string ATTRIBUTE_MODE_LARAVEL_DATA = 'laravel-data';
 
+    /**
+     * Generation mode emitting `yiisoft/validator` attributes on a `yiisoft/input-http` input class,
+     * hydrated by `yiisoft/hydrator` and validated through `yiisoft/hydrator-validator`.
+     *
+     * Yii3 applications are already served by runtime mode over PSR-7 (`DtoDeserializerPsr7`), so this
+     * mode buys native-attribute ergonomics rather than capability — with one honest limit the other
+     * framework modes do not have: Yii3 does NOT turn a failed validation into a 422 by itself. The
+     * emitted class implements `ValidatedInputInterface`, and the action reads `getValidationResult()`.
+     *
+     * Two measured facts shape the emitter, both verified against the real packages rather than the
+     * docs: `#[Callback]` is `TARGET_CLASS`, so the interpreter is entered ONCE per object with the DTO
+     * as its value (the Symfony packaging, not the Laravel one); and a bare `#[Nested]` cascades into a
+     * nested class's own attributes, so recursive schemas need no repeated rule set.
+     */
+    public const string ATTRIBUTE_MODE_YII3 = 'yii3';
+
     /** @var array<int, string> */
     public const array ATTRIBUTE_MODES = [
         self::ATTRIBUTE_MODE_RUNTIME,
         self::ATTRIBUTE_MODE_SYMFONY,
         self::ATTRIBUTE_MODE_LARAVEL,
         self::ATTRIBUTE_MODE_LARAVEL_DATA,
+        self::ATTRIBUTE_MODE_YII3,
     ];
 
     /**
@@ -3767,6 +3786,20 @@ final class GenerateDtoCommand extends Command
                 properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
                 unionTypes: $schemaMetadata['unionTypes'],
                 discriminator: $schemaMetadata['discriminator'] ?? null,
+                isAbstract: $schemaMetadata['abstract'] ?? false,
+            );
+        }
+
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_YII3) {
+            // Flattened for the same reason as Symfony: the hydrator populates ONE constructor, so an
+            // inherited property that never reaches it would never be hydrated.
+            return $this->renderYii3DtoClass(
+                namespace: $namespace,
+                className: $className,
+                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                unionTypes: $schemaMetadata['unionTypes'],
+                discriminator: $schemaMetadata['discriminator'] ?? null,
+                extends: $schemaMetadata['extends'],
                 isAbstract: $schemaMetadata['abstract'] ?? false,
             );
         }

@@ -13,6 +13,7 @@ use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -354,6 +355,11 @@ final class NormalizationParityTest extends TestCase
                 'reason' => 'same stdClass-vs-array difference as the map cases, applied at every '
                     . 'level of a free-form value',
                 'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a free-form value is held as a PHP array, so a nested {} and a '
+                            . 'nested [] are the same value by the time anything of ours looks',
+                    ],
                     'laravel-data' => [
                         'like' => 'symfony',
                         'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
@@ -371,6 +377,11 @@ final class NormalizationParityTest extends TestCase
                     . 'object, Symfony keeps the PHP array — identical JSON while the map has keys, '
                     . 'see the empty-map case for where it stops being identical',
                 'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
+                            . 'is already gone — the same limit laravel-data declares',
+                    ],
                     'laravel-data' => [
                         'like' => 'symfony',
                         'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
@@ -393,6 +404,12 @@ final class NormalizationParityTest extends TestCase
                             . 'its normalizer has no notion of the wire shape, so an empty map encodes '
                             . 'as [] rather than {}',
                     ],
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'the object holds a PHP array, and a JSON {} decodes to the same '
+                            . 'empty array as [], so the wire shape is gone before anything of ours '
+                            . 'sees it — the same limit laravel-data declares here',
+                    ],
                 ],
             ],
             // Runtime used to fail this outright: the item type was read off the innermost generic,
@@ -410,6 +427,11 @@ final class NormalizationParityTest extends TestCase
                     . 'runtime casts every map — including one inside a list — so an empty item '
                     . 'encodes as {}, Symfony leaves the PHP array and encodes []',
                 'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'each map in the list is a PHP array, so an empty one encodes as '
+                            . '[] rather than {} — the map limit, once per element',
+                    ],
                     'laravel-data' => [
                         'like' => 'symfony',
                         'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does, '
@@ -496,6 +518,14 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['shape' => ['kind' => 'circle', 'r' => 3]],
                 'symfony' => ['shape' => ['kind' => 'circle', 'r' => 3]],
                 'diverges' => [
+                    'yii3' => [
+                        'expected' => [],
+                        'reason' => 'the hydrator cannot pick a branch: a property typed by the union '
+                            . 'interface has no rule telling it which member to build, and yiisoft has '
+                            . 'no discriminator mapping of its own. The object comes back with the '
+                            . 'property unset, which is what an empty array here means. Validation of '
+                            . 'a member built by hand still works — see Yii3RequestShapeTest.',
+                    ],
                     'laravel-data' => [
                         'expected' => ['shape' => ['r' => 3, 'kind' => 'circle']],
                         'reason' => 'the discriminated base is an abstract Data class here, not an '
@@ -528,6 +558,14 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['shape' => ['pet_type' => 'circle', 'r' => 3]],
                 'symfony' => ['shape' => ['pet_type' => 'circle', 'r' => 3]],
                 'diverges' => [
+                    'yii3' => [
+                        'expected' => [],
+                        'reason' => 'the hydrator cannot pick a branch: a property typed by the union '
+                            . 'interface has no rule telling it which member to build, and yiisoft has '
+                            . 'no discriminator mapping of its own. The object comes back with the '
+                            . 'property unset, which is what an empty array here means. Validation of '
+                            . 'a member built by hand still works — see Yii3RequestShapeTest.',
+                    ],
                     'laravel-data' => [
                         'expected' => ['shape' => ['r' => 3, 'pet_type' => 'circle']],
                         'reason' => 'the inherited-discriminator key order of the case above, unchanged '
@@ -720,6 +758,7 @@ final class NormalizationParityTest extends TestCase
             GenerationMode::Symfony => $this->symfonyNormalization($spec, $key, $json),
             GenerationMode::Laravel => $this->laravelNormalization($spec, $key, $json),
             GenerationMode::LaravelData => $this->laravelDataNormalization($spec, $key, $json),
+            GenerationMode::Yii3 => $this->yii3Normalization($spec, $key, $json),
         };
     }
 
@@ -730,6 +769,40 @@ final class NormalizationParityTest extends TestCase
      * @param array<string, mixed> $spec
      * @return array<string, mixed>
      */
+    /**
+     * yii3 mode has no `toArray()` of its own — the framework ships no response normalizer, so the
+     * array form is the DATA SET the class already exposes: what it received, under the names the
+     * schema uses. An absent optional is left out, which is the same answer every other mode gives.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<string, mixed>
+     */
+    private function yii3Normalization(array $spec, string $key, string $json): array
+    {
+        // A temporal property is emitted with `#[ToDateTime]`, which yiisoft/hydrator lists ext-intl
+        // as needed for. Without the extension the object cannot be built at all — an environment
+        // fact, not a divergence, so say which rather than assert nonsense.
+        $encoded = json_encode($spec);
+        if (!extension_loaded('intl') && is_string($encoded) && preg_match('/"format":"(date|date-time|time)"/', $encoded) === 1) {
+            self::assertTrue(
+                GenerationMode::Yii3->isLast(),
+                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
+                . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
+            );
+            self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
+        }
+
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
+        $payload = json_decode($json, true);
+
+        /** @var array<string, mixed> $normalized */
+        $normalized = $this->canonicalize(
+            (new Yii3Container())->hydrate($fqcn, is_array($payload) ? $payload : [])->getData() ?? [],
+        );
+
+        return $normalized;
+    }
+
     private function laravelDataNormalization(array $spec, string $key, string $json): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');

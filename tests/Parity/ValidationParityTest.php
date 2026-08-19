@@ -13,6 +13,7 @@ use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -97,6 +98,7 @@ final class ValidationParityTest extends TestCase
         $this->assertEveryModeYields(
             ['valid' => true, 'invalid' => false],
             fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            self::yii3Divergences()[$key] ?? [],
             context: $key,
         );
     }
@@ -119,6 +121,19 @@ final class ValidationParityTest extends TestCase
             'maximum' => [['type' => 'integer', 'maximum' => 3], '{"f":3}', '{"f":4}'],
             'exclusiveMinimum' => [['type' => 'integer', 'exclusiveMinimum' => 3], '{"f":4}', '{"f":3}'],
             'exclusiveMaximum' => [['type' => 'integer', 'exclusiveMaximum' => 3], '{"f":2}', '{"f":3}'],
+            // The OpenAPI 3.0 spelling of the same two bounds: a BOOLEAN modifier on `minimum` /
+            // `maximum` rather than a number of its own. Both spellings are legal and a document
+            // may use either, so both are measured.
+            'exclusiveMinimum as a 3.0 boolean' => [
+                ['type' => 'integer', 'minimum' => 3, 'exclusiveMinimum' => true],
+                '{"f":4}',
+                '{"f":3}',
+            ],
+            'exclusiveMaximum as a 3.0 boolean' => [
+                ['type' => 'integer', 'maximum' => 3, 'exclusiveMaximum' => true],
+                '{"f":2}',
+                '{"f":3}',
+            ],
             'multipleOf' => [['type' => 'integer', 'multipleOf' => 3], '{"f":6}', '{"f":7}'],
             'minItems' => [['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 2], '{"f":["a","b"]}', '{"f":["a"]}'],
             'maxItems' => [['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 1], '{"f":["a"]}', '{"f":["a","b"]}'],
@@ -302,10 +317,19 @@ final class ValidationParityTest extends TestCase
         $key = 'object vs array';
         $asArray = '{"f":[1,2]}';
 
-        $symfonyIsBlind = self::diverges(
-            GenerationMode::Symfony,
-            ['valid' => true, 'invalid' => true],
-            'the serializer denormalizes before any constraint runs, so the array IS the map by then',
+        // The two modes that build the object before validating it: by then the array IS the map, and
+        // nothing downstream can tell the two apart again.
+        $symfonyIsBlind = array_merge(
+            self::diverges(
+                GenerationMode::Symfony,
+                ['valid' => true, 'invalid' => true],
+                'the serializer denormalizes before any constraint runs, so the array IS the map by then',
+            ),
+            self::diverges(
+                GenerationMode::Yii3,
+                ['valid' => true, 'invalid' => true],
+                'the hydrator fills the object before the validator runs, and it reads the object, not the body',
+            ),
         );
 
         // A plain map is accepted, the array is not.
@@ -374,11 +398,20 @@ final class ValidationParityTest extends TestCase
         $this->assertEveryModeYields(
             ['valid' => true, 'invalid' => false],
             fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":42.0}', '{"f":42.5}'),
-            // Both rejected — the serializer never hands the value to a constraint.
-            self::diverges(
-                GenerationMode::Symfony,
-                ['valid' => false, 'invalid' => false],
-                'the serializer type-checks `int $f` first, so 42.0 is refused before generated code runs',
+            array_merge(
+                // Both rejected — the serializer never hands the value to a constraint.
+                self::diverges(
+                    GenerationMode::Symfony,
+                    ['valid' => false, 'invalid' => false],
+                    'the serializer type-checks `int $f` first, so 42.0 is refused before generated code runs',
+                ),
+                // Both accepted — the mirror image. The hydrator CASTS to the declared `int` before the
+                // validator sees the object, so 42.5 arrives as 42 and clears `minimum: 10`.
+                self::diverges(
+                    GenerationMode::Yii3,
+                    ['valid' => true, 'invalid' => true],
+                    'the hydrator casts to the declared type first, so 42.5 is an int by the time a rule runs',
+                ),
             ),
             $key,
         );
@@ -879,7 +912,85 @@ final class ValidationParityTest extends TestCase
             GenerationMode::Symfony => $this->symfonyVerdict($spec, $key, $validJson, $invalidJson),
             GenerationMode::Laravel => $this->laravelVerdict($spec, $key, $validJson, $invalidJson),
             GenerationMode::LaravelData => $this->laravelDataVerdict($spec, $key, $validJson, $invalidJson),
+            GenerationMode::Yii3 => $this->yii3Verdict($spec, $key, $validJson, $invalidJson),
         };
+    }
+
+    /**
+     * Hydration AND validation, as in every other mode: a payload the rules accept but the object
+     * cannot hold is not "accepted" in any useful sense — and in this mode hydration is where several
+     * rejections actually happen (an out-of-range enum, a nested shape that will not build).
+     *
+     * @param array<string, mixed> $spec
+     * @return array{valid: bool, invalid: bool}
+     */
+    private function yii3Verdict(array $spec, string $key, string $validJson, string $invalidJson): array
+    {
+        // A temporal property is emitted with `#[ToDateTime]`, and yiisoft/hydrator lists ext-intl as
+        // what that attribute needs. Without the extension the object cannot be built at all, which
+        // would look like a divergence and is not one — so say why instead of asserting nonsense.
+        if (!extension_loaded('intl') && $this->specUsesTemporalFormat($spec)) {
+            self::assertTrue(
+                GenerationMode::Yii3->isLast(),
+                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
+                . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
+            );
+            self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
+        }
+
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
+
+        $accepts = static function (string $json) use ($fqcn): bool {
+            $payload = json_decode($json, true);
+            if (!is_array($payload)) {
+                return false;
+            }
+
+            try {
+                $container = new Yii3Container();
+
+                return $container->validate($container->hydrate($fqcn, $payload))->isValid();
+            } catch (Throwable) {
+                return false;
+            }
+        };
+
+        return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
+    }
+
+    /**
+     * The keyword cases yii3 mode cannot answer the common way, and why.
+     *
+     * Both reasons are properties of the FRAMEWORK, not gaps in the emitter, and both were measured
+     * before being written down here.
+     *
+     * @return array<string, array<string, array{expected: mixed, reason: string}>>
+     */
+    private static function yii3Divergences(): array
+    {
+        $coerced = self::diverges(
+            GenerationMode::Yii3,
+            ['valid' => true, 'invalid' => true],
+            'the hydrator CASTS before any rule runs — PhpNativeTypeCaster turned 5 into "5", so the '
+            . 'type rule sees a valid value. Dropping that caster was measured too and is worse: '
+            . 'valid payloads stop hydrating as well. Symfony mode diverges here for the same reason.',
+        );
+
+        return [
+            'type string' => $coerced,
+            'type integer' => $coerced,
+            'type union with null' => $coerced,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     */
+    private function specUsesTemporalFormat(array $spec): bool
+    {
+        $json = json_encode($spec);
+
+        return is_string($json) && preg_match('/"format":"(date|date-time|time)"/', $json) === 1;
     }
 
     /**

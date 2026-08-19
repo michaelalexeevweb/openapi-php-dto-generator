@@ -1,6 +1,6 @@
 # laravel-data mode
 
-[← back to the main README](README.md) · [support matrix](README.support-matrix.md) · other mode guides: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel](README.laravel.md)
+[← back to the main README](README.md) · [support matrix](README.support-matrix.md) · other mode guides: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel](README.laravel.md) · [yii3](README.yii3.md)
 
 ```bash
 vendor/bin/console openapi:generate-dto \
@@ -214,7 +214,7 @@ All measured and pinned; the full table with reasons is in
 - normalizes a discriminated union member with the discriminator LAST, because it is inherited from the
   abstract base and PHP lists a class's own properties first. Same keys, same values.
 
-Everything in the validation vocabulary is identical to the other three modes, including
+Everything in the validation vocabulary is identical to the other four modes, including
 `additionalProperties: false` on a DTO-shaped schema, which the two hydrating modes cannot see at all.
 
 

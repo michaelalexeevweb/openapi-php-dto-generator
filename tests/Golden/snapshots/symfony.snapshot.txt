@@ -1,4 +1,4 @@
-# symfony mode — 35 files, 2085 lines
+# symfony mode — 35 files, 2051 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1719,48 +1719,14 @@ final class TestPostRequest
             }
         }
 
-        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'])) {
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum'])) {
             $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            if ($minimum !== null && !($normalizedValue >= $minimum)) {
+                $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
+            }
             $maximum = $this->toFloatConstraint($schema['maximum'] ?? null);
-
-            $exclusiveMinimum = $schema['exclusiveMinimum'] ?? null;
-            if (is_numeric($exclusiveMinimum)) {
-                $minExclusive = (float)$exclusiveMinimum;
-                if (!($normalizedValue > $minExclusive)) {
-                    $errors[] = sprintf('%s must be greater than %s', $path, $this->stringifyOpenApiNumber($minExclusive));
-                }
-            } elseif ($minimum !== null) {
-                if (($schema['exclusiveMinimum'] ?? null) === true) {
-                    if (!($normalizedValue > $minimum)) {
-                        $errors[] = sprintf('%s must be greater than %s', $path, $this->stringifyOpenApiNumber($minimum));
-                    }
-                } elseif (!($normalizedValue >= $minimum)) {
-                    $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
-                }
-            }
-
-            $exclusiveMaximum = $schema['exclusiveMaximum'] ?? null;
-            if (is_numeric($exclusiveMaximum)) {
-                $maxExclusive = (float)$exclusiveMaximum;
-                if (!($normalizedValue < $maxExclusive)) {
-                    $errors[] = sprintf('%s must be less than %s', $path, $this->stringifyOpenApiNumber($maxExclusive));
-                }
-            } elseif ($maximum !== null) {
-                if (($schema['exclusiveMaximum'] ?? null) === true) {
-                    if (!($normalizedValue < $maximum)) {
-                        $errors[] = sprintf('%s must be less than %s', $path, $this->stringifyOpenApiNumber($maximum));
-                    }
-                } elseif (!($normalizedValue <= $maximum)) {
-                    $errors[] = sprintf('%s must be less than or equal to %s', $path, $this->stringifyOpenApiNumber($maximum));
-                }
-            }
-
-            $multipleOf = $this->toFloatConstraint($schema['multipleOf'] ?? null);
-            if ($multipleOf !== null && $multipleOf > 0.0) {
-                $ratio = $normalizedValue / $multipleOf;
-                if (abs($ratio - round($ratio)) > 1e-9) {
-                    $errors[] = sprintf('%s must be a multiple of %s', $path, $this->stringifyOpenApiNumber($multipleOf));
-                }
+            if ($maximum !== null && !($normalizedValue <= $maximum)) {
+                $errors[] = sprintf('%s must be less than or equal to %s', $path, $this->stringifyOpenApiNumber($maximum));
             }
         }
 

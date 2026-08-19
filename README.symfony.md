@@ -1,6 +1,6 @@
 # Symfony mode
 
-[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
+[← back to the main README](README.md) · other modes: [runtime](README.runtime.md) · [laravel](README.laravel.md) · [laravel-data](README.laravel-data.md) · [yii3](README.yii3.md) · [support matrix](README.support-matrix.md) · [performance](README.performance.md)
 
 Generated with `--attributes=symfony`. DTOs are plain data classes decorated with **Symfony
 Validator / Serializer attributes**. There is no library runtime: `symfony/validator` validates them

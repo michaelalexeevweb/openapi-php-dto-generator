@@ -1,4 +1,4 @@
-# laravel mode — 47 files, 4549 lines
+# laravel mode — 47 files, 4523 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -3081,6 +3081,10 @@ final class Test2
         }
 
         $errors = [];
+        if ($value === null && ($schema['nullable'] ?? false) === true) {
+            return [];
+        }
+
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
@@ -3699,48 +3703,14 @@ final class TestPostRequest
             }
         }
 
-        if ((is_int($normalizedValue) || is_float($normalizedValue)) && self::schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'])) {
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && self::schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum'])) {
             $minimum = self::toFloatConstraint($schema['minimum'] ?? null);
+            if ($minimum !== null && !($normalizedValue >= $minimum)) {
+                $errors[] = sprintf('%s must be greater than or equal to %s', $path, self::stringifyOpenApiNumber($minimum));
+            }
             $maximum = self::toFloatConstraint($schema['maximum'] ?? null);
-
-            $exclusiveMinimum = $schema['exclusiveMinimum'] ?? null;
-            if (is_numeric($exclusiveMinimum)) {
-                $minExclusive = (float)$exclusiveMinimum;
-                if (!($normalizedValue > $minExclusive)) {
-                    $errors[] = sprintf('%s must be greater than %s', $path, self::stringifyOpenApiNumber($minExclusive));
-                }
-            } elseif ($minimum !== null) {
-                if (($schema['exclusiveMinimum'] ?? null) === true) {
-                    if (!($normalizedValue > $minimum)) {
-                        $errors[] = sprintf('%s must be greater than %s', $path, self::stringifyOpenApiNumber($minimum));
-                    }
-                } elseif (!($normalizedValue >= $minimum)) {
-                    $errors[] = sprintf('%s must be greater than or equal to %s', $path, self::stringifyOpenApiNumber($minimum));
-                }
-            }
-
-            $exclusiveMaximum = $schema['exclusiveMaximum'] ?? null;
-            if (is_numeric($exclusiveMaximum)) {
-                $maxExclusive = (float)$exclusiveMaximum;
-                if (!($normalizedValue < $maxExclusive)) {
-                    $errors[] = sprintf('%s must be less than %s', $path, self::stringifyOpenApiNumber($maxExclusive));
-                }
-            } elseif ($maximum !== null) {
-                if (($schema['exclusiveMaximum'] ?? null) === true) {
-                    if (!($normalizedValue < $maximum)) {
-                        $errors[] = sprintf('%s must be less than %s', $path, self::stringifyOpenApiNumber($maximum));
-                    }
-                } elseif (!($normalizedValue <= $maximum)) {
-                    $errors[] = sprintf('%s must be less than or equal to %s', $path, self::stringifyOpenApiNumber($maximum));
-                }
-            }
-
-            $multipleOf = self::toFloatConstraint($schema['multipleOf'] ?? null);
-            if ($multipleOf !== null && $multipleOf > 0.0) {
-                $ratio = $normalizedValue / $multipleOf;
-                if (abs($ratio - round($ratio)) > 1e-9) {
-                    $errors[] = sprintf('%s must be a multiple of %s', $path, self::stringifyOpenApiNumber($multipleOf));
-                }
+            if ($maximum !== null && !($normalizedValue <= $maximum)) {
+                $errors[] = sprintf('%s must be less than or equal to %s', $path, self::stringifyOpenApiNumber($maximum));
             }
         }
 
@@ -4491,6 +4461,10 @@ final class User2
         }
 
         $errors = [];
+        if ($value === null && ($schema['nullable'] ?? false) === true) {
+            return [];
+        }
+
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 

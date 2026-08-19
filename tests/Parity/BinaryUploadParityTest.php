@@ -11,6 +11,7 @@ use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -128,9 +129,18 @@ final class BinaryUploadParityTest extends TestCase
         [, $file] = $this->generate($mode);
         $source = (string)file_get_contents($file);
 
-        // Laravel's own UploadedFile extends the Symfony one, so every mode hints the Symfony class.
-        $this->assertStringContainsString('use Symfony\Component\HttpFoundation\File\UploadedFile;', $source);
-        $this->assertStringContainsString('UploadedFile $doc', $source);
+        if ($mode === GenerationMode::Yii3) {
+            // yii3 output may not depend on symfony/http-foundation, and `input-http` binds uploads
+            // onto the PSR-7 interface through `#[UploadedFiles]`. Same guarantee, different class:
+            // the hint is imported, so it cannot resolve inside the DTO's own namespace.
+            $this->assertStringContainsString('use Psr\Http\Message\UploadedFileInterface;', $source);
+            $this->assertStringContainsString('UploadedFileInterface $doc', $source);
+            $this->assertStringNotContainsString('Symfony\\', $source);
+        } else {
+            // Laravel's own UploadedFile extends the Symfony one, so those modes hint the Symfony class.
+            $this->assertStringContainsString('use Symfony\Component\HttpFoundation\File\UploadedFile;', $source);
+            $this->assertStringContainsString('UploadedFile $doc', $source);
+        }
 
         // Without the import the hint resolves inside the DTO's own namespace, and every upload dies
         // with "must be of type <Namespace>\UploadedFile".
@@ -149,6 +159,7 @@ final class BinaryUploadParityTest extends TestCase
             GenerationMode::Symfony => $this->symfonyRejection($fqcn, $payload),
             GenerationMode::Laravel => $this->laravelRejection($fqcn, $payload),
             GenerationMode::LaravelData => $this->laravelDataRejection($fqcn, $payload),
+            GenerationMode::Yii3 => $this->yii3Rejection($fqcn, $payload),
         };
 
         $this->assertNotNull(
@@ -231,6 +242,36 @@ final class BinaryUploadParityTest extends TestCase
      * @param class-string $fqcn
      * @param array<string, mixed> $payload
      */
+    /**
+     * yii3 mode: a string where an `UploadedFileInterface` belongs cannot fill the property, so the
+     * property stays uninitialised and the interpreter reports it as missing. The payload is refused
+     * either way — which is the guarantee this suite is about — but the stage differs.
+     *
+     * @param class-string $fqcn
+     * @param array<string, mixed> $payload
+     */
+    private function yii3Rejection(string $fqcn, array $payload): ?string
+    {
+        $container = new Yii3Container();
+
+        try {
+            $result = $container->validate($container->hydrate($fqcn, $payload));
+        } catch (Throwable $e) {
+            return get_class($e) . ': ' . $e->getMessage();
+        }
+
+        if ($result->isValid()) {
+            return null;
+        }
+
+        $messages = [];
+        foreach ($result->getErrors() as $error) {
+            $messages[] = $error->getMessage();
+        }
+
+        return implode(' | ', $messages);
+    }
+
     private function laravelDataRejection(string $fqcn, array $payload): ?string
     {
         LaravelDataContainer::boot();

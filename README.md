@@ -13,7 +13,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Features
 
 - 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
-- 🎯 **Four generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer), **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes), **[laravel](README.laravel.md)** (a plain DTO plus a `FormRequest` carrying `rules()` — nothing to install beyond the framework) or **[laravel-data](README.laravel-data.md)** (one `spatie/laravel-data` class per schema, with `Optional` for presence)
+- 🎯 **Five generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer), **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes), **[laravel](README.laravel.md)** (a plain DTO plus a `FormRequest` carrying `rules()` — nothing to install beyond the framework), **[laravel-data](README.laravel-data.md)** (one `spatie/laravel-data` class per schema, with `Optional` for presence) or **[yii3](README.yii3.md)** (a `yiisoft/input-http` class per schema, with `yiisoft/validator` attributes)
 - ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
 - 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
 - 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
@@ -32,6 +32,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
   - [Symfony mode guide](README.symfony.md) — attribute mapping, serialization groups, error codes
   - [Laravel mode guide](README.laravel.md) — FormRequest, rules(), what the interpreter adds
   - [laravel-data mode guide](README.laravel-data.md) — `Data` classes, `Optional` presence, morph unions
+  - [yii3 mode guide](README.yii3.md) — input classes, `#[Callback]` interpreter, the enum type caster
 - [Support matrix](README.support-matrix.md) — every keyword per mode, the eleven divergences, what is not generated at all
 - [Performance](README.performance.md) — bind / validate / normalize per mode, measured, with the benchmark to re-run it
 - [Validation Notes](#validation-notes)
@@ -40,7 +41,7 @@ Stop writing boilerplate PHP data transfer objects by hand. This library reads y
 ## Installation
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.13.0
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.14.0
 ```
 
 ## Requirements
@@ -122,32 +123,33 @@ Parameters:
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
 | `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
-| `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime), `symfony` (DTOs decorated with Symfony Validator/Serializer attributes) or `laravel` (a plain DTO plus a `FormRequest` with `rules()`). See [Generation Modes](#generation-modes). |
+| `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime), `symfony` (DTOs decorated with Symfony Validator/Serializer attributes), `laravel` (a plain DTO plus a `FormRequest` with `rules()`), `laravel-data` (one `spatie/laravel-data` class per schema) or `yii3` (a `yiisoft/input-http` class per schema). See [Generation Modes](#generation-modes). |
 | `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
 | `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
 | `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
 
 ## Generation Modes
 
-The generator emits DTOs in one of four modes, selected with `--attributes` (default: `runtime`).
-All four enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
+The generator emits DTOs in one of five modes, selected with `--attributes` (default: `runtime`).
+All five enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
 
-| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) | **[Laravel](README.laravel.md)** (`--attributes=laravel`) | **[laravel-data](README.laravel-data.md)** (`--attributes=laravel-data`) |
-|---|---|---|---|---|
-| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes | plain class with getters, `rules()`, `fromValidated()`, plus a `FormRequest` for every request payload | one `Data` subclass: promoted `public readonly`, `rules()`, `withValidator()` |
-| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer` | nothing to install — `FormRequest` and the validator ship with Laravel | `spatie/laravel-data` |
-| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` | Laravel rules + a generated `withValidator()` | the same rules and the same `withValidator()`, run by laravel-data |
-| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) | the framework's own 422 with its error bag | the framework's own 422 with its error bag |
-| Validated before the controller runs | you call the deserializer | yes, via `#[MapRequestPayload]` | yes, the FormRequest is resolved first | yes, on `Data::from($request)` |
-| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply | done by Laravel, same limitation | done by Laravel, same limitation |
-| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter | yes — `isXxxProvided()`, from the validated keys | yes — `Optional`, the property's own type |
-| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass | enforced | `writeOnly` enforced (`#[Hidden]`), `readOnly` input echoed back |
-| `additionalProperties: false` on a DTO-shaped schema | not enforced (the payload is bound first) | not enforced | **enforced** — the interpreter sees the raw payload | **enforced** — same interpreter |
+| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) | **[Laravel](README.laravel.md)** (`--attributes=laravel`) | **[laravel-data](README.laravel-data.md)** (`--attributes=laravel-data`) | **[yii3](README.yii3.md)** (`--attributes=yii3`) |
+|---|---|---|---|---|---|
+| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes | plain class with getters, `rules()`, `fromValidated()`, plus a `FormRequest` for every request payload | one `Data` subclass: promoted `public readonly`, `rules()`, `withValidator()` | one `AbstractInput` subclass: no constructor, `public readonly` properties, `yiisoft/validator` attributes, getters |
+| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer` | nothing to install — `FormRequest` and the validator ship with Laravel | `spatie/laravel-data` | `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/input-http` |
+| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` | Laravel rules + a generated `withValidator()` | the same rules and the same `withValidator()`, run by laravel-data | `yiisoft/validator` rules + a generated class-level `#[Callback]` |
+| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) | the framework's own 422 with its error bag | the framework's own 422 with its error bag | a `Result` the ACTION reads — Yii3 raises no 422 itself |
+| Validated before the controller runs | you call the deserializer | yes, via `#[MapRequestPayload]` | yes, the FormRequest is resolved first | yes, on `Data::from($request)` | hydrated and validated, but you read the verdict |
+| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply | done by Laravel, same limitation | done by Laravel, same limitation | body/query/path bound natively; header and cookie are not |
+| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter | yes — `isXxxProvided()`, from the validated keys | yes — `Optional`, the property's own type | yes — an unsent key leaves the property uninitialised; `hasProperty()` and `isXxxProvided()` read that |
+| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass | enforced | `writeOnly` enforced (`#[Hidden]`), `readOnly` input echoed back | enforced — neither is written into `getData()` |
+| `additionalProperties: false` on a DTO-shaped schema | not enforced (the payload is bound first) | not enforced | **enforced** — the interpreter sees the raw payload | **enforced** — same interpreter | not enforced (the hydrator binds first) |
 
 Rule of thumb: **runtime** when the request itself must follow the spec (parameter styles, partial
 updates, one library end to end); **symfony** or **laravel** when you want plain DTOs your framework
 owns, validated by the framework, with errors in the shape it already speaks; **laravel-data** when your
-application already runs that package and you want generated classes to match the ones you write.
+application already runs that package and you want generated classes to match the ones you write;
+**yii3** when a Yii3 application wants native attributes rather than this library's runtime over PSR-7.
 
 Each mode has its own guide — what it can do, how to wire it, where it stops:
 
@@ -155,6 +157,7 @@ Each mode has its own guide — what it can do, how to wire it, where it stops:
 - **[README.symfony.md](README.symfony.md)**
 - **[README.laravel.md](README.laravel.md)**
 - **[README.laravel-data.md](README.laravel-data.md)**
+- **[README.yii3.md](README.yii3.md)**
 
 For the keyword-by-keyword answer — what every mode enforces, the eleven places they differ and why, and
 what is not generated in any of them — see the **[support matrix](README.support-matrix.md)**. It is
@@ -185,6 +188,24 @@ A few behaviours worth knowing when validating against the schema:
 - **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
 
 ## Upgrading
+
+**2.13.0 → 2.14.0** adds the `yii3` generation mode. No contract, constructor signature or public
+method changed, so an upgrade is a `composer update` — but **regenerate**, because three things reach
+the four existing modes:
+
+- **a bug fix in laravel mode**, inherited by laravel-data: `minimum: 3` next to
+  `exclusiveMinimum: true` (the OpenAPI 3.0 spelling of an exclusive bound) became Laravel's
+  inclusive `min:3` AND took the keyword away from the interpreter, so the boundary value was
+  ACCEPTED where every other mode refused it. Regenerated code now refuses it too;
+- the emitted interpreter steps aside for a `null` the document explicitly marks `nullable` instead
+  of adding a second message about it;
+- it emits only the numeric checks a schema actually uses, rather than all five whenever one of them
+  is present. Same verdicts, shorter method.
+
+runtime-mode output is byte-identical. `--attributes=yii3` emits one `yiisoft/input-http` input per
+schema; what its generated code needs is `yiisoft/validator` and `yiisoft/input-http` (plus `ext-intl`
+for temporal formats), listed under `suggest`. See [README.yii3.md](README.yii3.md) and the
+[CHANGELOG](CHANGELOG.md).
 
 **2.12.0 → 2.13.0** fixes two element shapes that could not be deserialized at all and changes nothing
 in the generated output (byte-identical in all four modes). `deserializeValue()` and
