@@ -122,6 +122,7 @@ easy to get wrong and are therefore worth knowing:
 | `Rule::enum(Status::class)` | pins the backing type and the members in one rule, with the generated enum as the single source of the values |
 | `array` **and** `list` | `array` alone accepts an associative array; `list` is what says "JSON array" |
 | `min:` / `max:` only when the type is pinned | the same rule means length, value or count depending on the type rule beside it, so an unpinned `oneOf` gets no bounds — the interpreter takes them instead |
+| …and never for an EXCLUSIVE bound | `min:` is inclusive and Laravel has no exclusive spelling. A `minimum: 3` carrying `exclusiveMinimum: true` (the OpenAPI 3.0 form) therefore goes to the interpreter WHOLE. Emitting `min:3` for it also took the keyword away from the interpreter, and the boundary value was accepted where every other mode refused it |
 | `distinct` on `field.*` | `distinct` compares the sibling values of an array; on the property path Laravel accepts it and enforces nothing |
 | an `int` property is hydrated through a coercion | `42.0` IS an integer per JSON Schema 2020-12 §6.1.1, Laravel's `integer` rule agrees, and PHP still decodes it to a float — so `fromValidated()` converts a zero-fraction float rather than dying with a TypeError after a passing validation |
 

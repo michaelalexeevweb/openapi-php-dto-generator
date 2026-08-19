@@ -102,15 +102,20 @@ only in how the subject is named — pinned by `tests/Parity/InterpreterMessageP
 
 ## Divergences
 
-Twelve, all deliberate, all pinned by a test that names the cause. Each is one of seven things: Symfony
+Thirteen, all deliberate, all pinned by a test that names the cause. Each is one of seven things: Symfony
 mode's serializer or the yii3 hydrator deciding before generated code gets a say, that serializer having no
 way to say ABSENT on the way out, a mode not holding the raw body, laravel-data's own normalizer having no
 notion of the wire shape, the yii3 hydrator casting only to DECLARED types, or PHP itself refusing to let
 `mixed` join a union.
 
+**Reading the icons:** ✅ means the mode does what the DOCUMENT asks for that value, ❌ means it does
+not — not "accepted" versus "refused". `42.0` for `type: integer` is a conformant payload (JSON Schema
+2020-12 §6.1.1), so accepting it is ✅ and refusing it is ❌; `42.5` is not, so the marks flip.
+
 | Behaviour | runtime | symfony | laravel | laravel-data | yii3 | Why |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `42.0` for `type: integer` (JSON Schema 2020-12 §6.1.1) | ✅ accepted | ❌ 422 | ✅ accepted | ✅ accepted | ❌ accepted | Symfony's serializer type-checks the `int` property before any generated constraint runs, and the yii3 hydrator casts to the declared type before the validator sees the object. The conformance gap neither mode can close from generated code — `ValidationParityTest::testAnIntegralFloatIsAnIntegerWhereverTheGeneratorOwnsTheCheck` |
+| `42.0` for `type: integer` (JSON Schema 2020-12 §6.1.1) | ✅ accepted | ❌ 422 | ✅ accepted | ✅ accepted | ✅ accepted | A number with a ZERO fractional part IS an integer, so accepting it is the conformant answer. Symfony's serializer type-checks the `int` property before any generated constraint runs, so it refuses the one value the spec calls an integer — a gap it cannot close from generated code — `ValidationParityTest::testAnIntegralFloatIsAnIntegerWhereverTheGeneratorOwnsTheCheck` |
+| `42.5` for `type: integer` | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ❌ accepted as `42` | The mirror of the row above, and the reason it is two rows: `yiisoft/hydrator` casts to the DECLARED type before the validator sees the object, so a fractional number arrives as an `int` and clears every rule. Symfony refuses it for the same reason it refuses `42.0` — the serializer, not the document — which happens to be right here. Same test |
 | a loose `format: date-time` string (`"yesterday"`) | ✅ refused | ❌ accepted | ✅ refused | ✅ refused | ✅ refused | The property is a `DateTimeImmutable`, so the serializer parses the string first, and PHP's parser is generous. Runtime and laravel accept only the four patterns every mode agrees on (`GeneratedDtoInterface::DATE_TIME_FORMATS`) — `testALooseDateTimeStringIsRefusedWhereverTheGeneratorOwnsTheCheck` |
 | a JSON array for a `type: object` property | ✅ refused | ❌ accepted | ✅ refused | ✅ refused¹ | ❌ accepted | The distinction lives in the RAW body: once decoded, `{"0":1,"1":2}` and `[1,2]` are the same PHP value. Runtime decodes the body itself, the generated Laravel FormRequest hands `withValidator()` the undecoded body; `#[MapRequestPayload]` denormalizes first, and the yii3 hydrator likewise builds the object before the validator runs — `testAJsonArrayIsRefusedForATypeObjectPropertyWhereverTheRawBodyIsReachable` |
 | an OPTIONAL property sent as `null` when the schema is not `nullable` | ✅ refused | ❌ accepted | ✅ refused | ✅ refused | ✅ refused | An optional property's PHP type is nullable so it can default to `null`, and no `#[Assert\NotNull]` is emitted — `testAnOptionalPropertyIsNotNullable` |
