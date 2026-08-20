@@ -1,4 +1,4 @@
-# yii3 mode — 35 files, 8654 lines
+# yii3 mode — 35 files, 8990 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -90,6 +90,17 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInterface, RulesProviderInterface
@@ -365,6 +376,17 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterface, RulesProviderInterface
 {
@@ -638,6 +660,17 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTest2403 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -914,6 +947,17 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -1205,6 +1249,17 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -1509,6 +1564,17 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -1789,6 +1855,21 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function floor;
+use function get_object_vars;
+use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -2137,6 +2218,21 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function floor;
+use function get_object_vars;
+use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -2483,6 +2579,21 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function floor;
+use function get_object_vars;
+use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -2831,6 +2942,21 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function floor;
+use function get_object_vars;
+use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -3174,6 +3300,17 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -3454,6 +3591,17 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -3732,6 +3880,17 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestFilePostRequest extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -3974,6 +4133,12 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 
+use function array_map;
+use function is_array;
+use function is_object;
+use function method_exists;
+use function property_exists;
+
 final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -4133,6 +4298,18 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function implode;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Discriminator extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -4462,6 +4639,12 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 
+use function array_map;
+use function is_array;
+use function is_object;
+use function method_exists;
+use function property_exists;
+
 final class Discriminator1 extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -4631,6 +4814,12 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+
+use function array_map;
+use function is_array;
+use function is_object;
+use function method_exists;
+use function property_exists;
 
 final class Discriminator2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -4832,6 +5021,12 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 
+use function array_map;
+use function is_array;
+use function is_object;
+use function method_exists;
+use function property_exists;
+
 final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -4988,6 +5183,12 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+
+use function array_map;
+use function is_array;
+use function is_object;
+use function method_exists;
+use function property_exists;
 
 final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, RulesProviderInterface
 {
@@ -5151,6 +5352,17 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -5454,6 +5666,17 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Pet extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -5728,6 +5951,17 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Tag extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -6017,6 +6251,17 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Test extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -6294,6 +6539,18 @@ use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_is_list;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Test2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -6707,6 +6964,17 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Test2UserType extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -6980,6 +7248,17 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -7286,6 +7565,35 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\Rule\Url;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
+
+use function array_filter;
+use function array_is_list;
+use function array_key_exists;
+use function array_keys;
+use function array_map;
+use function array_pop;
+use function array_unique;
+use function array_values;
+use function floor;
+use function get_object_vars;
+use function implode;
+use function in_array;
+use function is_array;
+use function is_bool;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_scalar;
+use function is_string;
+use function json_encode;
+use function ltrim;
+use function method_exists;
+use function preg_match;
+use function preg_replace;
+use function property_exists;
+use function sprintf;
+use function str_contains;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -7886,6 +8194,17 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class User extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -8247,6 +8566,17 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function property_exists;
+use function sprintf;
+
 #[Callback(method: 'validateOpenApiConstraints')]
 final class User2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
@@ -8596,6 +8926,12 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+
+use function array_map;
+use function is_array;
+use function is_object;
+use function method_exists;
+use function property_exists;
 
 final class User2Pet extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {

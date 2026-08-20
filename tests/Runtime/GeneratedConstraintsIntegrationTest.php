@@ -12,6 +12,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
@@ -20,6 +21,7 @@ use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Yaml\Yaml;
+use Throwable;
 use UnitEnum;
 
 /**
@@ -69,6 +71,87 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      *
      * @return class-string<GeneratedDtoInterface>
      */
+    /**
+     * A schema NAMED like a class the emitted runtime file imports — `Stringable`, `RuntimeException`,
+     * `Closure`, `UnsetValue`, `JsonException`. The document is entitled to those names, and every
+     * generated runtime class carries imports with exactly them, which PHP resolves in two
+     * incompatible ways:
+     *
+     *     the file DECLARING it     Fatal error: Cannot redeclare X\Stringable
+     *                               (previously declared as local import) — the file never loads
+     *     any SIBLING file          the `use` wins over the same-namespace class, so `Holder::$it`
+     *                               was typed the GLOBAL Stringable and the payload a TypeError
+     *
+     * Driven end to end rather than asserted on the source, because both failures are invisible to a
+     * source assertion: the first is a parse error, the second a type that reads perfectly fine.
+     *
+     * {@see \OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses} — the same bargain
+     * laravel-data has always had, which runtime joined.
+     */
+    #[DataProvider('runtimeCollidingSchemaNameProvider')]
+    public function testASchemaNamedLikeAnImportedClassStillLoadsAndHydrates(string $schemaName): void
+    {
+        $namespace = 'RuntimeCollide' . $schemaName;
+        (new GenerateDtoCommand())->generateFromArray(
+            [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['it'],
+                        // An optional property is what pulls in the UnsetValue sentinel.
+                        'properties' => [
+                            'it' => ['$ref' => '#/components/schemas/' . $schemaName],
+                            'note' => ['type' => 'string'],
+                        ],
+                    ],
+                    $schemaName => [
+                        'type' => 'object',
+                        'required' => ['n'],
+                        'properties' => ['n' => ['type' => 'integer']],
+                    ],
+                ]],
+            ],
+            $this->outputDirectory,
+            $namespace,
+        );
+
+        $files = glob($this->outputDirectory . '/*.php');
+        foreach ($files === false ? [] : $files as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $holder */
+        $holder = $namespace . '\Holder';
+        /** @var class-string<GeneratedDtoInterface> $member */
+        $member = $namespace . '\\' . $schemaName;
+
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"it":{"n":7}}'), $holder);
+
+        self::assertInstanceOf(
+            $member,
+            $dto->getIt(),
+            'the property must be the DOCUMENT\'s class, not the library one the import would have won',
+        );
+        self::assertSame(7, $dto->getIt()->getN(), 'and it must carry the payload, not a default');
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function runtimeCollidingSchemaNameProvider(): array
+    {
+        $provided = [];
+        // NOT `UnsetValue`: the deserializer recognises the sentinel by short name on purpose, so
+        // that name stays reserved and is warned about instead. {@see GenerateDtoCommand}
+        foreach (['Stringable', 'RuntimeException', 'Closure', 'JsonException'] as $name) {
+            $provided[$name . ' — a name the emitted runtime file imports'] = [$name];
+        }
+
+        return $provided;
+    }
+
     private function generateProbeModel(string $namespace): string
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/gap1-probe.yaml');
@@ -146,9 +229,398 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $spec
      * @return class-string<GeneratedDtoInterface>
      */
+    /**
+     * `additionalProperties: false` closes the object, and runtime mode is the one mode that can
+     * still see the offending key.
+     *
+     * Every other mode hydrates the payload into a typed property first, and a key the schema never
+     * declared has nowhere to land — it is gone before generated code runs. Runtime holds the raw
+     * body, so it can compare what arrived against what was declared. Pinned across modes by
+     * `ValidationParityTest::testAClosedObjectRefusesAnUndeclaredKeyWhereverTheRawBodyIsReachable`.
+     */
+    public function testAClosedObjectRefusesAnUndeclaredKey(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Closed' => [
+                        'type' => 'object',
+                        'required' => ['known'],
+                        'properties' => ['known' => ['type' => 'string']],
+                        'additionalProperties' => false,
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'ClosedObjNs', 'Closed');
+
+        $accepted = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"known":"a"}'),
+            $fqcn,
+        );
+        self::assertSame('a', $accepted->getKnown());
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unknown property "extra" is not allowed by the schema.');
+        (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"known":"a","extra":"b"}'),
+            $fqcn,
+        );
+    }
+
+    /**
+     * The mirror, so the check above cannot be read as "an extra key is always refused": a schema
+     * that does NOT close itself keeps the historical behaviour of ignoring what it did not declare.
+     */
+    public function testAnOpenObjectStillIgnoresAnUndeclaredKey(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Open' => [
+                        'type' => 'object',
+                        'required' => ['known'],
+                        'properties' => ['known' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'OpenObjNs', 'Open');
+
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"known":"a","extra":"b"}'),
+            $fqcn,
+        );
+        self::assertSame('a', $dto->getKnown());
+    }
+
+    /**
+     * `unevaluatedProperties: false` closes an object the same way, and the runtime treats the two
+     * keywords alike — a document may write either.
+     */
+    public function testUnevaluatedPropertiesFalseAlsoClosesTheObject(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Sealed' => [
+                        'type' => 'object',
+                        'required' => ['known'],
+                        'properties' => ['known' => ['type' => 'string']],
+                        'unevaluatedProperties' => false,
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'SealedObjNs', 'Sealed');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unknown property "extra" is not allowed by the schema.');
+        (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"known":"a","extra":"b"}'),
+            $fqcn,
+        );
+    }
+
+    /**
+     * The edge that a naive implementation gets wrong: a property whose WIRE name differs from its
+     * PHP name. Comparing against PHP names would refuse `first_name` — a key the schema declares.
+     */
+    public function testAClosedObjectAcceptsAnAliasedWireName(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Aliased' => [
+                        'type' => 'object',
+                        'required' => ['first_name'],
+                        'properties' => ['first_name' => ['type' => 'string']],
+                        'additionalProperties' => false,
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'AliasedClosedNs', 'Aliased');
+
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"first_name":"Ada"}'),
+            $fqcn,
+        );
+        self::assertSame('Ada', $dto->getFirstName());
+    }
+
+    /**
+     * Source precedence for a plain-body DTO, pinned because `deserializeInternal()` inlines the
+     * resolver's decision tree for exactly this shape.
+     *
+     * The inline copy must make the SAME five checks in the SAME order — router attribute, body,
+     * query, uploaded file, form — or a request resolves differently depending on which path ran.
+     * An earlier attempt at this optimisation replaced the tree with preconditions instead of
+     * copying it, missed uploaded files, and changed behaviour silently. These assertions are what
+     * would have caught it.
+     */
+    public function testPlainBodyDtoKeepsTheDeclaredSourcePrecedence(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Plain' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'PlainSourceNs', 'Plain');
+        $deserializer = new DtoDeserializer();
+
+        // Body alone.
+        self::assertSame(
+            'from-body',
+            $deserializer->deserialize($this->jsonPostRequest('{"id":"from-body"}'), $fqcn)->getId(),
+        );
+
+        // A router-verified path attribute OUTRANKS the body — a request body must never be able to
+        // override a value the router established.
+        $withAttribute = $this->jsonPostRequest('{"id":"from-body"}');
+        $withAttribute->attributes->set('id', 'from-path');
+        self::assertSame('from-path', $deserializer->deserialize($withAttribute, $fqcn)->getId());
+
+        // Query is consulted only when the body has no such key.
+        $queryOnly = Request::create('/?id=from-query', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
+        self::assertSame('from-query', $deserializer->deserialize($queryOnly, $fqcn)->getId());
+
+        // …and the body still wins over the query when both carry it.
+        $both = Request::create(
+            '/?id=from-query',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{"id":"from-body"}',
+        );
+        self::assertSame('from-body', $deserializer->deserialize($both, $fqcn)->getId());
+    }
+
+    /**
+     * The generated `hydrateFast()` and the general loop must answer identically — same object, same
+     * error text, same error ORDER.
+     *
+     * Two routes through the same semantics is the risk this optimisation carries: the fast one runs
+     * when the body is provably the only source, the general one otherwise, and nothing but this test
+     * says they agree. Both were caught misbehaving during development — an inherited `hydrateFast()`
+     * built the PARENT class, and a plan read off the property list passed a slug where a status was
+     * expected — so the guarantee is not theoretical.
+     *
+     * One test rather than a data provider: the DTO is generated once and `require`d, and a provider
+     * would redeclare it per case.
+     */
+    public function testTheFastHydratorAndTheGeneralLoopAgree(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Both' => [
+                        'type' => 'object',
+                        // Required and optional INTERLEAVED: the constructor orders required first,
+                        // so a plan built in schema order would pass arguments in the wrong slots.
+                        'required' => ['b', 'd'],
+                        'properties' => [
+                            'a' => ['type' => 'string', 'minLength' => 2],
+                            'b' => ['type' => 'integer', 'minimum' => 1],
+                            'c' => ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1],
+                            'd' => ['type' => 'string', 'enum' => ['x', 'y']],
+                            'e' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'BothRoutesNs', 'Both');
+        $deserializer = new DtoDeserializer();
+
+        // `toArray()` alone is not enough: it omits an absent optional either way, so a route that
+        // forgot to raise the presence flags would still match, so they are compared too.
+        $outcome = static function (Request $request) use ($deserializer, $fqcn): string {
+            try {
+                $dto = $deserializer->deserialize($request, $fqcn);
+                $presence = [];
+                foreach (['A', 'B', 'C', 'D', 'E'] as $name) {
+                    $method = 'is' . $name . 'InRequest';
+                    if (method_exists($dto, $method)) {
+                        $presence[$name] = $dto->{$method}();
+                    }
+                }
+
+                return 'ok:' . json_encode($dto->toArray()) . '|presence:' . json_encode($presence);
+            } catch (Throwable $e) {
+                return 'err:' . $e->getMessage();
+            }
+        };
+
+        $valid = ['a' => 'ab', 'b' => 2, 'c' => ['x'], 'd' => 'x', 'e' => ['k' => 1]];
+        $payloads = [
+            'everything present' => $valid,
+            'only the required half' => ['b' => 2, 'd' => 'x'],
+            'optional absent' => ['b' => 2, 'd' => 'y', 'a' => 'ab'],
+            'optional explicit null' => ['b' => 2, 'd' => 'x', 'a' => null],
+            'required missing' => ['a' => 'ab'],
+            'wrong scalar type' => array_replace($valid, ['b' => 'nope']),
+            'enum out of range' => array_replace($valid, ['d' => 'zz']),
+            'bound broken' => array_replace($valid, ['b' => 0]),
+            'list too short' => array_replace($valid, ['c' => []]),
+            'map item wrong type' => array_replace($valid, ['e' => ['k' => 'x']]),
+            'two problems at once' => array_replace($valid, ['b' => 'nope', 'd' => 'zz']),
+            'unknown extra key' => array_replace($valid, ['zzz' => 1]),
+            'empty payload' => [],
+        ];
+
+        foreach ($payloads as $label => $payload) {
+            $json = json_encode($payload, JSON_THROW_ON_ERROR);
+            $fast = $outcome($this->jsonPostRequest($json));
+            // A stray query key disqualifies the fast route, so this one takes the general loop.
+            $general = $outcome(Request::create(
+                '/?__forces_the_general_route=1',
+                'POST',
+                [],
+                [],
+                [],
+                ['CONTENT_TYPE' => 'application/json'],
+                $json,
+            ));
+
+            self::assertSame($general, $fast, sprintf('the two hydration routes disagree on "%s"', $label));
+        }
+    }
+
+    /**
+     * A form-encoded or multipart request must keep the general loop.
+     *
+     * `getBodyData()` decodes `application/json` and nothing else, so for these requests the values
+     * live in `$request->request` (and `$request->files`), which the generated `hydrateFast()` never
+     * sees — it is handed the JSON body alone. Removing that guard is invisible to every other test:
+     * mutation-tested, the whole suite stayed green while a form POST started reporting its required
+     * field as missing.
+     */
+    public function testAFormEncodedRequestDoesNotTakeTheFastHydrator(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Form' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => ['name' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'FormRouteNs', 'Form');
+
+        // The value is in the form bag, not in a JSON body.
+        $dto = (new DtoDeserializer())->deserialize(
+            Request::create('/', 'POST', ['name' => 'from-form']),
+            $fqcn,
+        );
+
+        self::assertSame('from-form', $dto->getName());
+    }
+
+    /**
+     * A body nobody could read says so, instead of blaming the client for missing fields.
+     *
+     * Only `application/json` is decoded as a JSON body; form and multipart values arrive through
+     * their own sources. A client that sends JSON under `text/plain` — or forgets the header, the
+     * common version — used to get "Required parameter … not found" for every field, which points at
+     * the wrong thing entirely.
+     */
+    public function testAnUnreadableBodyIsNamedInTheError(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Hinted' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => ['name' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'HintedNs', 'Hinted');
+        $deserializer = new DtoDeserializer();
+
+        try {
+            $deserializer->deserialize(
+                Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'text/plain'], '{"name":"v"}'),
+                $fqcn,
+            );
+            self::fail('a body that was never decoded must not deserialize');
+        } catch (RuntimeException $e) {
+            self::assertStringContainsString('Required parameter "name" not found', $e->getMessage());
+            self::assertStringContainsString('The request body was not read', $e->getMessage());
+            self::assertStringContainsString('text/plain', $e->getMessage());
+        }
+
+        // The hint is only ever ADDED to a failure. A request that carries nothing at all keeps the
+        // plain message — there is no unread body to blame.
+        try {
+            $deserializer->deserialize(Request::create('/', 'POST'), $fqcn);
+            self::fail('a missing required field must still be refused');
+        } catch (RuntimeException $e) {
+            self::assertStringContainsString('Required parameter "name" not found', $e->getMessage());
+            self::assertStringNotContainsString('The request body was not read', $e->getMessage());
+        }
+
+        // A JSON body that WAS read gets no hint, however it fails. Both halves of that matter and
+        // both survived mutation until these cases existed: dropping the `application/json` check,
+        // and dropping the "body was decoded" check, each put the hint on a request whose body had
+        // been read perfectly well.
+        foreach (['{}', '{"name":"v","extra":1}'] as $readableBody) {
+            try {
+                $deserializer->deserialize(
+                    Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $readableBody),
+                    $fqcn,
+                );
+                if ($readableBody === '{}') {
+                    self::fail('a missing required field must be refused');
+                }
+            } catch (RuntimeException $e) {
+                self::assertStringNotContainsString(
+                    'The request body was not read',
+                    $e->getMessage(),
+                    'the body WAS read: ' . $readableBody,
+                );
+            }
+        }
+
+        // …and a JSON body still works, hint or no hint.
+        self::assertSame(
+            'v',
+            $deserializer->deserialize($this->jsonPostRequest('{"name":"v"}'), $fqcn)->getName(),
+        );
+    }
+
     private function generateFromInlineSpec(array $spec, string $namespace, string $rootClass): string
     {
         (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, $namespace);

@@ -3,6 +3,138 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.0 — 2026-08-21
+
+- a generated fast hydrator for a plain-body schema
+- inline the source-resolution decision tree
+- one short-circuit chain, not five varargs calls
+- hoist the type tests out of the element loops
+- decide composition once per element list
+- import every global name the emitted code uses
+- runtime enforces `additionalProperties: false`
+- `unevaluatedProperties: false` closes an object the same way
+- emitted only for a schema that says so
+- name the Content-Type when the body was not read
+- runtime resolves a schema named like a class it imports
+- yii3 reports the clash it cannot resolve
+- named arguments in the generated constructor call
+- state the type the throw already guaranteed
+- split the README into comparison / cli / validation
+- add README.comparison.md — five tools, run, not read
+- maxbeckers runs after all, and invents required values
+- re-measure every published figure, mean of two runs
+
+### Faster, with the same verdicts
+
+Three before/after pairs were run against the 2.14.0 tag on the same corpus — two on the host, one in
+the project container. The runtime path came out faster in every one, and never slower:
+
+| runtime step | 2.14.0 → 2.15.0 |
+|---|---|
+| `bind` | 26–39% faster |
+| `validate` | 14–21% faster |
+| round trip | 19–30% faster |
+
+A range rather than a figure, deliberately: two runs of the SAME build differ by up to 16% on this
+benchmark, so any single number inside that band would be a coincidence quoted as a result. Current
+absolutes for all five modes are in [README.performance.md](README.performance.md). The other four modes
+move much less, and where they move it is their own generated code getting the same treatment — symfony
+`normalize` and yii3 `normalize` are the two that show it.
+
+Nothing about what is accepted or refused moved, and that is asserted rather than asserted-to:
+`testTheFastHydratorAndTheGeneralLoopAgree` drives thirteen payloads through BOTH routes and compares the
+resulting array, every `isXInRequest()` flag and the error text, so the two cannot answer differently.
+`testAFormEncodedRequestDoesNotTakeTheFastHydrator` pins which route a request takes, and
+`testPlainBodyDtoKeepsTheDeclaredSourcePrecedence` pins the order of the five source checks the inline
+copy makes — router attribute, body, query, uploaded file, form.
+
+The generated constructor call now passes NAMED arguments. This is not cosmetic: the plan is built from
+the constructor's own parameter list precisely because reading it off the property list once passed a
+slug where a status was expected, and a named argument cannot make that mistake at all. Each required
+local also carries the type the throw above already guaranteed — the `$cast` closure returns `mixed`, so
+without it an analyser reads `$id` as `int|null` against a non-nullable `int` parameter and reports a
+`null` no execution can reach.
+
+Four changes carry it. A DTO whose every property is a plain body field — no bound parameter source, no
+serialization style, no delimiter, no default, no `readOnly`, no inheritance, no discriminator — now
+carries a generated `hydrateFast()`, and the deserializer hands it a closure that owns every decision
+ABOUT a value. That division is the whole design: the generated method decides only which keys are
+present and in which order the constructor takes them, so it cannot disagree with the general loop about
+a cast, a field constraint or the wording of an error. The first attempt had the generated code
+re-implement those semantics and broke nineteen tests.
+
+The resolver's decision tree is inlined for that same class of DTO rather than called. `DtoValidator`
+lost a varargs helper that was called five times per value in favour of short-circuiting
+`array_key_exists` chains, tests the value's type once instead of once per keyword group, and computes
+`hasComposition` once per element list instead of once per element. And every global name the emitted
+code uses — classes AND functions — is now imported rather than called unqualified: an unqualified call
+inside a namespace makes PHP look for a namespaced twin that never exists, which measured ~29 ns a call
+and, isolated on the generated hydrator, about 10%.
+
+### A closed object is closed in runtime mode too
+
+Runtime mode is the one mode still holding the RAW body when generated code runs, so it is the one mode
+that can see a key the schema never declared — a hydrating mode drops it into no property and never
+learns it was there. Generated DTOs of a closed schema now carry `getObjectConstraints()` and the
+deserializer refuses the undeclared key; `unevaluatedProperties: false` closes an object the same way.
+The method is emitted ONLY for a schema that closes itself, so three modes now agree where two did, and
+output for a document that closes nothing is unchanged by this.
+
+### The body that was never read
+
+A request with a JSON body but a `Content-Type` of `text/plain` — or none — was read as an empty payload,
+so the client got `param "id" not found in request` for a field it had plainly sent. Only
+`application/json` is decoded as a JSON body, deliberately: form and multipart values arrive through
+their own sources. The verdict is unchanged, but when the body is the only thing that could have carried
+the missing values and it was not read, the exception now says so:
+
+```
+Required parameter "id" not found in request.
+The request body was not read: Content-Type is "text/plain", and only application/json is decoded
+as a JSON body (form and multipart values are read from their own sources).
+```
+
+### A schema named like a class the emitted code imports
+
+A document may call a schema `Stringable`, `RuntimeException` or `Result`, and the emitted file carries
+imports with exactly those short names. PHP then fails two ways, neither visible from the document: the
+file DECLARING it does not load at all (`Cannot redeclare X\Stringable`), and in any SIBLING file the
+`use` silently wins over the same-namespace class, so a property is typed the library's class and the
+payload that should fill it is a `TypeError`.
+
+laravel-data has resolved this since it was written. That mechanism is now a shared trait,
+`NamesLibraryClasses`, and runtime mode uses it: such a schema gets `\Stringable` written out and no
+import. `UnsetValue` stays reserved, and not because of the emitter — `DtoDeserializer` recognises the
+sentinel by SHORT name on purpose, so that a sentinel copied into your own namespace by
+`--dto-generator-namespace` is still recognised, and a schema of that name falls under the same test.
+yii3 names roughly forty library short names across its renderer and does not resolve them yet; it is
+now in the reserved-name table, so generation reports the clash instead of emitting a file that cannot
+load.
+
+### The comparison is in the repository now
+
+The front page makes measured claims about other generators, so the method that produced them belongs
+beside it: [README.comparison.md](README.comparison.md) names the versions, the payloads and the
+verdicts, and carries a *where we are behind* section — no HTTP client generation, no TypeScript, and
+several generation modes is not a distinction (OpenAPI Generator ships nine PHP generators).
+
+One earlier finding was wrong and is corrected there. `maxbeckers/php-openapi-generator` was recorded as
+unable to start; it starts fine once `symfony/console` is pinned to `^7`, which composer resolves without
+complaint. Having run it: its `fromArray()` reads `$data['id'] ?? 0`, `$data['name'] ?? ''`, so an empty
+payload produces a well-formed object with `id = 0` and `name = ''`. That is worse than the missing
+validation it shares with the others — nothing downstream can tell invented values from sent ones.
+
+### Upgrading
+
+`composer update`, then **regenerate**: emitted output changed in all five modes. Runtime-mode DTOs gain
+`hydrateFast()` and, for a closed schema, `getObjectConstraints()`; every mode's files gain the import
+group. No contract, constructor signature or public method changed.
+
+DTOs generated by 2.14.0 keep working against 2.15.0 services unchanged — both new methods are optional
+and the services fall back when they are absent. Measured, not assumed: the 2.14.0 corpus was generated
+from that tag and driven through 2.15.0's deserializer, validator and normalizer, with the same accept /
+refuse verdicts and the same normalized output. You lose the speed-up until you regenerate, nothing else.
+
 ## 2.14.0 — 2026-08-19
 
 - add yii3 generation mode

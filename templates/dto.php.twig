@@ -154,7 +154,7 @@ interface {{ className }}
 {% if param.tracksArgPresence %}
 {% if param.usesUnsetSentinel %}
         // Track if parameter was explicitly passed
-        $this->{{ param.presenceFlagName }} = ${{ param.name }} !== UnsetValue::UNSET;
+        $this->{{ param.presenceFlagName }} = ${{ param.name }} !== {{ unsetValueRef }}::UNSET;
 {% elseif param.presenceFromArgsOnly %}
         // Default-valued parameter: presence cannot be inferred from the constructor
         // default — the deserializer sets this when the value is actually present.
@@ -167,7 +167,7 @@ interface {{ className }}
 {% for property in privateProperties %}
 {% if property.isArray %}
 {% if property.usesUnsetSentinel %}
-        $this->{{ property.name }} = ${{ property.name }} !== UnsetValue::UNSET ? ${{ property.name }} : null;
+        $this->{{ property.name }} = ${{ property.name }} !== {{ unsetValueRef }}::UNSET ? ${{ property.name }} : null;
 {% else %}
         $this->{{ property.name }} = ${{ property.name }};
 {% endif %}
@@ -202,7 +202,7 @@ interface {{ className }}
     {
 {% if property.returnKind == 'temporal' %}
 {% if property.usesUnsetSentinel %}
-        if ($this->{{ property.name }} === UnsetValue::UNSET) {
+        if ($this->{{ property.name }} === {{ unsetValueRef }}::UNSET) {
             return null;
         }
 
@@ -222,7 +222,7 @@ interface {{ className }}
 {% endif %}
 {% else %}
 {% if property.getterUsesSentinel %}
-        return $this->{{ property.name }} !== UnsetValue::UNSET ? $this->{{ property.name }} : null;
+        return $this->{{ property.name }} !== {{ unsetValueRef }}::UNSET ? $this->{{ property.name }} : null;
 {% else %}
         return $this->{{ property.name }};
 {% endif %}
@@ -233,7 +233,7 @@ interface {{ className }}
     public function {{ property.objectGetterMethodName }}(): {{ property.objectGetterReturnType }}
     {
 {% if property.usesUnsetSentinel %}
-        if ($this->{{ property.name }} === UnsetValue::UNSET) {
+        if ($this->{{ property.name }} === {{ unsetValueRef }}::UNSET) {
             return null;
         }
 
@@ -435,7 +435,7 @@ interface {{ className }}
     }
 
     /**
-     * @throws JsonException
+     * @throws {{ jsonExceptionRef }}
      */
     public function toJson(): string
     {
@@ -544,6 +544,88 @@ interface {{ className }}
 {% endif %}
     }
 
+{% if objectConstraints is not empty %}
+    /**
+     * Schema-LEVEL keywords, as opposed to the per-property map in `getConstraints()`.
+     *
+     * Emitted only when the document sets one the runtime can act on — a class without it simply
+     * has nothing to enforce, and the deserializer reads an absent method as exactly that.
+     *
+     * @return array<string, mixed>
+     */
+    public static function getObjectConstraints(): array
+    {
+{% if extends is not null %}
+        $constraints = parent::getObjectConstraints();
+{% else %}
+        $constraints = [];
+{% endif %}
+{% for name, value in objectConstraints %}
+        $constraints['{{ name }}'] = {{ value ? 'true' : 'false' }};
+{% endfor %}
+
+        return $constraints;
+    }
+
+{% endif %}
+{% if fastHydrator is not null %}
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param {{ closureRef }}(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, {{ closureRef }} $cast, array &$errors): self
+    {
+{% for p in fastHydrator %}
+        ${{ p.name }}Given = array_key_exists('{{ p.wireName }}', $data);
+{% if p.required %}
+        if (!${{ p.name }}Given) {
+            $errors[] = 'Required parameter "{{ p.wireName }}" not found in request.';
+        }
+{% endif %}
+        ${{ p.name }} = ${{ p.name }}Given ? $cast('{{ p.wireName }}', $data['{{ p.wireName }}'], $errors) : null;
+{% endfor %}
+
+        if ($errors !== []) {
+            throw new {{ runtimeExceptionRef }}(implode("\n", array_unique(array_filter($errors))));
+        }
+
+{% for p in fastHydrator %}
+{% if p.required %}
+        /** @var {{ p.declaredType }} ${{ p.name }} */
+{% endif %}
+{% endfor %}
+        $dto = new self(
+{% for p in fastHydrator %}
+{% if p.required %}
+            {{ p.name }}: ${{ p.name }},
+{% else %}
+            {{ p.name }}: ${{ p.name }}Given ? ${{ p.name }} : {{ unsetValueRef }}::UNSET,
+{% endif %}
+{% endfor %}
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+{% endif %}
     /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body

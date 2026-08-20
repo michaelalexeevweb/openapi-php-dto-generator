@@ -359,7 +359,7 @@ trait RendersYii3Dto
         }
         $lines[] = '}';
 
-        return implode("\n", $lines) . "\n";
+        return GlobalFunctionImports::apply(implode("\n", $lines) . "\n");
     }
 
     /**
@@ -851,7 +851,7 @@ trait RendersYii3Dto
         $lines[] = '{';
         $lines[] = '}';
 
-        return implode("\n", $lines) . "\n";
+        return GlobalFunctionImports::apply(implode("\n", $lines) . "\n");
     }
 
     /**

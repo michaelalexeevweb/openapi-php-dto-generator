@@ -573,7 +573,7 @@ final class GenerateDtoCommandTest extends TestCase
      * reported instead of discovered at request time.
      *
      * Mode-specific on purpose: `UnsetValue` means nothing in Laravel mode, and laravel-data resolves
-     * its OWN imports against the document (`laravelDataLibraryRef()`), so `Data` is safe there.
+     * its OWN imports against the document (`libraryClassRef()`), so `Data` is safe there.
      */
     #[DataProvider('collidingSchemaNameProvider')]
     public function testASchemaNamedLikeAClassTheEmittedCodeUsesIsReported(
@@ -632,8 +632,17 @@ final class GenerateDtoCommandTest extends TestCase
         }
 
         // Each mode's own emitted code, and a mode that has no use for the same name.
-        $cases['UnsetValue is runtime-only'] = ['UnsetValue', 'runtime', true];
+        // runtime resolves these against the document now, so they are silent there — the same
+        // bargain laravel-data has always had. The pair below proves both halves: resolved in the
+        // mode that emits them, meaningless in a mode that does not.
+        $cases['UnsetValue stays reserved in runtime mode'] = ['UnsetValue', 'runtime', true];
+        $cases['Stringable is resolved, not warned, in runtime mode'] = ['Stringable', 'runtime', false];
+        $cases['RuntimeException is resolved, not warned, in runtime mode'] = ['RuntimeException', 'runtime', false];
         $cases['UnsetValue means nothing in laravel mode'] = ['UnsetValue', 'laravel', false];
+        // yii3 does not resolve yet, so it must at least say so.
+        $cases['Result is reported in yii3 mode'] = ['Result', 'yii3', true];
+        $cases['Nested is reported in yii3 mode'] = ['Nested', 'yii3', true];
+        $cases['Result means nothing in runtime mode'] = ['Result', 'runtime', false];
         $cases['Assert is symfony-only'] = ['Assert', 'symfony', true];
         $cases['Assert means nothing in runtime mode'] = ['Assert', 'runtime', false];
         $cases['Validator is laravel-only'] = ['Validator', 'laravel', true];
@@ -1410,7 +1419,12 @@ final class GenerateDtoCommandTest extends TestCase
         // A plain `@var array` over a typed `array $payload` is superfluous (adds nothing over the
         // native type) and is stripped by php-cs-fixer's no_superfluous_phpdoc_tags — the generator
         // must not emit it. The Example docblock and the @param (which carries a description) stay.
-        $this->assertStringNotContainsString('@var array', $content);
+        //
+        // A BARE tag is what is forbidden, not the tag. `hydrateFast()` carries
+        // `/** @var array $payload */` over a local whose ternary an analyser reads as `array|null`
+        // against a non-nullable parameter; that one names a variable and is neither superfluous nor
+        // removable, so the pattern requires the absence of a following `$name`.
+        $this->assertDoesNotMatchRegularExpression('/@var array(?!\s+\$)/', $content);
         $this->assertStringContainsString('@param array $payload Example: []', $content);
     }
 

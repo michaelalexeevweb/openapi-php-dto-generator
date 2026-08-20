@@ -41,6 +41,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @var array<class-string, array{
      *   hasConstructor: bool,
+     *   plainBodyOnly: bool,
      *   params: list<array{
      *     name: string,
      *     requestFieldName: string,
@@ -86,6 +87,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     /** @var array<class-string, array<string, array<string, mixed>>> */
     private static array $constraintsCache = [];
+
+    /** @var array<class-string, Closure|null> Casting closure per class, or null when it has no hydrator. */
+    private static array $fastCastCache = [];
+
+    /** @var array<class-string, array<string, mixed>> Schema-level keywords, per class. */
+    private static array $objectConstraintsCache = [];
 
     /** @var array<class-string, array<string, string>> */
     private static array $aliasesCache = [];
@@ -380,101 +387,179 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $providedParamSources = [];
         $errors = [];
 
+        // `additionalProperties: false` closes the object. Runtime mode is the one mode holding the
+        // RAW body at this point, so it is the one mode that can see a key the schema never
+        // declared — a hydrating mode drops it on the way into a typed property and never learns it
+        // was there. Only body keys are compared: query, header and cookie carry their own keys by
+        // definition, and the document does not close those.
+        if (($this->resolveOpenApiObjectConstraints($reflection)['additionalProperties'] ?? null) === false) {
+            $declared = [];
+            foreach ($classMeta['params'] as $declaredParam) {
+                $declared[$declaredParam['requestFieldName']] = true;
+            }
+            // No guard on the key type: a JSON key that looks like an integer arrives as one
+            // (`{"0":…}` becomes `0`), and `%s` renders it the way the client wrote it.
+            foreach (array_keys($bodyData) as $bodyKey) {
+                if (!array_key_exists($bodyKey, $declared)) {
+                    $errors[] = sprintf('Unknown property "%s" is not allowed by the schema.', $bodyKey);
+                }
+            }
+        }
+
+        // A class whose every property is a plain body field — no bound source, no serialization
+        // style, no delimiter, no content/form decoding, no empty-value rule. Computed once per
+        // class; see `buildDtoMeta()`.
+        $plainBodyOnly = $classMeta['plainBodyOnly'];
+
+        // The generated straight-line hydrator, when this class has one AND the body is provably the
+        // only source this request carries. It holds structure only — every decision about a VALUE
+        // travels back here through the closure, so the two routes cannot disagree. Placed AFTER the
+        // closed-object check and seeded with whatever it found: an undeclared key is a property of
+        // the PAYLOAD, not of any one value, so neither route should have to rediscover it.
+        if ($plainBodyOnly && $queryData === [] && $formData === []) {
+            $fast = $this->resolveFastHydrator($reflection, $classMeta, $request, $bodyData);
+            if ($fast !== null) {
+                try {
+                    return $fast($errors);
+                } catch (RuntimeException $e) {
+                    throw $this->withUnreadableBodyHint($e, $request, $bodyData, $queryData, $formData);
+                }
+            }
+        }
+
         foreach ($classMeta['params'] as $paramMeta) {
             $requestFieldName = $paramMeta['requestFieldName'];
 
             $rawSource = '';
             $rawWasProvided = false;
-            $rawValue = $this->resolveRawRequestValue(
-                request: $request,
-                paramName: $requestFieldName,
-                bodyData: $bodyData,
-                queryData: $queryData,
-                rawQueryProvider: $rawQueryProvider,
-                formData: $formData,
-                sourceConstraint: $paramMeta['sourceConstraint'],
-                allowReserved: $paramMeta['allowReserved'],
-                wasProvided: $rawWasProvided,
-                source: $rawSource,
-            );
-
-            // OpenAPI allowEmptyValue (query parameters only). The metadata is tri-state: `false`
-            // means the spec explicitly forbids `?flag=`, `true` explicitly permits it, and a
-            // missing entry means the spec is silent — those keep the historical behaviour of
-            // casting the empty string (e.g. `?verified=` -> false for a bool).
-            if (
-                $rawWasProvided
-                && $rawSource === 'query'
-                && $rawValue === ''
-                && $paramMeta['allowEmptyValue'] === false
-            ) {
-                $errors[] = sprintf('Parameter "%s" does not allow an empty value.', $requestFieldName);
-                // Keep positional arg alignment; the collected error aborts before use.
-                $args[] = null;
-                continue;
-            }
-
-            // OAS 3.2 `in: querystring` described with a form media type: the raw query string is
-            // parsed into the array the schema expects.
-            if ($rawWasProvided && $paramMeta['formEncodedString'] && is_string($rawValue)) {
-                parse_str($rawValue, $parsedQueryString);
-                $rawValue = $parsedQueryString;
-            }
-
-            // content: application/json parameter: the raw value is a JSON document encoded as
-            // a string. Decode it before casting so an object/array schema validates against the
-            // parsed structure rather than the literal string.
-            if ($rawWasProvided && $paramMeta['contentJson'] && is_string($rawValue)) {
-                // A JSON `in: querystring` value arrives percent-encoded inside the URL.
-                if ($rawSource === 'querystring') {
-                    $rawValue = rawurldecode($rawValue);
+            if ($plainBodyOnly) {
+                // The SAME five checks `resolveRawRequestValue()` makes, in the same order, minus
+                // the call and its by-reference plumbing. Inlined rather than guarded by
+                // preconditions on purpose: an earlier attempt enumerated "when is the body the
+                // only source" and missed `$request->files`, which is exactly the kind of silent
+                // behaviour change this shape cannot produce. `plainBodyOnly` guarantees
+                // `sourceConstraint === null` for every property, so the resolver's first branch —
+                // the only one omitted here — is unreachable.
+                if ($request !== null && $request->attributes->has($requestFieldName)) {
+                    $rawWasProvided = true;
+                    $rawSource = 'path';
+                    $rawValue = $request->attributes->get($requestFieldName);
+                } elseif (array_key_exists($requestFieldName, $bodyData)) {
+                    $rawWasProvided = true;
+                    $rawSource = 'json';
+                    $rawValue = $bodyData[$requestFieldName];
+                } elseif (array_key_exists($requestFieldName, $queryData)) {
+                    $rawWasProvided = true;
+                    $rawSource = 'query';
+                    $rawValue = $queryData[$requestFieldName];
+                } elseif ($request !== null && $request->files->has($requestFieldName)) {
+                    $rawWasProvided = true;
+                    $rawSource = 'files';
+                    $rawValue = $request->files->get($requestFieldName);
+                } elseif (array_key_exists($requestFieldName, $formData)) {
+                    $rawWasProvided = true;
+                    $rawSource = 'form';
+                    $rawValue = $formData[$requestFieldName];
+                } else {
+                    $rawValue = null;
                 }
+            } else {
+                $rawValue = $this->resolveRawRequestValue(
+                    request: $request,
+                    paramName: $requestFieldName,
+                    bodyData: $bodyData,
+                    queryData: $queryData,
+                    rawQueryProvider: $rawQueryProvider,
+                    formData: $formData,
+                    sourceConstraint: $paramMeta['sourceConstraint'],
+                    allowReserved: $paramMeta['allowReserved'],
+                    wasProvided: $rawWasProvided,
+                    source: $rawSource,
+                );
+            }
 
-                try {
-                    $rawValue = json_decode($rawValue, associative: true, flags: JSON_THROW_ON_ERROR);
-                } catch (JsonException) {
-                    $errors[] = sprintf('Parameter "%s" must be valid JSON.', $requestFieldName);
+            // Every branch in here is gated on a parameter source, a serialization style or a
+            // delimiter. `plainBodyOnly` means the class declares none of those, so not one of
+            // them can fire — skipping the group is a tautology, not an assumption.
+            if (!$plainBodyOnly) {
+                // OpenAPI allowEmptyValue (query parameters only). The metadata is tri-state: `false`
+                // means the spec explicitly forbids `?flag=`, `true` explicitly permits it, and a
+                // missing entry means the spec is silent — those keep the historical behaviour of
+                // casting the empty string (e.g. `?verified=` -> false for a bool).
+                if (
+                    $rawWasProvided
+                    && $rawSource === 'query'
+                    && $rawValue === ''
+                    && $paramMeta['allowEmptyValue'] === false
+                ) {
+                    $errors[] = sprintf('Parameter "%s" does not allow an empty value.', $requestFieldName);
                     // Keep positional arg alignment; the collected error aborts before use.
                     $args[] = null;
                     continue;
                 }
-            }
 
-            // OpenAPI path serialization styles (matrix/label) embed the value in the path
-            // segment itself. Decode those raw strings before normal type casting.
-            if ($rawWasProvided && is_string($rawValue)) {
-                $rawValue = $this->normalizeSerializedParameterValue(
-                    rawValue: $rawValue,
-                    paramName: $requestFieldName,
-                    source: $rawSource,
-                    paramMeta: $paramMeta,
-                    parameterStyle: $paramMeta['parameterStyle'],
-                    parameterExplode: $paramMeta['parameterExplode'],
-                );
-            }
+                // OAS 3.2 `in: querystring` described with a form media type: the raw query string is
+                // parsed into the array the schema expects.
+                if ($rawWasProvided && $paramMeta['formEncodedString'] && is_string($rawValue)) {
+                    parse_str($rawValue, $parsedQueryString);
+                    $rawValue = $parsedQueryString;
+                }
 
-            // OpenAPI delimited-array serialization: a single query/header/cookie string
-            // (e.g. "1,2,3" or "1 2 3") is split into elements per the parameter's style.
-            // Already-arrayified values (form+explode repeated keys, deepObject brackets)
-            // skip this and are cast as-is.
-            if (
-                $rawWasProvided
-                && $paramMeta['arrayDelimiter'] !== null
-                && is_string($rawValue)
-            ) {
-                $rawValue = $rawValue === ''
-                    ? []
-                    : explode($paramMeta['arrayDelimiter'], $rawValue);
+                // content: application/json parameter: the raw value is a JSON document encoded as
+                // a string. Decode it before casting so an object/array schema validates against the
+                // parsed structure rather than the literal string.
+                if ($rawWasProvided && $paramMeta['contentJson'] && is_string($rawValue)) {
+                    // A JSON `in: querystring` value arrives percent-encoded inside the URL.
+                    if ($rawSource === 'querystring') {
+                        $rawValue = rawurldecode($rawValue);
+                    }
 
-                // For non-string scalar item types, whitespace around delimiters (e.g.
-                // "1, 2, 3") is insignificant — trim so strict int/float/bool/enum casts
-                // accept it. String items are left untouched (their whitespace is data).
-                $itemType = $paramMeta['arrayItemType'];
+                    try {
+                        $rawValue = json_decode($rawValue, associative: true, flags: JSON_THROW_ON_ERROR);
+                    } catch (JsonException) {
+                        $errors[] = sprintf('Parameter "%s" must be valid JSON.', $requestFieldName);
+                        // Keep positional arg alignment; the collected error aborts before use.
+                        $args[] = null;
+                        continue;
+                    }
+                }
+
+                // OpenAPI path serialization styles (matrix/label) embed the value in the path
+                // segment itself. Decode those raw strings before normal type casting.
+                if ($rawWasProvided && is_string($rawValue)) {
+                    $rawValue = $this->normalizeSerializedParameterValue(
+                        rawValue: $rawValue,
+                        paramName: $requestFieldName,
+                        source: $rawSource,
+                        paramMeta: $paramMeta,
+                        parameterStyle: $paramMeta['parameterStyle'],
+                        parameterExplode: $paramMeta['parameterExplode'],
+                    );
+                }
+
+                // OpenAPI delimited-array serialization: a single query/header/cookie string
+                // (e.g. "1,2,3" or "1 2 3") is split into elements per the parameter's style.
+                // Already-arrayified values (form+explode repeated keys, deepObject brackets)
+                // skip this and are cast as-is.
                 if (
-                    $itemType !== null
-                    && in_array($this->resolveTypeKind($itemType), ['int', 'float', 'bool', 'enum'], true)
+                    $rawWasProvided
+                    && $paramMeta['arrayDelimiter'] !== null
+                    && is_string($rawValue)
                 ) {
-                    $rawValue = array_map(trim(...), $rawValue);
+                    $rawValue = $rawValue === ''
+                        ? []
+                        : explode($paramMeta['arrayDelimiter'], $rawValue);
+
+                    // For non-string scalar item types, whitespace around delimiters (e.g.
+                    // "1, 2, 3") is insignificant — trim so strict int/float/bool/enum casts
+                    // accept it. String items are left untouched (their whitespace is data).
+                    $itemType = $paramMeta['arrayItemType'];
+                    if (
+                        $itemType !== null
+                        && in_array($this->resolveTypeKind($itemType), ['int', 'float', 'bool', 'enum'], true)
+                    ) {
+                        $rawValue = array_map(trim(...), $rawValue);
+                    }
                 }
             }
 
@@ -585,7 +670,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($errors !== []) {
-            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+            throw $this->withUnreadableBodyHint(
+                exception: new RuntimeException(implode("\n", array_unique(array_filter($errors)))),
+                request: $request,
+                bodyData: $bodyData,
+                queryData: $queryData,
+                formData: $formData,
+            );
         }
 
         $dto = $reflection->newInstanceArgs($args);
@@ -622,6 +713,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @param ReflectionClass<object> $reflection
      * @return array{
      *   hasConstructor: bool,
+     *   plainBodyOnly: bool,
      *   params: list<array{
      *     name: string,
      *     requestFieldName: string,
@@ -661,6 +753,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($constructor === null) {
             return [
                 'hasConstructor' => false,
+                'plainBodyOnly' => true,
                 'params' => [],
                 'inRequestProperties' => [],
                 'inPathProperties' => [],
@@ -822,8 +915,35 @@ final class DtoDeserializer implements DtoDeserializerInterface
             ];
         }
 
+        // Whether every property is a PLAIN BODY field: no bound source, no serialization style, no
+        // delimiter, no content/form decoding, no empty-value rule. `deserializeInternal()` uses it
+        // to skip a branch group those flags gate — provably dead for such a class. Computed once
+        // per class, with the rest of the metadata.
+        // Belt and braces, deliberately. Every OpenAPI parameter carries a source (`in:` is
+        // mandatory), so the first clause already excludes each property the others describe —
+        // mutation testing showed the remaining six can be dropped one at a time without any test
+        // noticing, which is a property of the DATA, not a gap in coverage. They stay because they
+        // state what makes a class ineligible, and because the first clause resting alone would make
+        // "a parameter always has a source" an invariant nothing checks.
+        $plainBodyOnly = true;
+        foreach ($params as $param) {
+            if (
+                $param['sourceConstraint'] !== null
+                || $param['allowReserved']
+                || $param['allowEmptyValue'] === false
+                || $param['formEncodedString']
+                || $param['contentJson']
+                || $param['parameterStyle'] !== null
+                || $param['arrayDelimiter'] !== null
+            ) {
+                $plainBodyOnly = false;
+                break;
+            }
+        }
+
         return [
             'hasConstructor' => true,
+            'plainBodyOnly' => $plainBodyOnly,
             'params' => $params,
             'inRequestProperties' => $inRequestProperties,
             'inPathProperties' => $inPathProperties,
@@ -2641,6 +2761,220 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $constraints = call_user_func($method);
         return self::$constraintsCache[$className] = is_array($constraints) ? $constraints : [];
+    }
+
+    /**
+     * The generated straight-line hydrator for this class, or null when it cannot be used here.
+     *
+     * Null whenever anything but the body could supply a value: an uploaded file, or a
+     * router-verified request attribute carrying one of the declared names. Both outrank or join
+     * the body in `resolveRawRequestValue()`, and the generated method sees only the body.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @param array<string, mixed> $classMeta
+     * @param array<string, mixed> $bodyData
+     * @return (callable(array<int, string>): object)|null
+     */
+    private function resolveFastHydrator(
+        ReflectionClass $reflection,
+        array $classMeta,
+        ?Request $request,
+        array $bodyData,
+    ): ?callable {
+        $className = $reflection->getName();
+
+        // Built once per class: the reflection check, the name map and the casting closure. Doing
+        // this per CALL was measured to eat more than half the win — the point of the fast path is
+        // that nothing is rediscovered on the hot path.
+        if (!array_key_exists($className, self::$fastCastCache)) {
+            self::$fastCastCache[$className] = $this->buildFastCast($reflection, $classMeta);
+        }
+        $cast = self::$fastCastCache[$className];
+        if ($cast === null) {
+            return null;
+        }
+
+        // Anything but the body could supply a value: an uploaded file, or a router-verified
+        // request attribute carrying one of the declared names. Both outrank or join the body in
+        // `resolveRawRequestValue()`, and the generated method sees only the body.
+        if ($request !== null) {
+            if ($request->files->count() > 0) {
+                return null;
+            }
+            foreach ($classMeta['params'] as $paramMeta) {
+                if ($request->attributes->has($paramMeta['requestFieldName'])) {
+                    return null;
+                }
+            }
+        }
+
+        // `hydrateFast()` is emitted only for eligible classes, so PHPStan cannot see it on the
+        // `class-string<object>` this method holds; `buildFastCast()` has already proved the method
+        // exists and is declared on this very class.
+        /** @var callable(array<string, mixed>, Closure, array<int, string>): object $hydrator */
+        $hydrator = [$className, 'hydrateFast'];
+
+        return static fn(array $errors): object => $hydrator($bodyData, $cast, $errors);
+    }
+
+    /**
+     * The casting closure for one class, or null when the class has no usable generated hydrator.
+     *
+     * Everything the general loop decides about one value lives here: the cast, its failure wording,
+     * and the OpenAPI field constraints. The generated method never inspects a value, so the two
+     * routes have nothing to disagree about.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @param array<string, mixed> $classMeta
+     */
+    private function buildFastCast(ReflectionClass $reflection, array $classMeta): ?Closure
+    {
+        // Declared ON this class, not inherited. A subclass inherits its parent's `hydrateFast()`,
+        // whose `new self(...)` builds the PARENT — a silently wrong object type, caught by
+        // `testCaseOnlySiblingOfAnInheritedPropertyGetsItsOwnAccessor`.
+        if (
+            !$reflection->hasMethod('hydrateFast')
+            || $reflection->getMethod('hydrateFast')->getDeclaringClass()->getName() !== $reflection->getName()
+        ) {
+            return null;
+        }
+
+        $byName = [];
+        foreach ($classMeta['params'] as $paramMeta) {
+            $byName[$paramMeta['requestFieldName']] = $paramMeta;
+        }
+
+        return function (string $name, mixed $value, array &$errors) use ($byName, $reflection): mixed {
+            $paramMeta = $byName[$name];
+            try {
+                $cast = count($paramMeta['typeNames']) === 1
+                    ? $this->castValue(
+                        value: $value,
+                        paramName: $name,
+                        typeName: $paramMeta['typeNames'][0],
+                        allowsNull: $paramMeta['allowsNull'],
+                        source: 'json',
+                        arrayItemType: $paramMeta['arrayItemType'],
+                        paramPath: $name,
+                        schemaAllowsNull: $paramMeta['schemaAllowsNull'],
+                        temporalFormat: $paramMeta['temporalFormat'],
+                        openApiFormat: $paramMeta['openApiFormat'],
+                        allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                        arrayItemsNullable: $paramMeta['arrayItemsNullable'],
+                        arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                    )
+                    : $this->castUnionValue(
+                        paramName: $name,
+                        typeNames: $paramMeta['typeNames'],
+                        rawValue: $value,
+                        rawWasProvided: true,
+                        rawSource: 'json',
+                        arrayItemType: $paramMeta['arrayItemType'],
+                        schemaAllowsNull: $paramMeta['schemaAllowsNull'],
+                        dtoReflection: $reflection,
+                        openApiFormat: $paramMeta['openApiFormat'],
+                        allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                        arrayItemsNullable: $paramMeta['arrayItemsNullable'],
+                        arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                    );
+            } catch (RuntimeException $e) {
+                foreach (explode("\n", $e->getMessage()) as $message) {
+                    $errors[] = $message;
+                }
+
+                return null;
+            }
+
+            if (is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
+                foreach (
+                    $this->constraintValidator->validate(
+                        sprintf('param "%s"', $name),
+                        $cast,
+                        $paramMeta['fieldConstraints'],
+                    ) as $constraintError
+                ) {
+                    $errors[] = $constraintError;
+                }
+            }
+
+            return $cast;
+        };
+    }
+
+    /**
+     * Adds a line naming the likely cause when the request carried a body nobody could read.
+     *
+     * `getBodyData()` decodes `application/json` and nothing else; form and multipart values arrive
+     * through their own sources. So a client that sends JSON with `text/plain` — or forgets the
+     * header entirely, which is the common version — gets every field reported as missing, which
+     * blames them for the wrong thing. The hint is only ever ADDED to an exception that was already
+     * being thrown: a request that succeeds today still succeeds.
+     *
+     * @param array<string, mixed> $bodyData
+     * @param array<string, mixed> $queryData
+     * @param array<string, mixed> $formData
+     */
+    private function withUnreadableBodyHint(
+        RuntimeException $exception,
+        ?Request $request,
+        array $bodyData,
+        array $queryData,
+        array $formData,
+    ): RuntimeException {
+        if (
+            $request === null
+            // Redundant with the `application/json` check below — `getBodyData()` fills this for no
+            // other content type — and kept for the same reason: it states the condition the hint
+            // is really about, which is "we read nothing".
+            || $bodyData !== []
+            || $queryData !== []
+            || $formData !== []
+            || $request->files->count() > 0
+            || $request->getContent() === ''
+        ) {
+            return $exception;
+        }
+
+        $contentType = (string)$request->headers->get('Content-Type', '');
+        if (str_contains($contentType, 'application/json')) {
+            return $exception;
+        }
+
+        return new RuntimeException(
+            $exception->getMessage() . "\n" . sprintf(
+                'The request body was not read: Content-Type is %s, and only application/json is '
+                . 'decoded as a JSON body (form and multipart values are read from their own sources).',
+                $contentType === '' ? 'absent' : sprintf('"%s"', $contentType),
+            ),
+            $exception->getCode(),
+            $exception,
+        );
+    }
+
+    /**
+     * Schema-LEVEL keywords of a generated DTO, or `[]` when the class predates them.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @return array<string, mixed>
+     */
+    private function resolveOpenApiObjectConstraints(ReflectionClass $reflection): array
+    {
+        $className = $reflection->getName();
+        if (array_key_exists($className, self::$objectConstraintsCache)) {
+            return self::$objectConstraintsCache[$className];
+        }
+
+        $method = $this->resolveMetadataMethod(
+            className: $className,
+            candidateMethods: ['getObjectConstraints'],
+        );
+        if ($method === null) {
+            return self::$objectConstraintsCache[$className] = [];
+        }
+
+        $constraints = call_user_func($method);
+
+        return self::$objectConstraintsCache[$className] = is_array($constraints) ? $constraints : [];
     }
 
     /**

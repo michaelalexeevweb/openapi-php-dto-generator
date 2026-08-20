@@ -438,7 +438,7 @@ final class ValidationParityTest extends TestCase
      * `GeneratedConstraintsIntegrationTest::testDeclaredPropertiesAreNotReportedAsUnevaluatedOnADtoValue`,
      * where dropping those names made a valid payload fail.
      */
-    public function testUnknownPayloadKeysAreDroppedWhereverThePayloadIsHydratedBeforeValidation(): void
+    public function testAClosedObjectRefusesAnUndeclaredKeyWhereverTheRawBodyIsReachable(): void
     {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
@@ -468,22 +468,24 @@ final class ValidationParityTest extends TestCase
         $key = 'unknown keys are dropped';
         $withExtra = '{"f":{"known":"a","extra":"b"}}';
 
+        // The CONFORMANT answer is refusal: the document closed the object. Every mode that can
+        // still see the raw body gives it — runtime holds the body, and the two rule-based modes
+        // run their interpreter over it. The two that cannot are named below.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => true],
+            ['valid' => true, 'invalid' => false],
             fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"known":"a"}}', $withExtra),
             [
                 ...self::diverges(
-                    GenerationMode::Laravel,
-                    ['valid' => true, 'invalid' => false],
-                    'the emitted interpreter reads the raw payload, where the undeclared key still '
-                        . 'exists, so it enforces `additionalProperties: false` the hydrating modes '
-                        . 'cannot see',
+                    GenerationMode::Symfony,
+                    ['valid' => true, 'invalid' => true],
+                    'the serializer denormalizes before any constraint runs, so the undeclared key is '
+                        . 'already gone by the time generated code is reached',
                 ),
                 ...self::diverges(
-                    GenerationMode::LaravelData,
-                    ['valid' => true, 'invalid' => false],
-                    'same interpreter as Laravel mode, reading the same raw payload — the two rule-based '
-                        . 'modes agree with each other here and not with the two that hydrate first',
+                    GenerationMode::Yii3,
+                    ['valid' => true, 'invalid' => true],
+                    'the hydrator fills the object first and the validator reads the OBJECT, so a key '
+                        . 'the schema never declared has nowhere to survive',
                 ),
             ],
             $key,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Golden;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -99,6 +100,65 @@ final class GoldenCorpusTest extends TestCase
         }
 
         self::assertSame([], $errors, sprintf('%s-mode corpus does not parse.', $mode));
+    }
+
+    /**
+     * Every global function the generated code calls is imported — none left bare, none written with
+     * a leading backslash, and none imported without being called.
+     *
+     * The rule is not cosmetic. An unqualified call inside a namespace makes PHP look for a namespaced
+     * twin that never exists before falling back to the global function; measured on this corpus that
+     * costs roughly 29 ns a call, which the fast hydrator pays once per property. `use function`
+     * resolves at compile time and measures the same as the backslash, so the import is both the
+     * consistent spelling and the free one.
+     *
+     * This is asserted rather than left to the snapshot because the emitter has FOUR render paths —
+     * two Twig call sites for DTOs, one for enums, and yii3's string builder — and the first attempt
+     * at this wired up only one of them. A snapshot would have pinned the half-done output as "the
+     * output": a missing import reads exactly like a file that never needed one.
+     *
+     * {@see GlobalFunctionImports::detect()} is what the emitter itself uses, so the test cannot
+     * disagree with the emitter about what counts as a call to a global function. What it adds is the
+     * other direction — that the group in the file matches that answer exactly.
+     */
+    #[DataProvider('modeProvider')]
+    public function testEveryGlobalFunctionCallIsImported(string $mode): void
+    {
+        $this->generateCorpus($mode);
+
+        $problems = [];
+        foreach ($this->corpusFiles() as $relativePath => $absolutePath) {
+            $source = (string)file_get_contents($absolutePath);
+
+            preg_match_all('/^use function (\w+);$/m', $source, $matches);
+            /** @var list<string> $imported */
+            $imported = $matches[1];
+            $called = GlobalFunctionImports::detect($source);
+
+            foreach (array_diff($called, $imported) as $function) {
+                $problems[] = sprintf('%s calls %s() unqualified without importing it', $relativePath, $function);
+            }
+
+            foreach (array_diff($imported, $called) as $function) {
+                $problems[] = sprintf('%s imports %s() without calling it', $relativePath, $function);
+            }
+
+            // A qualified call is the other way to spell the same thing, and it is the spelling this
+            // rule replaces. Only a leading backslash counts: the separators inside `\Yiisoft\…\Number`
+            // are part of a class name.
+            preg_match_all('/(?<![\w\\\])\\\(\w+)\s*\(/', $source, $matches);
+            /** @var list<string> $qualified */
+            $qualified = $matches[1];
+            foreach (array_unique($qualified) as $function) {
+                if (!function_exists($function)) {
+                    continue;
+                }
+
+                $problems[] = sprintf('%s calls \%s(); import it instead', $relativePath, $function);
+            }
+        }
+
+        self::assertSame([], $problems, sprintf('%s-mode corpus names global functions inconsistently.', $mode));
     }
 
     /**

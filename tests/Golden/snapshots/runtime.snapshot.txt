@@ -1,4 +1,4 @@
-# runtime mode — 35 files, 9099 lines
+# runtime mode — 35 files, 10050 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -78,9 +78,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -226,6 +235,48 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $test2Given = array_key_exists('test2', $data);
+        if (!$test2Given) {
+            $errors[] = 'Required parameter "test2" not found in request.';
+        }
+        $test2 = $test2Given ? $cast('test2', $data['test2'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var string $test2 */
+        $dto = new self(
+            test2: $test2,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -279,9 +330,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -427,6 +487,48 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $testGiven = array_key_exists('test', $data);
+        if (!$testGiven) {
+            $errors[] = 'Required parameter "test" not found in request.';
+        }
+        $test = $testGiven ? $cast('test', $data['test'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var string $test */
+        $dto = new self(
+            test: $test,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -483,6 +585,9 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -683,9 +788,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -898,6 +1012,55 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idPatchTest2Given = array_key_exists('idPatchTest2', $data);
+        if (!$idPatchTest2Given) {
+            $errors[] = 'Required parameter "idPatchTest2" not found in request.';
+        }
+        $idPatchTest2 = $idPatchTest2Given ? $cast('idPatchTest2', $data['idPatchTest2'], $errors) : null;
+        $namePatchTest2Given = array_key_exists('namePatchTest2', $data);
+        if (!$namePatchTest2Given) {
+            $errors[] = 'Required parameter "namePatchTest2" not found in request.';
+        }
+        $namePatchTest2 = $namePatchTest2Given ? $cast('namePatchTest2', $data['namePatchTest2'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $idPatchTest2 */
+        /** @var string $namePatchTest2 */
+        $dto = new self(
+            idPatchTest2: $idPatchTest2,
+            namePatchTest2: $namePatchTest2,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -951,9 +1114,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1231,6 +1403,62 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idPostTest2Given = array_key_exists('idPostTest2', $data);
+        if (!$idPostTest2Given) {
+            $errors[] = 'Required parameter "idPostTest2" not found in request.';
+        }
+        $idPostTest2 = $idPostTest2Given ? $cast('idPostTest2', $data['idPostTest2'], $errors) : null;
+        $namePostTest2Given = array_key_exists('namePostTest2', $data);
+        if (!$namePostTest2Given) {
+            $errors[] = 'Required parameter "namePostTest2" not found in request.';
+        }
+        $namePostTest2 = $namePostTest2Given ? $cast('namePostTest2', $data['namePostTest2'], $errors) : null;
+        $surnamePostTest2Given = array_key_exists('surnamePostTest2', $data);
+        if (!$surnamePostTest2Given) {
+            $errors[] = 'Required parameter "surnamePostTest2" not found in request.';
+        }
+        $surnamePostTest2 = $surnamePostTest2Given ? $cast('surnamePostTest2', $data['surnamePostTest2'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $idPostTest2 */
+        /** @var string $namePostTest2 */
+        /** @var string $surnamePostTest2 */
+        $dto = new self(
+            idPostTest2: $idPostTest2,
+            namePostTest2: $namePostTest2,
+            surnamePostTest2: $surnamePostTest2,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -1287,6 +1515,9 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1491,6 +1722,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1904,6 +2138,9 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function is_string;
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -2315,6 +2552,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -2728,6 +2968,9 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function is_string;
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -3139,6 +3382,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function is_string;
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -3349,6 +3595,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function is_string;
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -3555,10 +3804,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -3703,6 +3961,48 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $fileGiven = array_key_exists('file', $data);
+        if (!$fileGiven) {
+            $errors[] = 'Required parameter "file" not found in request.';
+        }
+        $file = $fileGiven ? $cast('file', $data['file'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var UploadedFile $file */
+        $dto = new self(
+            file: $file,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -3759,6 +4059,9 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -3962,6 +4265,9 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4245,6 +4551,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function is_string;
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -4451,6 +4760,9 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4723,6 +5035,8 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -4819,6 +5133,9 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5023,6 +5340,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function is_string;
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -5222,10 +5542,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5500,6 +5829,62 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $fileGiven = array_key_exists('file', $data);
+        if (!$fileGiven) {
+            $errors[] = 'Required parameter "file" not found in request.';
+        }
+        $file = $fileGiven ? $cast('file', $data['file'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $surnameGiven = array_key_exists('surname', $data);
+        if (!$surnameGiven) {
+            $errors[] = 'Required parameter "surname" not found in request.';
+        }
+        $surname = $surnameGiven ? $cast('surname', $data['surname'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var UploadedFile $file */
+        /** @var string $name */
+        /** @var string $surname */
+        $dto = new self(
+            file: $file,
+            name: $name,
+            surname: $surname,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -5553,9 +5938,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5701,6 +6095,48 @@ class Pet implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var string $name */
+        $dto = new self(
+            name: $name,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -5754,9 +6190,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5967,6 +6412,55 @@ final class Tag implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idGiven = array_key_exists('id', $data);
+        if (!$idGiven) {
+            $errors[] = 'Required parameter "id" not found in request.';
+        }
+        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $id */
+        /** @var string $name */
+        $dto = new self(
+            id: $id,
+            name: $name,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -6020,9 +6514,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6168,6 +6671,48 @@ final class Test implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idGiven = array_key_exists('id', $data);
+        if (!$idGiven) {
+            $errors[] = 'Required parameter "id" not found in request.';
+        }
+        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $id */
+        $dto = new self(
+            id: $id,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -6225,6 +6770,9 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
+
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6788,6 +7336,8 @@ namespace GoldenCorpus;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 
+use function json_encode;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -6881,10 +7431,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -7037,6 +7596,44 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $regionGiven = array_key_exists('region', $data);
+        $region = $regionGiven ? $cast('region', $data['region'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        $dto = new self(
+            region: $regionGiven ? $region : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -7090,9 +7687,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -7368,6 +7974,62 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idGiven = array_key_exists('id', $data);
+        if (!$idGiven) {
+            $errors[] = 'Required parameter "id" not found in request.';
+        }
+        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $surnameGiven = array_key_exists('surname', $data);
+        if (!$surnameGiven) {
+            $errors[] = 'Required parameter "surname" not found in request.';
+        }
+        $surname = $surnameGiven ? $cast('surname', $data['surname'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $id */
+        /** @var string $name */
+        /** @var string $surname */
+        $dto = new self(
+            id: $id,
+            name: $name,
+            surname: $surname,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -7421,10 +8083,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -7848,6 +8519,68 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idGiven = array_key_exists('id', $data);
+        if (!$idGiven) {
+            $errors[] = 'Required parameter "id" not found in request.';
+        }
+        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $codeGiven = array_key_exists('code', $data);
+        if (!$codeGiven) {
+            $errors[] = 'Required parameter "code" not found in request.';
+        }
+        $code = $codeGiven ? $cast('code', $data['code'], $errors) : null;
+        $homepageGiven = array_key_exists('homepage', $data);
+        $homepage = $homepageGiven ? $cast('homepage', $data['homepage'], $errors) : null;
+        $endpointGiven = array_key_exists('endpoint', $data);
+        $endpoint = $endpointGiven ? $cast('endpoint', $data['endpoint'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $id */
+        /** @var string $name */
+        /** @var int|string $code */
+        $dto = new self(
+            id: $id,
+            name: $name,
+            code: $code,
+            homepage: $homepageGiven ? $homepage : UnsetValue::UNSET,
+            endpoint: $endpointGiven ? $endpoint : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -7903,6 +8636,8 @@ namespace GoldenCorpus;
 
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -7995,10 +8730,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use DateTimeImmutable;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8353,6 +9097,69 @@ final class User implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idGiven = array_key_exists('id', $data);
+        if (!$idGiven) {
+            $errors[] = 'Required parameter "id" not found in request.';
+        }
+        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $petGiven = array_key_exists('pet', $data);
+        if (!$petGiven) {
+            $errors[] = 'Required parameter "pet" not found in request.';
+        }
+        $pet = $petGiven ? $cast('pet', $data['pet'], $errors) : null;
+        $createdAtGiven = array_key_exists('createdAt', $data);
+        if (!$createdAtGiven) {
+            $errors[] = 'Required parameter "createdAt" not found in request.';
+        }
+        $createdAt = $createdAtGiven ? $cast('createdAt', $data['createdAt'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $id */
+        /** @var string $name */
+        /** @var ?Animal2 $pet */
+        /** @var DateTimeImmutable $createdAt */
+        $dto = new self(
+            id: $id,
+            name: $name,
+            pet: $pet,
+            createdAt: $createdAt,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -8406,10 +9213,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use DateTimeImmutable;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8762,6 +9578,69 @@ final class User2 implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $idGiven = array_key_exists('id', $data);
+        if (!$idGiven) {
+            $errors[] = 'Required parameter "id" not found in request.';
+        }
+        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $petGiven = array_key_exists('pet', $data);
+        if (!$petGiven) {
+            $errors[] = 'Required parameter "pet" not found in request.';
+        }
+        $pet = $petGiven ? $cast('pet', $data['pet'], $errors) : null;
+        $createdAtGiven = array_key_exists('createdAt', $data);
+        if (!$createdAtGiven) {
+            $errors[] = 'Required parameter "createdAt" not found in request.';
+        }
+        $createdAt = $createdAtGiven ? $cast('createdAt', $data['createdAt'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var int $id */
+        /** @var string $name */
+        /** @var ?User2Pet $pet */
+        /** @var DateTimeImmutable $createdAt */
+        $dto = new self(
+            id: $id,
+            name: $name,
+            pet: $pet,
+            createdAt: $createdAt,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
      * fields. The deserializer reads a listed property ONLY from its declared source.
@@ -8815,9 +9694,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
 use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9157,6 +10045,69 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
         $constraints['test'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $meowGiven = array_key_exists('meow', $data);
+        if (!$meowGiven) {
+            $errors[] = 'Required parameter "meow" not found in request.';
+        }
+        $meow = $meowGiven ? $cast('meow', $data['meow'], $errors) : null;
+        $nameGiven = array_key_exists('name', $data);
+        if (!$nameGiven) {
+            $errors[] = 'Required parameter "name" not found in request.';
+        }
+        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $barkGiven = array_key_exists('bark', $data);
+        if (!$barkGiven) {
+            $errors[] = 'Required parameter "bark" not found in request.';
+        }
+        $bark = $barkGiven ? $cast('bark', $data['bark'], $errors) : null;
+        $testGiven = array_key_exists('test', $data);
+        if (!$testGiven) {
+            $errors[] = 'Required parameter "test" not found in request.';
+        }
+        $test = $testGiven ? $cast('test', $data['test'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var string $meow */
+        /** @var string $name */
+        /** @var string $bark */
+        /** @var string $test */
+        $dto = new self(
+            meow: $meow,
+            name: $name,
+            bark: $bark,
+            test: $test,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
     }
 
     /**

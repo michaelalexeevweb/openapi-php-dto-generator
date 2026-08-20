@@ -24,7 +24,7 @@ use {{ import }};
 {% endif %}
 {% endif %}
  */
-enum {{ enumName }}: {{ backingType }} implements GeneratedDtoInterface
+enum {{ enumName }}: {{ backingType }} implements {{ generatedDtoInterfaceRef }}
 {
 {% for case in cases %}
 {% if case.description is not null %}
@@ -52,7 +52,7 @@ enum {{ enumName }}: {{ backingType }} implements GeneratedDtoInterface
     }
 
     /**
-     * @throws JsonException
+     * @throws {{ jsonExceptionRef }}
      */
     public function toJson(): string
     {

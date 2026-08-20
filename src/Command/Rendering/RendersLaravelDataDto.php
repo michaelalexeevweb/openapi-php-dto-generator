@@ -42,56 +42,6 @@ trait RendersLaravelDataDto
     private const string LARAVEL_DATA_UNTYPED = 'mixed';
 
     /**
-     * How the emitted file must spell a class from the PACKAGE, given what the document named its own
-     * schemas — either the short name plus an import, or the fully qualified name and no import.
-     *
-     * A document is free to call a schema `Data`, `Optional` or `Request`, and every class this mode
-     * emits carries imports with exactly those short names. PHP then fails in two different ways, and
-     * neither is reachable from the document's side:
-     *
-     *     the file DECLARING it     Fatal error: Cannot redeclare X\Data
-     *                               (previously declared as local import) — the file never loads
-     *     any SIBLING file          the `use` silently wins over the same-namespace class, so a
-     *                               property typed `Request` is Illuminate's, and the payload that
-     *                               should hydrate it is a TypeError
-     *
-     * Dropping the import and naming the class outright is the only spelling that cannot be shadowed.
-     *
-     * @param array<int, string> $useStatements
-     */
-    private function laravelDataLibraryRef(string $fqcn, string $namespace, array &$useStatements): string
-    {
-        $shortName = $this->shortClassName($fqcn);
-        if ($this->laravelDataNamespaceDeclares($shortName, $namespace)) {
-            return '\\' . $fqcn;
-        }
-
-        $useStatements[] = $fqcn;
-
-        return $shortName;
-    }
-
-    /**
-     * Whether a class the generator itself emits into this namespace already owns that name.
-     */
-    private function laravelDataNamespaceDeclares(string $shortName, string $namespace): bool
-    {
-        foreach ($this->dtoSchemas as $generatedClass => $ignored) {
-            if ($generatedClass === $shortName && ($this->schemaNamespaces[$generatedClass] ?? $this->baseNamespace) === $namespace) {
-                return true;
-            }
-        }
-
-        foreach ($this->enumSchemas as $generatedEnum => $ignored) {
-            if ($generatedEnum === $shortName && ($this->enumNamespaces[$generatedEnum] ?? $this->baseNamespace) === $namespace) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * @param array<int, SchemaProperty> $properties
      * @param array<int, string> $unionTypes
      * @param array<string, mixed>|null $discriminator
@@ -129,7 +79,7 @@ trait RendersLaravelDataDto
 
         $useStatements = [];
         $dataBase = $morphBase === null
-            ? $this->laravelDataLibraryRef('Spatie\LaravelData\Data', $namespace, $useStatements)
+            ? $this->libraryClassRef('Spatie\LaravelData\Data', $namespace, $useStatements)
             : null;
         $params = [];
         $rules = [];
@@ -185,15 +135,15 @@ trait RendersLaravelDataDto
         }
 
         $validatorRef = $hasWithValidator
-            ? $this->laravelDataLibraryRef('Illuminate\Validation\Validator', $namespace, $useStatements)
+            ? $this->libraryClassRef('Illuminate\Validation\Validator', $namespace, $useStatements)
             : null;
         $containerRef = null;
         $requestRef = null;
         $stdClassRef = null;
         if ($objectShapePaths !== []) {
-            $containerRef = $this->laravelDataLibraryRef('Illuminate\Container\Container', $namespace, $useStatements);
-            $requestRef = $this->laravelDataLibraryRef('Illuminate\Http\Request', $namespace, $useStatements);
-            $stdClassRef = $this->laravelDataLibraryRef('stdClass', $namespace, $useStatements);
+            $containerRef = $this->libraryClassRef('Illuminate\Container\Container', $namespace, $useStatements);
+            $requestRef = $this->libraryClassRef('Illuminate\Http\Request', $namespace, $useStatements);
+            $stdClassRef = $this->libraryClassRef('stdClass', $namespace, $useStatements);
         }
 
         $implementedInterfaces = [];
@@ -262,17 +212,17 @@ trait RendersLaravelDataDto
         $mapping = $discriminator['mapping'];
 
         $useStatements = [];
-        $morphForRef = $this->laravelDataLibraryRef(
+        $morphForRef = $this->libraryClassRef(
             'Spatie\LaravelData\Attributes\PropertyForMorph',
             $namespace,
             $useStatements,
         );
-        $morphableRef = $this->laravelDataLibraryRef(
+        $morphableRef = $this->libraryClassRef(
             'Spatie\LaravelData\Contracts\PropertyMorphableData',
             $namespace,
             $useStatements,
         );
-        $dataBase = $this->laravelDataLibraryRef('Spatie\LaravelData\Data', $namespace, $useStatements);
+        $dataBase = $this->libraryClassRef('Spatie\LaravelData\Data', $namespace, $useStatements);
 
         // The discriminator needs its wire name here as much as any other property, and for one more
         // reason: `DataMorphClassResolver` looks the value up by the property's name and by its INPUT
@@ -284,7 +234,7 @@ trait RendersLaravelDataDto
         if ($property !== $propertyName) {
             $attributes[] = sprintf(
                 '#[%s(%s)]',
-                $this->laravelDataLibraryRef('Spatie\LaravelData\Attributes\MapName', $namespace, $useStatements),
+                $this->libraryClassRef('Spatie\LaravelData\Attributes\MapName', $namespace, $useStatements),
                 $this->laravelStringLiteral($propertyName),
             );
         }
@@ -425,7 +375,7 @@ trait RendersLaravelDataDto
         if ($property['openApiName'] !== $property['name']) {
             $attributes[] = sprintf(
                 '#[%s(%s)]',
-                $this->laravelDataLibraryRef('Spatie\LaravelData\Attributes\MapName', $namespace, $attributeImports),
+                $this->libraryClassRef('Spatie\LaravelData\Attributes\MapName', $namespace, $attributeImports),
                 $this->laravelStringLiteral($property['openApiName']),
             );
         }
@@ -439,7 +389,7 @@ trait RendersLaravelDataDto
         if (($property['writeOnly'] ?? null) === true) {
             $attributes[] = sprintf(
                 '#[%s]',
-                $this->laravelDataLibraryRef('Spatie\LaravelData\Attributes\Hidden', $namespace, $attributeImports),
+                $this->libraryClassRef('Spatie\LaravelData\Attributes\Hidden', $namespace, $attributeImports),
             );
         }
 
@@ -451,7 +401,7 @@ trait RendersLaravelDataDto
         if ($this->laravelDataSuppressesInferredNestedRules($property, $itemClass)) {
             $attributes[] = sprintf(
                 '#[%s]',
-                $this->laravelDataLibraryRef(
+                $this->libraryClassRef(
                     'Spatie\LaravelData\Attributes\WithoutValidation',
                     $namespace,
                     $attributeImports,
@@ -462,7 +412,7 @@ trait RendersLaravelDataDto
         if ($itemClass !== null) {
             $attributes[] = sprintf(
                 '#[%s(%s::class)]',
-                $this->laravelDataLibraryRef(
+                $this->libraryClassRef(
                     'Spatie\LaravelData\Attributes\DataCollectionOf',
                     $namespace,
                     $attributeImports,
@@ -487,7 +437,7 @@ trait RendersLaravelDataDto
         // a schema of that name has to get the fully qualified spelling in the type itself.
         $optionalRef = $property['required']
             ? 'Optional'
-            : $this->laravelDataLibraryRef('Spatie\LaravelData\Optional', $namespace, $attributeImports);
+            : $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $attributeImports);
 
         [$declaredType, $tracksPresence] = $this->laravelDataDeclaredType(
             $phpType,
@@ -630,8 +580,8 @@ trait RendersLaravelDataDto
             : ["'Y-m-d\\TH:i:sP'", "'Y-m-d\\TH:i:s.uP'", "'Y-m-d H:i:s'", "'Y-m-d\\TH:i:s'"];
 
         $castImports = [];
-        $withCastRef = $this->laravelDataLibraryRef('Spatie\LaravelData\Attributes\WithCast', $namespace, $castImports);
-        $castRef = $this->laravelDataLibraryRef(
+        $withCastRef = $this->libraryClassRef('Spatie\LaravelData\Attributes\WithCast', $namespace, $castImports);
+        $castRef = $this->libraryClassRef(
             'Spatie\LaravelData\Casts\DateTimeInterfaceCast',
             $namespace,
             $castImports,
@@ -654,12 +604,12 @@ trait RendersLaravelDataDto
         // modes do — the difference is declared in the normalization parity suite.
         if ($temporalFormat === 'Y-m-d') {
             $transformerImports = [];
-            $withTransformerRef = $this->laravelDataLibraryRef(
+            $withTransformerRef = $this->libraryClassRef(
                 'Spatie\LaravelData\Attributes\WithTransformer',
                 $namespace,
                 $transformerImports,
             );
-            $transformerRef = $this->laravelDataLibraryRef(
+            $transformerRef = $this->libraryClassRef(
                 'Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer',
                 $namespace,
                 $transformerImports,

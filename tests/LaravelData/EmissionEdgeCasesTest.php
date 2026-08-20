@@ -243,6 +243,9 @@ final class EmissionEdgeCasesTest extends TestCase
 
             preg_match_all('/^use ([^;]+);$/m', $source, $matches);
             foreach ($matches[1] as $import) {
+                // `use function array_shift;` names a function, not a class: taking the segment after
+                // the last backslash would look for the literal "function array_shift" in the body.
+                $import = (string)preg_replace('/^function /', '', $import);
                 $shortName = substr((string)strrchr('\\' . $import, '\\'), 1);
                 $this->assertStringContainsString(
                     $shortName,

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Command;
 
 use JsonException;
+use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
+use OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDataDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
@@ -62,6 +64,7 @@ final class GenerateDtoCommand extends Command
     // resolution, naming, templates) stays on this class and is shared by all three. Laravel mode also
     // reads `RendersSymfonyDto::renderSymfonyValidationBlock()` — the interpreter has one
     // implementation and three packagings, see `renderLaravelInterpreterBlock()`.
+    use NamesLibraryClasses;
     use RendersLaravelDataDto;
     use RendersLaravelDto;
     use RendersRuntimeDto;
@@ -3855,7 +3858,7 @@ final class GenerateDtoCommand extends Command
     {
         $content = $this->renderTwig($templateName, $context);
 
-        return rtrim($content) . "\n";
+        return GlobalFunctionImports::apply(rtrim($content) . "\n");
     }
 
     /**
@@ -4589,7 +4592,7 @@ final class GenerateDtoCommand extends Command
      *                               produce the same string, so the property is treated as an upload
      *
      * Only the first two are fixable from the import list, and laravel-data mode does exactly that
-     * (`laravelDataLibraryRef()`). The third is not: it would take a type representation that keeps a
+     * (`libraryClassRef()`). The third is not: it would take a type representation that keeps a
      * class's namespace all the way through, which this generator does not have. So the collision is
      * named at BUILD time instead of surfacing as a fatal or a wrong type at request time — the same
      * bargain as `warnAboutUnhydratableUnionProperties()`.
@@ -4605,11 +4608,18 @@ final class GenerateDtoCommand extends Command
         ];
 
         $byMode = [
+            // runtime resolves its own imports against the document (`libraryClassRef()`), so a
+            // schema named `GeneratedDtoInterface`, `JsonException`, `Stringable`, `Closure` or
+            // `RuntimeException` is spelled `\Foo` in the emitted file and needs no warning.
+            //
+            // `UnsetValue` is the exception, and not because of the emitter: DtoDeserializer
+            // recognises the sentinel by SHORT name (`str_ends_with($typeName, '\UnsetValue')`),
+            // deliberately, so that a sentinel copied into the user's own namespace by
+            // `--dto-generator-namespace` is still recognised. A document schema of that name falls
+            // under the same test and is skipped instead of hydrated, whatever the emitted file says.
             self::ATTRIBUTE_MODE_RUNTIME => [
-                'UnsetValue' => 'the sentinel every optional property defaults to',
-                'GeneratedDtoInterface' => 'the interface every generated DTO implements',
-                'JsonException' => 'the exception the emitted decoder declares',
-                'Stringable' => 'the interface an emitted string wrapper implements',
+                'UnsetValue' => 'the sentinel every optional property defaults to, which the '
+                    . 'deserializer recognises by short name',
             ],
             self::ATTRIBUTE_MODE_SYMFONY => [
                 'Assert' => 'the alias of Symfony\Component\Validator\Constraints in every emitted attribute',
@@ -4623,9 +4633,31 @@ final class GenerateDtoCommand extends Command
                 'FormRequest' => 'the base class of the emitted FormRequest',
                 'stdClass' => 'the type the emitted code casts a JSON map to',
             ],
-            // laravel-data resolves its own imports against the document (`laravelDataLibraryRef()`),
+            // laravel-data resolves its own imports against the document (`libraryClassRef()`),
             // so only the two shared type names are left to warn about there.
             self::ATTRIBUTE_MODE_LARAVEL_DATA => [],
+            // yii3 does NOT resolve yet: it names ~40 library short names across its renderer, so it
+            // warns instead. The list is what every emitted yii3 class imports unconditionally, plus
+            // the rule attributes common enough that a document is likely to reuse the name —
+            // `Result` and `Nested` are ordinary words for an API to call a schema.
+            self::ATTRIBUTE_MODE_YII3 => [
+                'AbstractInput' => 'the base class of every emitted input',
+                'BackedEnum' => 'the type the emitted data set narrows an enum property to',
+                'Callback' => 'the validation rule an emitted interpreter carries',
+                'Collection' => 'the hydrator attribute an emitted array property carries',
+                'Data' => 'the hydrator attribute an emitted renamed property carries',
+                'DataSetInterface' => 'the framework contract every emitted input implements',
+                'DateTimeInterface' => 'the type the emitted data set narrows a temporal property to',
+                'Nested' => 'the validation rule an emitted object property carries',
+                'ObjectParser' => 'the parser the emitted getRules() reads its attributes with',
+                'ReflectionProperty' => 'the reflection the emitted data set reads a property with',
+                'Result' => 'the return type of the emitted #[Callback] interpreter',
+                'RulesProviderInterface' => 'the framework contract every emitted input implements',
+                'ToDateTime' => 'the hydrator attribute an emitted temporal property carries',
+                'UploadedFileInterface' => 'the type `format: binary` resolves to',
+                'ValidationContext' => 'the parameter type of the emitted #[Callback] interpreter',
+                'WhenNull' => 'the empty condition every emitted rule carries',
+            ],
         ];
 
         $reserved = [...$reserved, ...$byMode[$this->attributeMode] ?? []];
@@ -5260,15 +5292,17 @@ final class GenerateDtoCommand extends Command
         $isSymfony = $this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME;
 
         $imports = [];
+        $generatedDtoInterfaceRef = 'GeneratedDtoInterface';
+        $jsonExceptionRef = 'JsonException';
         if (!$isSymfony) {
             // Import the runtime interface only when it lives in another namespace (avoid a
             // self-import), and JsonException for the enum's toJson() (@throws + json_encode with
             // JSON_THROW_ON_ERROR). Sort so the output matches php-cs-fixer's ordered_imports.
             $fqcnNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
-            if ($fqcnNamespace !== $namespace) {
-                $imports[] = $this->generatedDtoInterfaceImportFqcn;
-            }
-            $imports[] = 'JsonException';
+            $generatedDtoInterfaceRef = $fqcnNamespace === $namespace
+                ? 'GeneratedDtoInterface'
+                : $this->libraryClassRef($this->generatedDtoInterfaceImportFqcn, $namespace, $imports);
+            $jsonExceptionRef = $this->libraryClassRef('JsonException', $namespace, $imports);
             sort($imports);
         }
 
@@ -5283,6 +5317,8 @@ final class GenerateDtoCommand extends Command
                 'sourceEndpoint' => $this->endpointByClass[$enumName] ?? null,
                 'sourceSpecLink' => $this->resolveSpecLink($enumName),
                 'sourceRelated' => $this->relatedByClass[$enumName] ?? null,
+                'generatedDtoInterfaceRef' => $generatedDtoInterfaceRef,
+                'jsonExceptionRef' => $jsonExceptionRef,
             ],
         );
     }

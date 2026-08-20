@@ -9,6 +9,7 @@ use DateTimeInterface;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use TypeError;
@@ -3223,5 +3224,66 @@ final class DtoValidatorTest extends TestCase
         $this->expectExceptionMessage('must be of type array, null given');
 
         $this->validator->validate('f', new BrokenDtoStub(), ['type' => 'object', 'required' => ['a']]);
+    }
+
+    /**
+     * A composition keyword INSIDE `items` must still be enforced on every element.
+     *
+     * `validateArray()` answers "does this item schema use composition?" once and hands the answer
+     * to each element, because the schema is the same for all of them. If that answer misses a
+     * keyword, the elements silently stop being checked against it — no error, no failure, just a
+     * payload that should have been refused coming back valid. Mutation-tested: dropping `enum` or
+     * `const` from that list left the whole suite green before these cases existed.
+     *
+     * @param array<string, mixed> $itemSchema
+     * @param array<int, mixed> $accepted
+     * @param array<int, mixed> $refused
+     */
+    #[DataProvider('itemCompositionProvider')]
+    public function testCompositionInsideItemsIsEnforcedOnEveryElement(
+        array $itemSchema,
+        array $accepted,
+        array $refused,
+    ): void {
+        $constraints = ['type' => 'array', 'items' => $itemSchema];
+
+        self::assertSame(
+            [],
+            $this->validator->validate('f', $accepted, $constraints),
+            'the accepted list must pass',
+        );
+        self::assertNotSame(
+            [],
+            $this->validator->validate('f', $refused, $constraints),
+            'the refused list must not pass — the keyword was dropped for the elements',
+        );
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: array<int, mixed>, 2: array<int, mixed>}>
+     */
+    public static function itemCompositionProvider(): array
+    {
+        return [
+            'enum' => [['enum' => ['a', 'b']], ['a', 'b'], ['a', 'zz']],
+            'const' => [['const' => 7], [7, 7], [7, 8]],
+            'oneOf' => [['oneOf' => [['type' => 'integer', 'minimum' => 5], ['type' => 'string']]], [9, 'x'], [9, 1]],
+            'anyOf' => [['anyOf' => [['type' => 'boolean'], ['type' => 'integer', 'maximum' => 3]]], [true, 2], [true, 9]],
+            'allOf' => [['allOf' => [['type' => 'integer'], ['minimum' => 3]]], [3, 4], [3, 1]],
+            'not' => [['not' => ['const' => 'bad']], ['ok', 'fine'], ['ok', 'bad']],
+            'if' => [['if' => ['type' => 'integer'], 'then' => ['minimum' => 10]], [10, 'x'], [10, 5]],
+        ];
+    }
+
+    /**
+     * The same for `contains`, which also applies ONE schema to every element and got the same
+     * hoisted answer.
+     */
+    public function testCompositionInsideContainsIsEnforced(): void
+    {
+        $constraints = ['type' => 'array', 'contains' => ['enum' => ['hit']]];
+
+        self::assertSame([], $this->validator->validate('f', ['miss', 'hit'], $constraints));
+        self::assertNotSame([], $this->validator->validate('f', ['miss', 'other'], $constraints));
     }
 }

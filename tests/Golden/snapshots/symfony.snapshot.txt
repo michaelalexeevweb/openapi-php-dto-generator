@@ -1,4 +1,4 @@
-# symfony mode — 35 files, 2051 lines
+# symfony mode — 35 files, 2080 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1456,6 +1456,35 @@ namespace GoldenCorpus;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
+
+use function array_filter;
+use function array_is_list;
+use function array_key_exists;
+use function array_keys;
+use function array_pop;
+use function array_unique;
+use function array_values;
+use function filter_var;
+use function floor;
+use function get_object_vars;
+use function implode;
+use function in_array;
+use function is_array;
+use function is_bool;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_scalar;
+use function is_string;
+use function json_encode;
+use function ltrim;
+use function method_exists;
+use function preg_match;
+use function preg_replace;
+use function property_exists;
+use function sprintf;
+use function str_contains;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.

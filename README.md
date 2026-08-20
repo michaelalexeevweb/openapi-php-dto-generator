@@ -6,250 +6,182 @@
 [![PHP Version](https://img.shields.io/packagist/php-v/michaelalexeevweb/openapi-php-dto-generator)](https://packagist.org/packages/michaelalexeevweb/openapi-php-dto-generator)
 [![Total Downloads](https://img.shields.io/packagist/dt/michaelalexeevweb/openapi-php-dto-generator)](https://packagist.org/packages/michaelalexeevweb/openapi-php-dto-generator)
 
-**Generate PHP DTOs from OpenAPI and validate incoming HTTP requests against OpenAPI schema.**
+### Your OpenAPI document, enforced by the PHP it generates.
 
-Stop writing boilerplate PHP data transfer objects by hand. This library reads your OpenAPI 3.x YAML specification and automatically generates strictly-typed, immutable PHP 8.3 DTO classes. On top of that, it provides runtime services to **deserialize** Symfony `Request` objects into those DTOs, **validate HTTP requests** against the original OpenAPI schema rules (OpenAPI request validation), and **normalize** them back to arrays or JSON — all in one package.
+Point it at an OpenAPI 3.0 / 3.1 spec. Get immutable, strictly-typed PHP 8.3 DTOs whose **generated code
+enforces the whole schema** — `oneOf`, `minimum`, `pattern`, `format`, `unevaluatedProperties`, all of it —
+for Symfony, Laravel, `spatie/laravel-data`, Yii3, or standalone.
 
-## Features
-
-- 🚀 **Code generation** — generate immutable PHP DTO classes directly from OpenAPI 3.0 / 3.1 YAML specs
-- 🎯 **Five generation modes** — **[runtime](README.runtime.md)** (DTOs backed by this library's validator/normalizer/deserializer), **[symfony](README.symfony.md)** (plain DTOs decorated with Symfony `#[Assert\*]` / `#[SerializedName]` / `#[Groups]` attributes), **[laravel](README.laravel.md)** (a plain DTO plus a `FormRequest` carrying `rules()` — nothing to install beyond the framework), **[laravel-data](README.laravel-data.md)** (one `spatie/laravel-data` class per schema, with `Optional` for presence) or **[yii3](README.yii3.md)** (a `yiisoft/input-http` class per schema, with `yiisoft/validator` attributes)
-- ✅ **OpenAPI request validation** — validate HTTP requests against OpenAPI constraints (required fields, types, enums, formats, etc.)
-- 🔄 **Normalization** — convert DTOs to plain arrays or JSON, with or without validation
-- 📦 **Symfony Request support** — deserialize Symfony `Request` objects directly into typed PHP DTOs
-- 🔌 **Framework-agnostic (PSR-7)** — deserialize any PSR-7 `ServerRequestInterface` via `DtoDeserializerPsr7` (Slim, Mezzio, Laminas, Yii3, …); Symfony `Request` covers Symfony + Laravel
-- 🔒 **Immutable by design** — runtime-mode DTOs are read-only value objects; in Symfony mode the required half is `readonly` and the optional half has setters, which is what powers `isXxxProvided()`
-- ⚡ **Supports OpenAPI 3.0.x and 3.1.x**
-
-## Table of Contents
-
-- [Installation](#installation)
-- [Requirements](#requirements)
-- [Quick Start](#quick-start)
-- [Generate DTOs](#generate-dto-classes-from-yaml-openapi-spec)
-- [Generation Modes](#generation-modes)
-  - [Runtime mode guide](README.runtime.md) — request binding, presence tracking, PSR-7
-  - [Symfony mode guide](README.symfony.md) — attribute mapping, serialization groups, error codes
-  - [Laravel mode guide](README.laravel.md) — FormRequest, rules(), what the interpreter adds
-  - [laravel-data mode guide](README.laravel-data.md) — `Data` classes, `Optional` presence, morph unions
-  - [yii3 mode guide](README.yii3.md) — input classes, `#[Callback]` interpreter, the enum type caster
-- [Support matrix](README.support-matrix.md) — every keyword per mode, the eleven divergences, what is not generated at all
-- [Performance](README.performance.md) — bind / validate / normalize per mode, measured, with the benchmark to re-run it
-- [Validation Notes](#validation-notes)
-- [Upgrading](#upgrading)
-
-## Installation
+Generate DTOs from OpenAPI, deserialize a Symfony `Request` or any PSR-7 request straight into them,
+validate incoming HTTP requests against the OpenAPI schema, and normalize back to arrays or JSON — one
+package, and no spec parsing at runtime.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.14.0
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.0
 ```
 
-## Requirements
+---
 
-- PHP 8.3+
-- Symfony 7.4 components (`console`, `http-foundation`, `mime`, `yaml`)
+## Why this one
 
-## Quick Start
+Five PHP tools were downloaded and run on the **same spec** with the **same payloads**. Nothing below is
+quoted from anyone's README — every cell is a verdict the tool actually returned.
+[The method, the versions, and where we are behind →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md)
 
-1. **Generate DTOs** from your OpenAPI YAML spec
-2. **Deserialize** and **validate** an incoming HTTP request into a generated DTO
-3. **Validate** and **normalize** the DTO for response
+Schema under test: `code` is `oneOf [integer 10..100, string uuid]`, plus `pattern`, `format` and `enum`
+elsewhere in the document.
+
+| | `minimum` / `maximum` | `pattern` | `format` | `oneOf` | builds a typed object |
+|---|:--:|:--:|:--:|:--:|:--:|
+| JanePHP `open-api-3` 7.13, `validation: true` | ❌ | ❌ | ❌ | ❌ | ✅ |
+| OpenAPI Generator 7.24 — `php-symfony`, `php-dt`, `php-nextgen` | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `league/openapi-psr7-validator` 0.24 | ✅ | ✅ | ✅¹ | ✅ | ❌ |
+| **this library — all five modes** | **✅** | **✅** | **✅** | **✅** | **✅** |
+
+<sub>¹ everything except `uri-template`.</sub>
+
+**Every other generator in the set checks the type and whether the key is present, and stops there.** In the whole set, the OpenAPI
+vocabulary is enforced by exactly one tool — a runtime validator that generates no classes at all. This is
+the only one that does both.
+
+What that costs you on real payloads:
+
+| payload | this library | league | Jane |
+|---|---|---|---|
+| `code: 42.5` — not an integer | rejected | rejected | **accepted** |
+| `code: 5` — breaks `minimum: 10` | rejected | rejected | **accepted** |
+| `code: "nope"` — matches no branch | rejected | rejected | **accepted** |
+| `homepage: "not a uri"` — `format: uri` | rejected | rejected | **accepted** |
+| `endpoint` — malformed `uri-template` | rejected | **accepted** | **accepted** |
+
+And the sentence your client gets back:
+
+| | message for `code: "nope"` |
+|---|---|
+| **this library** | `param "code" must match format uuid` |
+| league | `Keyword validation failed: Data must match exactly one schema` |
+| Jane | *(accepted — no message)* |
+
+### Three things that only fall out of generating the checks
+
+- **Nothing is parsed at boot.** The spec is compiled into a literal `const` inside the generated class.
+  `league` re-reads the YAML in every PHP process — **21.8 ms** before it answers the first request. Here
+  that cost does not exist.
+  [Performance →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md)
+- **PATCH is expressible.** "Absent" and "sent as `null`" stay different values — a sentinel, an `Optional`
+  member, or an uninitialised typed property, depending on the mode. OpenAPI Generator makes every property
+  nullable with `= null`, so the two collapse into one and a partial update cannot be written correctly.
+- **An undiscriminated `anyOf` stays honest.** You get an interface plus one class per branch, and a warning
+  at generation time saying it will not be hydrated. Others flatten the branches into a single class — where
+  a cat carrying `bark` passes — or drop the property to `mixed`.
+
+### Fast, because the checks are emitted code
+
+`bin/benchmark`, PHP 8.5 in the project container, opcache off, 20 000 iterations, mean of two runs:
+
+| | bind | validate | normalize | round trip |
+|---|---:|---:|---:|---:|
+| runtime | 0.1232 ms | 0.1177 ms | 0.0178 ms | **0.2588 ms** |
+| laravel (`FormRequest`) | **0.0037 ms** | 1.7163 ms | **0.0032 ms** | 1.7233 ms |
+
+The generated Laravel interpreter — the part this library actually writes — is **1.9%** of that Laravel
+validate step; the millisecond is `illuminate/validation` walking the rule array.
+[Full numbers, and the benchmark to re-run them →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md)
+
+---
+
+## 60 seconds
+
+Generate:
+
+```bash
+php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:generate-dto \
+  --file=openapi.yaml --directory=src/Generated --namespace='App\Generated'
+```
+
+Use:
 
 ```php
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
-use Symfony\Component\HttpFoundation\Request;
-use YourApp\Generated\UserPostRequest; // generated DTO from OpenAPI spec
-use YourApp\Generated\UserViewResponse; // generated DTO from OpenAPI spec
+use App\Generated\UserPostRequest;
 
-$deserializer = new DtoDeserializer();
-$normalizer   = new DtoNormalizer();
+// request: read it according to the document, or throw naming what is wrong
+$dto = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
 
-/** @var Request $request */
-// request: deserialize -> validate
-$requestDto = $deserializer->deserialize($request, UserPostRequest::class);
+$dto->getName();              // string, guaranteed
+$dto->isEmailInRequest();     // was the key sent at all? — PATCH without guesswork
 
-// response: validate -> normalize
-$responseData = $normalizer->validateAndNormalizeToArray($requestDto);
-// response: normalize without validation for faster response
-$responseData = $normalizer->toArray(new UserViewResponse(name: 'John', surname: 'Doe'));
+// response: validate against the same document, then normalize
+$body = (new DtoNormalizer())->validateAndNormalizeToArray($responseDto);
 ```
 
-## Usage
+That is runtime mode. Add `--attributes=symfony|laravel|laravel-data|yii3` to get the same enforcement in
+your framework's own shape instead.
 
-### Add script in your project `composer.json`
+[Every CLI option, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
 
-```json
-{
-  "scripts": {
-    "openapi:generate-dto": "php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:generate-dto"
-  }
-}
-```
+---
 
-### Generate DTO classes from YAML OpenAPI spec
+## Five modes, one vocabulary
 
-**Default — use the runtime services straight from the installed package.** Omit the
-`--dto-generator-*` options: the generated DTOs reference the runtime classes from
-`vendor/` (`OpenapiPhpDtoGenerator\Contract\…`), so nothing is copied and updates come
-through `composer update`:
+All five enforce the same OpenAPI vocabulary. They differ in what surrounds it — who validates, what the
+errors look like, and what you have to install.
 
-```bash
-composer openapi:generate-dto -- \
-  --file=OpenApiExamples/test.yaml \
-  --directory=generated/test \
-  --namespace=Generated\\Test
-```
-
-**Optional — vendor a private copy of the runtime services** into your project (e.g. to
-commit them or decouple from the package). Pass `--dto-generator-directory`; the generated
-DTOs then reference that copied namespace instead of `vendor/`:
-
-```bash
-composer openapi:generate-dto -- \
-  --file=OpenApiExamples/test.yaml \
-  --directory=generated/test \
-  --namespace=Generated\\Test \
-  --dto-generator-directory=Common \
-  --dto-generator-namespace=Generated\\Common
-```
-
-Parameters:
-
-| Option | Alias | Required | Description |
+| Mode | What it emits | Needs | Errors arrive as |
 |---|---|---|---|
-| `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON) |
-| `--directory` | `-d` | ✅ | Output directory for generated DTOs |
-| `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
-| `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
-| `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
-| `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime), `symfony` (DTOs decorated with Symfony Validator/Serializer attributes), `laravel` (a plain DTO plus a `FormRequest` with `rules()`), `laravel-data` (one `spatie/laravel-data` class per schema) or `yii3` (a `yiisoft/input-http` class per schema). See [Generation Modes](#generation-modes). |
-| `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
-| `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
-| `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
+| **[runtime](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.runtime.md)** *(default)* | immutable DTO + this library's validator / normalizer / deserializer | this package | one aggregated exception |
+| **[symfony](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.symfony.md)** | plain DTO with `#[Assert\*]`, `#[SerializedName]`, `#[Groups]` | `symfony/validator` + `symfony/serializer` | `ConstraintViolationList`, 422 via `#[MapRequestPayload]` |
+| **[laravel](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel.md)** | plain DTO + a `FormRequest` carrying `rules()` | nothing beyond the framework | the framework's own 422 error bag |
+| **[laravel-data](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel-data.md)** | one `Data` class per schema, `Optional` for presence | `spatie/laravel-data` | the framework's own 422 error bag |
+| **[yii3](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.yii3.md)** | one `AbstractInput` per schema, `yiisoft/validator` attributes | `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/input-http` | a `Result` your action reads |
 
-## Generation Modes
+**Rule of thumb.** Pick **runtime** when the request itself must follow the document — parameter styles,
+`allowReserved`, multipart encoding, partial updates, one library end to end. Pick **symfony** or
+**laravel** when you want plain DTOs your framework owns and errors in the shape it already speaks. Pick
+**laravel-data** or **yii3** when your application already runs that package.
 
-The generator emits DTOs in one of five modes, selected with `--attributes` (default: `runtime`).
-All five enforce the same OpenAPI vocabulary on a payload — they differ in what surrounds it.
+The modes are not interchangeable in every corner, and the corners are written down rather than left to be
+discovered: **[the support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md)**
+gives the keyword-by-keyword answer per mode, names every place they diverge and why, and lists what is not
+generated in any of them. It is derived from the parity test suites, so a row that stops being true fails a
+test.
 
-| | **[Runtime](README.runtime.md)** (default) | **[Symfony](README.symfony.md)** (`--attributes=symfony`) | **[Laravel](README.laravel.md)** (`--attributes=laravel`) | **[laravel-data](README.laravel-data.md)** (`--attributes=laravel-data`) | **[yii3](README.yii3.md)** (`--attributes=yii3`) |
-|---|---|---|---|---|---|
-| Generated class | `implements GeneratedDtoInterface`, getters, metadata methods | plain class with getters, `#[Assert\*]` attributes | plain class with getters, `rules()`, `fromValidated()`, plus a `FormRequest` for every request payload | one `Data` subclass: promoted `public readonly`, `rules()`, `withValidator()` | one `AbstractInput` subclass: no constructor, `public readonly` properties, `yiisoft/validator` attributes, getters |
-| Depends on | this package (or a vendored copy of its services) | `symfony/validator` + `symfony/serializer` | nothing to install — `FormRequest` and the validator ship with Laravel | `spatie/laravel-data` | `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/input-http` |
-| Validation runs in | `DtoValidator` | Symfony constraints + a generated `#[Assert\Callback]` | Laravel rules + a generated `withValidator()` | the same rules and the same `withValidator()`, run by laravel-data | `yiisoft/validator` rules + a generated class-level `#[Callback]` |
-| Errors come out as | one aggregated exception | `ConstraintViolationList` (422 through `#[MapRequestPayload]`) | the framework's own 422 with its error bag | the framework's own 422 with its error bag | a `Result` the ACTION reads — Yii3 raises no 422 itself |
-| Validated before the controller runs | you call the deserializer | yes, via `#[MapRequestPayload]` | yes, the FormRequest is resolved first | yes, on `Data::from($request)` | hydrated and validated, but you read the verdict |
-| Request binding | done here: sources, `style`/`explode`, `allowReserved`, multipart Encoding | done by Symfony, so those OpenAPI rules do not apply | done by Laravel, same limitation | done by Laravel, same limitation | body/query/path bound natively; header and cookie are not |
-| PATCH / partial updates | yes — `UnsetValue` presence tracking | yes — `isXxxProvided()`, recorded by the setter | yes — `isXxxProvided()`, from the validated keys | yes — `Optional`, the property's own type | yes — an unsent key leaves the property uninitialised; `hasProperty()` and `isXxxProvided()` read that |
-| `readOnly` / `writeOnly` | enforced | serialization groups you have to pass | enforced | `writeOnly` enforced (`#[Hidden]`), `readOnly` input echoed back | enforced — neither is written into `getData()` |
-| `additionalProperties: false` on a DTO-shaped schema | not enforced (the payload is bound first) | not enforced | **enforced** — the interpreter sees the raw payload | **enforced** — same interpreter | not enforced (the hydrator binds first) |
+---
 
-Rule of thumb: **runtime** when the request itself must follow the spec (parameter styles, partial
-updates, one library end to end); **symfony** or **laravel** when you want plain DTOs your framework
-owns, validated by the framework, with errors in the shape it already speaks; **laravel-data** when your
-application already runs that package and you want generated classes to match the ones you write;
-**yii3** when a Yii3 application wants native attributes rather than this library's runtime over PSR-7.
+## Documentation
 
-Each mode has its own guide — what it can do, how to wire it, where it stops:
+| | |
+|---|---|
+| [How it compares](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md) | five tools downloaded and run on the same spec, same payloads |
+| [Support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md) | every keyword per mode, every divergence, what is out of scope |
+| [Performance](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md) | bind / validate / normalize per mode, measured, with the benchmark |
+| [Validation notes](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.validation.md) | where a careless reading of the spec and a correct one disagree |
+| [CLI reference](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md) | every option, vendoring the runtime, external `$ref` mapping |
+| [runtime](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.runtime.md) · [symfony](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.symfony.md) · [laravel](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel.md) · [laravel-data](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel-data.md) · [yii3](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.yii3.md) | one guide per mode: what it does, how to wire it, where it stops |
+| [CHANGELOG](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/CHANGELOG.md) | every release, what it breaks, and what to do about it |
 
-- **[README.runtime.md](README.runtime.md)**
-- **[README.symfony.md](README.symfony.md)**
-- **[README.laravel.md](README.laravel.md)**
-- **[README.laravel-data.md](README.laravel-data.md)**
-- **[README.yii3.md](README.yii3.md)**
+---
 
-For the keyword-by-keyword answer — what every mode enforces, the eleven places they differ and why, and
-what is not generated in any of them — see the **[support matrix](README.support-matrix.md)**. It is
-derived from the parity suites, so a row that stops being true fails a test.
+## Requirements
 
+PHP 8.3+ and the Symfony 7.4 components `console`, `http-foundation`, `mime`, `yaml`. Each mode's own
+dependencies are in its guide.
 
-## Validation Notes
+## What it does not do
 
-A few behaviours worth knowing when validating against the schema:
-
-- **`type: array` means a JSON array (list).** A value passes only when it is a PHP list (sequential integer keys from `0`). An associative array is treated as a JSON object, not an array — so a getter returning `array_filter(...)` (which may leave non-contiguous keys) should wrap the result in `array_values(...)`.
-- **`oneOf` / `anyOf` pick the first matching branch.** Branches are tried in declaration order and the first one that validates wins. When several branches accept the same input (e.g. `oneOf: [string, integer]` given `"123"`), order your schema branches from most specific to least specific.
-- **`unevaluatedProperties` / `unevaluatedItems` (JSON Schema 2019-09/2020-12, OpenAPI 3.1).** Like `additionalProperties: false` / a suffix `items`, but annotation-aware: a key or index counts as "evaluated" when it is covered by this schema *or* by any in-place applicator that actually applies (`allOf`, a passing `anyOf`/`oneOf` branch, the taken `if`/`then`/`else` arm, a triggered `dependentSchemas`) — recursively, to any nesting depth. Only what is left over is checked. They are enforced on the non-materialized paths (raw lists, inline maps); a composed object with named properties is materialized into a dedicated nested DTO where unknown keys are impossible by construction.
-- **`contentEncoding` / `contentMediaType` / `contentSchema` (JSON Schema 2019-09/2020-12, OpenAPI 3.1).** Enforced as assertions on strings: the value must decode under `contentEncoding` (`base64`, `base16`, `quoted-printable`, `7bit`/`8bit`/`binary`; an unknown codec such as `base32` is accepted leniently), the decoded bytes must parse when `contentMediaType` is a JSON type (`application/json` or any `+json`), and the parsed document must satisfy `contentSchema`.
-- **`$defs` (JSON Schema) is folded into `components.schemas`.** A `$defs` map (in the root document or an external file) and any `#/$defs/X` pointer — local `#/$defs/X` or cross-file `other.yaml#/$defs/X` — are normalized to `components.schemas` at load time, so `$defs`-style specs generate the same as `components`-style ones. (Subschema-local `$defs`, e.g. `#/components/schemas/Foo/$defs/Bar`, is not folded — prefer top-level `components.schemas`/`$defs` for shared types.)
-- **Parameters serialized via `content`.** A parameter that uses `content: {application/json: {schema}}` instead of a plain `schema` is supported: the schema is extracted and its JSON-string value is decoded before validation and casting (malformed JSON is a clear error).
-- **`type: integer` accepts a number with a zero fractional part** (JSON Schema 2020-12 §6.1.1), so a payload of `42.0` is a valid integer while `42.5` is not. Runtime and Laravel mode follow this end to end, hydration included. Symfony mode cannot: its serializer type-checks the `int` property before any generated constraint runs, and rejects `42.0` with a denormalization error.
-- **`type: object` refuses a JSON array.** `{"tags":[1,2]}` where the schema says object is rejected — it used to be accepted and read as a map keyed `0..n-1`. The distinction lives in the RAW body: once PHP decodes it, a JSON object whose keys are exactly `0..n-1` and a JSON array are the same value. So the check runs where the raw body is still reachable — the runtime deserializer decodes it itself, and the generated Laravel `FormRequest` hands `withValidator()` the undecoded body. Symfony mode cannot: `#[MapRequestPayload]` denormalizes first, so there it stays accepted.
-- **Error messages are the same sentence in every mode**, differing only in how the subject is named:
-
-  | Mode | Sentence |
-  |---|---|
-  | runtime | `param "tags" must contain unique items` |
-  | symfony | `field "tags" must contain unique items` |
-  | laravel | `tags must contain unique items` — keyed by `tags` in the error bag |
-
-  This holds for every keyword the interpreter owns (`oneOf`, `anyOf`, `not`, `contains`, `if`/`then`, `propertyNames`, `unevaluated*`, …) and is pinned by `tests/Parity/InterpreterMessageParityTest`. A keyword the framework has its own rule for keeps the FRAMEWORK's message — `exclusiveMinimum` reads *"This value should be greater than 3."* in Symfony mode and `multipleOf` resolves `validation.multiple_of` in Laravel mode — so your own translations still apply.
-- **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
+It generates the **server** side: the classes an incoming request becomes, and the checks that request must
+pass. It does not generate an HTTP client or an SDK for calling someone else's API — if that is what you
+need, JanePHP and OpenAPI Generator do it and this does not.
 
 ## Upgrading
 
-**2.13.0 → 2.14.0** adds the `yii3` generation mode. No contract, constructor signature or public
-method changed, so an upgrade is a `composer update` — but **regenerate**, because three things reach
-the four existing modes:
+`composer update`, then regenerate. Every release says what changed in the emitted code, what breaks and
+what to do about it: **[CHANGELOG.md](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/CHANGELOG.md)**.
 
-- **a bug fix in laravel mode**, inherited by laravel-data: `minimum: 3` next to
-  `exclusiveMinimum: true` (the OpenAPI 3.0 spelling of an exclusive bound) became Laravel's
-  inclusive `min:3` AND took the keyword away from the interpreter, so the boundary value was
-  ACCEPTED where every other mode refused it. Regenerated code now refuses it too;
-- the emitted interpreter steps aside for a `null` the document explicitly marks `nullable` instead
-  of adding a second message about it;
-- it emits only the numeric checks a schema actually uses, rather than all five whenever one of them
-  is present. Same verdicts, shorter method.
+The one signature change to watch for is 2.12.0 → 2.13.0, and only if a class of **your own** implements
+`DtoDeserializerInterface` — two methods gained optional parameters there.
 
-runtime-mode output is byte-identical. `--attributes=yii3` emits one `yiisoft/input-http` input per
-schema; what its generated code needs is `yiisoft/validator` and `yiisoft/input-http` (plus `ext-intl`
-for temporal formats), listed under `suggest`. See [README.yii3.md](README.yii3.md) and the
-[CHANGELOG](CHANGELOG.md).
+## License
 
-**2.12.0 → 2.13.0** fixes two element shapes that could not be deserialized at all and changes nothing
-in the generated output (byte-identical in all four modes). `deserializeValue()` and
-`deserializeCollection()` never passed the items schema's `nullable` / `format` down to the per-element
-cast, so a `format: date` element and a `null` element were both rejected; both now take
-`$nullable`/`$itemsNullable` and a temporal format, defaulting to the old strict behaviour so **every
-existing call site keeps working unchanged**.
-
-**Breaking for classes of YOUR OWN implementing `DtoDeserializerInterface`** — the two methods gained
-optional parameters there, so an implementation still declaring the 2.12.0 arity fatals at autoload
-with *"Declaration … must be compatible with …"*. Copy the new signatures:
-
-```php
-public function deserializeCollection(
-    Request $request, string $itemType, bool $itemsNullable = false, ?string $itemTemporalFormat = null,
-): array;
-
-public function deserializeValue(
-    mixed $data, string $type, string $path = 'value', bool $nullable = false, ?string $temporalFormat = null,
-): mixed;
-```
-
-The parameters had to go on the contract rather than on the service alone: the declared return follows
-the nullable flag (`T` off, `T|null` on), and an implementation may not widen a return type its
-interface narrows — so a contract without the flag could not tell the truth about null. Consumers,
-type hints and DI are unaffected. See the [CHANGELOG](CHANGELOG.md).
-
-**2.11.0 → 2.12.0** adds one method and changes nothing else: generated output is byte-identical in all
-four modes, and `DtoDeserializer::deserializeValue()` deserializes a single already-decoded JSON value so
-a batch endpoint can report per-element errors. The one caveat: the method was added to
-`DtoDeserializerInterface`, so a class of YOUR OWN implementing that interface must add it — type hints on
-the interface are unaffected. See the [CHANGELOG](CHANGELOG.md).
-
-The library itself is a drop-in replacement: **DTOs generated by 2.8.x keep working unchanged against
-2.10.0 services** (measured on 55 specs — same accept/reject verdicts, same normalized output; the two
-metadata methods added in 2.9.0 are simply absent on old DTOs and the services fall back).
-
-**2.9.0 → 2.10.0** adds a mode and changes nothing else for existing users: runtime-mode output is
-byte-identical, Symfony-mode output differs in two lines of the emitted interpreter, and the whole 2.9.0
-test suite passes against 2.10.0 services with one intentional difference — `type: integer` now accepts
-`42.0`, which the spec always called an integer. Code that string-matches an error message should read
-the three message changes in the [CHANGELOG](CHANGELOG.md).
-
-What changes is the code the generator EMITS — a bare `type: object` property becomes a map, a named
-scalar schema becomes a type alias, and Symfony-mode DTOs expose accessors instead of public
-properties. Every change, what it breaks and what to do about it:
-**[CHANGELOG.md](CHANGELOG.md#upgrading-from-28x)**.
+MIT.

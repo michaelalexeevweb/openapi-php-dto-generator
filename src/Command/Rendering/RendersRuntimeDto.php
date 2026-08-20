@@ -116,6 +116,12 @@ trait RendersRuntimeDto
                 'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
                 'sourceSpecLink' => $this->resolveSpecLink($className),
                 'sourceRelated' => $this->relatedByClass[$className] ?? null,
+                // A union renders an INTERFACE: no body, so none of these are reached. They are
+                // passed because the template is shared, not because this branch names them.
+                'unsetValueRef' => 'UnsetValue',
+                'closureRef' => 'Closure',
+                'runtimeExceptionRef' => 'RuntimeException',
+                'jsonExceptionRef' => 'JsonException',
                 'unionMembers' => implode(
                     '|',
                     array_map(
@@ -142,19 +148,22 @@ trait RendersRuntimeDto
         $classModifiers = $isAbstract
             ? 'abstract '
             : (array_key_exists($className, $this->parentClasses) ? '' : 'final ');
+        // Every library class this file names goes through libraryClassRef(), so a document that calls
+        // a schema `Stringable` gets `\Stringable` here instead of an import that would collide with
+        // its own class. {@see NamesLibraryClasses}
         $fqcnNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
-        if ($fqcnNamespace !== $namespace) {
-            $useStatements[] = $this->generatedDtoInterfaceImportFqcn;
-        }
-        $useStatements[] = 'JsonException';
-        $useStatements[] = 'Stringable';
+        $generatedDtoInterfaceRef = $fqcnNamespace === $namespace
+            ? 'GeneratedDtoInterface'
+            : $this->libraryClassRef($this->generatedDtoInterfaceImportFqcn, $namespace, $useStatements);
+        $jsonExceptionRef = $this->libraryClassRef('JsonException', $namespace, $useStatements);
+        $stringableRef = $this->libraryClassRef('Stringable', $namespace, $useStatements);
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
 
         $implementedInterfaces = array_values(array_unique([
             ...($this->unionInterfacesByClass[$className] ?? []),
-            'GeneratedDtoInterface',
-            'Stringable',
+            $generatedDtoInterfaceRef,
+            $stringableRef,
         ]));
         $implementedInterfaces = array_map(
             fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
@@ -272,6 +281,10 @@ trait RendersRuntimeDto
             : null;
 
         $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
+        // Schema-LEVEL keywords, as opposed to the per-property map above. Only the ones the
+        // runtime deserializer can act on are carried, and only when the document sets them.
+        $objectConstraints = $this->resolveObjectConstraints($className);
+        $fastHydrator = $this->resolveFastHydratorPlan($ownProperties, $constructorParams, $extends, $discriminator);
         $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
         $parameterSourceAssignments = $this->resolveParameterSourceAssignments($ownProperties);
         $parameterStyleAssignments = $this->resolveParameterStyleAssignments($ownProperties);
@@ -282,8 +295,21 @@ trait RendersRuntimeDto
             $constructorParams,
             static fn(array $param): bool => $param['usesUnsetSentinel'],
         ) !== [];
-        if ($needsUnsetValueImport) {
-            $useStatements[] = $this->unsetValueImportFqcn;
+        $unsetValueRef = $needsUnsetValueImport
+            ? $this->libraryClassRef($this->unsetValueImportFqcn, $namespace, $useStatements)
+            : 'UnsetValue';
+
+        // The generated hydrator names two global classes. They are imported like every other class
+        // this file uses rather than written fully qualified, so the emitted code reads the same way
+        // throughout — unless the document owns the name, which libraryClassRef() answers for.
+        $closureRef = 'Closure';
+        $runtimeExceptionRef = 'RuntimeException';
+        if ($fastHydrator !== null) {
+            $closureRef = $this->libraryClassRef('Closure', $namespace, $useStatements);
+            $runtimeExceptionRef = $this->libraryClassRef('RuntimeException', $namespace, $useStatements);
+        }
+
+        if ($needsUnsetValueImport || $fastHydrator !== null) {
             $useStatements = array_values(array_unique($useStatements));
             sort($useStatements);
         }
@@ -307,6 +333,12 @@ trait RendersRuntimeDto
             'discriminator' => $discriminatorData,
             'extends' => $extends,
             'constraintAssignments' => $constraintAssignments,
+            'objectConstraints' => $objectConstraints,
+            'fastHydrator' => $fastHydrator,
+            'unsetValueRef' => $unsetValueRef,
+            'closureRef' => $closureRef,
+            'runtimeExceptionRef' => $runtimeExceptionRef,
+            'jsonExceptionRef' => $jsonExceptionRef,
             'aliasAssignments' => $aliasAssignments,
             'parameterSourceAssignments' => $parameterSourceAssignments,
             'parameterStyleAssignments' => $parameterStyleAssignments,
@@ -460,7 +492,13 @@ trait RendersRuntimeDto
 
             // No explicit default → the sentinel itself is the constructor default.
             if ($defaultValue === '') {
-                $defaultValue = ' = UnsetValue::UNSET';
+                // Not the bare short name: a document is allowed to call a schema `UnsetValue`, and
+                // then this would read as ITS class and the constant would not exist.
+                // {@see NamesLibraryClasses}
+                $ignoredImports = [];
+                $defaultValue = ' = '
+                    . $this->libraryClassRef($this->unsetValueImportFqcn, $namespace, $ignoredImports)
+                    . '::UNSET';
             }
         } elseif (!$property['required'] && $defaultValue === '' && $property['nullable']) {
             $defaultValue = ' = null';
@@ -809,6 +847,109 @@ trait RendersRuntimeDto
         return $result;
     }
 
+    /**
+     * Data for the generated straight-line hydrator, or null when this class cannot have one.
+     *
+     * Emitted only for a shape the method expresses COMPLETELY: no inheritance, no discriminator,
+     * and every property a plain body field with no parameter source, no serialization style, no
+     * `readOnly` rule and no default. Everything else keeps the general loop in `DtoDeserializer` —
+     * a partially-correct fast path is worse than none, because the two routes would then answer
+     * differently and nothing would say so.
+     *
+     * Note what is NOT in that list: casting, `fieldConstraints`, error wording. Those stay with
+     * the deserializer, reached through the `$cast` closure, so the generated method holds no
+     * semantics of its own to drift from.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @param array<int, array<string, mixed>> $constructorParams in the order the constructor declares them
+     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @return array<int, array{name: string, wireName: string, required: bool, flag: string}>|null
+     */
+    private function resolveFastHydratorPlan(
+        array $properties,
+        array $constructorParams,
+        ?string $extends,
+        ?array $discriminator,
+    ): ?array {
+        if ($extends !== null || $discriminator !== null || $properties === []) {
+            return null;
+        }
+
+        // The plan follows the CONSTRUCTOR's parameter order, which is required-first and therefore
+        // not the schema's order. Reading it off the property list instead passed a slug where a
+        // status was expected — a wrong-type TypeError, caught by the benchmark corpus and missed by
+        // 564 generated equivalence cases, none of which interleaved required with optional.
+        $byName = [];
+        foreach ($properties as $property) {
+            $byName[$property['name']] = $property;
+        }
+
+        $ordered = [];
+        $declaredTypes = [];
+        foreach ($constructorParams as $constructorParam) {
+            $orderedProperty = $byName[$constructorParam['name']] ?? null;
+            if ($orderedProperty === null) {
+                return null;
+            }
+            $ordered[] = $orderedProperty;
+            // The constructor's own declared type, carried so the generated method can state it. The
+            // `$cast` closure returns `mixed`, so without it a static analyser reads the argument as
+            // `mixed|null` against a `string` parameter and reports a null it cannot reach.
+            $declaredTypes[$constructorParam['name']] = $constructorParam['type'];
+        }
+        if (count($ordered) !== count($properties)) {
+            return null;
+        }
+
+        $plan = [];
+        foreach ($ordered as $property) {
+            $boundToAParameter = ($property['inPath'] ?? false)
+                || ($property['inQuery'] ?? false)
+                || ($property['inHeader'] ?? false)
+                || ($property['inCookie'] ?? false)
+                || ($property['inQueryString'] ?? false);
+            if (
+                $boundToAParameter
+                || ($property['allowReserved'] ?? false)
+                || ($property['allowEmptyValue'] ?? null) === false
+                || ($property['parameterStyle'] ?? null) !== null
+                || ($property['readOnly'] ?? false)
+                || $property['default'] !== null
+            ) {
+                return null;
+            }
+
+            $plan[] = [
+                'name' => $property['name'],
+                'wireName' => $property['openApiName'],
+                'required' => $property['required'],
+                'declaredType' => $declaredTypes[$property['name']],
+                'flag' => $this->normalizeInRequestFlagName($property['name']),
+            ];
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Schema-level keywords the runtime can enforce, emitted only when the document sets them.
+     *
+     * `additionalProperties: false` closes the object: a key the schema never declared makes the
+     * payload invalid. The hydrating modes cannot see such a key — it is dropped on the way into a
+     * typed property — but runtime mode holds the raw body, so here it is enforceable. Emitted as
+     * its OWN method rather than a reserved key inside `getConstraints()`, which is a per-PROPERTY
+     * map and would collide with a property of that name.
+     *
+     * @return array<string, mixed>
+     */
+    private function resolveObjectConstraints(string $className): array
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $closed = ($schema['additionalProperties'] ?? null) === false
+            || ($schema['unevaluatedProperties'] ?? null) === false;
+
+        return $closed ? ['additionalProperties' => false] : [];
+    }
     /**
      * @param array<int, SchemaProperty> $properties
      * @return array<int, array{name: string, value: string}>
