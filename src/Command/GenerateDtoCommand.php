@@ -4760,6 +4760,34 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Whether a generated class is a union interface NOTHING can hydrate a payload into: a `oneOf`/`anyOf`
+     * over object members with no `discriminator` to choose between them.
+     *
+     * The same condition {@see warnAboutUnhydratableUnionProperties()} reports at generation time, asked
+     * about the class rather than about a property, so an emitter can decline to write a call that cannot
+     * work. {@see RendersLaravelDto::laravelNestedDtoExpression()} is the one that used to write it.
+     */
+    private function isUnhydratableUnionClass(string $class): bool
+    {
+        if (array_key_exists($class, $this->discriminatorSchemas)) {
+            return false;
+        }
+
+        $schema = $this->dtoSchemas[$class] ?? null;
+        if (!is_array($schema)) {
+            return false;
+        }
+
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (array_key_exists($keyword, $schema) && $this->collectsObjectUnionMembers($schema[$keyword])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a union's variants are `$ref`s to schemas of their own — the case that becomes an interface.
      * A union of SCALARS becomes a PHP union type (`int|string`) instead, which hydrates fine.
      */

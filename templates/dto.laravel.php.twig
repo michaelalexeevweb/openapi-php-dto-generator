@@ -54,6 +54,14 @@ interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 interface {{ className }}
 {% endif %}
 {
+    /**
+     * Declared here because a property TYPED as this union is serialized through it: the emitted
+     * `toArray()` of an owning DTO calls `$this->prop?->toArray()`, which without this line is a call
+     * to a method the interface does not have. Every member is a generated DTO and has it.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array;
 }
 {% else %}
 {% set requiredParams = params|filter(param => param.required) %}

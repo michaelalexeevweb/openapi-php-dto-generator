@@ -1,4 +1,4 @@
-# laravel mode — 47 files, 4640 lines
+# laravel mode — 47 files, 4657 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -62,6 +62,14 @@ namespace GoldenCorpus;
  */
 interface Animal
 {
+    /**
+     * Declared here because a property TYPED as this union is serialized through it: the emitted
+     * `toArray()` of an owning DTO calls `$this->prop?->toArray()`, which without this line is a call
+     * to a method the interface does not have. Every member is a generated DTO and has it.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array;
 }
 
 ===== Animal2.php =====
@@ -77,6 +85,14 @@ namespace GoldenCorpus;
  */
 interface Animal2
 {
+    /**
+     * Declared here because a property TYPED as this union is serialized through it: the emitted
+     * `toArray()` of an owning DTO calls `$this->prop?->toArray()`, which without this line is a call
+     * to a method the interface does not have. Every member is a generated DTO and has it.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array;
 }
 
 ===== Animal2AnyOf4.php =====
@@ -4080,6 +4096,7 @@ namespace GoldenCorpus;
 
 use DateTimeImmutable;
 use Illuminate\Validation\Validator;
+use RuntimeException;
 use stdClass;
 
 use function array_shift;
@@ -4237,7 +4254,7 @@ final class User
         $dto = new self(
             id: self::toIntIfIntegral($data['id']),
             name: $data['name'],
-            pet: ($data['pet'] ?? null) === null ? null : Animal2::fromValidated($data['pet']),
+            pet: ($data['pet'] ?? null) === null ? null : throw new RuntimeException('Property "pet" is typed as Animal2, a union with no discriminator: the document does not say which member a payload is, so it cannot be hydrated. Add a discriminator to Animal2, or type the property as one member.'),
             createdAt: new DateTimeImmutable($data['createdAt']),
         );
 

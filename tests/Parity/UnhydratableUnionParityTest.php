@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Parity;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 /**
  * A property whose schema is a union of OBJECTS with no `discriminator` cannot be hydrated in ANY mode,
@@ -90,6 +91,53 @@ final class UnhydratableUnionParityTest extends TestCase
 
         $this->assertFileExists($this->outputDirectory . '/Probe.php');
         $this->assertFileExists($this->outputDirectory . '/Shape.php');
+    }
+
+    /**
+     * And what the REQUEST sees, which the warning above does not cover.
+     *
+     * Laravel mode is the one that writes its own hydrator, and it used to write
+     * `Shape::fromValidated($data['shape'])` against an interface that declares no such method — so a
+     * payload the document allows died on `Error: Call to undefined method`, a PHP-level accident naming
+     * an internal artefact for a document-level limitation the generator had already reported. It now
+     * throws the same sentence the warning carries.
+     *
+     * The other modes fail inside their framework's own hydration, which is not ours to reshape; this
+     * pins the one failure the generator authors.
+     */
+    public function testLaravelSaysWhyInsteadOfDyingOnAnUndefinedMethod(): void
+    {
+        $this->generate(GenerationMode::Laravel);
+
+        $directory = $this->outputDirectory;
+        spl_autoload_register($loader = static function (string $class) use ($directory): void {
+            $file = $directory . '/' . substr($class, (int)strrpos($class, chr(92)) + 1) . '.php';
+            if (file_exists($file)) {
+                require $file;
+            }
+        });
+
+        try {
+            /** @var class-string $probe */
+            $probe = 'UnionWarn' . GenerationMode::Laravel->tag() . chr(92) . 'Probe';
+
+            $payload = [
+                'shape' => ['kind' => 'circle', 'r' => 1],
+                'many' => [],
+                'ok' => ['r' => 1],
+            ];
+
+            try {
+                $probe::fromValidated($payload);
+                self::fail('a union with no discriminator cannot be hydrated, so this must not succeed');
+            } catch (RuntimeException $thrown) {
+                self::assertStringContainsString('Property "shape"', $thrown->getMessage());
+                self::assertStringContainsString('no discriminator', $thrown->getMessage());
+                self::assertStringContainsString('Add a discriminator to Shape', $thrown->getMessage());
+            }
+        } finally {
+            spl_autoload_unregister($loader);
+        }
     }
 
     /**

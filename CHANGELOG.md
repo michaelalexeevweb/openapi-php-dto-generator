@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.1 — 2026-08-21
+
+- laravel says why an undiscriminated union cannot hydrate
+- declare toArray() on the union interface
+- pin what the request sees, not only the warning
+
+`UnhydratableUnionParityTest` has pinned since it was written that a `oneOf`/`anyOf` over objects with no
+`discriminator` cannot be hydrated in any mode, and that the generator says so at build time. What it did
+not pin is what the REQUEST sees, and laravel mode — the one that writes its own hydrator — wrote
+`Shape::fromValidated($data['shape'])` against an interface declaring no such method. A payload the
+document allows died on `Error: Call to undefined method UnionWarnLv\Shape::fromValidated()`: a PHP-level
+accident naming an internal artefact, for a document-level limitation already reported at generation.
+
+It now throws the sentence the warning carries — *Property "shape" is typed as Shape, a union with no
+discriminator: the document does not say which member a payload is, so it cannot be hydrated. Add a
+discriminator to Shape, or type the property as one member.* — and a new case in that suite pins it,
+verified to fail with the old `Error` when the emitter is reverted.
+
+The generated union interface also declares `toArray(): array` in laravel mode, where an owning DTO's
+`toArray()` calls `$this->prop?->toArray()` on it. Every member is a generated DTO and has the method, so
+this only writes down what was already true; PHPStan level 8 over the laravel corpus reported the call as
+undefined until now. Only laravel mode: nothing calls it through the interface in the other four, and
+their union members do not all carry `toArray()`.
+
+Regenerate to pick either up. Runtime, symfony, laravel-data and yii3 output is byte-identical.
+
 ## 2.15.0 — 2026-08-21
 
 - a generated fast hydrator for a plain-body schema

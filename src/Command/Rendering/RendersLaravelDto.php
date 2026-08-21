@@ -835,11 +835,15 @@ trait RendersLaravelDto
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
             $enumClass !== null => sprintf('%s::from(%s)', $this->shortClassName($enumClass), $raw),
-            $dtoClass !== null => $this->laravelNestedDtoExpression($dtoClass, $raw),
+            $dtoClass !== null => $this->laravelNestedDtoExpression($dtoClass, $raw, $property['openApiName']),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) => sprintf(
                 'array_map(static fn(int|string $item): %1$s => %1$s::from($item), %2$s)',
                 $this->shortClassName($itemClass),
                 $raw,
+            ),
+            $itemClass !== null && $this->isUnhydratableUnionClass($itemClass) => $this->laravelUnhydratableUnionThrow(
+                $itemClass,
+                $property['openApiName'],
             ),
             $itemClass !== null => sprintf(
                 'array_map(static fn(array $item): %1$s => %1$s::fromValidated($item), %2$s)',
@@ -887,6 +891,18 @@ trait RendersLaravelDto
         foreach ([$this->laravelEnumClass($property), $this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $referenced) {
             if ($referenced !== null) {
                 $this->appendImportForClass($imports, $referenced, $namespace, $className);
+            }
+
+            // The hydrator throws where such a union would have to be built — but only laravel mode has
+            // a hydrator of ours. laravel-data shares this import collector and hydrates through spatie,
+            // so importing there would leave a `use` nothing uses.
+            // {@see laravelUnhydratableUnionThrow()}
+            if (
+                $referenced !== null
+                && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
+                && $this->isUnhydratableUnionClass($referenced)
+            ) {
+                $imports[] = 'RuntimeException';
             }
 
             // A discriminated union resolves to one of its members, so those are referenced too.
@@ -1546,6 +1562,29 @@ trait RendersLaravelDto
     }
 
     /**
+     * The expression emitted where a payload would have to become an undiscriminated union member.
+     *
+     * It throws, and it says the same thing the generation-time warning said — which is the point. The
+     * previous expression called a factory the interface does not declare, so the request died on
+     * `Error: Call to undefined method X::fromValidated()`: a PHP-level accident naming an internal
+     * artefact, for a document-level limitation the generator already knew about and had reported.
+     */
+    private function laravelUnhydratableUnionThrow(string $unionClass, string $wireName): string
+    {
+        return sprintf(
+            'throw new RuntimeException(%s)',
+            $this->laravelStringLiteral(sprintf(
+                'Property "%s" is typed as %s, a union with no discriminator: the document does not say '
+                    . 'which member a payload is, so it cannot be hydrated. Add a discriminator to %s, or '
+                    . 'type the property as one member.',
+                $wireName,
+                $this->shortClassName($unionClass),
+                $this->shortClassName($unionClass),
+            )),
+        );
+    }
+
+    /**
      * How a nested DTO value is built.
      *
      * A discriminated union is an INTERFACE here, so there is no `fromValidated()` to call: the payload
@@ -1553,8 +1592,15 @@ trait RendersLaravelDto
      * do. Without this the property came out empty and the data was silently lost — the normalization
      * parity suite caught it.
      */
-    private function laravelNestedDtoExpression(string $dtoClass, string $rawAccess): string
+    private function laravelNestedDtoExpression(string $dtoClass, string $rawAccess, string $wireName): string
     {
+        // A union of objects with no discriminator has no member to choose, so there is nothing to call.
+        // Emitting `Interface::fromValidated()` anyway is what produced `Error: Call to undefined method`
+        // at request time, for a payload the document allows and the generator had already warned about.
+        if ($this->isUnhydratableUnionClass($dtoClass)) {
+            return $this->laravelUnhydratableUnionThrow($dtoClass, $wireName);
+        }
+
         // A plain `type: object` base with a discriminator is a class of its own and hydrates itself;
         // only a union base has no `fromValidated()` to call.
         if (
