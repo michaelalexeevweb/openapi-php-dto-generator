@@ -108,6 +108,61 @@ trait RendersYii3Dto
     private const array YII3_DATE_NAMESPACE_RULES = ['Date', 'DateTime', 'Time'];
 
     /**
+     * The namespace the yii3 file being rendered lives in, for {@see yii3Lib()}.
+     *
+     * State rather than a parameter because the library short names it answers about are named in a
+     * dozen places across this renderer, several of them deep inside string builders that have no
+     * business carrying a namespace through.
+     */
+    private string $yii3RenderNamespace = '';
+
+    /**
+     * The framework classes this mode's emitted code names, by the short name it uses for them.
+     *
+     * A document may call a schema `Result`, `Data`, `Query` or `Nested` — ordinary words for an API —
+     * and the emitted file would then carry `use Yiisoft\Validator\Result;` beside `class Result`,
+     * which does not load at all, or let the import shadow the document's class in a sibling file.
+     * {@see NamesLibraryClasses}
+     */
+    private const array YII3_LIBRARY_CLASSES = [
+        'AbstractInput' => 'Yiisoft\Input\Http\AbstractInput',
+        'BackedEnum' => 'BackedEnum',
+        'Callback' => 'Yiisoft\Validator\Rule\Callback',
+        'Collection' => 'Yiisoft\Hydrator\Attribute\Parameter\Collection',
+        'Data' => 'Yiisoft\Hydrator\Attribute\Parameter\Data',
+        'DataSetInterface' => 'Yiisoft\Validator\DataSetInterface',
+        'DateTimeImmutable' => 'DateTimeImmutable',
+        'DateTimeInterface' => 'DateTimeInterface',
+        'ObjectParser' => 'Yiisoft\Validator\Helper\ObjectParser',
+        'Query' => 'Yiisoft\Input\Http\Attribute\Parameter\Query',
+        'ReflectionProperty' => 'ReflectionProperty',
+        'Request' => 'Yiisoft\Input\Http\Attribute\Parameter\Request',
+        'Result' => 'Yiisoft\Validator\Result',
+        'RulesProviderInterface' => 'Yiisoft\Validator\RulesProviderInterface',
+        'ToDateTime' => 'Yiisoft\Hydrator\Attribute\Parameter\ToDateTime',
+        'UploadedFileInterface' => 'Psr\Http\Message\UploadedFileInterface',
+        'UploadedFiles' => 'Yiisoft\Input\Http\Attribute\Parameter\UploadedFiles',
+        'ValidationContext' => 'Yiisoft\Validator\ValidationContext',
+        'WhenNull' => 'Yiisoft\Validator\EmptyCondition\WhenNull',
+    ];
+
+    /**
+     * How the file being rendered must spell a framework class: its short name, or fully qualified
+     * when the document owns that name.
+     *
+     * Answers for every name in {@see YII3_LIBRARY_CLASSES}, and for a `Yiisoft\Validator\Rule\*`
+     * rule, whose short name is the attribute the emitted code writes.
+     */
+    private function yii3Lib(string $shortName, ?string $fqcn = null): string
+    {
+        $fqcn ??= self::YII3_LIBRARY_CLASSES[$shortName] ?? $shortName;
+
+        return $this->namespaceDeclaresClass($shortName, $this->yii3RenderNamespace)
+            ? '\\' . $fqcn
+            : $shortName;
+    }
+
+    /**
      * Renders one schema as a Yii3 input class.
      *
      * @param array<int, SchemaProperty> $properties
@@ -123,6 +178,8 @@ trait RendersYii3Dto
         ?string $extends = null,
         bool $isAbstract = false,
     ): string {
+        $this->yii3RenderNamespace = $namespace;
+
         // Same reasoning as the other attribute modes: a oneOf/anyOf schema is a TYPE, not a data
         // class, so it becomes an interface its members implement.
         if ($unionTypes !== [] || ($isAbstract && $discriminator !== null)) {
@@ -231,8 +288,8 @@ trait RendersYii3Dto
         $useStatements[] = 'Yiisoft\Validator\DataSetInterface';
         $useStatements[] = 'Yiisoft\Validator\RulesProviderInterface';
         $useStatements[] = 'Yiisoft\Validator\Helper\ObjectParser';
-        $implements[] = 'DataSetInterface';
-        $implements[] = 'RulesProviderInterface';
+        $implements[] = $this->yii3Lib('DataSetInterface');
+        $implements[] = $this->yii3Lib('RulesProviderInterface');
 
         $lines = ['<?php', '', 'declare(strict_types=1);', '', 'namespace ' . $namespace . ';', ''];
         foreach ($this->yii3SortedImports($useStatements, $ruleImports, $sourceImports) as $import) {
@@ -244,7 +301,8 @@ trait RendersYii3Dto
         }
         // The two framework contracts are always in the list, so there is always something to
         // implement — a union interface simply adds to it.
-        $lines[] = 'final class ' . $className . ' extends AbstractInput implements ' . implode(', ', $implements);
+        $lines[] = 'final class ' . $className . ' extends ' . $this->yii3Lib('AbstractInput')
+            . ' implements ' . implode(', ', $implements);
         $lines[] = '{';
 
         // The wire-name map belongs with the other class constants, before the properties — the same
@@ -393,7 +451,8 @@ trait RendersYii3Dto
         // Symfony mode. A per-property SOURCE attribute already carries the wire name itself.
         if ($source === null && $property['openApiName'] !== $property['name']) {
             $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\Data';
-            $attributes[] = "#[Data('" . str_replace("'", "\\'", $property['openApiName']) . "')]";
+            $attributes[] = '#[' . $this->yii3Lib('Data') . "('"
+                . str_replace("'", "\\'", $property['openApiName']) . "')]";
         }
 
         foreach ($this->yii3ValidationAttributes($property, $ruleImports) as $attribute) {
@@ -421,10 +480,11 @@ trait RendersYii3Dto
         // onto exactly that interface. Emitting the bare name was also a straight bug — with no
         // import it resolved inside the DTO's own namespace and the file could not even load.
         if ($type === 'UploadedFile') {
-            $type = 'UploadedFileInterface';
+            $type = $this->yii3Lib('UploadedFileInterface');
             $useStatements[] = 'Psr\Http\Message\UploadedFileInterface';
             $sourceImports[] = 'Yiisoft\Input\Http\Attribute\Parameter\UploadedFiles';
-            $attributes[] = "#[UploadedFiles('" . str_replace("'", "\\'", $property['openApiName']) . "')]";
+            $attributes[] = '#[' . $this->yii3Lib('UploadedFiles') . "('"
+                . str_replace("'", "\\'", $property['openApiName']) . "')]";
         }
 
         // A generated class from ANOTHER namespace has to be imported, or the emitted file names a
@@ -549,12 +609,12 @@ trait RendersYii3Dto
     {
         if (($property['inPath'] ?? false) === true) {
             $sourceImports[] = 'Yiisoft\Input\Http\Attribute\Parameter\Request';
-            return '#[Request(\'' . $property['openApiName'] . '\')]';
+            return '#[' . $this->yii3Lib('Request') . '(\'' . $property['openApiName'] . '\')]';
         }
 
         if (($property['inQuery'] ?? false) === true) {
             $sourceImports[] = 'Yiisoft\Input\Http\Attribute\Parameter\Query';
-            return '#[Query(\'' . $property['openApiName'] . '\')]';
+            return '#[' . $this->yii3Lib('Query') . '(\'' . $property['openApiName'] . '\')]';
         }
 
         return null;
@@ -649,7 +709,11 @@ trait RendersYii3Dto
             $wireFormats = self::YII3_TEMPORAL_WIRE_FORMATS[is_string($format) ? $format : '']
                 ?? self::YII3_TEMPORAL_WIRE_FORMATS['date-time'];
             foreach ($wireFormats as $wireFormat) {
-                $attributes[] = sprintf("#[ToDateTime(format: 'php:%s')]", $wireFormat);
+                $attributes[] = sprintf(
+                    "#[%s(format: 'php:%s')]",
+                    $this->yii3Lib('ToDateTime'),
+                    $wireFormat,
+                );
             }
         }
 
@@ -703,9 +767,9 @@ trait RendersYii3Dto
             // and have no such parameter at all — passing it to them killed every request with
             // "Unknown named parameter $skipOnEmpty".
             if (
-                str_starts_with($attribute, '#[Required')
-                || str_starts_with($attribute, '#[ToDateTime')
-                || str_starts_with($attribute, '#[Collection')
+                str_starts_with($attribute, '#[' . $this->yii3Lib('Required', 'Yiisoft\Validator\Rule\Required'))
+                || str_starts_with($attribute, '#[' . $this->yii3Lib('ToDateTime'))
+                || str_starts_with($attribute, '#[' . $this->yii3Lib('Collection'))
             ) {
                 $skipped[] = $attribute;
                 continue;
@@ -720,7 +784,7 @@ trait RendersYii3Dto
             // "must be a string. null given." — one mistake, one message is the rule everywhere
             // else in this package.
             $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\WhenNull';
-            $condition = 'new WhenNull()';
+            $condition = 'new ' . $this->yii3Lib('WhenNull') . '()';
             $skipped[] = str_ends_with($attribute, ')]')
                 ? substr($attribute, 0, -2) . ', skipOnEmpty: ' . $condition . ')]'
                 : substr($attribute, 0, -1) . '(skipOnEmpty: ' . $condition . ')]';
@@ -756,7 +820,7 @@ trait RendersYii3Dto
             $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\Collection';
 
             return [
-                '#[Collection(' . $this->shortClassName($itemType) . '::class)]',
+                '#[' . $this->yii3Lib('Collection') . '(' . $this->shortClassName($itemType) . '::class)]',
                 $this->yii3Rule('Each', ['new Nested()'], $ruleImports),
             ];
         }
@@ -802,7 +866,7 @@ trait RendersYii3Dto
         // reason this mode takes the Symfony packaging rather than the Laravel one.
         if ($entersInterpreter) {
             $sourceImports[] = 'Yiisoft\Validator\Rule\Callback';
-            $attributes[] = "#[Callback(method: 'validateOpenApiConstraints')]";
+            $attributes[] = '#[' . $this->yii3Lib('Callback') . "(method: 'validateOpenApiConstraints')]";
         }
 
         return $attributes;
@@ -931,19 +995,22 @@ trait RendersYii3Dto
     }
 PHP;
 
-        $yii3Entry = <<<'PHP'
+        // The three framework classes named in this signature go through yii3Lib() like every other,
+        // so a document that owns `Result`, `Callback` or `ValidationContext` still gets a file that
+        // loads. {@see NamesLibraryClasses}
+        $yii3Entry = <<<PHP
     /**
-     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * Entered once per object by the class-level #[Callback]: `\$value` IS this DTO, and the paths are
      * set by the interpreter rather than by a property label.
      */
-    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    private function validateOpenApiConstraints(mixed \$value, {$this->yii3Lib('Callback')} \$rule, {$this->yii3Lib('ValidationContext')} \$context): {$this->yii3Lib('Result')}
     {
-        $result = new Result();
-        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $result->addError($error);
+        \$result = new {$this->yii3Lib('Result')}();
+        foreach (\$this->validateOpenApiNode(\$this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as \$error) {
+            \$result->addError(\$error);
         }
 
-        return $result;
+        return \$result;
     }
 PHP;
 
@@ -979,11 +1046,13 @@ PHP;
      */
     private function yii3Rule(string $rule, array $arguments, array &$ruleImports): string
     {
-        $ruleImports[] = in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)
+        $fqcn = in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)
             ? 'Yiisoft\Validator\Rule\Date\\' . $rule
             : 'Yiisoft\Validator\Rule\\' . $rule;
+        $ruleImports[] = $fqcn;
 
-        return '#[' . $rule . ($arguments === [] ? '' : '(' . implode(', ', $arguments) . ')') . ']';
+        return '#[' . $this->yii3Lib($rule, $fqcn)
+            . ($arguments === [] ? '' : '(' . implode(', ', $arguments) . ')') . ']';
     }
 
     /**
@@ -995,6 +1064,17 @@ PHP;
     private function yii3SortedImports(array $useStatements, array $ruleImports, array $sourceImports): array
     {
         $imports = array_values(array_unique([...$useStatements, ...$sourceImports, ...$ruleImports]));
+
+        // An import whose short name the document also declares is dropped, and {@see yii3Lib()} has
+        // already spelled that class out in the body. Both ask `namespaceDeclaresClass()`, so the list
+        // and the code cannot disagree about which names are the document's.
+        $imports = array_values(array_filter(
+            $imports,
+            fn(string $import): bool => !$this->namespaceDeclaresClass(
+                $this->shortClassName($import),
+                $this->yii3RenderNamespace,
+            ),
+        ));
         sort($imports);
 
         return $imports;
@@ -1042,7 +1122,7 @@ PHP;
             '     */',
             '    public function getRules(): iterable',
             '    {',
-            '        return (new ObjectParser($this))->getRules();',
+            '        return (new ' . $this->yii3Lib('ObjectParser') . '($this))->getRules();',
             '    }',
             '',
             '    /**',
@@ -1057,7 +1137,7 @@ PHP;
             '        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;',
             '',
             '        return property_exists($this, $name)',
-            '            && (new ReflectionProperty($this, $name))->isInitialized($this);',
+            '            && (new ' . $this->yii3Lib('ReflectionProperty') . '($this, $name))->isInitialized($this);',
             '    }',
             '',
             '    public function getPropertyValue(string $property): mixed',
@@ -1102,10 +1182,10 @@ PHP;
             '     */',
             '    private static function openApiWireValue(mixed $value, ?string $temporalFormat = null): mixed',
             '    {',
-            '        if ($value instanceof BackedEnum) {',
+            '        if ($value instanceof ' . $this->yii3Lib('BackedEnum') . ') {',
             '            return $value->value;',
             '        }',
-            '        if ($value instanceof DateTimeInterface) {',
+            '        if ($value instanceof ' . $this->yii3Lib('DateTimeInterface') . ') {',
             '            // The schema decides the shape: `format: date` is a DATE, and writing a whole',
             '            // timestamp for it diverged from every other mode. Sub-second precision is kept',
             '            // only when the value carries it, so a plain timestamp is not widened with a',

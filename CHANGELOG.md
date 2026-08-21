@@ -3,6 +3,39 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.2 — 2026-08-21
+
+- yii3 resolves a schema named like a framework class
+- one predicate behind the spelling and the import list
+- DateTimeImmutable stays reserved, and why
+- pin it by hydrating, not by reading the source
+
+A document may call a schema `Result`, `Data`, `Query` or `Nested` — ordinary words for an API — and every
+emitted yii3 input carried imports with exactly those short names. PHP then failed two ways, neither
+visible from the document: the file DECLARING it did not load at all (`Cannot redeclare X\Result`), and in
+a SIBLING file the `use` silently won over the same-namespace class, so a property was typed the
+framework's and the payload filling it a `TypeError`. Until now yii3 only warned about this; runtime and
+laravel-data have resolved it for a release.
+
+Every framework short name the yii3 renderer writes now goes through `yii3Lib()`, which answers with the
+short name or with the fully qualified one, and `yii3SortedImports()` drops the import that would have
+collided. Both ask `namespaceDeclaresClass()`, so the body and the import list cannot disagree about which
+names belong to the document. Eighteen names are covered, including every `Yiisoft\Validator\Rule\*`
+through the one place that emits a rule attribute.
+
+`DateTimeImmutable` is NOT covered and stays in the reserved list. The type a `format: date-time` resolves
+to comes from the mode-neutral type mapper, which does not know the namespace, so a schema of that name
+silently TYPES the property as its own class — a file that loads and then fails at hydration, which is
+worse than one that does not load. Runtime mode has the same gap for the same reason, and both are warned
+about at generation time.
+
+Pinned by hydrating rather than by reading the emitted source: both failures are invisible to a source
+assertion — one is a parse error, the other a type that reads perfectly fine. Reverting the import filter
+makes the new case fail with the original `Cannot redeclare`, which is how it was checked.
+
+Generated output is unchanged for any document that does not take one of those names — all five golden
+snapshots are byte-identical.
+
 ## 2.15.1 — 2026-08-21
 
 - laravel says why an undiscriminated union cannot hydrate

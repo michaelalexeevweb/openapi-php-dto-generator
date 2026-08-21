@@ -21,6 +21,61 @@ final class Yii3RuleCoverageTest extends TestCase
     use GeneratesYii3Input;
 
     /**
+     * A schema NAMED like a framework class the emitted yii3 code uses.
+     *
+     * `Result`, `Data`, `Query`, `Nested` are ordinary words for an API to call a schema, and every
+     * emitted yii3 input carries imports with exactly those short names. PHP then fails two ways, and
+     * neither is visible from the document: the file DECLARING it does not load at all
+     * (`Cannot redeclare X\Result`), and in a SIBLING file the `use` silently wins over the
+     * same-namespace class, so a property is typed the framework's and the payload a TypeError.
+     *
+     * Driven end to end rather than asserted on the source, because both failures are invisible to a
+     * source assertion. {@see \OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses}
+     */
+    #[DataProvider('collidingFrameworkNameProvider')]
+    public function testASchemaNamedLikeAFrameworkClassStillLoadsAndHydrates(string $schemaName): void
+    {
+        $namespace = $this->generate([
+            $schemaName => [
+                'type' => 'object',
+                'required' => ['n'],
+                'properties' => ['n' => ['type' => 'integer']],
+            ],
+            'Holder' => [
+                'type' => 'object',
+                'required' => ['it'],
+                'properties' => ['it' => ['$ref' => '#/components/schemas/' . $schemaName]],
+            ],
+        ]);
+
+        /** @var class-string $member */
+        $member = $namespace . '\\' . $schemaName;
+
+        $container = new Yii3Container();
+        $dto = $container->hydrate($namespace . '\Holder', ['it' => ['n' => 7]]);
+
+        self::assertInstanceOf(
+            $member,
+            $dto->getIt(),
+            'the property must be the DOCUMENT\'s class, not the framework one the import would have won',
+        );
+        self::assertTrue($container->validate($dto)->isValid(), 'and the emitted rules must still run');
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function collidingFrameworkNameProvider(): array
+    {
+        $provided = [];
+        foreach (['Result', 'Nested', 'Callback', 'Data', 'Collection', 'Query', 'ObjectParser'] as $name) {
+            $provided[$name . ' is a framework class the emitted code names'] = [$name];
+        }
+
+        return $provided;
+    }
+
+    /**
      * @param array<string, mixed> $schema
      */
     #[DataProvider('nativeRuleProvider')]

@@ -4636,28 +4636,16 @@ final class GenerateDtoCommand extends Command
             // laravel-data resolves its own imports against the document (`libraryClassRef()`),
             // so only the two shared type names are left to warn about there.
             self::ATTRIBUTE_MODE_LARAVEL_DATA => [],
-            // yii3 does NOT resolve yet: it names ~40 library short names across its renderer, so it
-            // warns instead. The list is what every emitted yii3 class imports unconditionally, plus
-            // the rule attributes common enough that a document is likely to reuse the name —
-            // `Result` and `Nested` are ordinary words for an API to call a schema.
-            self::ATTRIBUTE_MODE_YII3 => [
-                'AbstractInput' => 'the base class of every emitted input',
-                'BackedEnum' => 'the type the emitted data set narrows an enum property to',
-                'Callback' => 'the validation rule an emitted interpreter carries',
-                'Collection' => 'the hydrator attribute an emitted array property carries',
-                'Data' => 'the hydrator attribute an emitted renamed property carries',
-                'DataSetInterface' => 'the framework contract every emitted input implements',
-                'DateTimeInterface' => 'the type the emitted data set narrows a temporal property to',
-                'Nested' => 'the validation rule an emitted object property carries',
-                'ObjectParser' => 'the parser the emitted getRules() reads its attributes with',
-                'ReflectionProperty' => 'the reflection the emitted data set reads a property with',
-                'Result' => 'the return type of the emitted #[Callback] interpreter',
-                'RulesProviderInterface' => 'the framework contract every emitted input implements',
-                'ToDateTime' => 'the hydrator attribute an emitted temporal property carries',
-                'UploadedFileInterface' => 'the type `format: binary` resolves to',
-                'ValidationContext' => 'the parameter type of the emitted #[Callback] interpreter',
-                'WhenNull' => 'the empty condition every emitted rule carries',
-            ],
+            // yii3 resolves its own imports against the document too, since 2.15.2: every framework
+            // short name its renderer writes goes through `yii3Lib()`, and `yii3SortedImports()` drops
+            // the import the document's class would collide with. Both ask `namespaceDeclaresClass()`,
+            // so the body and the import list cannot disagree.
+            //
+            // `DateTimeImmutable` is not in reach of that and stays in the shared list above: the type
+            // a `format: date-time` resolves to is produced by the mode-neutral type mapper, which does
+            // not know the namespace, so a schema of that name silently TYPES the property as its own
+            // class. Runtime mode has the same gap for the same reason.
+            self::ATTRIBUTE_MODE_YII3 => [],
         ];
 
         $reserved = [...$reserved, ...$byMode[$this->attributeMode] ?? []];

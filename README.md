@@ -17,7 +17,7 @@ validate incoming HTTP requests against the OpenAPI schema, and normalize back t
 package, and no spec parsing at runtime.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.1
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.2
 ```
 
 ---

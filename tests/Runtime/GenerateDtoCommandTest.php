@@ -639,9 +639,10 @@ final class GenerateDtoCommandTest extends TestCase
         $cases['Stringable is resolved, not warned, in runtime mode'] = ['Stringable', 'runtime', false];
         $cases['RuntimeException is resolved, not warned, in runtime mode'] = ['RuntimeException', 'runtime', false];
         $cases['UnsetValue means nothing in laravel mode'] = ['UnsetValue', 'laravel', false];
-        // yii3 does not resolve yet, so it must at least say so.
-        $cases['Result is reported in yii3 mode'] = ['Result', 'yii3', true];
-        $cases['Nested is reported in yii3 mode'] = ['Nested', 'yii3', true];
+        // yii3 resolves them too now, the same way runtime does.
+        $cases['Result is resolved, not warned, in yii3 mode'] = ['Result', 'yii3', false];
+        $cases['Nested is resolved, not warned, in yii3 mode'] = ['Nested', 'yii3', false];
+        $cases['DateTimeImmutable stays reserved in yii3 mode'] = ['DateTimeImmutable', 'yii3', true];
         $cases['Result means nothing in runtime mode'] = ['Result', 'runtime', false];
         $cases['Assert is symfony-only'] = ['Assert', 'symfony', true];
         $cases['Assert means nothing in runtime mode'] = ['Assert', 'runtime', false];
