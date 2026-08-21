@@ -93,7 +93,7 @@ there is no message and no path — the request 500s instead of 422-ing.</sub>
 
 `code = "nope"`:
 
-| | |
+| tool | message |
 |---|---|
 | this library | `param "code" must match format uuid` |
 | league | `Keyword validation failed: Data must match exactly one schema` |
@@ -101,7 +101,7 @@ there is no message and no path — the request 500s instead of 422-ing.</sub>
 
 `name = null`:
 
-| | |
+| tool | message |
 |---|---|
 | this library | `param "name" expects string, got null` |
 | league | `Keyword validation failed: Value cannot be null` |

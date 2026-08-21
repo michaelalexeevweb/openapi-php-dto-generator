@@ -9,12 +9,21 @@
 ### Your OpenAPI document, enforced by the PHP it generates.
 
 Point it at an OpenAPI 3.0 / 3.1 spec. Get immutable, strictly-typed PHP 8.3 DTOs whose **generated code
-enforces the whole schema** — `oneOf`, `minimum`, `pattern`, `format`, `unevaluatedProperties`, all of it —
-for Symfony, Laravel, `spatie/laravel-data`, Yii3, or standalone.
+enforces the schema, not just the types** — `oneOf`, `minimum`, `pattern`, `format`,
+`unevaluatedProperties` and the rest of a broad, tested vocabulary — for Symfony, Laravel,
+`spatie/laravel-data`, Yii3, or standalone.
 
 Generate DTOs from OpenAPI, deserialize a Symfony `Request` or any PSR-7 request straight into them,
 validate incoming HTTP requests against the OpenAPI schema, and normalize back to arrays or JSON — one
 package, and no spec parsing at runtime.
+
+- **In:** an OpenAPI 3.0 / 3.1 document, YAML or JSON.
+- **Out:** one PHP class per schema — from `components.schemas` **and** from each operation's body,
+  query and path parameters.
+- **Use it for:** server-side request DTOs, PATCH-safe presence, response normalization.
+- **Not for:** generating an API client or SDK — see [what it does not do](#what-it-does-not-do).
+- **Start with:** `runtime` mode, the default. Reach for a framework mode only when you want that
+  framework's own validation output.
 
 ```bash
 composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.2
@@ -22,45 +31,110 @@ composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.2
 
 ---
 
+## 60 seconds
+
+This document:
+
+```yaml
+components:
+  schemas:
+    UserPostRequest:
+      type: object
+      required: [email]
+      properties:
+        email:    {type: string, format: email}
+        age:      {type: integer, minimum: 18}
+        nickname: {type: [string, 'null']}
+```
+
+Through this command:
+
+```bash
+php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:generate-dto \
+  --file=openapi.yaml --directory=src/Generated --namespace='App\Generated'
+```
+
+Becomes this class — an optional property defaults to a sentinel, not to `null`, which is what keeps
+"absent" and "sent as `null`" apart:
+
+```php
+final class UserPostRequest implements GeneratedDtoInterface, Stringable
+{
+    public function __construct(
+        private readonly string $email,
+        private readonly int|UnsetValue|null $age = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $nickname = UnsetValue::UNSET,
+    ) { /* … */ }
+
+    public function getEmail(): string { /* … */ }
+    public function getAge(): ?int { /* … */ }
+    public function getNickname(): ?string { /* … */ }
+    public function isNicknameInRequest(): bool { /* … */ }   // was the key sent at all?
+}
+```
+
+Which you use like this:
+
+```php
+$dto = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
+$body = (new DtoNormalizer())->validateAndNormalizeToArray($responseDto);
+```
+
+And which answers like this — the messages below are the real output, not a paraphrase:
+
+| request body | `getNickname()` | `isNicknameInRequest()` |
+|---|---|---|
+| `{"email":"a@b.test"}` | `null` | **`false`** — the key never came |
+| `{"email":"a@b.test","nickname":null}` | `null` | **`true`** — the client sent `null` on purpose |
+| `{"email":"a@b.test","nickname":"neo"}` | `"neo"` | `true` |
+
+Same getter, different answer: that distinction is what a PATCH endpoint needs and what a plain `?string`
+cannot express. And when the document is not satisfied:
+
+| request body | error |
+|---|---|
+| `{"age":30}` | `Required parameter "email" not found in request.` |
+| `{"email":"nope","age":12}` | `param "email" must match format email`<br>`param "age" must be greater than or equal to 18` |
+
+`format: email` and `minimum: 18` are enforced by code the generator wrote, and both problems are
+reported together rather than one at a time.
+
+<sub>The presence accessor is named for its mode: `isNicknameInRequest()` in runtime, `isNicknameProvided()`
+in symfony, laravel and yii3. laravel-data needs neither — there the property's own type is
+`string|Optional`.</sub>
+
+Add `--attributes=symfony|laravel|laravel-data|yii3` to get the same enforcement in your framework's own
+shape instead.
+[Every CLI option, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
+
+---
+
+---
+
 ## Why this one
 
 Five PHP tools were downloaded and run on the **same spec** with the **same payloads**. Nothing below is
 quoted from anyone's README — every cell is a verdict the tool actually returned.
-[The method, the versions, and where we are behind →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md)
 
-Schema under test: `code` is `oneOf [integer 10..100, string uuid]`, plus `pattern`, `format` and `enum`
-elsewhere in the document.
-
-| | `minimum` / `maximum` | `pattern` | `format` | `oneOf` | builds a typed object |
+| enforced by the code it generates | `minimum` / `maximum` | `pattern` | `format` | `oneOf` | builds a typed object |
 |---|:--:|:--:|:--:|:--:|:--:|
 | JanePHP `open-api-3` 7.13, `validation: true` | ❌ | ❌ | ❌ | ❌ | ✅ |
 | OpenAPI Generator 7.24 — `php-symfony`, `php-dt`, `php-nextgen` | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `maxbeckers/php-openapi-generator` 0.1.6 | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `league/openapi-psr7-validator` 0.24 | ✅ | ✅ | ✅¹ | ✅ | ❌ |
-| **this library — all five modes** | **✅** | **✅** | **✅** | **✅** | **✅** |
+| **this library** | **✅** | **✅** | **✅** | **✅** | **✅** |
 
 <sub>¹ everything except `uri-template`.</sub>
 
-**Every other generator in the set checks the type and whether the key is present, and stops there.** In the whole set, the OpenAPI
-vocabulary is enforced by exactly one tool — a runtime validator that generates no classes at all. This is
-the only one that does both.
+**Every other generator in the set checks the type and whether the key is present, and stops there.** In
+the whole set the OpenAPI vocabulary is enforced by exactly one tool — a runtime validator that generates
+no classes at all. This is the only one that does both.
 
-What that costs you on real payloads:
-
-| payload | this library | league | Jane |
-|---|---|---|---|
-| `code: 42.5` — not an integer | rejected | rejected | **accepted** |
-| `code: 5` — breaks `minimum: 10` | rejected | rejected | **accepted** |
-| `code: "nope"` — matches no branch | rejected | rejected | **accepted** |
-| `homepage: "not a uri"` — `format: uri` | rejected | rejected | **accepted** |
-| `endpoint` — malformed `uri-template` | rejected | **accepted** | **accepted** |
-
-And the sentence your client gets back:
-
-| | message for `code: "nope"` |
-|---|---|
-| **this library** | `param "code" must match format uuid` |
-| league | `Keyword validation failed: Data must match exactly one schema` |
-| Jane | *(accepted — no message)* |
+On real payloads that means `code: 5` against `minimum: 10` is refused here and accepted by Jane; a
+malformed `uri-template` is refused here and accepted by both Jane and league; and where league answers
+`Keyword validation failed: Data must match exactly one schema`, this answers
+`param "code" must match format uuid`.
+**[Every payload, every verdict, the versions, and where we are behind →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md)**
 
 ### Three things that only fall out of generating the checks
 
@@ -90,43 +164,11 @@ validate step; the millisecond is `illuminate/validation` walking the rule array
 
 ---
 
-## 60 seconds
+## Five modes
 
-Generate:
-
-```bash
-php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:generate-dto \
-  --file=openapi.yaml --directory=src/Generated --namespace='App\Generated'
-```
-
-Use:
-
-```php
-use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
-use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
-use App\Generated\UserPostRequest;
-
-// request: read it according to the document, or throw naming what is wrong
-$dto = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
-
-$dto->getName();              // string, guaranteed
-$dto->isEmailInRequest();     // was the key sent at all? — PATCH without guesswork
-
-// response: validate against the same document, then normalize
-$body = (new DtoNormalizer())->validateAndNormalizeToArray($responseDto);
-```
-
-That is runtime mode. Add `--attributes=symfony|laravel|laravel-data|yii3` to get the same enforcement in
-your framework's own shape instead.
-
-[Every CLI option, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
-
----
-
-## Five modes, one vocabulary
-
-All five enforce the same OpenAPI vocabulary. They differ in what surrounds it — who validates, what the
-errors look like, and what you have to install.
+All five enforce the same **schema validation** vocabulary — the keywords above hold in every one of them.
+What differs is everything around it: who validates, what the errors look like, what you install, and
+**how much of the REQUEST the document still governs**.
 
 | Mode | What it emits | Needs | Errors arrive as |
 |---|---|---|---|
@@ -136,22 +178,32 @@ errors look like, and what you have to install.
 | **[laravel-data](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel-data.md)** | one `Data` class per schema, `Optional` for presence | `spatie/laravel-data` | the framework's own 422 error bag |
 | **[yii3](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.yii3.md)** | one `AbstractInput` per schema, `yiisoft/validator` attributes | `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/input-http` | a `Result` your action reads |
 
-**Rule of thumb.** Pick **runtime** when the request itself must follow the document — parameter styles,
-`allowReserved`, multipart encoding, partial updates, one library end to end. Pick **symfony** or
-**laravel** when you want plain DTOs your framework owns and errors in the shape it already speaks. Pick
-**laravel-data** or **yii3** when your application already runs that package.
+**Request binding is not the same in every mode, and that is the one difference worth knowing before you
+choose.** A framework mode hands binding to its own serializer or hydrator, which has already decided what
+the payload is before any generated code runs:
 
-The modes are not interchangeable in every corner, and the corners are written down rather than left to be
-discovered: **[the support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md)**
-gives the keyword-by-keyword answer per mode, names every place they diverge and why, and lists what is not
-generated in any of them. It is derived from the parity test suites, so a row that stops being true fails a
-test.
+| | runtime | symfony | laravel | laravel-data | yii3 |
+|---|:--:|:--:|:--:|:--:|:--:|
+| parameter sources — `path` / `query` / `header` / `cookie` | ✅ | ❌ | ❌ | ❌ | body, query, path only |
+| `style` / `explode` / `allowReserved` / `allowEmptyValue` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| multipart `encoding` | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+**Rule of thumb.** Not sure? Take **runtime** — it is the default, it needs no framework, and it is the
+only mode where the REQUEST itself follows the document. Take **symfony** or **laravel** when you want
+plain DTOs your framework owns and errors in the shape it already speaks. Take **laravel-data** or
+**yii3** when your application already runs that package.
+
+There are **thirteen** further divergences, all deliberate and each pinned by a test that names its cause.
+They are written down rather than left to be discovered:
+**[the support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md)**
+gives the keyword-by-keyword answer per mode and lists what is not generated in any of them. It is derived
+from the parity test suites, so a row that stops being true fails a test.
 
 ---
 
 ## Documentation
 
-| | |
+| | what is in it |
 |---|---|
 | [How it compares](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md) | five tools downloaded and run on the same spec, same payloads |
 | [Support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md) | every keyword per mode, every divergence, what is out of scope |

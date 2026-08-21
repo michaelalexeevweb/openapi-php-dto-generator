@@ -60,4 +60,4 @@ Parameters:
 - PHP 8.3+
 - Symfony 7.4 components (`console`, `http-foundation`, `mime`, `yaml`)
 
-A mode's own dependencies are listed in its guide — see the [README](README.md#five-modes-one-vocabulary).
+A mode's own dependencies are listed in its guide — see the [README](README.md#five-modes).
