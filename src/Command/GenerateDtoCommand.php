@@ -34,6 +34,7 @@ use Twig\Loader\FilesystemLoader;
  *   description: string|null,
  *   example: string|null,
  *   temporalFormat?: string|null,
+ *   itemsTemporalFormat?: string|null,
  *   inPath?: bool,
  *   inQuery?: bool,
  *   inHeader?: bool,
@@ -2154,6 +2155,7 @@ final class GenerateDtoCommand extends Command
             $description = $this->extractDescription($propertySchema);
             $example = $this->extractExample($propertySchema);
             $temporalFormat = $this->resolveTemporalPhpDocFormat($propertySchema);
+            $itemsTemporalFormat = $this->resolveItemsTemporalPhpDocFormat($propertySchema);
             $constraints = $this->extractValidationConstraints($propertySchema);
 
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
@@ -2198,6 +2200,7 @@ final class GenerateDtoCommand extends Command
                 'description' => $description,
                 'example' => $example,
                 'temporalFormat' => $temporalFormat,
+                'itemsTemporalFormat' => $itemsTemporalFormat,
                 'inPath' => $isInPath,
                 'inQuery' => $isInQuery,
                 'inHeader' => $isInHeader,
@@ -3510,6 +3513,26 @@ final class GenerateDtoCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * The temporal format of an ARRAY ITEM (or map value), or null when the items are not temporal.
+     *
+     * `items: {type: string, format: date}` types the item as `DateTimeImmutable` exactly like the
+     * scalar case, so the getter owes the reader the same `Y-m-d` string. Without this the format is
+     * known only to the schema and the item leaves as an RFC 3339 date-time — a response that
+     * contradicts the spec it was generated from.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    private function resolveItemsTemporalPhpDocFormat(array $propertySchema): ?string
+    {
+        $items = $propertySchema['items'] ?? $propertySchema['additionalProperties'] ?? null;
+        if (!is_array($items)) {
+            return null;
+        }
+
+        return $this->resolveTemporalPhpDocFormat($items);
     }
 
     private function resolveTemporalRefPhpDocFormat(string $ref): ?string

@@ -5,3 +5,4 @@ vendor
 generated
 tests/*/output
 tests/*/output-*
+.claude

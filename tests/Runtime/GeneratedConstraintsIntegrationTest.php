@@ -926,10 +926,136 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $cls,
         );
 
-        $dates = $dto->getDates();
+        $dates = $dto->getDatesAsDateTime();
         $this->assertCount(2, $dates);
         $this->assertInstanceOf(DateTimeImmutable::class, $dates[0]);
         $this->assertSame('2026-01-15T12:00:00+00:00', $dates[0]->format('c'));
+
+        // The string getter formats every item per the ITEMS format, exactly like the scalar one.
+        $this->assertSame(
+            ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00+00:00'],
+            $dto->getDates(),
+        );
+    }
+
+    /**
+     * `items: {format: date}` types the item as DateTimeImmutable, and for a long time that was the
+     * end of it: the getter handed the objects back and the normalizer printed them RFC 3339, so a
+     * schema that said `date` produced `2026-01-15T00:00:00+00:00`. The item now gets the same
+     * treatment the scalar has always had — the string getter formats, the `AsDateTime` twin keeps
+     * the objects.
+     */
+    public function testArrayAndMapOfDateItemsSerializeAsDateStrings(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Report' => [
+                        'type' => 'object',
+                        'required' => ['dates', 'byDay'],
+                        'properties' => [
+                            'dates' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string', 'format' => 'date'],
+                            ],
+                            'byDay' => [
+                                'type' => 'object',
+                                'additionalProperties' => ['type' => 'string', 'format' => 'date'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'DateItemsNs', 'Report');
+
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"}}'),
+            $fqcn,
+        );
+
+        $this->assertSame(['2026-01-15', '2026-02-20'], $dto->getDates());
+        $this->assertSame(['mon' => '2026-01-19'], $dto->getByDay());
+
+        // The objects stay reachable through the twin getter.
+        $objects = $dto->getDatesAsDateTime();
+        $this->assertInstanceOf(DateTimeImmutable::class, $objects[0]);
+        $this->assertSame('2026-01-15', $objects[0]->format('Y-m-d'));
+
+        // Serialization goes through the string getter, so the wire matches the schema.
+        $this->assertSame(['2026-01-15', '2026-02-20'], $dto->toArray()['dates']);
+        $normalized = (new DtoNormalizer())->toArray($dto);
+        $this->assertSame(['2026-01-15', '2026-02-20'], $normalized['dates']);
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+
+        // A map still encodes as a JSON object, not a list.
+        $this->assertSame(
+            '{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"}}',
+            $dto->toJson(),
+        );
+    }
+
+    /**
+     * The two ways the array can be empty of a value — the array itself absent/null, and a null
+     * item inside it — both survive the mapping getter.
+     */
+    public function testNullableTemporalArrayAndNullableItemsSurviveFormatting(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Optional' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'dates' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string', 'format' => 'date', 'nullable' => true],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'OptionalDateItemsNs', 'Optional');
+
+        $withItems = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"dates":["2026-01-15",null]}'),
+            $fqcn,
+        );
+        $this->assertSame(['2026-01-15', null], $withItems->getDates());
+        $this->assertSame(['2026-01-15', null], $withItems->toArray()['dates']);
+
+        // Field absent: the getter must not map over a null.
+        $absent = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{}'), $fqcn);
+        $this->assertNull($absent->getDates());
+        $this->assertArrayNotHasKey('dates', $absent->toArray());
+    }
+
+    /**
+     * `date-time` items keep the RFC 3339 spelling the scalar getter uses — including the
+     * sub-second form when the value carries one.
+     */
+    public function testArrayOfDateTimeItemsSerializeAsRfc3339Strings(): void
+    {
+        $cls = $this->generateEventModel('GapArrDtFmt');
+
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"dates":["2026-01-15T12:00:00+00:00","2026-02-20T08:30:00.123456+00:00"]}'),
+            $cls,
+        );
+
+        $this->assertSame(
+            ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
+            $dto->getDates(),
+        );
+        $this->assertSame(
+            ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
+            (new DtoNormalizer())->toArray($dto)['dates'],
+        );
     }
 
     public function testArrayOfDateTimeRejectsNonStringItem(): void

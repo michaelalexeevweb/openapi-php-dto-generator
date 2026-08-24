@@ -2743,7 +2743,7 @@ PHP,
 
     /**
      * @param SchemaProperty $property
-     * @return array{declaredType: string, docType: ?string, name: string, required: bool, serializedName: ?string, default: string, attributes: array<int, string>, docDescription: ?string, getter: string, setter: string, providedFlag: string, providedGetter: string, temporalGetterBody: ?string, temporalObjectGetter: string}
+     * @return array{declaredType: string, docType: ?string, name: string, required: bool, serializedName: ?string, default: string, attributes: array<int, string>, docDescription: ?string, getter: string, setter: string, providedFlag: string, providedGetter: string, temporalGetterBody: ?string, temporalGetterReturnType: string, temporalGetterDocType: ?string, temporalObjectDocType: ?string, temporalObjectGetter: string}
      */
     private function resolveSymfonyParam(array $property, string $namespace): array
     {
@@ -2789,7 +2789,17 @@ PHP,
             // sub-second precision the payload had. Symfony's DateTimeNormalizer has one fixed
             // pattern and can express neither, so the getter formats and an #[Ignore]d companion
             // hands out the object.
-            'temporalGetterBody' => $this->symfonyTemporalGetterBody($property),
+            'temporalGetterBody' => $this->symfonyTemporalGetterBody($property)
+                ?? $this->symfonyTemporalArrayGetterBody($property),
+            // A temporal SCALAR reads as a string; a temporal ARRAY stays an array and its ITEMS
+            // become the strings, so only the docblock changes there.
+            'temporalGetterReturnType' => str_replace('DateTimeImmutable', 'string', $declaredType),
+            'temporalGetterDocType' => $docType !== null
+                ? str_replace('DateTimeImmutable', 'string', $this->composePhpTypeHint($docType, $declaredNullable))
+                : null,
+            'temporalObjectDocType' => $docType !== null
+                ? $this->composePhpTypeHint($docType, $declaredNullable)
+                : null,
             'temporalObjectGetter' => 'get' . ucfirst($property['name']) . 'AsDateTime',
             'setter' => 'set' . ucfirst($property['name']),
             'providedFlag' => $property['name'] . 'Provided',
@@ -2828,6 +2838,55 @@ PHP,
             $guard,
             $name,
             $name,
+            $name,
+        );
+    }
+
+    /**
+     * The body of a temporal ARRAY/MAP getter, or null when the items are not date/date-time.
+     *
+     * `items: {format: date}` types the item as DateTimeImmutable exactly like the scalar case, and
+     * the reader is owed the same string. Symfony's DateTimeNormalizer would print every item RFC
+     * 3339 — a `date` array leaving as date-times contradicts the schema it came from.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyTemporalArrayGetterBody(array $property): ?string
+    {
+        $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
+        if (!is_string($itemsTemporalFormat) || !str_contains($property['type'], '<')) {
+            return null;
+        }
+
+        $itemType = $this->resolveArrayItemPhpType(ltrim($property['type'], '?'));
+        if ($this->shortClassName(ltrim($itemType, '?')) !== 'DateTimeImmutable') {
+            return null;
+        }
+
+        $name = $property['name'];
+        $nullable = $property['nullable'] || $property['required'] !== true;
+        $guard = $nullable ? sprintf('$this->%s === null ? null : ', $name) : '';
+        $itemsNullable = str_starts_with($itemType, '?');
+
+        if ($itemsTemporalFormat === 'Y-m-d') {
+            $callback = $itemsNullable
+                ? 'static fn (?DateTimeImmutable $item): ?string => $item?->format(\'Y-m-d\')'
+                : 'static fn (DateTimeImmutable $item): string => $item->format(\'Y-m-d\')';
+        } else {
+            // Same rule as runtime mode: keep sub-second precision when the value carries it.
+            $format = '$item->format(\'u\') === \'000000\''
+                . "\n                " . '? $item->format(\'c\')'
+                . "\n                " . ': $item->format(\'Y-m-d\TH:i:s.uP\')';
+            $callback = $itemsNullable
+                ? 'static fn (?DateTimeImmutable $item): ?string => $item === null' . "\n                "
+                    . '? null' . "\n                " . ': (' . str_replace("\n                ", "\n                    ", $format) . ')'
+                : 'static fn (DateTimeImmutable $item): string => ' . $format;
+        }
+
+        return sprintf(
+            '%sarray_map(' . "\n            " . '%s,' . "\n            " . '$this->%s,' . "\n        " . ')',
+            $guard,
+            $callback,
             $name,
         );
     }

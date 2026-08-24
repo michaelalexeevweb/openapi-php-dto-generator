@@ -585,11 +585,21 @@ trait RendersYii3Dto
      */
     private function yii3TemporalFormat(array $property, string $propertyType): ?string
     {
-        if (!str_contains($propertyType, 'DateTimeImmutable')) {
+        // The declared PHP type of an array property is just `array` — the item type lives in the
+        // generator's own type string, which is where an `array<DateTimeImmutable>` says so.
+        if (!str_contains($propertyType, 'DateTimeImmutable') && !str_contains($property['type'], 'DateTimeImmutable')) {
             return null;
         }
 
-        $format = ($property['constraints'] ?? [])['format'] ?? null;
+        $constraints = $property['constraints'] ?? [];
+        $format = $constraints['format'] ?? null;
+        if (!is_string($format)) {
+            // An ARRAY or MAP of temporal values carries the format one level down. `getData()`
+            // hands the same format to every item it walks, so naming it here is all the wire form
+            // needs — without it a `date` array is written back as a list of date-times.
+            $items = $constraints['items'] ?? $constraints['additionalProperties'] ?? null;
+            $format = is_array($items) ? ($items['format'] ?? null) : null;
+        }
 
         return is_string($format) && array_key_exists($format, self::YII3_TEMPORAL_WIRE_FORMATS)
             ? $format

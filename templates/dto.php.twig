@@ -220,6 +220,42 @@ interface {{ className }}
 {% else %}
         return $this->{{ property.name }}->format('{{ property.phpDateFormat }}');
 {% endif %}
+{% elseif property.returnKind == 'temporalArray' %}
+{% if property.temporalArrayNullable %}
+        if ($this->{{ property.name }} === null) {
+            return null;
+        }
+
+{% endif %}
+{% if property.temporalItemsNullable %}
+{% if property.phpDateFormat == 'c' %}
+        return array_map(
+            static fn (?DateTimeImmutable $item): ?string => $item === null
+                ? null
+                : ($item->format('u') === '000000' ? $item->format('c') : $item->format('Y-m-d\TH:i:s.uP')),
+            $this->{{ property.name }},
+        );
+{% else %}
+        return array_map(
+            static fn (?DateTimeImmutable $item): ?string => $item?->format('{{ property.phpDateFormat }}'),
+            $this->{{ property.name }},
+        );
+{% endif %}
+{% else %}
+{% if property.phpDateFormat == 'c' %}
+        return array_map(
+            static fn (DateTimeImmutable $item): string => $item->format('u') === '000000'
+                ? $item->format('c')
+                : $item->format('Y-m-d\TH:i:s.uP'),
+            $this->{{ property.name }},
+        );
+{% else %}
+        return array_map(
+            static fn (DateTimeImmutable $item): string => $item->format('{{ property.phpDateFormat }}'),
+            $this->{{ property.name }},
+        );
+{% endif %}
+{% endif %}
 {% else %}
 {% if property.getterUsesSentinel %}
         return $this->{{ property.name }} !== {{ unsetValueRef }}::UNSET ? $this->{{ property.name }} : null;
@@ -230,9 +266,14 @@ interface {{ className }}
     }
 {% if property.hasObjectGetter %}
 
+{% if property.objectGetterDocReturnType is not null %}
+    /**
+     * @return {{ property.objectGetterDocReturnType }}
+     */
+{% endif %}
     public function {{ property.objectGetterMethodName }}(): {{ property.objectGetterReturnType }}
     {
-{% if property.usesUnsetSentinel %}
+{% if property.getterUsesSentinel %}
         if ($this->{{ property.name }} === {{ unsetValueRef }}::UNSET) {
             return null;
         }
@@ -359,7 +400,9 @@ interface {{ className }}
 {% endif %}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
-{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
+{% if property.returnKind == 'temporalArray' and property.isMap %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
@@ -370,7 +413,9 @@ interface {{ className }}
 {% endif %}
 {% else %}
         if ($this->{{ property.inRequestFlagName }}) {
-{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
+{% if property.returnKind == 'temporalArray' and property.isMap %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
@@ -406,7 +451,9 @@ interface {{ className }}
 {% endif %}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
-{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
+{% if property.returnKind == 'temporalArray' and property.isMap %}
+        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
         $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
@@ -417,7 +464,9 @@ interface {{ className }}
 {% endif %}
 {% else %}
         if ($this->{{ property.inRequestFlagName }}) {
-{% if property.returnKind == 'temporal' or property.getterUsesSentinel %}
+{% if property.returnKind == 'temporalArray' and property.isMap %}
+            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
             $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};

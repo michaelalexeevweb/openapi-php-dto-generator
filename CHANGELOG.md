@@ -3,6 +3,38 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.3 — 2026-08-24
+
+- an array of `format: date` items is written back as dates
+- the item getter formats, an `AsDateTime` twin keeps the objects
+- symfony and yii3 write the same shape
+- pinned as normalization parity, across every mode
+
+`items: {type: string, format: date}` types the item as `DateTimeImmutable` — exactly what the scalar
+case does — and there the treatment stopped. The scalar has always been READ as the string the schema
+asks for (`getSingle(): string` formatting `Y-m-d`); the array handed its objects straight back, and
+whatever normalized them printed RFC 3339. So a document declaring an array of dates produced
+`["2026-03-10T00:00:00+00:00"]` on the wire: a response contradicting the schema it was generated from,
+silently, since nothing validates an item's `format` on the way out.
+
+Runtime and symfony modes now format the items the same way the scalar is formatted. `getDates()` returns
+`array<string>`, `getDatesAsDateTime()` returns the `array<DateTimeImmutable>` — the same pairing the
+scalar getter has, with the same `#[Ignore]` on the symfony twin so the serializer does not emit both.
+`toArray()`/`jsonSerialize()` read the formatting getter, and the `arrayItemType` in the normalization map
+says `array<string>` because that is what the getter now hands over. A MAP of temporal values
+(`additionalProperties: {format: date}`) is covered by the same path and still encodes as a JSON object;
+nullable items and a nullable array keep their nulls.
+
+yii3 already walked arrays in `openApiWireValue()` passing the temporal format down — its
+`OPENAPI_TEMPORAL_FORMATS` map simply never listed an array property, because the format sits one level
+down in `items`. It is read from there now.
+
+laravel and laravel-data are unchanged: neither converts temporal ITEMS on the way in, so their arrays
+were already strings on the way out.
+
+Two cases in `NormalizationParityTest` pin it for all five modes at once — a date array and a date-time
+array — so no mode can drift back. Regenerate to pick this up.
+
 ## 2.15.2 — 2026-08-21
 
 - yii3 resolves a schema named like a framework class

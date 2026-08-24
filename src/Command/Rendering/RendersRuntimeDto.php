@@ -560,7 +560,7 @@ trait RendersRuntimeDto
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, isMap: bool, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, isParameter: bool}
+     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, temporalArrayNullable: bool, temporalItemsNullable: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, isMap: bool, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, objectGetterDocReturnType: ?string, isParameter: bool}
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -602,12 +602,32 @@ trait RendersRuntimeDto
             && !($property['inHeader'] ?? false)
             && !($property['inCookie'] ?? false);
 
+        $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
+        $arrayItemPhpType = $phpType === 'array' ? $this->resolveArrayItemPhpType($property['type']) : '';
+        $temporalItemsNullable = str_starts_with($arrayItemPhpType, '?');
+        // An array (or map) of `format: date` items is stored as DateTimeImmutable objects and owes
+        // the reader the same formatted string the scalar getter returns. Without this the items
+        // leave as RFC 3339 date-times and the response contradicts its own schema.
+        $isTemporalArray = $phpType === 'array'
+            && is_string($itemsTemporalFormat)
+            && ltrim($arrayItemPhpType, '?') === 'DateTimeImmutable';
+
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
             $returnType = $property['nullable'] || $usesUnsetSentinel ? '?string' : 'string';
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
             $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
+        } elseif ($isTemporalArray) {
+            $returnKind = 'temporalArray';
+            $expectedFormat = $itemsTemporalFormat;
+            $phpDateFormat = $itemsTemporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
+            // The getter hands back strings, so its docblock — and the `arrayItemType` the
+            // normalization map reads off it — must say strings.
+            $docReturnType = $this->composePhpTypeHint(
+                $this->replaceTemporalItemTypeWithString($phpDocType),
+                $property['nullable'],
+            );
         } elseif ($phpType !== $phpDocType) {
             $docReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
         }
@@ -624,12 +644,20 @@ trait RendersRuntimeDto
         // the property is never UnsetValue at read time. Non-array sentinel getters still do.
         $getterUsesSentinel = $usesUnsetSentinel && $phpType !== 'array';
 
-        // Scalar temporal fields expose a second getter that returns the underlying
-        // DateTimeImmutable object (the primary getter returns a formatted string). The value
-        // is already stored as DateTimeImmutable, so this just unwraps the sentinel/null.
-        $hasObjectGetter = $returnKind === 'temporal';
+        // Temporal fields expose a second getter that returns the underlying DateTimeImmutable
+        // value(s) — the primary getter returns the formatted string(s). The value is already
+        // stored as DateTimeImmutable, so this just unwraps the sentinel/null.
+        $hasObjectGetter = $returnKind === 'temporal' || $returnKind === 'temporalArray';
         $objectGetterMethodName = $hasObjectGetter ? 'get' . ucfirst($property['name']) . 'AsDateTime' : '';
         $objectGetterReturnType = $isNullableTemporal ? '?DateTimeImmutable' : 'DateTimeImmutable';
+        $objectGetterDocReturnType = null;
+        if ($returnKind === 'temporalArray') {
+            $objectGetterReturnType = $returnType;
+            $objectGetterDocReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
+            if ($usesUnsetSentinel) {
+                $objectGetterDocReturnType = $this->ensureTypeAllowsNull($objectGetterDocReturnType);
+            }
+        }
 
         return [
             'name' => $property['name'],
@@ -644,6 +672,10 @@ trait RendersRuntimeDto
             'returnKind' => $returnKind,
             'phpDateFormat' => $phpDateFormat,
             'isNullableTemporal' => $isNullableTemporal,
+            // A temporal ARRAY getter maps over the items, so it needs to know whether the array
+            // itself can be null (sentinel or `nullable: true`) and whether an item can be.
+            'temporalArrayNullable' => str_starts_with($returnType, '?'),
+            'temporalItemsNullable' => $temporalItemsNullable,
             'requiredLiteral' => $property['required'] ? 'true' : 'false',
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),
@@ -667,6 +699,7 @@ trait RendersRuntimeDto
             'hasObjectGetter' => $hasObjectGetter,
             'objectGetterMethodName' => $objectGetterMethodName,
             'objectGetterReturnType' => $objectGetterReturnType,
+            'objectGetterDocReturnType' => $objectGetterDocReturnType,
             'readOnly' => $property['readOnly'] ?? false,
             'writeOnly' => $property['writeOnly'] ?? false,
             'deprecated' => $property['deprecated'] ?? false,
@@ -1205,6 +1238,18 @@ trait RendersRuntimeDto
 
         // The item is a map when it is itself a generic carrying a key type.
         return preg_match('/^\??(?:array|list)<[^<>]*,/is', $inner) === 1;
+    }
+
+    /**
+     * Retypes a temporal array/map docblock type to what the getter actually returns: strings.
+     *
+     * `array<DateTimeImmutable>` becomes `array<string>`, `array<string, DateTimeImmutable>` becomes
+     * `array<string, string>`. The item type is the only place that name can occur in this docblock,
+     * so a plain replacement is exact.
+     */
+    private function replaceTemporalItemTypeWithString(string $docType): string
+    {
+        return str_replace('DateTimeImmutable', 'string', $docType);
     }
 
     private function resolveArrayItemPhpType(string $fullType): string

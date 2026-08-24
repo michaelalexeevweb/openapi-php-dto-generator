@@ -286,6 +286,24 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            'array of dates stays dates' => [
+                'schema' => self::object(
+                    ['on' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']]],
+                    ['on'],
+                ),
+                'json' => '{"on":["2026-03-10","2026-03-11"]}',
+                'runtime' => ['on' => ['2026-03-10', '2026-03-11']],
+                'symfony' => ['on' => ['2026-03-10', '2026-03-11']],
+            ],
+            'array of date-times keeps the item format' => [
+                'schema' => self::object(
+                    ['at' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']]],
+                    ['at'],
+                ),
+                'json' => '{"at":["2026-03-10T12:00:00+03:00"]}',
+                'runtime' => ['at' => ['2026-03-10T12:00:00+03:00']],
+                'symfony' => ['at' => ['2026-03-10T12:00:00+03:00']],
+            ],
             'enum' => [
                 'schema' => self::object(['e' => ['type' => 'string', 'enum' => ['a', 'b']]], ['e']),
                 'json' => '{"e":"a"}',
