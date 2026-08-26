@@ -262,15 +262,19 @@ final class DtoValidator implements DtoValidatorInterface
             // A generated DTO carries object data too, so cross-field keywords (dependentRequired,
             // dependentSchemas, propertyNames, …) must see its payload instead of being skipped
             // because the value happens to be an object rather than an array.
-            $objectValue = is_array($value) ? $value : $this->generatedDtoPayload($value);
+            $isGeneratedDto = $value instanceof GeneratedDtoInterface && !$value instanceof BackedEnum;
+            $objectValue = $this->objectPayloadForConstraints($value);
             if ($objectValue !== null) {
                 $errors = [...$errors, ...$this->validateObjectConstraints(
                     subject: $subject,
                     value: $objectValue,
                     // `properties` is owned by the DTO itself: it validates its own fields against
                     // its own constraints, so re-checking them here would duplicate every message —
-                    // but the declared NAMES must stay visible, see the helper.
-                    constraints: is_array($value) ? $constraints : $this->withPropertyRulesOwnedByTheDto($constraints),
+                    // but the declared NAMES must stay visible, see the helper. A PLAIN object owns
+                    // nothing: it is the `stdClass` `json_decode()` produced two containers down,
+                    // where no class was generated, so its `properties` are checked right here or
+                    // nowhere at all.
+                    constraints: $isGeneratedDto ? $this->withPropertyRulesOwnedByTheDto($constraints) : $constraints,
                     depth: $depth,
                 )];
             }
@@ -1510,6 +1514,45 @@ final class DtoValidator implements DtoValidatorInterface
             'NULL' => 'null',
             default => gettype($value),
         };
+    }
+
+    /**
+     * The array view the object keywords need, or null when there is none.
+     *
+     * The plain-object arm is the one that was missing. `generatedDtoPayload()` answers for a generated
+     * DTO and null for everything else, so a `stdClass` — which is exactly what a `$ref` two containers
+     * deep decodes to — took the null branch and every object keyword was skipped: a missing `required`
+     * property and a value below its `minimum` were both accepted in silence.
+     *
+     * `get_object_vars()` is the same view the emitted interpreter takes
+     * (`normalizeOpenApiStructuralValue()`), which is what keeps runtime mode and the four
+     * interpreter-driven modes answering alike.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function objectPayloadForConstraints(mixed $value): ?array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (!is_object($value)) {
+            return null;
+        }
+
+        $dtoPayload = $this->generatedDtoPayload($value);
+        if ($dtoPayload !== null) {
+            return $dtoPayload;
+        }
+
+        // A BackedEnum is an object with a `value` property and no object shape to check; a generated
+        // DTO that could not produce its payload said so by returning null and must not be re-read
+        // through reflection.
+        if ($value instanceof GeneratedDtoInterface || $value instanceof BackedEnum) {
+            return null;
+        }
+
+        return get_object_vars($value);
     }
 
     /**

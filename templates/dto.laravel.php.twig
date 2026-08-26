@@ -112,7 +112,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     {
         return [
 {% for rule in rules %}
-            '{{ rule.path|replace({'\\':'\\\\','\'':'\\\''}) }}' => {{ rule.rules|raw }},
+            '{{ rule.path|php_string }}' => {{ rule.rules|raw }},
 {% endfor %}
         ];
     }
@@ -125,7 +125,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      */
     private const array OPENAPI_OBJECT_PATHS = [
 {% for objectPath in objectShapePaths %}
-        '{{ objectPath|replace({'\\':'\\\\','\'':'\\\''}) }}',
+        '{{ objectPath|php_string }}',
 {% endfor %}
     ];
 
@@ -258,7 +258,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% if optionalParams is not empty %}
 {% if ignoredKeys is not empty %}
         // A readOnly key is ignored on the way in, so it does not count as provided either.
-        $dto->providedOpenApiKeys = array_values(array_diff(array_keys($data), [{% for ignored in ignoredKeys %}'{{ ignored|replace({'\\':'\\\\','\'':'\\\''}) }}'{{ loop.last ? '' : ', ' }}{% endfor %}]));
+        $dto->providedOpenApiKeys = array_values(array_diff(array_keys($data), [{% for ignored in ignoredKeys %}'{{ ignored|php_string }}'{{ loop.last ? '' : ', ' }}{% endfor %}]));
 {% else %}
         $dto->providedOpenApiKeys = array_keys($data);
 {% endif %}
@@ -306,7 +306,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
     public function {{ param.providedGetter }}(): bool
     {
-        return in_array('{{ param.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}', $this->providedOpenApiKeys, true);
+        return in_array('{{ param.openApiName|php_string }}', $this->providedOpenApiKeys, true);
     }
 {% endif %}
 {% endfor %}
@@ -358,11 +358,11 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         $result = [];
 {% for param in params|filter(param => param.toArrayExpression is not empty) %}
 {% if param.required %}
-        $result['{{ param.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = {{ param.toArrayExpression|raw }};
+        $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
 {% else %}
 
         if ($this->{{ param.providedGetter }}()) {
-            $result['{{ param.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = {{ param.toArrayExpression|raw }};
+            $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
         }
 {% endif %}
 {% endfor %}

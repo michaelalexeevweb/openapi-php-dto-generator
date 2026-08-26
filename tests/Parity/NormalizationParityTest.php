@@ -657,6 +657,19 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['first_name' => 'John', 'x-trace-id' => 'abc'],
                 'symfony' => ['first_name' => 'John', 'x-trace-id' => 'abc'],
             ],
+            // A name PHP cannot put in a single-quoted literal unescaped. Both characters END the
+            // literal, so getting this wrong is not a wrong VALUE — it is a generated file that does
+            // not parse, which runtime and yii3 modes shipped for two releases. The golden corpus
+            // answers the parse question for all five modes; this answers the round-trip one.
+            'property names carrying a quote and a backslash' => [
+                'schema' => self::object(
+                    ["it's" => ['type' => 'string'], 'back\slash' => ['type' => 'string'], "both\\'s" => ['type' => 'string']],
+                    ["it's", 'back\slash', "both\\'s"],
+                ),
+                'json' => '{"it\'s":"a","back\\\slash":"b","both\\\\\'s":"c"}',
+                'runtime' => ["it's" => 'a', 'back\slash' => 'b', "both\\'s" => 'c'],
+                'symfony' => ["it's" => 'a', 'back\slash' => 'b', "both\\'s" => 'c'],
+            ],
             // Two keys differing only in case need two PHP identifiers, because PHP method names are
             // case-insensitive. Whatever the generator renames them to, the wire keys must come back
             // exactly as the schema spells them — in both modes.

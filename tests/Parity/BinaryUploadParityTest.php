@@ -236,13 +236,6 @@ final class BinaryUploadParityTest extends TestCase
     }
 
     /**
-     * laravel-data validates and hydrates in one call, so both halves of the question — "is a string
-     * refused" and "is it refused with a 422 rather than a TypeError" — are answered by it.
-     *
-     * @param class-string $fqcn
-     * @param array<string, mixed> $payload
-     */
-    /**
      * yii3 mode: a string where an `UploadedFileInterface` belongs cannot fill the property, so the
      * property stays uninitialised and the interpreter reports it as missing. The payload is refused
      * either way — which is the guarantee this suite is about — but the stage differs.
@@ -272,6 +265,13 @@ final class BinaryUploadParityTest extends TestCase
         return implode(' | ', $messages);
     }
 
+    /**
+     * laravel-data validates and hydrates in one call, so both halves of the question — "is a string
+     * refused" and "is it refused with a 422 rather than a TypeError" — are answered by it.
+     *
+     * @param class-string $fqcn
+     * @param array<string, mixed> $payload
+     */
     private function laravelDataRejection(string $fqcn, array $payload): ?string
     {
         LaravelDataContainer::boot();

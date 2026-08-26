@@ -65,13 +65,6 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
-     * Generates ProbeModel from the probe fixture into a unique namespace (so each
-     * test method gets its own class and PHP never sees a redeclaration) and returns
-     * the fully-qualified class name after requiring every generated file.
-     *
-     * @return class-string<GeneratedDtoInterface>
-     */
-    /**
      * A schema NAMED like a class the emitted runtime file imports — `Stringable`, `RuntimeException`,
      * `Closure`, `UnsetValue`, `JsonException`. The document is entitled to those names, and every
      * generated runtime class carries imports with exactly them, which PHP resolves in two
@@ -152,6 +145,13 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return $provided;
     }
 
+    /**
+     * Generates ProbeModel from the probe fixture into a unique namespace (so each
+     * test method gets its own class and PHP never sees a redeclaration) and returns
+     * the fully-qualified class name after requiring every generated file.
+     *
+     * @return class-string<GeneratedDtoInterface>
+     */
     private function generateProbeModel(string $namespace): string
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/gap1-probe.yaml');
@@ -228,9 +228,6 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
     }
 
-    /**
-     * @return class-string<GeneratedDtoInterface>
-     */
     /**
      * `additionalProperties: false` closes the object, and runtime mode is the one mode that can
      * still see the offending key.
@@ -621,6 +618,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
     }
 
+    /**
+     * @return class-string<GeneratedDtoInterface>
+     */
     private function generateFromInlineSpec(array $spec, string $namespace, string $rootClass): string
     {
         (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, $namespace);
@@ -3228,7 +3228,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 'Tag' => [
                     'type' => 'object',
                     'required' => ['id'],
-                    'properties' => ['id' => ['type' => 'integer']],
+                    'properties' => ['id' => ['type' => 'integer', 'minimum' => 5]],
                 ],
                 'Nested' => [
                     'type' => 'object',
@@ -3257,10 +3257,15 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'NestedContainerNs', 'Nested');
 
         $source = (string)file_get_contents($this->outputDirectory . '/Nested.php');
-        // A scalar two deep keeps its type; anything that would have to be CONVERTED there does not.
+        // Every declaration two deep says what is really there, which is the JSON value: nothing casts
+        // at this depth, so a date and an enum member are both the `string` the payload carried, and
+        // an enum's own $ref resolves to its backing type rather than to the class it would have been
+        // one level up.
         $this->assertStringContainsString('@param array<array<int>> $matrix', $source);
         $this->assertStringContainsString('@param array<string, array<string>> $byKey', $source);
-        $this->assertStringContainsString('@param array<array<mixed>> $kindRows', $source);
+        $this->assertStringContainsString('@param array<array<string>> $kindRows', $source);
+        // The one that stays `mixed`, and the only honest answer for it: an OBJECT two deep is the
+        // `stdClass` `json_decode()` produced, so neither `Tag` nor `array` is true of it.
         $this->assertStringContainsString('@param array<array<mixed>> $tagRows', $source);
         // No class is synthesized down there — one that nothing references would still be written out.
         $this->assertSame(
@@ -3268,7 +3273,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             array_map('basename', glob($this->outputDirectory . '/*.php') ?: []),
         );
 
-        $valid = '{"matrix":[[1,2],[3]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}';
+        $valid = '{"matrix":[[1,2],[3]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":9}]]}';
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
         $this->assertSame([[1, 2], [3]], $dto->getMatrix());
         $this->assertSame(['a' => ['x']], $dto->getByKey());
@@ -3281,15 +3286,27 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // THE case that passed in silence: a member the enum does not have, two containers deep.
         $cases = [
-            '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["zzz"]],"tagRows":[[{"id":1}]]}'
+            '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["zzz"]],"tagRows":[[{"id":9}]]}'
                 => 'kindRows".0.0 must be one of: "a", "b"',
-            '{"matrix":[[-1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+            '{"matrix":[[-1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":9}]]}'
                 => 'matrix".0.0 must be greater than or equal to 0',
-            '{"matrix":[[1]],"byKey":{"a":[7]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+            '{"matrix":[[1]],"byKey":{"a":[7]},"kindRows":[["a"]],"tagRows":[[{"id":9}]]}'
                 => 'byKey".a.0 must be of type string',
             // And the wire shape of the container itself, which the item cast owns.
-            '{"matrix":[1],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+            '{"matrix":[1],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":9}]]}'
                 => 'param "matrix.0" expects array, got int',
+            // A `$ref`ed OBJECT two containers deep. Nothing hydrates it — the value stays the
+            // `stdClass` `json_decode()` produced, which is why the declaration above says
+            // `array<array<mixed>>` — but the component's own rules now reach it. All three used to
+            // pass in silence: the emitted constraint stopped at `items => ['type' => 'array']`
+            // because `$ref` is not a constraint keyword, and even once it did not,
+            // `DtoValidator` skipped every object keyword for a value that was not a generated DTO.
+            '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+                => 'tagRows".0.0.id must be greater than or equal to 5',
+            '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{}]]}'
+                => 'tagRows".0.0.id is required',
+            '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[["zzz"]]}'
+                => 'tagRows".0.0 must be of type object',
         ];
 
         foreach ($cases as $json => $expected) {

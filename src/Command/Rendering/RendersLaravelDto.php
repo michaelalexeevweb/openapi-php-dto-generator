@@ -46,17 +46,20 @@ trait RendersLaravelDto
     private array $laravelRecursiveFolds = [];
 
     /**
-     * Keywords no Laravel rule can express, so the emitted interpreter owns them. A property carrying
-     * any of these — at any depth — is validated by `withValidator()` in addition to its rules.
+     * The deepest `.*` HOP the dotted rules reach: `field.*` is hop 1, `field.*.*` is hop 2.
      *
-     * @var array<int, string>
-     */
-    /**
-     * Keywords that assert nothing — documentation, defaults and access flags. They are neither emitted
-     * as rules nor handed to the interpreter, so they must not make a schema "unenforced".
+     * A guard against a pathological schema, not a limit anyone reaches — but both halves count in the
+     * same unit on purpose, because they have to agree exactly:
      *
-     * @var array<int, string>
+     *  - when only the rule generator had a limit, the coverage test kept recursing to the bottom and
+     *    reported the keywords down there as "a rule covers this". Neither half then enforced them —
+     *    measured on a list nested twelve deep, runtime rejected the out-of-range value and Laravel
+     *    accepted it;
+     *  - when the two counted from different places, the hops in between were claimed by BOTH, and the
+     *    sweep showed Laravel reporting one mistake twice at depths 8 and 9.
      */
+    private const int LARAVEL_MAX_DOTTED_RULE_HOP = 9;
+
     /**
      * Keywords JSON Schema applies to an array instance and to nothing else.
      *
@@ -93,6 +96,12 @@ trait RendersLaravelDto
         'discriminator',
     ];
 
+    /**
+     * Keywords that assert nothing — documentation, defaults and access flags. They are neither emitted
+     * as rules nor handed to the interpreter, so they must not make a schema "unenforced".
+     *
+     * @var array<int, string>
+     */
     private const array LARAVEL_ANNOTATION_KEYWORDS = [
         'description',
         'title',
@@ -734,11 +743,12 @@ trait RendersLaravelDto
      * @param array<string, mixed>|null $schema the container whose items these are
      * @return array<string, array<int, string>>
      */
-    private function laravelDeepItemRules(?array $schema, string $pathPrefix, int $depth = 0): array
+    private function laravelDeepItemRules(?array $schema, string $pathPrefix, int $hop = 2): array
     {
-        // A guard, not a limit anyone reaches: a self-referential schema is a `$ref`, and a `$ref` two
-        // containers deep is not expanded here at all.
-        if ($schema === null || $depth >= 8) {
+        // `$hop` is the hop the path about to be built would occupy, counted the way
+        // `LARAVEL_MAX_DOTTED_RULE_HOP` counts — the caller starts at 2 because it has already emitted
+        // `field.*` itself.
+        if ($schema === null || $hop > self::LARAVEL_MAX_DOTTED_RULE_HOP) {
             return [];
         }
 
@@ -755,7 +765,35 @@ trait RendersLaravelDto
         $rules = $this->laravelRulesForSchema($nested);
         $paths = $rules === [] ? [] : [$path => $rules];
 
-        foreach ($this->laravelDeepItemRules($nested, $path, $depth + 1) as $deepPath => $deepRules) {
+        // The item's own PROPERTIES, where it is an object no class was generated for — a `$ref` two
+        // containers deep, inlined into the constraints by
+        // `GenerateDtoCommand::inlineNestedContainerValidation()`. Without these the prune took
+        // `properties` away from the interpreter (a rule covers them) while no rule reached them, so
+        // `tagRows.*.*.id` below its `minimum` was accepted by both halves.
+        //
+        // `present`/`sometimes` are dropped for the same reason `laravelNestedRules()` drops them: a
+        // nested property's PRESENCE is not expressible as a rule — both candidates fire when the
+        // parent is absent or null — so `required` stays with the interpreter.
+        foreach ($nested['properties'] ?? [] as $propertyName => $propertySchema) {
+            if (!is_string($propertyName) || !is_array($propertySchema)) {
+                continue;
+            }
+
+            $propertyPath = $path . '.' . $propertyName;
+            $propertyRules = array_values(array_filter(
+                $this->laravelRulesForSchema($propertySchema),
+                static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
+            ));
+            if ($propertyRules !== []) {
+                $paths[$propertyPath] = $propertyRules;
+            }
+
+            foreach ($this->laravelDeepItemRules($propertySchema, $propertyPath, $hop + 1) as $p => $r) {
+                $paths[$p] = $r;
+            }
+        }
+
+        foreach ($this->laravelDeepItemRules($nested, $path, $hop + 1) as $deepPath => $deepRules) {
             $paths[$deepPath] = $deepRules;
         }
 
@@ -881,7 +919,7 @@ trait RendersLaravelDto
      */
     private function laravelHydratorFor(array $property, array $param): array
     {
-        $key = $this->laravelStringLiteral($property['openApiName']);
+        $key = $this->phpStringLiteral($property['openApiName']);
         $raw = sprintf('$data[%s]', $key);
         $enumClass = $this->laravelEnumClass($property);
         $dtoClass = $this->laravelDtoClass($property);
@@ -1091,11 +1129,6 @@ trait RendersLaravelDto
         $base = $this->shortClassName($base);
 
         return preg_match('/^[A-Z]/', $base) === 1 ? $base : null;
-    }
-
-    private function laravelStringLiteral(string $value): string
-    {
-        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
     }
 
     /**
@@ -1356,12 +1389,15 @@ trait RendersLaravelDto
      * @param array<string, mixed> $schema
      * @return array<int, string>
      */
-    private function laravelUnconsumedKeywords(array $schema): array
+    private function laravelUnconsumedKeywords(array $schema, int $hop = 0): array
     {
-        $consumed = [
-            ...$this->laravelSchemaRuleSpec($schema)['consumed'],
-            ...$this->laravelInertKeywords($schema),
-        ];
+        // An annotation asserts nothing at any depth. A RULE, on the other hand, only covers what
+        // `laravelDeepItemRules()` actually emitted — past its limit there is no dotted path, so
+        // nothing down here is covered and every assertion belongs to the interpreter.
+        $consumed = $this->laravelInertKeywords($schema);
+        if ($hop <= self::LARAVEL_MAX_DOTTED_RULE_HOP) {
+            $consumed = [...$consumed, ...$this->laravelSchemaRuleSpec($schema)['consumed']];
+        }
         $unconsumed = [];
 
         foreach (array_keys($schema) as $keyword) {
@@ -1379,7 +1415,7 @@ trait RendersLaravelDto
 
             // A container is unenforced only when its CONTENTS are.
             if ($keyword === 'items' || $keyword === 'additionalProperties') {
-                if (is_array($schema[$keyword]) && $this->laravelUnconsumedKeywords($schema[$keyword]) === []) {
+                if (is_array($schema[$keyword]) && $this->laravelUnconsumedKeywords($schema[$keyword], $hop + 1) === []) {
                     continue;
                 }
             }
@@ -1387,7 +1423,7 @@ trait RendersLaravelDto
             if ($keyword === 'properties' && is_array($schema['properties'])) {
                 $nestedUnenforced = false;
                 foreach ($schema['properties'] as $nested) {
-                    if (is_array($nested) && $this->laravelUnconsumedKeywords($nested) !== []) {
+                    if (is_array($nested) && $this->laravelUnconsumedKeywords($nested, $hop) !== []) {
                         $nestedUnenforced = true;
                         break;
                     }
@@ -1496,8 +1532,10 @@ trait RendersLaravelDto
         // `validation.string`, once as `plainMap.k must be of type string`.
         $containerCoveredByRules = [];
         foreach (['items', 'additionalProperties'] as $containerKey) {
+            // Depth 1: the ITEM is one container hop from the property, and coverage is judged by
+            // distance from the PROPERTY — that is where the dotted path starts counting.
             $containerCoveredByRules[$containerKey] = is_array($schema[$containerKey] ?? null)
-                && $this->laravelUnconsumedKeywords($schema[$containerKey]) === [];
+                && $this->laravelUnconsumedKeywords($schema[$containerKey], 1) === [];
         }
 
         // A nested object's properties are covered by the dotted rules. The NAMES still have to survive
@@ -1535,7 +1573,7 @@ trait RendersLaravelDto
                     continue;
                 }
 
-                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value);
+                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value, 1);
                 continue;
             }
 
@@ -1563,21 +1601,23 @@ trait RendersLaravelDto
      * @param array<string, mixed> $schema
      * @return array<string, mixed>
      */
-    private function laravelPruneNestedRuleCoveredKeywords(array $schema): array
+    private function laravelPruneNestedRuleCoveredKeywords(array $schema, int $hop = 0): array
     {
-        $consumed = [
-            ...$this->laravelSchemaRuleSpec($schema)['consumed'],
-            ...$this->laravelInertKeywords($schema),
-        ];
+        // Same unit and same rule as the coverage test: past the last hop the dotted rules reach, a
+        // rule covers nothing, so every assertion from here down has to survive into the interpreter.
+        $consumed = $this->laravelInertKeywords($schema);
+        if ($hop <= self::LARAVEL_MAX_DOTTED_RULE_HOP) {
+            $consumed = [...$consumed, ...$this->laravelSchemaRuleSpec($schema)['consumed']];
+        }
 
         $pruned = [];
         foreach ($schema as $keyword => $value) {
             if (($keyword === 'items' || $keyword === 'additionalProperties') && is_array($value)) {
-                if ($this->laravelUnconsumedKeywords($value) === []) {
+                if ($this->laravelUnconsumedKeywords($value, $hop + 1) === []) {
                     continue;
                 }
 
-                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value);
+                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value, $hop + 1);
                 continue;
             }
 
@@ -1690,7 +1730,7 @@ trait RendersLaravelDto
     {
         return sprintf(
             'throw new RuntimeException(%s)',
-            $this->laravelStringLiteral(sprintf(
+            $this->phpStringLiteral(sprintf(
                 'Property "%s" is typed as %s, a union with no discriminator: the document does not say '
                     . 'which member a payload is, so it cannot be hydrated. Add a discriminator to %s, or '
                     . 'type the property as one member.',
@@ -1737,7 +1777,7 @@ trait RendersLaravelDto
         foreach ($mapping as $discriminatorValue => $targetClass) {
             $arms[] = sprintf(
                 '%s => %s::fromValidated(%s)',
-                $this->laravelStringLiteral($discriminatorValue),
+                $this->phpStringLiteral($discriminatorValue),
                 $this->shortClassName($targetClass),
                 $rawAccess,
             );
@@ -1746,11 +1786,11 @@ trait RendersLaravelDto
         return sprintf(
             'match (%s[%s] ?? null) { %s, default => throw new InvalidArgumentException(sprintf(\'Unknown %s "%%s".\', (string)(%s[%s] ?? \'\'))) }',
             $rawAccess,
-            $this->laravelStringLiteral($discriminator['propertyName']),
+            $this->phpStringLiteral($discriminator['propertyName']),
             implode(', ', $arms),
             $discriminator['propertyName'],
             $rawAccess,
-            $this->laravelStringLiteral($discriminator['propertyName']),
+            $this->phpStringLiteral($discriminator['propertyName']),
         );
     }
 

@@ -24,6 +24,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Yaml\Yaml;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
+use Twig\TwigFilter;
 
 /**
  * @phpstan-type SchemaProperty array{
@@ -2471,15 +2472,33 @@ final class GenerateDtoCommand extends Command
      *
      * @param array<string, mixed> $schema
      * @param int $depth how many containers were entered to reach this schema
+     * @param bool $belowMaterialization whether no class is generated for anything from here down
+     * @param array<int, string> $visitedRefs refs already inlined on THIS path, to stop a cycle
      * @return array<string, mixed>
      */
-    private function inlineNestedContainerValidation(array $schema, int $depth = 0): array
-    {
-        if ($depth >= 2) {
+    private function inlineNestedContainerValidation(
+        array $schema,
+        int $depth = 0,
+        bool $belowMaterialization = false,
+        array $visitedRefs = [],
+    ): array {
+        // Two containers down, nothing is materialized any more — and that stays true for everything
+        // INSIDE what gets inlined here, however many `properties` hops away it is. A depth counter
+        // alone said otherwise: a property of an inlined object read as depth 0, so its own `$ref`
+        // was left for the scrubber to drop and the values under it went unchecked again.
+        $belowMaterialization = $belowMaterialization || $depth >= 2;
+
+        if ($belowMaterialization) {
             $ref = $schema['$ref'] ?? null;
-            if (is_string($ref)) {
-                $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+            if (is_string($ref) && !in_array($ref, $visitedRefs, true)) {
+                $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
+                    ?? $this->nestedObjectRefDefinition($ref);
                 if ($definition !== null) {
+                    // Recorded on THIS path only: a schema reachable twice through different
+                    // properties is inlined in both, a schema reachable from itself is inlined once
+                    // and its recursion left as the bare `$ref` the scrubber drops. Without it a
+                    // self-referential component inlined until memory ran out.
+                    $visitedRefs[] = $ref;
                     unset($schema['$ref']);
                     $schema += $definition;
                 }
@@ -2495,21 +2514,65 @@ final class GenerateDtoCommand extends Command
                 $schema[$containerKey] = $this->inlineNestedContainerValidation(
                     schema: $schema[$containerKey],
                     depth: $depth + 1,
+                    belowMaterialization: $belowMaterialization,
+                    visitedRefs: $visitedRefs,
                 );
             }
         }
 
-        // A PROPERTY restarts the count, at the class level and inside a container item alike: it is a
-        // value of its own, and where an item did become a DTO that class runs this for itself.
+        // A PROPERTY restarts the container count — it is a value of its own, and where an item DID
+        // become a DTO that class runs this for itself. What it does not restart is
+        // `$belowMaterialization`: below the first level of items there is no class to run it.
         if (is_array($schema['properties'] ?? null)) {
             foreach ($schema['properties'] as $name => $propertySchema) {
                 if (is_array($propertySchema)) {
-                    $schema['properties'][$name] = $this->inlineNestedContainerValidation($propertySchema);
+                    $schema['properties'][$name] = $this->inlineNestedContainerValidation(
+                        schema: $propertySchema,
+                        depth: 0,
+                        belowMaterialization: $belowMaterialization,
+                        visitedRefs: $visitedRefs,
+                    );
                 }
             }
         }
 
         return $schema;
+    }
+
+    /**
+     * The definition behind a `$ref` to an OBJECT-shaped component, for a position where no class is
+     * generated for it.
+     *
+     * At the first level of items that ref becomes a DTO and the DTO checks itself. Below it nothing
+     * does: `array<array<Tag>>` accepted an item with `id` missing, with `id` below its `minimum`, and
+     * even a bare string where the object belonged — every one of them silently, because `$ref` is not
+     * a constraint keyword and `scrubUnvalidatableSubschemas()` dropped the whole subschema.
+     *
+     * Inlining the component's own `properties`/`required` puts those checks back. The VALUE is still
+     * not hydrated — it stays the `stdClass` `json_decode()` produced, which is why the declared type
+     * remains `array<array<mixed>>`.
+     *
+     * A free-form object is skipped: it declares nothing to check, and inlining `{type: object}` would
+     * only add a type assertion the container already makes.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function nestedObjectRefDefinition(string $ref): ?array
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+        if (!is_array($definition) || $this->isEnumSchema($definition)) {
+            return null;
+        }
+
+        $hasProperties = is_array($definition['properties'] ?? null) && $definition['properties'] !== [];
+        $hasRequired = is_array($definition['required'] ?? null) && $definition['required'] !== [];
+
+        return $hasProperties || $hasRequired ? $definition : null;
     }
 
     /**
@@ -3622,21 +3685,38 @@ final class GenerateDtoCommand extends Command
             return $this->resolveNestedContainerDocType($schema, $remainingDepth - 1);
         }
 
-        // An enum is a `string` on the wire but an ENUM CASE once cast, and nothing casts it here.
-        if (array_key_exists('enum', $schema) || array_key_exists('$ref', $schema)) {
-            return 'mixed';
+        // A `$ref` naming a scalar alias or an enum COMPONENT: the value here is that scalar, because
+        // nothing casts it at this depth — an `enum` two containers deep arrives as the plain string
+        // the payload carried, measured. A `$ref` to an OBJECT is the one that stays `mixed`: there
+        // the value is the `stdClass` `json_decode()` produced, and naming the class would be exactly
+        // the lie 2.15.4 removed.
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref)) {
+            $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+
+            return $definition === null ? 'mixed' : $this->nestedScalarDocType($definition['type'] ?? null);
         }
 
-        // `format: date`/`binary` turn the value into an object one level up; at this depth they do
-        // not, and saying `string` would be true of the payload but not of the declared schema shape.
-        if (is_string($schema['format'] ?? null) && $this->mapStringFormatType($schema['format']) !== null) {
-            return 'mixed';
-        }
+        // `format: date` and an inline `enum` used to answer `mixed` here on the grounds that the
+        // value is "really" a date or an enum case. It is not: one level up it becomes one, at this
+        // depth nothing converts it, and `mixed` said less than was known — a consumer's PHPStan got
+        // nothing where `string` was both true and useful.
+        return $this->nestedScalarDocType($type);
+    }
 
+    /**
+     * The PHP type of a scalar JSON value at a depth where nothing casts it.
+     */
+    private function nestedScalarDocType(mixed $type): string
+    {
         return match ($type) {
             'integer' => 'int',
             'string' => 'string',
             'boolean' => 'bool',
+            // JSON hands `1` over as an int and `1.5` as a float, and neither is widened here.
+            // Measured: ONE `type: number` array held both in the same payload, so `float` alone
+            // would have been a lie half the time.
+            'number' => 'float|int',
             default => 'mixed',
         };
     }
@@ -4058,6 +4138,20 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The single-quoted PHP literal for a value, quotes included — the ONE spelling every renderer and
+     * every template goes through (templates via the `php_string` Twig filter).
+     *
+     * It is one function because it was three, and they disagreed: the Laravel helper escaped every
+     * backslash, the yii3 renderer escaped only the quote in one place and both in another, and four
+     * literals escaped nothing at all. A schema property named `it's` then produced a file that did not
+     * parse — in runtime and yii3 modes.
+     */
+    private function phpStringLiteral(string $value): string
+    {
+        return "'" . $this->escapeSingleQuoted($value) . "'";
+    }
+
+    /**
      * Escapes a string for a single-quoted PHP literal using the minimal form: in single quotes
      * only `\` and `'` are special, and a backslash is literal unless it precedes another
      * backslash or a quote (or terminates the string). Emitting `\\` for every backslash is valid
@@ -4115,6 +4209,16 @@ final class GenerateDtoCommand extends Command
             'trim_blocks' => true,
             'lstrip_blocks' => true,
         ]);
+
+        // A template writes `'{{ name|php_string }}'` and gets the SAME escaping the renderers use.
+        // Before this each template spelled the rule itself — `|replace({'\\':'\\\\','\'':'\\\''})` in about
+        // thirty places, only the quote half in the yii3 one, and nothing at all in four literals —
+        // so a property named `it's` produced a file that did not parse in runtime and yii3 modes.
+        // One filter is the only way the answer cannot differ between two templates.
+        $this->twig->addFilter(new TwigFilter(
+            'php_string',
+            fn(string $value): string => $this->escapeSingleQuoted($value),
+        ));
 
         return $this->twig;
     }

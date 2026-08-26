@@ -229,20 +229,27 @@ A container nested in another container is where materialization stops: no DTO a
 synthesized below the first level of items, and nothing casts a value there. The declarations say so
 rather than promising otherwise:
 
-| schema | declared |
+| schema two containers deep | declared |
 | --- | --- |
 | array of arrays of scalars | `array<array<int>>` |
 | array of maps of scalars | `array<array<string, string>>` |
 | map of arrays / map of maps | `array<string, array<string>>` / `array<string, array<string, int>>` |
-| array of arrays of a `$ref` / an enum / a date | `array<array<mixed>>` |
+| `format: date` / `binary`, or an `enum` | `array<array<string>>` |
+| `type: number` | `array<array<float\|int>>` |
+| a `$ref` to an OBJECT | `array<array<mixed>>` |
 
-`mixed` in the last row is deliberate: those values arrive as whatever `json_decode()` produced — a
-`stdClass` for a `$ref`, a plain string for an enum — so naming the class would be a docblock the
-object never honours.
+Each row is what the property really holds. A date and an enum member are the plain string the payload
+carried — one level up they become a `DateTimeImmutable` and an enum case, here nothing converts them.
+`type: number` is both an int and a float, because JSON decides per value.
+
+`mixed` is left for the object alone: it arrives as the `stdClass` `json_decode()` produced, so naming
+the class would be a docblock the value never honours.
 
 The VALUES are still checked, by the emitted constraints rather than by the PHP types: a scalar keeps
-its type, bounds and pattern at any depth, and an enum's members are checked too. What is not checked
-two levels down is the shape of a `$ref`ed object.
+its type, bounds and pattern at any depth, an enum's members are checked, and an object is checked
+against the component it references — `required`, property types and bounds, and that it is an object
+at all. What is not done two levels down is HYDRATION: the value stays the array or `stdClass` the
+body decoded to, which is what `mixed` in the table above says.
 
 ### Free-form objects
 
@@ -326,4 +333,4 @@ class UserController
 
 The schema semantics every mode shares (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
-[Validation Notes](README.md#validation-notes).
+[Validation Notes](README.validation.md).

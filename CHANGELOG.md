@@ -3,6 +3,85 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.5 — 2026-08-27
+
+- a property name with a quote produced PHP that did not parse
+- a `$ref`ed object two containers deep was validated by nothing
+- one mistake, one message: Symfony reported container items two and three times
+- a bound below ten containers deep was enforced by neither half in Laravel mode
+- `bin/benchmark` could not find its autoloader in a dist install
+- declarations two deep now say what they hold, not `mixed`
+
+Six defects, five of them found by MEASURING the thing the last release had just documented rather
+than by reading it. Three had been shipping for releases.
+
+**A quote in a property name.** `it's` is a name a document is entitled to, and both characters that
+end a single-quoted PHP literal — the quote and the backslash — were emitted raw in five places. The
+generated file did not parse at all, in runtime and yii3 modes; the other three survived by accident.
+One value was being escaped four different ways: the full form in a `|replace(…)` repeated
+thirty-seven times across the templates, the quote alone in the yii3 ones, `str_replace` in the
+renderers, and nothing whatsoever in five literals. There is now ONE spelling — a `php_string` Twig
+filter over the `escapeSingleQuoted()` the renderers already used — and `laravelStringLiteral()`, a
+second implementation of the same idea, is gone. The corpus gained the names `it's`, `back\slash` and
+`both\'s`, so `testEveryGeneratedCorpusFileParses` answers for all five modes at once; the corpus had
+held nothing more awkward than camelCase, which is why this was invisible.
+
+**An object two containers deep.** `array<array<Tag>>` was checked by nothing: a value below its
+`minimum`, a missing `required` property, even a bare string where the object belonged — all accepted
+in silence. Three separate halves were missing, and each only became visible once the one before it
+was fixed. The generator now inlines an object `$ref`'s own `properties`/`required` into the emitted
+constraints below the level where materialization stops (with a per-path guard, so a self-referential
+component inlines once instead of forever). `DtoValidator` gives a plain `stdClass` the array view the
+emitted interpreter already took, without which every object keyword was skipped for a value that was
+not a generated DTO — that half was runtime-only, and the parity suite said so by failing on exactly
+one column. And Laravel's dotted rules now descend into an item's PROPERTIES (`tagRows.*.*.id`), which
+the prune had already been assuming they did.
+
+Hydration still stops there: the value remains the `stdClass` `json_decode()` produced, which is why
+the declaration says `mixed`. The support matrix said "shape-checking" was missing; it was more than
+the shape, and it now says what is actually absent.
+
+**One mistake, one message, in Symfony mode.** `filterSymfonyValidationConstraints()` states that it
+removes what the attributes already enforce "so the callback does not duplicate attribute-based
+violations" — and then handed the callback every scalar keyword of every container item, while
+`#[Assert\All]` was enforcing them too. Measured: three messages for one wrong map value, two for
+every bound. The specs and the keywords they consume are now reported from the same branches
+(`scalarConstraintSpecList()`, the shape `laravelSchemaRuleSpec()` has always had), and exactly those
+are subtracted from the FIRST container hop. `Assert\All` does not nest, so from the second hop down
+the callback keeps everything — which is what makes the paragraph above possible. `type` is never
+subtracted for a list: no attribute asserts it, and the callback accepts the integral `42.0` that
+JSON Schema calls an integer and `Assert\Type` would refuse. A map whose values are containers now
+emits no `#[Assert\All]` at all, because the only thing it had to say was already the callback's.
+
+**A bound ten containers deep, in Laravel mode.** The dotted rules and the coverage test counted depth
+differently, so between them they left a hole at one end and an overlap at the other: at twelve
+containers the rules had stopped while the coverage test still reported "a rule covers this", and
+nothing enforced the bound — runtime rejected the payload, Laravel accepted it; at eight and nine both
+claimed it and one mistake was reported twice. Both halves now count `.*` HOPS from the property
+against one constant, and a sweep from one to twenty containers has them agreeing everywhere.
+
+**`bin/benchmark` in a dist install.** It resolved its autoloader as `__DIR__ . '/../vendor/autoload.php'`,
+a path that does not exist once the package sits in a consumer's `vendor/` — while
+`README.performance.md`, which ships in the archive, tells the reader to run exactly that command. It
+now walks up for the autoloader the way `bin/console` always has. There were no tests for `bin/` at
+all; there are now, driving both binaries from a faked Composer layout.
+
+**Declarations below the first level of items.** They said `mixed` where the value was perfectly
+ordinary: a `format: date` two deep is the plain string the payload carried, so is an enum member, and
+a `type: number` holds an int and a float in the same array. Each now says so — `array<array<string>>`,
+`array<array<float|int>>` — and a `$ref` to a scalar or enum component resolves to its backing type.
+`mixed` is left for exactly one shape, the object, where it is the only true answer.
+
+**Also.** Three cross-document links pointed at headings a restructuring had removed, and six
+docblocks had been stranded above the declaration that displaced them, leaving their owners with none
+— which is how a `missingType.iterableValue` reached PHPStan, and how one comment survived describing
+a constant the file no longer had. Both rules are mechanical and are now tests; PHPStan analyses `src`
+only, so nothing had been looking at the second one in `tests/`.
+
+No behaviour changed for a document that uses none of the shapes above: what a mode ACCEPTS is
+unchanged everywhere except the four cases named here, all of which were payloads the schema forbade.
+
+
 ## 2.15.4 — 2026-08-26
 
 - six bugs in one family: "container plus type"

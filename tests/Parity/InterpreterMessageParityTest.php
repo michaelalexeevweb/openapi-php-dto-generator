@@ -474,15 +474,6 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
-     * The same interpreter as Laravel mode, reached through laravel-data's own validation. The messages
-     * must read identically — that is the claim this suite exists to hold — and the only reason a
-     * separate implementation is needed is the entry point: a request, because
-     * `validation_strategy` is `OnlyRequests`, and because the interpreter reads the raw body from it.
-     *
-     * @param array<string, mixed> $spec
-     * @return array<int, string>
-     */
-    /**
      * The messages the emitted interpreter produces in yii3 mode.
      *
      * Only the interpreter's own are compared: a native `yiisoft/validator` rule speaks Yii's language
@@ -516,6 +507,15 @@ final class InterpreterMessageParityTest extends TestCase
         return $messages;
     }
 
+    /**
+     * The same interpreter as Laravel mode, reached through laravel-data's own validation. The messages
+     * must read identically — that is the claim this suite exists to hold — and the only reason a
+     * separate implementation is needed is the entry point: a request, because
+     * `validation_strategy` is `OnlyRequests`, and because the interpreter reads the raw body from it.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<int, string>
+     */
     private function laravelDataMessages(array $spec, string $key, string $json): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');

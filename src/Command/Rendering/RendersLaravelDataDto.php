@@ -235,7 +235,7 @@ trait RendersLaravelDataDto
             $attributes[] = sprintf(
                 '#[%s(%s)]',
                 $this->libraryClassRef('Spatie\LaravelData\Attributes\MapName', $namespace, $useStatements),
-                $this->laravelStringLiteral($propertyName),
+                $this->phpStringLiteral($propertyName),
             );
         }
 
@@ -243,7 +243,7 @@ trait RendersLaravelDataDto
         foreach ($mapping as $discriminatorValue => $memberClass) {
             $this->appendImportForClass($useStatements, $memberClass, $namespace, $className);
             $members[] = [
-                'value' => $this->laravelStringLiteral($discriminatorValue),
+                'value' => $this->phpStringLiteral($discriminatorValue),
                 'class' => $this->formatClassNameForNamespace($memberClass, $namespace),
             ];
         }
@@ -388,7 +388,7 @@ trait RendersLaravelDataDto
             $attributes[] = sprintf(
                 '#[%s(%s)]',
                 $this->libraryClassRef('Spatie\LaravelData\Attributes\MapName', $namespace, $attributeImports),
-                $this->laravelStringLiteral($property['openApiName']),
+                $this->phpStringLiteral($property['openApiName']),
             );
         }
 

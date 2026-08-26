@@ -34,14 +34,14 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
 {% for param in params %}
-        '{{ param.openApiName|replace({'\'': '\\\''}) }}' => '{{ param.name }}',
+        '{{ param.openApiName|php_string }}' => '{{ param.name }}',
 {% endfor %}
     ];
 
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
 {% for param in params|filter(param => param.writeOnly) %}
-        '{{ param.openApiName|replace({'\'': '\\\''}) }}',
+        '{{ param.openApiName|php_string }}',
 {% endfor %}
     ];
 
@@ -49,7 +49,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     /** OpenAPI name => the `format` its temporal value is written back as. */
     private const array OPENAPI_TEMPORAL_FORMATS = [
 {% for param in temporalParams %}
-        '{{ param.openApiName|replace({'\'': '\\\''}) }}' => '{{ param.temporalFormat|replace({'\'': '\\\''}) }}',
+        '{{ param.openApiName|php_string }}' => '{{ param.temporalFormat|php_string }}',
 {% endfor %}
     ];
 
@@ -78,7 +78,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     public function {{ param.getter }}(): {{ param.propertyType }}
     {
 {% if param.tracksPresence %}
-        return $this->hasProperty('{{ param.openApiName }}') ? $this->{{ param.name }} : null;
+        return $this->hasProperty('{{ param.openApiName|php_string }}') ? $this->{{ param.name }} : null;
 {% else %}
         return $this->{{ param.name }};
 {% endif %}
@@ -88,7 +88,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     /** Whether the payload carried `{{ param.openApiName }}` at all. */
     public function {{ param.providedGetter }}(): bool
     {
-        return $this->hasProperty('{{ param.openApiName }}');
+        return $this->hasProperty('{{ param.openApiName|php_string }}');
     }
 {% endif %}
 {% endfor %}

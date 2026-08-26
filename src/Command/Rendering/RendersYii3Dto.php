@@ -358,8 +358,8 @@ trait RendersYii3Dto
         // Symfony mode. A per-property SOURCE attribute already carries the wire name itself.
         if ($source === null && $property['openApiName'] !== $property['name']) {
             $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\Data';
-            $attributes[] = '#[' . $this->yii3Lib('Data') . "('"
-                . str_replace("'", "\\'", $property['openApiName']) . "')]";
+            $attributes[] = '#[' . $this->yii3Lib('Data')
+                . '(' . $this->phpStringLiteral($property['openApiName']) . ')]';
         }
 
         foreach ($this->yii3ValidationAttributes($property, $ruleImports) as $attribute) {
@@ -396,8 +396,8 @@ trait RendersYii3Dto
             $type = $this->yii3Lib('UploadedFileInterface');
             $useStatements[] = 'Psr\Http\Message\UploadedFileInterface';
             $sourceImports[] = 'Yiisoft\Input\Http\Attribute\Parameter\UploadedFiles';
-            $attributes[] = '#[' . $this->yii3Lib('UploadedFiles') . "('"
-                . str_replace("'", "\\'", $property['openApiName']) . "')]";
+            $attributes[] = '#[' . $this->yii3Lib('UploadedFiles')
+                . '(' . $this->phpStringLiteral($property['openApiName']) . ')]';
         }
 
         // A generated class from ANOTHER namespace has to be imported, or the emitted file names a
@@ -1024,7 +1024,7 @@ PHP;
     {
         $lines = [];
         foreach ($parameters as $parameter) {
-            $key = "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $parameter['openApiName']) . "'";
+            $key = $this->phpStringLiteral($parameter['openApiName']);
 
             // EVERY property is guarded, required ones included. Reading an uninitialised typed
             // property throws `must not be accessed before initialization`, and with no constructor a

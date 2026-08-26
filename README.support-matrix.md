@@ -164,20 +164,43 @@ offset, in all five. Only the type of the value you read off the object does.
 Below the first level of items nothing is materialized — no DTO, no enum class — and nothing casts a
 value. All five modes declare that rather than promising otherwise:
 
-| schema | declared, every mode |
+| schema two containers deep | declared, every mode |
 |---|---|
 | array of arrays / maps of scalars | `array<array<int>>`, `array<array<string, string>>` |
 | map of arrays / map of maps | `array<string, array<string>>`, `array<string, array<string, int>>` |
-| a `$ref`, an enum or a date two containers deep | `array<array<mixed>>` |
+| `format: date` / `binary`, or an `enum` | `array<array<string>>` |
+| `type: number` | `array<array<float\|int>>` |
+| a `$ref` to a scalar or enum component | that component's backing type |
+| a `$ref` to an OBJECT component | `array<array<mixed>>` |
 
-`mixed` in the last row is measured, not cautious: a `$ref` two deep arrives as the `stdClass`
-`json_decode()` produced and an enum as a plain string, so naming the class would be a docblock the
-object never honours. It used to — `array<array<string, Tag>>` while holding `stdClass`.
+Every row is the value that is really there, measured rather than reasoned. A date and an enum member
+are the plain `string` the payload carried — one level up they would be a `DateTimeImmutable` and an
+enum case, at this depth nothing converts them. `type: number` is BOTH: JSON hands `1` over as an int
+and `1.5` as a float, and a single array holds both, so `float` alone would be wrong half the time.
 
-The VALUES are still checked, by whichever layer the mode uses: the emitted interpreter (runtime,
-symfony, yii3) or dotted `field.*.*` rules (laravel, laravel-data). A scalar keeps its type, bounds and
-pattern at any depth, and an enum's members are checked too. What no mode checks is the SHAPE of a
-`$ref`ed object two containers deep — see [Not generated in any mode](#not-generated-in-any-mode).
+`mixed` is left for exactly one row, the object: it arrives as the `stdClass` `json_decode()` produced,
+so neither the class nor `array` is true of it. That row used to say `array<array<string, Tag>>` while
+holding a `stdClass` — and the rows above it used to say `mixed` while holding a perfectly ordinary
+string, which said less than was known.
+
+The VALUES are still checked, by whichever layer the mode uses: `DtoValidator` (runtime), the emitted
+interpreter (symfony, yii3) or dotted `field.*.*` rules (laravel, laravel-data). A scalar keeps its
+type, bounds and pattern at any depth, an enum's members are checked, and an OBJECT is checked against
+the component it references — its `required` properties, its property types and bounds, and that it is
+an object at all:
+
+```
+array<array<Tag>>, Tag = {required: [id], properties: {id: {type: integer, minimum: 5}}}
+
+[[{"id": 9}]]     accepted
+[[{"id": 1}]]     tagRows.0.0.id must be greater than or equal to 5
+[[{}]]            tagRows.0.0.id is required
+[["zzz"]]         tagRows.0.0 must be of type object
+```
+
+What is still NOT done at that depth is HYDRATION: the value stays the `stdClass` `json_decode()`
+produced, which is why the declaration says `mixed` — see
+[Not generated in any mode](#not-generated-in-any-mode).
 
 
 ## Beyond validation
@@ -214,7 +237,7 @@ at all, so a property declaring either is emitted with no source rather than a w
 | | Why |
 |---|---|
 | hydration of a union of OBJECTS with no `discriminator` | the document does not say which member a given object is, and choosing by structure would be a guess two overlapping branches could not settle. The union is emitted as an interface — useful as a type, and fine for a response — but a payload cannot be turned back into a member in ANY mode. The generator names the property at generation time instead of letting the request find out; add a `discriminator` and every mode resolves it. Pinned by `tests/Parity/UnhydratableUnionParityTest` |
-| hydration or shape-checking of a `$ref`ed OBJECT two containers deep | materialization stops below the first level of items, so `array<array<Tag>>` holds whatever `json_decode()` produced. The declaration says `array<array<mixed>>` rather than naming a class that is not there, and the scalar/enum values at that depth ARE checked — see [Containers inside containers](#containers-inside-containers). Prefer a named component for the ROW (`array<Row>` where `Row` wraps the list) when the elements need validating |
+| hydration of a `$ref`ed OBJECT two containers deep | materialization stops below the first level of items, so `array<array<Tag>>` holds the `stdClass` `json_decode()` produced, not a `Tag`. The declaration says `array<array<mixed>>` rather than naming a class that is not there. VALIDATION does reach it — the referenced component's own rules are inlined into the emitted constraints, see [Containers inside containers](#containers-inside-containers) — so what is missing is the typed object, not the checks. Use a named component for the ROW (`array<Row>` where `Row` wraps the list) when you want `Tag` instances |
 | `authorize()` / any policy | an OpenAPI document describes payload shape, not authorization |
 | server, security scheme and callback objects | out of scope: this generates DTOs, not a router or an auth layer |
 | subschema-local `$defs` (`#/components/schemas/Foo/$defs/Bar`) | top-level `components.schemas` / `$defs` are folded and supported; a nested `$defs` pointer is not — prefer top-level shared types |

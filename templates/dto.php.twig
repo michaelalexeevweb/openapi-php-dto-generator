@@ -387,28 +387,28 @@ interface {{ className }}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporalArray' and property.isMap %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
 {% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
 {% endif %}
 {% else %}
         if ($this->{{ property.inRequestFlagName }}) {
 {% if property.returnKind == 'temporalArray' and property.isMap %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
 {% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
 {% endif %}
         }
 {% endif %}
@@ -444,28 +444,28 @@ interface {{ className }}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporalArray' and property.isMap %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
 {% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
-        $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
 {% endif %}
 {% else %}
         if ($this->{{ property.inRequestFlagName }}) {
 {% if property.returnKind == 'temporalArray' and property.isMap %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
 {% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.methodName }}();
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% else %}
-            $result['{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}'] = $this->{{ property.name }};
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
 {% endif %}
         }
 {% endif %}
@@ -515,7 +515,7 @@ interface {{ className }}
             'type' => '{{ property.isMap ? 'object' : property.returnType|replace({'?':''})|replace({'|null':''}) }}',
             'nullable' => {{ property.returnType starts with '?' or ('|null' in property.returnType) ? 'true' : 'false' }},
             'metadata' => [
-                'openApiName' => '{{ property.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}',
+                'openApiName' => '{{ property.openApiName|php_string }}',
                 'required' => {{ property.requiredLiteral }},
                 'inPathFlagGetter' => 'is{{ property.nameSuffix }}InPath',
                 'inQueryFlagGetter' => 'is{{ property.nameSuffix }}InQuery',
@@ -526,7 +526,7 @@ interface {{ className }}
                 'writeOnly' => {{ property.writeOnly ? 'true' : 'false' }},
                 'readOnly' => {{ property.readOnly ? 'true' : 'false' }},
                 'isParameter' => {{ property.isParameter ? 'true' : 'false' }},
-                'arrayItemType' => '{{ property.docReturnType is not null ? property.docReturnType|replace({'\\':'\\\\','\'':'\\\''}) : '' }}',
+                'arrayItemType' => '{{ property.docReturnType is not null ? property.docReturnType|php_string : '' }}',
             ],
         ];
 {% endfor %}
@@ -553,7 +553,7 @@ interface {{ className }}
         $aliases = [];
 {% endif %}
 {% for assignment in aliasAssignments %}
-        $aliases['{{ assignment.name }}'] = '{{ assignment.openApiName|replace({'\\':'\\\\','\'':'\\\''}) }}';
+        $aliases['{{ assignment.name }}'] = '{{ assignment.openApiName|php_string }}';
 {% endfor %}
 
         return $aliases;
@@ -632,13 +632,13 @@ interface {{ className }}
     public static function hydrateFast(array $data, {{ closureRef }} $cast, array &$errors): self
     {
 {% for p in fastHydrator %}
-        ${{ p.name }}Given = array_key_exists('{{ p.wireName }}', $data);
+        ${{ p.name }}Given = array_key_exists('{{ p.wireName|php_string }}', $data);
 {% if p.required %}
         if (!${{ p.name }}Given) {
-            $errors[] = 'Required parameter "{{ p.wireName }}" not found in request.';
+            $errors[] = 'Required parameter "{{ p.wireName|php_string }}" not found in request.';
         }
 {% endif %}
-        ${{ p.name }} = ${{ p.name }}Given ? $cast('{{ p.wireName }}', $data['{{ p.wireName }}'], $errors) : null;
+        ${{ p.name }} = ${{ p.name }}Given ? $cast('{{ p.wireName|php_string }}', $data['{{ p.wireName|php_string }}'], $errors) : null;
 {% endfor %}
 
         if ($errors !== []) {

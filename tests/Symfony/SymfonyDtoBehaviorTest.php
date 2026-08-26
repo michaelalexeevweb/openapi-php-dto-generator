@@ -326,6 +326,146 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertContains('tags[0].label', $paths);
     }
 
+    /**
+     * A map whose VALUES are containers gets no `#[Assert\All]` of its own — one mistake, one message.
+     *
+     * `valueConstraintExpressions()` has nothing to say about a container value but "it is an array",
+     * and the emitted interpreter already asserts that from `additionalProperties.type`. With both, a
+     * map of lists given `{"a":"nope"}` came back twice: `field "byKey".a must be of type array` from
+     * the interpreter and `This value should be of type array.` from the attribute. The LIST spelling
+     * of the same schema never emitted an attribute, so the two spellings disagreed as well.
+     *
+     * The nested values are still checked — by the interpreter, which is the one voice this package
+     * uses for what a framework constraint cannot express.
+     */
+    public function testAMapOfContainersReportsAnItemShapeOnce(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'MapOfLists' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'byKey' => [
+                                'type' => 'object',
+                                'additionalProperties' => [
+                                    'type' => 'array',
+                                    'items' => ['type' => 'integer', 'minimum' => 5],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $ns = 'SymMapOfLists';
+        $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
+        $file = $this->outputDirectory . '/MapOfLists.php';
+        require_once $file;
+
+        $this->assertStringNotContainsString(
+            "#[Assert\\All([new Assert\\Type('array')])]",
+            (string)file_get_contents($file),
+            'the interpreter owns the item shape here; a native duplicate reports it twice',
+        );
+
+        /** @var class-string $fqcn */
+        $fqcn = $ns . '\MapOfLists';
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+
+        $wrongShape = new $fqcn();
+        $wrongShape->setByKey(['a' => 'nope']);
+        $messages = [];
+        foreach ($validator->validate($wrongShape) as $violation) {
+            $messages[] = (string)$violation->getMessage();
+        }
+        $this->assertCount(1, $messages, (string)json_encode($messages));
+        $this->assertStringContainsString('byKey".a must be of type array', $messages[0]);
+
+        // And the value INSIDE the nested list is still reached.
+        $badInner = new $fqcn();
+        $badInner->setByKey(['a' => [1]]);
+        $innerMessages = [];
+        foreach ($validator->validate($badInner) as $violation) {
+            $innerMessages[] = (string)$violation->getMessage();
+        }
+        $this->assertCount(1, $innerMessages, (string)json_encode($innerMessages));
+        $this->assertStringContainsString('byKey".a[0] must be greater than or equal to 5', $innerMessages[0]);
+    }
+
+    /**
+     * A bound on the ITEMS of a container is enforced once, by the attribute.
+     *
+     * `filterSymfonyValidationConstraints()` says it removes "supported scalar / count / regex
+     * constraints … so the callback does not duplicate attribute-based violations" — and then its
+     * `items` recursion handed the callback every scalar keyword anyway, while `#[Assert\All]` was
+     * enforcing them too. Measured before this: `{"scoresByKey":{"a":"x"}}` produced THREE messages
+     * for one mistake and every bound produced two.
+     *
+     * What the callback KEEPS is what no attribute asserts: `type` for a list (the list branch emits
+     * the scalar specs alone), and everything below the first level, because `Assert\All` does not
+     * nest.
+     */
+    public function testAnItemBoundIsReportedOnce(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ItemBounds' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'scores' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 5]],
+                            'scoresByKey' => [
+                                'type' => 'object',
+                                'additionalProperties' => ['type' => 'integer', 'minimum' => 5],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $ns = 'SymItemBounds';
+        $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
+        $file = $this->outputDirectory . '/ItemBounds.php';
+        require_once $file;
+        $source = (string)file_get_contents($file);
+
+        // The attribute owns the bound; the callback literal must not repeat it.
+        $this->assertStringContainsString('new Assert\Range(min: 5)', $source);
+        $this->assertStringNotContainsString("'minimum' => 5", $source);
+        // `type` for a LIST item stays with the callback — the list branch emits no Assert\Type, and
+        // the callback accepts the integral float (42.0) that Assert\Type would refuse.
+        $this->assertStringContainsString("'type' => 'integer'", $source);
+
+        /** @var class-string $fqcn */
+        $fqcn = $ns . '\ItemBounds';
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+
+        foreach (['setScores' => [1], 'setScoresByKey' => ['a' => 1]] as $setter => $value) {
+            $dto = new $fqcn();
+            $dto->{$setter}($value);
+            $messages = [];
+            foreach ($validator->validate($dto) as $violation) {
+                $messages[] = (string)$violation->getMessage();
+            }
+            $this->assertCount(1, $messages, $setter . ': ' . (string)json_encode($messages));
+        }
+    }
+
     public function testCliSymfonyFlagGeneratesAttributeDecoratedDto(): void
     {
         $specPath = $this->outputDirectory . '/spec.json';

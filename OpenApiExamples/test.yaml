@@ -679,6 +679,22 @@ components:
             type: object
             additionalProperties:
               type: integer
+        # A date and a `number` two deep. Neither is converted there, so the declaration is the JSON
+        # value: `string` for the date, and `float|int` for the number because JSON hands `1` over as
+        # an int and `1.5` as a float — one array holds both.
+        dateRows:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+              format: date
+        numRows:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
         enumRows:
           type: array
           items:
@@ -691,3 +707,48 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/Tag'
+    # Property names a document is entitled to and PHP is not: a quote and a backslash both END a
+    # single-quoted literal, so an unescaped one is a file that does not parse. Kept in the corpus
+    # because `testEveryGeneratedCorpusFileParses` then answers for all five modes at once — the
+    # earlier corpus had no name more awkward than camelCase, which is why runtime and yii3 shipped
+    # two releases emitting broken PHP for this.
+    AwkwardNames:
+      type: object
+      required:
+        - plain
+        - "it's"
+      properties:
+        plain:
+          type: string
+        "it's":
+          type: string
+          minLength: 2
+        back\slash:
+          type: string
+        "both\\'s":
+          type: integer
+          minimum: 1
+    # Scalar bounds on the ITEMS of a container, at depth one — where Symfony mode DOES emit a native
+    # #[Assert\All([...])]. The callback must not carry the same keywords, or one mistake produces two
+    # messages; yii3 has no per-item attribute and keeps them all. That difference is the point.
+    ItemBounds:
+      type: object
+      required:
+        - scores
+      properties:
+        scores:
+          type: array
+          items:
+            type: integer
+            minimum: 5
+        scoresByKey:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 5
+        codes:
+          type: array
+          items:
+            type: string
+            minLength: 2
+            pattern: '^[a-z]+$'

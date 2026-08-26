@@ -71,7 +71,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     {{ attribute }}
 {% endfor %}
 {% if param.serializedName is not null %}
-    #[SerializedName('{{ param.serializedName|replace({'\\':'\\\\','\'':'\\\''}) }}')]
+    #[SerializedName('{{ param.serializedName|php_string }}')]
 {% endif %}
     private {{ param.declaredType }} ${{ param.name }}{{ param.default }};
 
@@ -102,7 +102,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
         {{ attribute }}
 {% endfor %}
 {% if param.serializedName is not null %}
-        #[SerializedName('{{ param.serializedName|replace({'\\':'\\\\','\'':'\\\''}) }}')]
+        #[SerializedName('{{ param.serializedName|php_string }}')]
 {% endif %}
         private readonly {{ param.declaredType }} ${{ param.name }},
 {% endfor %}

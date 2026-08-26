@@ -213,10 +213,19 @@ trait RendersSymfonyDto
             }
         }
 
+        $itemKeywordsCovered = [];
+        foreach ($properties as $property) {
+            $covered = $this->symfonyItemCoveredKeywords($property);
+            if ($covered !== []) {
+                $itemKeywordsCovered[$property['openApiName']] = $covered;
+            }
+        }
+
         $validationConstraints = $this->filterSymfonyValidationConstraints(
-            $this->extractValidationConstraints($schemaDefinition),
-            false,
-            $forceRootCallbackBounds,
+            constraints: $this->extractValidationConstraints($schemaDefinition),
+            allowScalarKeywords: false,
+            forceScalarOnProperties: $forceRootCallbackBounds,
+            itemKeywordsCoveredByProperty: $itemKeywordsCovered,
         );
 
         // Map php name -> openapi name for constraints matching
@@ -346,9 +355,14 @@ trait RendersSymfonyDto
         // Mirror the renderer: a bound that the PHP type cannot enforce forces a callback even
         // when nothing else would, and those are exactly the classes that read a nested DTO.
         $forceRootCallbackBounds = [];
+        $itemKeywordsCovered = [];
         foreach ($this->getSchemaProperties($className) as $property) {
             if ($this->shouldForceRootCallbackForProperty($property)) {
                 $forceRootCallbackBounds[$property['openApiName']] = true;
+            }
+            $covered = $this->symfonyItemCoveredKeywords($property);
+            if ($covered !== []) {
+                $itemKeywordsCovered[$property['openApiName']] = $covered;
             }
         }
 
@@ -359,6 +373,7 @@ trait RendersSymfonyDto
             constraints: $this->extractValidationConstraints($schemaDefinition),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
+            itemKeywordsCoveredByProperty: $itemKeywordsCovered,
         );
     }
 
@@ -2539,6 +2554,11 @@ PHP,
      *
      * @param array<string, mixed> $constraints
      * @param array<string, true> $forceScalarOnProperties
+     * @param array<string, array<int, string>> $itemKeywordsCoveredByProperty per OpenAPI property
+     *        name, the keywords its `#[Assert\All]` already enforces on the items — dropped from the
+     *        FIRST container hop so one mistake produces one message
+     * @param array<int, string> $coveredItemKeywords the entry above, once the recursion is inside
+     *        that property; empty at every other level
      * @return array<string, mixed>
      */
     private function filterSymfonyValidationConstraints(
@@ -2546,6 +2566,8 @@ PHP,
         bool $allowScalarKeywords = false,
         array $forceScalarOnProperties = [],
         bool $isPropertySchema = false,
+        array $itemKeywordsCoveredByProperty = [],
+        array $coveredItemKeywords = [],
     ): array {
         $constraints = $this->foldScalarAllOfConstraints($constraints);
         $filtered = [];
@@ -2563,6 +2585,7 @@ PHP,
                                 constraints: $schema,
                                 allowScalarKeywords: $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
                                 isPropertySchema: true,
+                                coveredItemKeywords: $itemKeywordsCoveredByProperty[$name] ?? [],
                             );
                         }
                     }
@@ -2580,7 +2603,11 @@ PHP,
                     break;
                 case 'items':
                     if (is_array($value)) {
+                        // `allowScalarKeywords: true` stays: `Assert\All` does not nest, so from the
+                        // SECOND container down there is no attribute and the callback owns everything.
+                        // What the attribute does cover at THIS hop is subtracted instead.
                         $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
+                        $nested = $this->withoutKeywords($nested, $coveredItemKeywords);
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -2591,6 +2618,9 @@ PHP,
                 case 'unevaluatedItems':
                     if (is_array($value)) {
                         $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
+                        if ($key === 'additionalProperties') {
+                            $nested = $this->withoutKeywords($nested, $coveredItemKeywords);
+                        }
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -3066,7 +3096,16 @@ PHP,
         }
 
         // Typed map values (additionalProperties: { schema }) — validate every value via All.
+        //
+        // Unless the value is itself a CONTAINER. There `valueConstraintExpressions()` has nothing to
+        // say but `new Assert\Type('array')`, and the interpreter already asserts exactly that from
+        // `additionalProperties.type` — measured, a map of lists given `{"a":"nope"}` came back with
+        // both `field "byKey".a must be of type array` and `This value should be of type array.` The
+        // list spelling of the same schema emits no attribute at all, so this also makes the two agree.
         $additionalProperties = $constraints['additionalProperties'] ?? null;
+        if (is_array($additionalProperties) && $this->symfonySchemaIsContainer($additionalProperties)) {
+            $additionalProperties = null;
+        }
         if (is_array($additionalProperties)) {
             $mapValueTypeExpression = $this->symfonyPreferredTypeForMapValue($property['type']);
             $valueExpressions = $this->valueConstraintExpressions(
@@ -3167,6 +3206,95 @@ PHP,
         return $baseType === 'DateTimeImmutable';
     }
 
+    /**
+     * A subschema without the named keywords. Empty list, or nothing to drop: the same array back.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<int, string> $keywords
+     * @return array<string, mixed>
+     */
+    private function withoutKeywords(array $schema, array $keywords): array
+    {
+        if ($keywords === []) {
+            return $schema;
+        }
+
+        foreach ($keywords as $keyword) {
+            unset($schema[$keyword]);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * The keywords a property's `#[Assert\All]` already enforces on its ITEMS or its MAP VALUES.
+     *
+     * The callback drops exactly these, and nothing more — the same contract
+     * `filterSymfonyValidationConstraints()` states for the property level ("supported scalar / count
+     * / regex constraints are intentionally removed here so the callback does not duplicate
+     * attribute-based violations") and did not keep one level down: the `items` recursion handed the
+     * callback every scalar keyword while `Assert\All` was enforcing them too. Measured before this:
+     * `{"flatMap":{"a":"x"}}` came back with THREE messages for one mistake, and every bound with two.
+     *
+     * The branches below mirror `resolveSymfonyAttributes()` exactly, because a keyword dropped here
+     * that no attribute actually emits is a check lost:
+     *
+     *  - an array of DTOs cascades through `#[Assert\Valid]` and emits no `All`, so nothing is covered;
+     *  - an item typed as an enum or a date emits `All([Type(X::class)])` INSTEAD of the scalar specs;
+     *  - a map value that is itself a container emits nothing at all (see `symfonySchemaIsContainer()`);
+     *  - `type` is never covered — no spec asserts it, so the callback keeps it at every level.
+     *
+     * @param SchemaProperty $property
+     * @return array<int, string>
+     */
+    private function symfonyItemCoveredKeywords(array $property): array
+    {
+        $constraints = $this->extractValidationConstraints($property['constraints'] ?? []);
+
+        $items = $constraints['items'] ?? null;
+        if (is_array($items) && !$this->symfonyPropertyCascades($property)) {
+            $itemTypeExpression = $this->symfonyPreferredTypeForArrayItem($property['type']);
+            if ($this->shouldSkipSymfonyScalarSpecsForPreferredType($itemTypeExpression)) {
+                return [];
+            }
+
+            return $this->scalarConstraintSpecList($items)['covered'];
+        }
+
+        $additionalProperties = $constraints['additionalProperties'] ?? null;
+        if (is_array($additionalProperties) && !$this->symfonySchemaIsContainer($additionalProperties)) {
+            $mapValueTypeExpression = $this->symfonyPreferredTypeForMapValue($property['type']);
+            if ($this->shouldSkipSymfonyScalarSpecsForPreferredType($mapValueTypeExpression)) {
+                return [];
+            }
+
+            $covered = $this->scalarConstraintSpecList($additionalProperties)['covered'];
+
+            // The MAP branch goes through `valueConstraintExpressions()`, which leads with an
+            // `Assert\Type` — so unlike the list branch, `type` IS covered here. The list branch
+            // emits the scalar specs alone, which is why `type` stays with the callback there.
+            if ($this->openApiTypeToSymfonyType($additionalProperties['type'] ?? null) !== null) {
+                $covered[] = 'type';
+            }
+
+            return array_values(array_unique($covered));
+        }
+
+        return [];
+    }
+
+    /**
+     * Whether a subschema describes a CONTAINER — an array, or an object used as a map.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function symfonySchemaIsContainer(array $schema): bool
+    {
+        return in_array($schema['type'] ?? null, ['array', 'object'], true)
+            || is_array($schema['items'] ?? null)
+            || is_array($schema['additionalProperties'] ?? null);
+    }
+
     private function shouldSkipSymfonyScalarSpecsForPreferredType(?string $preferredTypeExpression): bool
     {
         if ($preferredTypeExpression === null) {
@@ -3205,14 +3333,33 @@ PHP,
      */
     private function scalarConstraintSpecs(array $constraints): array
     {
+        return $this->scalarConstraintSpecList($constraints)['specs'];
+    }
+
+    /**
+     * The same specs, plus the KEYWORDS they enforce.
+     *
+     * Reported from here rather than re-derived, for the reason laravel's `laravelSchemaRuleSpec()`
+     * reports its own `consumed`: a second reading of these branches would drift from them, and the
+     * whole point of the list is that the callback drops exactly what an attribute already covers.
+     * `type` is deliberately absent — no spec here asserts it, so the callback keeps it.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array{specs: array<int, array{name: string, args: string}>, covered: array<int, string>}
+     */
+    private function scalarConstraintSpecList(array $constraints): array
+    {
         $specs = [];
+        $covered = [];
 
         $length = [];
         if (is_int($constraints['minLength'] ?? null)) {
             $length[] = 'min: ' . $constraints['minLength'];
+            $covered[] = 'minLength';
         }
         if (is_int($constraints['maxLength'] ?? null)) {
             $length[] = 'max: ' . $constraints['maxLength'];
+            $covered[] = 'maxLength';
         }
         if ($length !== []) {
             $specs[] = ['name' => 'Length', 'args' => implode(', ', $length)];
@@ -3225,24 +3372,32 @@ PHP,
 
         if (is_int($exclusiveMin) || is_float($exclusiveMin)) {
             $specs[] = ['name' => 'GreaterThan', 'args' => $this->numericLiteral($exclusiveMin)];
+            $covered[] = 'exclusiveMinimum';
         } elseif ($exclusiveMin === true && (is_int($min) || is_float($min))) {
             $specs[] = ['name' => 'GreaterThan', 'args' => $this->numericLiteral($min)];
+            $covered[] = 'exclusiveMinimum';
+            $covered[] = 'minimum';
             $min = null;
         }
 
         if (is_int($exclusiveMax) || is_float($exclusiveMax)) {
             $specs[] = ['name' => 'LessThan', 'args' => $this->numericLiteral($exclusiveMax)];
+            $covered[] = 'exclusiveMaximum';
         } elseif ($exclusiveMax === true && (is_int($max) || is_float($max))) {
             $specs[] = ['name' => 'LessThan', 'args' => $this->numericLiteral($max)];
+            $covered[] = 'exclusiveMaximum';
+            $covered[] = 'maximum';
             $max = null;
         }
 
         $range = [];
         if (is_int($min) || is_float($min)) {
             $range[] = 'min: ' . $this->numericLiteral($min);
+            $covered[] = 'minimum';
         }
         if (is_int($max) || is_float($max)) {
             $range[] = 'max: ' . $this->numericLiteral($max);
+            $covered[] = 'maximum';
         }
         if ($range !== []) {
             $specs[] = ['name' => 'Range', 'args' => implode(', ', $range)];
@@ -3250,6 +3405,7 @@ PHP,
 
         if (is_int($constraints['multipleOf'] ?? null) || is_float($constraints['multipleOf'] ?? null)) {
             $specs[] = ['name' => 'DivisibleBy', 'args' => $this->numericLiteral($constraints['multipleOf'])];
+            $covered[] = 'multipleOf';
         }
 
         if (
@@ -3259,10 +3415,12 @@ PHP,
         ) {
             $delimited = '/' . str_replace('/', '\/', $constraints['pattern']) . '/';
             $specs[] = ['name' => 'Regex', 'args' => $this->phpStringLiteral($delimited)];
+            $covered[] = 'pattern';
         }
 
         if (array_key_exists('const', $constraints) && $this->isScalarConstValue($constraints['const'])) {
             $specs[] = ['name' => 'EqualTo', 'args' => 'value: ' . $this->scalarLiteral($constraints['const'])];
+            $covered[] = 'const';
         }
 
         if (is_array($constraints['enum'] ?? null) && $constraints['enum'] !== []) {
@@ -3277,11 +3435,13 @@ PHP,
             }
             if ($allLiteralizable) {
                 $specs[] = ['name' => 'Choice', 'args' => 'choices: [' . implode(', ', $choices) . ']'];
+                $covered[] = 'enum';
             }
         }
 
         $hasRange = $range !== [];
-        foreach ($this->formatConstraintSpecs($constraints['format'] ?? null) as $spec) {
+        $formatSpecs = $this->formatConstraintSpecs($constraints['format'] ?? null);
+        foreach ($formatSpecs as $spec) {
             // An explicit minimum/maximum Range already covers (and is tighter than) the format's
             // implicit int32 bounds — avoid emitting a redundant second Range.
             if ($spec['name'] === 'Range' && $hasRange) {
@@ -3289,8 +3449,14 @@ PHP,
             }
             $specs[] = $spec;
         }
+        // `formatConstraintSpecs()` answers for a HANDFUL of formats and skips the rest, so the
+        // keyword counts as covered only when it actually produced something. A `format: date` or an
+        // unmapped one is still the callback's to enforce.
+        if ($formatSpecs !== []) {
+            $covered[] = 'format';
+        }
 
-        return $specs;
+        return ['specs' => $specs, 'covered' => array_values(array_unique($covered))];
     }
 
     /**
@@ -3627,10 +3793,5 @@ PHP,
         $rendered = json_encode($value);
 
         return is_string($rendered) ? $rendered : (string)$value;
-    }
-
-    private function phpStringLiteral(string $value): string
-    {
-        return "'" . $this->escapeSingleQuoted($value) . "'";
     }
 }

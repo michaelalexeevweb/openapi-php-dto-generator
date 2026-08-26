@@ -489,6 +489,75 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * A bound at the bottom of a deeply nested container is enforced, and enforced ONCE, however deep
+     * it sits.
+     *
+     * Two halves share the job — dotted `f.*.*…` rules and the interpreter — and they used to count
+     * the depth differently, which broke it at both ends. Measured on a list of lists holding
+     * `minimum: 5`, against runtime mode as the reading of the document:
+     *
+     *     depth 12   runtime rejected   laravel ACCEPTED    the rules stopped and the coverage test
+     *                                                       still claimed a rule covered it
+     *     depth 8-9  runtime rejected   laravel rejected x2 the two counted from different places,
+     *                                                       so those hops were claimed by both
+     *
+     * Both now count `.*` HOPS from the property, against one constant.
+     *
+     * @param int $depth how many containers the bound sits under
+     */
+    #[DataProvider('nestedContainerDepthProvider')]
+    public function testABoundAtTheBottomOfNestedContainersIsEnforcedExactlyOnce(int $depth): void
+    {
+        $schema = ['type' => 'integer', 'minimum' => 5];
+        for ($level = 0; $level < $depth; $level++) {
+            $schema = ['type' => 'array', 'items' => $schema];
+        }
+
+        $fqcn = $this->generateProbe('depth ' . $depth, $schema);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+
+        $wrap = static function (mixed $value) use ($depth): mixed {
+            for ($level = 0; $level < $depth; $level++) {
+                $value = [$value];
+            }
+
+            return $value;
+        };
+
+        $accepted = $this->validatorFactory()->make(['f' => $wrap(9)], $rules);
+        if (method_exists($fqcn, 'withValidator')) {
+            call_user_func([$fqcn, 'withValidator'], $accepted);
+        }
+        $this->assertSame([], $accepted->errors()->all(), sprintf('a valid payload %d deep must pass', $depth));
+
+        $refused = $this->validatorFactory()->make(['f' => $wrap(1)], $rules);
+        if (method_exists($fqcn, 'withValidator')) {
+            call_user_func([$fqcn, 'withValidator'], $refused);
+        }
+        $this->assertCount(
+            1,
+            $refused->errors()->all(),
+            sprintf('one mistake %d deep, one message: %s', $depth, (string)json_encode($refused->errors()->all())),
+        );
+    }
+
+    /**
+     * Around the limit and well past it — the two failures above sat at 8/9 and at 12.
+     *
+     * @return array<string, array{0: int}>
+     */
+    public static function nestedContainerDepthProvider(): array
+    {
+        $provided = [];
+        foreach ([1, 2, 3, 7, 8, 9, 10, 11, 12, 16, 20] as $depth) {
+            $provided[$depth . ' deep'] = [$depth];
+        }
+
+        return $provided;
+    }
+
+    /**
      * One mistake, one message.
      *
      * A property that lands in the interpreter often ALSO carries keywords the rules express, and both

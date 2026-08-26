@@ -22,7 +22,30 @@ declare(strict_types=1);
  * Comparing "bind" against "hydrate" across modes is therefore fair; comparing the ORDER is not.
  */
 
-require_once __DIR__ . '/../vendor/autoload.php';
+// Walk up directories until vendor/autoload.php is found — the same resolution `bin/console` uses,
+// and for the same reason: in a DIST install this file sits at
+// `vendor/michaelalexeevweb/openapi-php-dto-generator/bin/`, where `__DIR__/../vendor/autoload.php`
+// does not exist. Hardcoding it meant `php bin/benchmark` — which README.performance.md tells the
+// reader to run, and which ships in the archive — failed there with "Failed to open stream".
+$dir = __DIR__;
+$autoloadLoaded = false;
+
+while ($dir !== dirname($dir)) {
+    $autoload = $dir . '/vendor/autoload.php';
+
+    if (file_exists($autoload)) {
+        require_once $autoload;
+        $autoloadLoaded = true;
+        break;
+    }
+
+    $dir = dirname($dir);
+}
+
+if (!$autoloadLoaded) {
+    fwrite(STDERR, "Error: Unable to find Composer autoload file.\n");
+    exit(1);
+}
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;

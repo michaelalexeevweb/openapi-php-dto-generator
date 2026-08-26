@@ -339,6 +339,6 @@ dropped (the field stays nullable).
 
 The schema semantics every mode shares (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
-[Validation Notes](README.md#validation-notes).
+[Validation Notes](README.validation.md).
 
 > Requires `symfony/validator` and `symfony/serializer` in the consuming project.

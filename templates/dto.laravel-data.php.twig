@@ -67,7 +67,7 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
      */
     public static function morph(array $properties): ?string
     {
-        return match ($properties['{{ morphBase.property }}'] ?? null) {
+        return match ($properties['{{ morphBase.property|php_string }}'] ?? null) {
 {% for member in morphBase.members %}
             {{ member.value|raw }} => {{ member.class }}::class,
 {% endfor %}
@@ -149,7 +149,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     {
         return [
 {% for rule in rules %}
-            '{{ rule.path|replace({'\\':'\\\\','\'':'\\\''}) }}' => {{ rule.rules|raw }},
+            '{{ rule.path|php_string }}' => {{ rule.rules|raw }},
 {% endfor %}
         ];
     }
@@ -162,7 +162,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      */
     private const array OPENAPI_OBJECT_PATHS = [
 {% for objectPath in objectShapePaths %}
-        '{{ objectPath|replace({'\\':'\\\\','\'':'\\\''}) }}',
+        '{{ objectPath|php_string }}',
 {% endfor %}
     ];
 {% endif %}

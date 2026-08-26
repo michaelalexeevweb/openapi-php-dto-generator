@@ -182,6 +182,54 @@ final class ValidationParityTest extends TestCase
                 '{"f":{"a":"2026-01-01"}}',
                 '{"f":{"a":"2026-13-45"}}',
             ],
+            // An OBJECT two containers deep. Nothing is materialized down there, so no class checks
+            // it and the check has to come from the emitted constraints — which for a long while it
+            // did not: a value below its `minimum` and a missing `required` property were both
+            // accepted in silence, in every mode.
+            'object properties two containers deep' => [
+                [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => ['id' => ['type' => 'integer', 'minimum' => 5]],
+                        ],
+                    ],
+                ],
+                '{"f":[[{"id":9}]]}',
+                '{"f":[[{"id":1}]]}',
+            ],
+            'object required two containers deep' => [
+                [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'required' => ['id'],
+                            'properties' => ['id' => ['type' => 'integer']],
+                        ],
+                    ],
+                ],
+                '{"f":[[{"id":9}]]}',
+                '{"f":[[{}]]}',
+            ],
+            // And the value that is not an object at all, where one was declared.
+            'a scalar where an object belongs two containers deep' => [
+                [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => ['id' => ['type' => 'integer']],
+                        ],
+                    ],
+                ],
+                '{"f":[[{"id":9}]]}',
+                '{"f":[["zzz"]]}',
+            ],
             'format date-time in a list' => [
                 ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']],
                 '{"f":["2026-01-01T10:00:00+00:00"]}',
