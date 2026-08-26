@@ -272,12 +272,21 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     /**
      * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
      * sub-second precision the payload carried.
+{% if param.temporalGetterDocType is not null %}
+     *
+     * @return {{ param.temporalGetterDocType }}
+{% endif %}
      */
-    public function {{ param.getter }}(): {{ param.declaredType|replace({'DateTimeImmutable': 'string'}) }}
+    public function {{ param.getter }}(): {{ param.temporalGetterReturnType }}
     {
         return {{ param.temporalGetterBody|raw }};
     }
 
+{% if param.temporalObjectDocType is not null %}
+    /**
+     * @return {{ param.temporalObjectDocType }}
+     */
+{% endif %}
     public function {{ param.temporalObjectGetter }}(): {{ param.declaredType }}
     {
         return $this->{{ param.name }};

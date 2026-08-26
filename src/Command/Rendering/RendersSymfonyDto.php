@@ -352,10 +352,13 @@ trait RendersSymfonyDto
             }
         }
 
+        // `false` is the default, and it is spelled out on purpose: it is the contrasting half of
+        // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
+        // properties — dropping the `false` leaves the reader to guess what is being overridden.
         return $this->filterSymfonyValidationConstraints(
-            $this->extractValidationConstraints($schemaDefinition),
-            false,
-            $forceRootCallbackBounds,
+            constraints: $this->extractValidationConstraints($schemaDefinition),
+            allowScalarKeywords: false,
+            forceScalarOnProperties: $forceRootCallbackBounds,
         );
     }
 
@@ -1997,8 +2000,8 @@ PHP;
                 continue;
             }
             $constraints['properties'][$openApiName] = $this->stripPhpEnforcedKeywords(
-                $propertySchema,
-                $declaredTypeByOpenApiName[$openApiName],
+                propertySchema: $propertySchema,
+                declaredType: $declaredTypeByOpenApiName[$openApiName],
             );
         }
 
@@ -2285,7 +2288,24 @@ PHP,
 
     private function isValidOpenApiDateTimeFormat(string $value): bool
     {
-        return DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value) !== false;
+        // The four shapes every mode agrees on, and a WARNING check per shape. `createFromFormat()`
+        // alone is not a validator: it overflows silently, so `2026-13-45T99:99:99+00:00` parsed
+        // clean and a payload the schema forbids was accepted. Only ATOM was tried before, which
+        // also meant a sub-second value passed on leftover input rather than on being valid.
+        foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) {
+            if (DateTimeImmutable::createFromFormat($format, $value) === false) {
+                continue;
+            }
+            $errors = DateTimeImmutable::getLastErrors();
+            if ($errors === false) {
+                return true;
+            }
+            if ((int)($errors['warning_count'] ?? 0) === 0 && (int)($errors['error_count'] ?? 0) === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 PHP,
             'time' => <<<'PHP'
@@ -2540,8 +2560,8 @@ PHP,
                     foreach ($value as $name => $schema) {
                         if (is_string($name) && is_array($schema)) {
                             $filtered[$key][$name] = $this->filterSymfonyValidationConstraints(
-                                $schema,
-                                $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
+                                constraints: $schema,
+                                allowScalarKeywords: $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
                                 isPropertySchema: true,
                             );
                         }
@@ -2554,13 +2574,13 @@ PHP,
                     $filtered[$key] = [];
                     foreach ($value as $schema) {
                         $filtered[$key][] = is_array($schema)
-                            ? $this->filterSymfonyValidationConstraints($schema, true)
+                            ? $this->filterSymfonyValidationConstraints($schema, allowScalarKeywords: true)
                             : [];
                     }
                     break;
                 case 'items':
                     if (is_array($value)) {
-                        $nested = $this->filterSymfonyValidationConstraints($value, true);
+                        $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -2570,7 +2590,7 @@ PHP,
                 case 'unevaluatedProperties':
                 case 'unevaluatedItems':
                     if (is_array($value)) {
-                        $nested = $this->filterSymfonyValidationConstraints($value, true);
+                        $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -2586,7 +2606,7 @@ PHP,
                 case 'propertyNames':
                 case 'contentSchema':
                     if (is_array($value)) {
-                        $nested = $this->filterSymfonyValidationConstraints($value, true);
+                        $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -2605,7 +2625,7 @@ PHP,
                         if (!is_array($branch)) {
                             continue;
                         }
-                        $nested = $this->filterSymfonyValidationConstraints($branch, true);
+                        $nested = $this->filterSymfonyValidationConstraints($branch, allowScalarKeywords: true);
                         if ($nested !== []) {
                             $branches[] = $nested;
                         }
@@ -2622,7 +2642,7 @@ PHP,
                     $filtered[$key] = [];
                     foreach ($value as $name => $schema) {
                         if (is_string($name) && is_array($schema)) {
-                            $nested = $this->filterSymfonyValidationConstraints($schema, true);
+                            $nested = $this->filterSymfonyValidationConstraints($schema, allowScalarKeywords: true);
                             if ($nested !== []) {
                                 $filtered[$key][$name] = $nested;
                             }
@@ -2743,7 +2763,26 @@ PHP,
 
     /**
      * @param SchemaProperty $property
-     * @return array{declaredType: string, docType: ?string, name: string, required: bool, serializedName: ?string, default: string, attributes: array<int, string>, docDescription: ?string, getter: string, setter: string, providedFlag: string, providedGetter: string, temporalGetterBody: ?string, temporalGetterReturnType: string, temporalGetterDocType: ?string, temporalObjectDocType: ?string, temporalObjectGetter: string}
+     * @return array{
+     *     declaredType: string,
+     *     docType: ?string,
+     *     name: string,
+     *     required: bool,
+     *     serializedName: ?string,
+     *     default: string,
+     *     attributes: array<int, string>,
+     *     docDescription: ?string,
+     *     getter: string,
+     *     setter: string,
+     *     providedFlag: string,
+     *     providedGetter: string,
+     *     temporalDefault: ?string,
+     *     temporalGetterBody: ?string,
+     *     temporalGetterReturnType: string,
+     *     temporalGetterDocType: ?string,
+     *     temporalObjectDocType: ?string,
+     *     temporalObjectGetter: string,
+     * }
      */
     private function resolveSymfonyParam(array $property, string $namespace): array
     {
@@ -2766,8 +2805,17 @@ PHP,
         $declaredNullable = $property['nullable'] || (!$required && $default === null);
         $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
 
+        // A temporal default is `new DateTimeImmutable(...)`, and PHP forbids `new` in a PROPERTY
+        // initialiser — which is what an optional property here is, since the serializer fills it
+        // through the setter rather than the constructor. The constructor BODY is the one place that
+        // can hold the expression, so the property is left uninitialised and assigned there.
+        $temporalDefault = null;
         if ($required) {
             $defaultLiteral = '';
+        } elseif ($default !== null && $this->symfonyPropertyIsTemporalScalar($property)) {
+            $expression = ltrim($this->renderDefaultValue($default, $phpType, $declaredType), ' =');
+            $temporalDefault = $expression === '' ? null : $expression;
+            $defaultLiteral = $temporalDefault === null ? ' = null' : '';
         } elseif ($default !== null) {
             $defaultLiteral = $this->renderDefaultValue($default, $phpType, $declaredType);
         } else {
@@ -2800,11 +2848,24 @@ PHP,
             'temporalObjectDocType' => $docType !== null
                 ? $this->composePhpTypeHint($docType, $declaredNullable)
                 : null,
+            'temporalDefault' => $temporalDefault,
             'temporalObjectGetter' => 'get' . ucfirst($property['name']) . 'AsDateTime',
             'setter' => 'set' . ucfirst($property['name']),
             'providedFlag' => $property['name'] . 'Provided',
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
         ];
+    }
+
+    /**
+     * Whether this property is a temporal SCALAR — the one shape whose default cannot be written as
+     * a property initialiser.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyPropertyIsTemporalScalar(array $property): bool
+    {
+        return is_string($property['temporalFormat'] ?? null)
+            && $this->shortClassName(ltrim($property['type'], '?')) === 'DateTimeImmutable';
     }
 
     /**
@@ -2843,6 +2904,28 @@ PHP,
     }
 
     /**
+     * Whether the property is an ARRAY or MAP whose ITEMS are dates — `items: {format: date}` and
+     * `additionalProperties: {format: date}` both land here.
+     *
+     * A predicate rather than "is the getter body non-null?": every mode has to answer this question,
+     * and two of them (laravel-data, yii3) answer it without emitting a getter at all — laravel-data
+     * to declare the docblock honestly, yii3 to keep an attribute off a container its resolver cannot
+     * read.
+     *
+     * @param SchemaProperty $property
+     */
+    private function propertyHasTemporalItems(array $property): bool
+    {
+        if (!is_string($property['itemsTemporalFormat'] ?? null) || !str_contains($property['type'], '<')) {
+            return false;
+        }
+
+        $itemType = $this->resolveArrayItemPhpType(ltrim($property['type'], '?'));
+
+        return $this->shortClassName(ltrim($itemType, '?')) === 'DateTimeImmutable';
+    }
+
+    /**
      * The body of a temporal ARRAY/MAP getter, or null when the items are not date/date-time.
      *
      * `items: {format: date}` types the item as DateTimeImmutable exactly like the scalar case, and
@@ -2853,34 +2936,34 @@ PHP,
      */
     private function symfonyTemporalArrayGetterBody(array $property): ?string
     {
+        if (!$this->propertyHasTemporalItems($property)) {
+            return null;
+        }
+
+        // The predicate above already established this is a non-empty string; the `?? null` is only
+        // because the key is optional in the shape.
         $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
-        if (!is_string($itemsTemporalFormat) || !str_contains($property['type'], '<')) {
-            return null;
-        }
-
-        $itemType = $this->resolveArrayItemPhpType(ltrim($property['type'], '?'));
-        if ($this->shortClassName(ltrim($itemType, '?')) !== 'DateTimeImmutable') {
-            return null;
-        }
-
         $name = $property['name'];
         $nullable = $property['nullable'] || $property['required'] !== true;
         $guard = $nullable ? sprintf('$this->%s === null ? null : ', $name) : '';
-        $itemsNullable = str_starts_with($itemType, '?');
 
+        // `mixed`, and an `instanceof` test rather than a parameter type — the same rule runtime
+        // mode follows. PHP cannot type the ITEMS of an array, so a DTO built by hand can hold a
+        // string where the docblock promises a date; a typed callback turns that into a TypeError
+        // from inside the getter, which takes `DtoNormalizer::validate()` down with it — the very
+        // call whose job is to REPORT the mismatch. Passing the value through leaves it reportable.
+        // A null item needs no arm of its own: it fails `instanceof` like any other non-date.
         if ($itemsTemporalFormat === 'Y-m-d') {
-            $callback = $itemsNullable
-                ? 'static fn (?DateTimeImmutable $item): ?string => $item?->format(\'Y-m-d\')'
-                : 'static fn (DateTimeImmutable $item): string => $item->format(\'Y-m-d\')';
+            $callback = 'static fn (mixed $item): mixed => $item instanceof DateTimeImmutable'
+                . "\n                " . '? $item->format(\'Y-m-d\')'
+                . "\n                " . ': $item';
         } else {
             // Same rule as runtime mode: keep sub-second precision when the value carries it.
-            $format = '$item->format(\'u\') === \'000000\''
-                . "\n                " . '? $item->format(\'c\')'
-                . "\n                " . ': $item->format(\'Y-m-d\TH:i:s.uP\')';
-            $callback = $itemsNullable
-                ? 'static fn (?DateTimeImmutable $item): ?string => $item === null' . "\n                "
-                    . '? null' . "\n                " . ': (' . str_replace("\n                ", "\n                    ", $format) . ')'
-                : 'static fn (DateTimeImmutable $item): string => ' . $format;
+            $callback = 'static fn (mixed $item): mixed => $item instanceof DateTimeImmutable'
+                . "\n                " . '? ($item->format(\'u\') === \'000000\''
+                . "\n                    " . '? $item->format(\'c\')'
+                . "\n                    " . ': $item->format(\'Y-m-d\TH:i:s.uP\'))'
+                . "\n                " . ': $item';
         }
 
         return sprintf(
@@ -2987,9 +3070,9 @@ PHP,
         if (is_array($additionalProperties)) {
             $mapValueTypeExpression = $this->symfonyPreferredTypeForMapValue($property['type']);
             $valueExpressions = $this->valueConstraintExpressions(
-                $additionalProperties,
-                $mapValueTypeExpression,
-                $this->shouldSkipSymfonyScalarSpecsForPreferredType($mapValueTypeExpression),
+                schema: $additionalProperties,
+                preferredPhpTypeExpression: $mapValueTypeExpression,
+                skipScalarConstraintSpecs: $this->shouldSkipSymfonyScalarSpecsForPreferredType($mapValueTypeExpression),
             );
             if ($valueExpressions !== []) {
                 $attributes[] = '#[Assert\All([' . implode(', ', $valueExpressions) . '])]';

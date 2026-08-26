@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Error;
 use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
@@ -98,7 +99,7 @@ final class ValidationParityTest extends TestCase
         $this->assertEveryModeYields(
             ['valid' => true, 'invalid' => false],
             fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
-            self::yii3Divergences()[$key] ?? [],
+            self::declaredDivergences()[$key] ?? [],
             context: $key,
         );
     }
@@ -168,6 +169,24 @@ final class ValidationParityTest extends TestCase
             'format uuid' => [['type' => 'string', 'format' => 'uuid'], '{"f":"7f8d4c22-3d1f-4b6e-9c5a-2b1d3e4f5a6b"}', '{"f":"nope"}'],
             'format uri-reference' => [['type' => 'string', 'format' => 'uri-reference'], '{"f":"/rel/path"}', '{"f":"has space "}'],
             'format date' => [['type' => 'string', 'format' => 'date'], '{"f":"2026-01-01"}', '{"f":"2026-13-45"}'],
+            // The container twins of the case above. A `format` one level down was the 2.15.3 bug —
+            // the item was typed as a date and then nothing enforced it on the way out — and nothing
+            // here asserted the way IN either, in any mode.
+            'format date in a list' => [
+                ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']],
+                '{"f":["2026-01-01"]}',
+                '{"f":["2026-13-45"]}',
+            ],
+            'format date in a map' => [
+                ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'format' => 'date']],
+                '{"f":{"a":"2026-01-01"}}',
+                '{"f":{"a":"2026-13-45"}}',
+            ],
+            'format date-time in a list' => [
+                ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']],
+                '{"f":["2026-01-01T10:00:00+00:00"]}',
+                '{"f":["2026-13-45T99:99:99+00:00"]}',
+            ],
             'format time' => [['type' => 'string', 'format' => 'time'], '{"f":"13:45:00Z"}', '{"f":"99:99"}'],
             'format duration' => [['type' => 'string', 'format' => 'duration'], '{"f":"P1DT2H"}', '{"f":"P"}'],
             'format regex' => [['type' => 'string', 'format' => 'regex'], '{"f":"^a.*$"}', '{"f":"(["}'],
@@ -928,19 +947,8 @@ final class ValidationParityTest extends TestCase
      */
     private function yii3Verdict(array $spec, string $key, string $validJson, string $invalidJson): array
     {
-        // A temporal property is emitted with `#[ToDateTime]`, and yiisoft/hydrator lists ext-intl as
-        // what that attribute needs. Without the extension the object cannot be built at all, which
-        // would look like a divergence and is not one — so say why instead of asserting nonsense.
-        if (!extension_loaded('intl') && $this->specUsesTemporalFormat($spec)) {
-            self::assertTrue(
-                GenerationMode::Yii3->isLast(),
-                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
-                . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
-            );
-            self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
-        }
-
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
+        $this->skipYii3WithoutIntl($fqcn, $validJson, $key);
 
         $accepts = static function (string $json) use ($fqcn): bool {
             $payload = json_decode($json, true);
@@ -968,7 +976,7 @@ final class ValidationParityTest extends TestCase
      *
      * @return array<string, array<string, array{expected: mixed, reason: string}>>
      */
-    private static function yii3Divergences(): array
+    private static function declaredDivergences(): array
     {
         $coerced = self::diverges(
             GenerationMode::Yii3,
@@ -978,21 +986,59 @@ final class ValidationParityTest extends TestCase
             . 'valid payloads stop hydrating as well. Symfony mode diverges here for the same reason.',
         );
 
+        // Symfony types the property `DateTimeImmutable`, so the serializer parses the string before
+        // any constraint runs and PHP's parser is generous — the same leniency the scalar case
+        // records. Pinned again one level down, because a container is reached through different
+        // code and "the scalar diverges" is not proof that the item does.
+        $lenientDateTime = self::diverges(
+            GenerationMode::Symfony,
+            ['valid' => true, 'invalid' => true],
+            'the property is a DateTimeImmutable and the serializer parses the item before any '
+            . 'constraint runs; PHP accepts what the schema does not, exactly as for a scalar '
+            . 'date-time — see "a loose format: date-time string"',
+        );
+
         return [
             'type string' => $coerced,
             'type integer' => $coerced,
             'type union with null' => $coerced,
+            'format date-time in a list' => $lenientDateTime,
         ];
     }
 
     /**
-     * @param array<string, mixed> $spec
+     * Skip the yii3 arm when, and only when, THIS document actually needs ext-intl.
+     *
+     * One thing needs it: the `#[ToDateTime]` resolver a SCALAR temporal property carries — its
+     * constructor defaults name `IntlDateFormatter`, so it cannot even be built without the
+     * extension. Which documents that covers used to be guessed from the schema (`"format":"date"`
+     * anywhere in it), and the guess went stale the moment a temporal CONTAINER stopped emitting the
+     * attribute: those cases were skipped while hydrating and validating perfectly well. So the
+     * object is asked instead — the resolver's own failure is the only witness that does not rot.
      */
-    private function specUsesTemporalFormat(array $spec): bool
+    private function skipYii3WithoutIntl(string $fqcn, string $probeJson, string $key): void
     {
-        $json = json_encode($spec);
+        if (extension_loaded('intl')) {
+            return;
+        }
 
-        return is_string($json) && preg_match('/"format":"(date|date-time|time)"/', $json) === 1;
+        $payload = json_decode($probeJson, true);
+        try {
+            (new Yii3Container())->hydrate($fqcn, is_array($payload) ? $payload : []);
+        } catch (Error $error) {
+            if (!str_contains($error->getMessage(), 'IntlDateFormatter')) {
+                return;
+            }
+
+            self::assertTrue(
+                GenerationMode::Yii3->isLast(),
+                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
+                . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
+            );
+            self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
+        } catch (Throwable) {
+            // Anything else is a real verdict about this payload; the measurement below reports it.
+        }
     }
 
     /**

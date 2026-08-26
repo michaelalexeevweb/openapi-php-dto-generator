@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\LaravelData;
 
 use Closure;
+use DateTimeImmutable;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -12,6 +13,8 @@ use PHPUnit\Framework\TestCase;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Attributes\MergeValidationRules;
+use Spatie\LaravelData\Attributes\WithCast;
+use Spatie\LaravelData\Casts\DateTimeInterfaceCast;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\DataCollection;
 use Spatie\LaravelData\Optional;
@@ -363,6 +366,27 @@ final class LaravelDataSemanticsTest extends TestCase
 
         $this->assertSame(['f' => 'abcdef', 'extra' => 1], $class::$payloadSeenByTheValidator);
     }
+
+    /**
+     * THE measurement behind `array<string>` on a temporal container in this mode.
+     *
+     * `#[WithCast]` casts the PROPERTY. On an `array` property there is nothing for
+     * `DateTimeInterfaceCast` to parse, so it hands the array back untouched and the items stay the
+     * strings the payload carried — while the same attribute on a `DateTimeImmutable` property does
+     * cast. Both halves are asserted here, because the emitter's choice depends on the difference:
+     * the scalar gets the attribute, the container gets an honest docblock.
+     *
+     * `#[DataCollectionOf]` is not the answer either — it wants a class implementing `BaseData`, and
+     * `DateTimeImmutable` is not one. A per-item date cast would have to be a `Cast` class of ours,
+     * emitted into generated code that currently depends on nothing of this package.
+     */
+    public function testACastOnAnArrayPropertyDoesNotReachItsItems(): void
+    {
+        $dto = DateItems::from(['dates' => ['2026-01-15', '2026-02-20'], 'at' => '2026-03-10']);
+
+        $this->assertSame(['2026-01-15', '2026-02-20'], $dto->dates);
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->at, 'the SCALAR half does cast');
+    }
 }
 
 #[MergeValidationRules]
@@ -640,5 +664,23 @@ final class IntegerProbe extends Data
     public static function rules(): array
     {
         return ['n' => ['required', 'integer']];
+    }
+}
+
+/**
+ * The two temporal shapes side by side, attributed exactly as the emitter attributes them — the
+ * scalar carrying the cast, the container carrying it too, to show it changes nothing there.
+ */
+final class DateItems extends Data
+{
+    /**
+     * @param array<string> $dates
+     */
+    public function __construct(
+        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
+        public readonly array $dates,
+        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
+        public readonly DateTimeImmutable $at,
+    ) {
     }
 }

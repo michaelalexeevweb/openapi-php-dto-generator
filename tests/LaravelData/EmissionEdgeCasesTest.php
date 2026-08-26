@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\LaravelData;
 
+use DateTimeImmutable;
 use Illuminate\Http\Request;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -106,6 +107,52 @@ final class EmissionEdgeCasesTest extends TestCase
             static fn(Request $request): object => $fqcn::from($request),
         );
         $this->assertSame(['k' => [1, 2]], $provided->any);
+    }
+
+    /**
+     * A temporal CONTAINER declares `array<string>`, because that is what it holds.
+     *
+     * `#[WithCast]` casts the PROPERTY, never the items — see
+     * `LaravelDataSemanticsTest::testACastOnAnArrayPropertyDoesNotReachItsItems()`, which measures it
+     * against the real package. So the emitter has two honest moves and picked the cheap one: declare
+     * the strings. Converting would mean emitting a `Cast` class of ours, and the generated code in
+     * this mode depends on nothing of this package — a property the import test next door enforces.
+     *
+     * Runtime, Symfony and Laravel modes DO hold objects here; the divergence is in the support matrix.
+     */
+    public function testATemporalContainerDeclaresTheStringsItHolds(): void
+    {
+        $namespace = $this->generate([
+            'Report' => [
+                'type' => 'object',
+                'required' => ['dates'],
+                'properties' => [
+                    'dates' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']],
+                    'byDay' => [
+                        'type' => 'object',
+                        'additionalProperties' => ['type' => 'string', 'format' => 'date'],
+                    ],
+                    'at' => ['type' => 'string', 'format' => 'date'],
+                ],
+            ],
+        ]);
+        /** @var class-string $fqcn */
+        $fqcn = $namespace . '\Report';
+
+        $docblock = (string)(new ReflectionClass($fqcn))->getConstructor()?->getDocComment();
+        $this->assertStringContainsString('@param array<string> $dates', $docblock);
+        $this->assertStringContainsString('@param array<string, string>|Optional $byDay', $docblock);
+
+        $dto = LaravelDataContainer::withRequest(
+            '{"dates":["2026-01-15"],"byDay":{"mon":"2026-01-19"},"at":"2026-02-20"}',
+            static fn(Request $request): object => $fqcn::from($request),
+        );
+
+        // What the declaration now says, driven rather than read: strings in the containers…
+        $this->assertSame(['2026-01-15'], $dto->dates);
+        $this->assertSame(['mon' => '2026-01-19'], $dto->byDay);
+        // …and an object in the SCALAR, where the cast does reach the value.
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->at);
     }
 
     /**

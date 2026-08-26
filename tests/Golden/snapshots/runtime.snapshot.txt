@@ -1,4 +1,4 @@
-# runtime mode — 35 files, 10050 lines
+# runtime mode — 40 files, 12338 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -17,6 +17,8 @@
 # ApiTestFilePatchQueryParams.php
 # ApiTestFilePostRequest.php
 # Cat.php
+# Circle.php
+# Containers.php
 # Discriminator.php
 # Discriminator1.php
 # Discriminator2.php
@@ -24,7 +26,10 @@
 # Dog.php
 # Dog2.php
 # FileRequest.php
+# NestedContainers.php
 # Pet.php
+# Shape.php
+# Square.php
 # Tag.php
 # Test.php
 # Test2.php
@@ -156,14 +161,19 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['test2'] = $this->test2;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -171,12 +181,12 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -408,14 +418,19 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['test'] = $this->test;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -423,12 +438,12 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -656,14 +671,19 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['message'] = $this->message;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -671,12 +691,12 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -911,15 +931,20 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['idPatchTest2'] = $this->idPatchTest2;
         $result['namePatchTest2'] = $this->namePatchTest2;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -927,12 +952,12 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -1280,16 +1305,21 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['idPostTest2'] = $this->idPostTest2;
         $result['namePostTest2'] = $this->namePostTest2;
         $result['surnamePostTest2'] = $this->surnamePostTest2;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -1297,12 +1327,12 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -1586,14 +1616,19 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['message'] = $this->message;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -1601,12 +1636,12 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -1929,11 +1964,16 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        return [];
+        return (object)[];
     }
 
     /**
@@ -1941,12 +1981,12 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -2344,11 +2384,16 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        return [];
+        return (object)[];
     }
 
     /**
@@ -2356,12 +2401,12 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -2759,11 +2804,16 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        return [];
+        return (object)[];
     }
 
     /**
@@ -2771,12 +2821,12 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3174,11 +3224,16 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        return [];
+        return (object)[];
     }
 
     /**
@@ -3186,12 +3241,12 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3456,11 +3511,16 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        return [];
+        return (object)[];
     }
 
     /**
@@ -3468,12 +3528,12 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3669,11 +3729,16 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        return [];
+        return (object)[];
     }
 
     /**
@@ -3681,12 +3746,12 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3885,14 +3950,19 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['file'] = $this->file;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -3900,12 +3970,12 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4130,14 +4200,20 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        $result = parent::jsonSerialize();
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
         $result['meow'] = $this->meow;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -4145,12 +4221,12 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4252,6 +4328,983 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
     public static function getParameterAllowEmptyValue(): array
     {
         return parent::getParameterAllowEmptyValue();
+    }
+}
+
+===== Circle.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use Stringable;
+
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+final class Circle extends Shape implements GeneratedDtoInterface, Stringable
+{
+    private bool $kindInRequest = false;
+    private bool $kindInPath = false;
+    private bool $kindInQuery = false;
+    private bool $kindInHeader = false;
+    private bool $kindInCookie = false;
+    private bool $radiusInRequest = false;
+    private bool $radiusInPath = false;
+    private bool $radiusInQuery = false;
+    private bool $radiusInHeader = false;
+    private bool $radiusInCookie = false;
+
+    public function __construct(
+        private readonly string $kind,
+        private readonly int $radius,
+    ) {
+        $this->kindInRequest = true;
+        $this->radiusInRequest = true;
+    }
+
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function isKindRequired(): bool
+    {
+        return true;
+    }
+
+    public function isKindInPath(): bool
+    {
+        return $this->kindInPath;
+    }
+
+    public function isKindInQuery(): bool
+    {
+        return $this->kindInQuery;
+    }
+
+    public function isKindInHeader(): bool
+    {
+        return $this->kindInHeader;
+    }
+
+    public function isKindInCookie(): bool
+    {
+        return $this->kindInCookie;
+    }
+
+    public function isKindInRequest(): bool
+    {
+        return $this->kindInRequest;
+    }
+
+    public function getRadius(): int
+    {
+        return $this->radius;
+    }
+
+    public function isRadiusRequired(): bool
+    {
+        return true;
+    }
+
+    public function isRadiusInPath(): bool
+    {
+        return $this->radiusInPath;
+    }
+
+    public function isRadiusInQuery(): bool
+    {
+        return $this->radiusInQuery;
+    }
+
+    public function isRadiusInHeader(): bool
+    {
+        return $this->radiusInHeader;
+    }
+
+    public function isRadiusInCookie(): bool
+    {
+        return $this->radiusInCookie;
+    }
+
+    public function isRadiusInRequest(): bool
+    {
+        return $this->radiusInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = parent::toArray();
+        $result['kind'] = $this->kind;
+        $result['radius'] = $this->radius;
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
+        $result['kind'] = $this->kind;
+        $result['radius'] = $this->radius;
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = parent::getNormalizationMap();
+        $map['kind'] = [
+            'getter' => 'getKind',
+            'type' => 'string',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'kind',
+                'required' => true,
+                'inPathFlagGetter' => 'isKindInPath',
+                'inQueryFlagGetter' => 'isKindInQuery',
+                'inHeaderFlagGetter' => 'isKindInHeader',
+                'inCookieFlagGetter' => 'isKindInCookie',
+                'inRequestFlagGetter' => 'isKindInRequest',
+                'constraints' => $constraints['kind'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['radius'] = [
+            'getter' => 'getRadius',
+            'type' => 'int',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'radius',
+                'required' => true,
+                'inPathFlagGetter' => 'isRadiusInPath',
+                'inQueryFlagGetter' => 'isRadiusInQuery',
+                'inHeaderFlagGetter' => 'isRadiusInHeader',
+                'inCookieFlagGetter' => 'isRadiusInCookie',
+                'inRequestFlagGetter' => 'isRadiusInRequest',
+                'constraints' => $constraints['radius'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = parent::getAliases();
+        $aliases['kind'] = 'kind';
+        $aliases['radius'] = 'radius';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = parent::getConstraints();
+        $constraints['kind'] = ['type' => 'string'];
+        $constraints['radius'] = ['type' => 'integer'];
+
+        return $constraints;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return parent::getParameterSources();
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return parent::getParameterStyles();
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return parent::getParameterAllowReserved();
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return parent::getParameterAllowEmptyValue();
+    }
+}
+
+===== Containers.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use DateTimeImmutable;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+final class Containers implements GeneratedDtoInterface, Stringable
+{
+    /**
+     * @var array<DateTimeImmutable>
+     */
+    private array $dates;
+    private bool $datesInRequest = false;
+    private bool $datesInPath = false;
+    private bool $datesInQuery = false;
+    private bool $datesInHeader = false;
+    private bool $datesInCookie = false;
+    /**
+     * @var ?array<string, DateTimeImmutable>
+     */
+    private ?array $datesByDay;
+    private bool $datesByDayInRequest = false;
+    private bool $datesByDayInPath = false;
+    private bool $datesByDayInQuery = false;
+    private bool $datesByDayInHeader = false;
+    private bool $datesByDayInCookie = false;
+    /**
+     * @var ?array<DateTimeImmutable>
+     */
+    private ?array $timestamps;
+    private bool $timestampsInRequest = false;
+    private bool $timestampsInPath = false;
+    private bool $timestampsInQuery = false;
+    private bool $timestampsInHeader = false;
+    private bool $timestampsInCookie = false;
+    /**
+     * @var array<Shape>
+     */
+    private array $shapes;
+    private bool $shapesInRequest = false;
+    private bool $shapesInPath = false;
+    private bool $shapesInQuery = false;
+    private bool $shapesInHeader = false;
+    private bool $shapesInCookie = false;
+    /**
+     * @var ?array<string, Tag>
+     */
+    private ?array $tagsByKey;
+    private bool $tagsByKeyInRequest = false;
+    private bool $tagsByKeyInPath = false;
+    private bool $tagsByKeyInQuery = false;
+    private bool $tagsByKeyInHeader = false;
+    private bool $tagsByKeyInCookie = false;
+
+    /**
+     * @param array<DateTimeImmutable> $dates
+     * @param array<Shape> $shapes
+     * @param ?array<string, DateTimeImmutable> $datesByDay
+     * @param ?array<DateTimeImmutable> $timestamps
+     * @param ?array<string, Tag> $tagsByKey
+     */
+    public function __construct(
+        array $dates,
+        array $shapes,
+        array|UnsetValue|null $datesByDay = UnsetValue::UNSET,
+        array|UnsetValue|null $timestamps = UnsetValue::UNSET,
+        array|UnsetValue|null $tagsByKey = UnsetValue::UNSET,
+    ) {
+        $this->datesInRequest = true;
+        $this->shapesInRequest = true;
+        // Track if parameter was explicitly passed
+        $this->datesByDayInRequest = $datesByDay !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->timestampsInRequest = $timestamps !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->tagsByKeyInRequest = $tagsByKey !== UnsetValue::UNSET;
+        $this->dates = $dates;
+        $this->datesByDay = $datesByDay !== UnsetValue::UNSET ? $datesByDay : null;
+        $this->timestamps = $timestamps !== UnsetValue::UNSET ? $timestamps : null;
+        $this->shapes = $shapes;
+        $this->tagsByKey = $tagsByKey !== UnsetValue::UNSET ? $tagsByKey : null;
+    }
+
+    /**
+     * Expected format: Y-m-d
+     * @return array<string>
+     */
+    public function getDates(): array
+    {
+        return array_map(
+            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
+                ? $item->format('Y-m-d')
+                : $item,
+            $this->dates,
+        );
+    }
+
+    /**
+     * @return array<DateTimeImmutable>
+     */
+    public function getDatesAsDateTime(): array
+    {
+        return $this->dates;
+    }
+
+    public function isDatesRequired(): bool
+    {
+        return true;
+    }
+
+    public function isDatesInPath(): bool
+    {
+        return $this->datesInPath;
+    }
+
+    public function isDatesInQuery(): bool
+    {
+        return $this->datesInQuery;
+    }
+
+    public function isDatesInHeader(): bool
+    {
+        return $this->datesInHeader;
+    }
+
+    public function isDatesInCookie(): bool
+    {
+        return $this->datesInCookie;
+    }
+
+    public function isDatesInRequest(): bool
+    {
+        return $this->datesInRequest;
+    }
+
+    public function addItemToDates(DateTimeImmutable $item): void
+    {
+        $this->dates[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->datesInRequest) {
+            $this->datesInRequest = true;
+        }
+    }
+
+    /**
+     * Expected format: Y-m-d
+     * @return ?array<string, string>
+     */
+    public function getDatesByDay(): ?array
+    {
+        if ($this->datesByDay === null) {
+            return null;
+        }
+
+        return array_map(
+            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
+                ? $item->format('Y-m-d')
+                : $item,
+            $this->datesByDay,
+        );
+    }
+
+    /**
+     * @return ?array<string, DateTimeImmutable>
+     */
+    public function getDatesByDayAsDateTime(): ?array
+    {
+        return $this->datesByDay;
+    }
+
+    public function isDatesByDayRequired(): bool
+    {
+        return false;
+    }
+
+    public function isDatesByDayInPath(): bool
+    {
+        return $this->datesByDayInPath;
+    }
+
+    public function isDatesByDayInQuery(): bool
+    {
+        return $this->datesByDayInQuery;
+    }
+
+    public function isDatesByDayInHeader(): bool
+    {
+        return $this->datesByDayInHeader;
+    }
+
+    public function isDatesByDayInCookie(): bool
+    {
+        return $this->datesByDayInCookie;
+    }
+
+    public function isDatesByDayInRequest(): bool
+    {
+        return $this->datesByDayInRequest;
+    }
+
+    public function addItemToDatesByDay(string $key, DateTimeImmutable $item): void
+    {
+        if ($this->datesByDay === null) {
+            $this->datesByDay = [];
+        }
+        $this->datesByDay[$key] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->datesByDayInRequest) {
+            $this->datesByDayInRequest = true;
+        }
+    }
+
+    /**
+     * Expected format: yyyy-MM-dd HH:mm:ss
+     * @return ?array<string>
+     */
+    public function getTimestamps(): ?array
+    {
+        if ($this->timestamps === null) {
+            return null;
+        }
+
+        return array_map(
+            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
+                ? ($item->format('u') === '000000' ? $item->format('c') : $item->format('Y-m-d\TH:i:s.uP'))
+                : $item,
+            $this->timestamps,
+        );
+    }
+
+    /**
+     * @return ?array<DateTimeImmutable>
+     */
+    public function getTimestampsAsDateTime(): ?array
+    {
+        return $this->timestamps;
+    }
+
+    public function isTimestampsRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTimestampsInPath(): bool
+    {
+        return $this->timestampsInPath;
+    }
+
+    public function isTimestampsInQuery(): bool
+    {
+        return $this->timestampsInQuery;
+    }
+
+    public function isTimestampsInHeader(): bool
+    {
+        return $this->timestampsInHeader;
+    }
+
+    public function isTimestampsInCookie(): bool
+    {
+        return $this->timestampsInCookie;
+    }
+
+    public function isTimestampsInRequest(): bool
+    {
+        return $this->timestampsInRequest;
+    }
+
+    public function addItemToTimestamps(DateTimeImmutable $item): void
+    {
+        if ($this->timestamps === null) {
+            $this->timestamps = [];
+        }
+        $this->timestamps[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->timestampsInRequest) {
+            $this->timestampsInRequest = true;
+        }
+    }
+
+    /**
+     * @return array<Shape>
+     */
+    public function getShapes(): array
+    {
+        return $this->shapes;
+    }
+
+    public function isShapesRequired(): bool
+    {
+        return true;
+    }
+
+    public function isShapesInPath(): bool
+    {
+        return $this->shapesInPath;
+    }
+
+    public function isShapesInQuery(): bool
+    {
+        return $this->shapesInQuery;
+    }
+
+    public function isShapesInHeader(): bool
+    {
+        return $this->shapesInHeader;
+    }
+
+    public function isShapesInCookie(): bool
+    {
+        return $this->shapesInCookie;
+    }
+
+    public function isShapesInRequest(): bool
+    {
+        return $this->shapesInRequest;
+    }
+
+    public function addItemToShapes(Shape $item): void
+    {
+        $this->shapes[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->shapesInRequest) {
+            $this->shapesInRequest = true;
+        }
+    }
+
+    /**
+     * @return ?array<string, Tag>
+     */
+    public function getTagsByKey(): ?array
+    {
+        return $this->tagsByKey;
+    }
+
+    public function isTagsByKeyRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTagsByKeyInPath(): bool
+    {
+        return $this->tagsByKeyInPath;
+    }
+
+    public function isTagsByKeyInQuery(): bool
+    {
+        return $this->tagsByKeyInQuery;
+    }
+
+    public function isTagsByKeyInHeader(): bool
+    {
+        return $this->tagsByKeyInHeader;
+    }
+
+    public function isTagsByKeyInCookie(): bool
+    {
+        return $this->tagsByKeyInCookie;
+    }
+
+    public function isTagsByKeyInRequest(): bool
+    {
+        return $this->tagsByKeyInRequest;
+    }
+
+    public function addItemToTagsByKey(string $key, Tag $item): void
+    {
+        if ($this->tagsByKey === null) {
+            $this->tagsByKey = [];
+        }
+        $this->tagsByKey[$key] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->tagsByKeyInRequest) {
+            $this->tagsByKeyInRequest = true;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        $result['dates'] = $this->getDates();
+        if ($this->datesByDayInRequest) {
+            $result['datesByDay'] = $this->datesByDay === null ? null : (object)$this->getDatesByDay();
+        }
+        if ($this->timestampsInRequest) {
+            $result['timestamps'] = $this->getTimestamps();
+        }
+        $result['shapes'] = $this->shapes;
+        if ($this->tagsByKeyInRequest) {
+            $result['tagsByKey'] = $this->tagsByKey === null ? null : (object)$this->tagsByKey;
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = [];
+        $result['dates'] = $this->getDates();
+        if ($this->datesByDayInRequest) {
+            $result['datesByDay'] = $this->datesByDay === null ? null : (object)$this->getDatesByDay();
+        }
+        if ($this->timestampsInRequest) {
+            $result['timestamps'] = $this->getTimestamps();
+        }
+        $result['shapes'] = $this->shapes;
+        if ($this->tagsByKeyInRequest) {
+            $result['tagsByKey'] = $this->tagsByKey === null ? null : (object)$this->tagsByKey;
+        }
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['dates'] = [
+            'getter' => 'getDates',
+            'type' => 'array',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'dates',
+                'required' => true,
+                'inPathFlagGetter' => 'isDatesInPath',
+                'inQueryFlagGetter' => 'isDatesInQuery',
+                'inHeaderFlagGetter' => 'isDatesInHeader',
+                'inCookieFlagGetter' => 'isDatesInCookie',
+                'inRequestFlagGetter' => 'isDatesInRequest',
+                'constraints' => $constraints['dates'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => 'array<string>',
+            ],
+        ];
+        $map['datesByDay'] = [
+            'getter' => 'getDatesByDay',
+            'type' => 'object',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'datesByDay',
+                'required' => false,
+                'inPathFlagGetter' => 'isDatesByDayInPath',
+                'inQueryFlagGetter' => 'isDatesByDayInQuery',
+                'inHeaderFlagGetter' => 'isDatesByDayInHeader',
+                'inCookieFlagGetter' => 'isDatesByDayInCookie',
+                'inRequestFlagGetter' => 'isDatesByDayInRequest',
+                'constraints' => $constraints['datesByDay'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<string, string>',
+            ],
+        ];
+        $map['timestamps'] = [
+            'getter' => 'getTimestamps',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'timestamps',
+                'required' => false,
+                'inPathFlagGetter' => 'isTimestampsInPath',
+                'inQueryFlagGetter' => 'isTimestampsInQuery',
+                'inHeaderFlagGetter' => 'isTimestampsInHeader',
+                'inCookieFlagGetter' => 'isTimestampsInCookie',
+                'inRequestFlagGetter' => 'isTimestampsInRequest',
+                'constraints' => $constraints['timestamps'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<string>',
+            ],
+        ];
+        $map['shapes'] = [
+            'getter' => 'getShapes',
+            'type' => 'array',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'shapes',
+                'required' => true,
+                'inPathFlagGetter' => 'isShapesInPath',
+                'inQueryFlagGetter' => 'isShapesInQuery',
+                'inHeaderFlagGetter' => 'isShapesInHeader',
+                'inCookieFlagGetter' => 'isShapesInCookie',
+                'inRequestFlagGetter' => 'isShapesInRequest',
+                'constraints' => $constraints['shapes'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => 'array<Shape>',
+            ],
+        ];
+        $map['tagsByKey'] = [
+            'getter' => 'getTagsByKey',
+            'type' => 'object',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'tagsByKey',
+                'required' => false,
+                'inPathFlagGetter' => 'isTagsByKeyInPath',
+                'inQueryFlagGetter' => 'isTagsByKeyInQuery',
+                'inHeaderFlagGetter' => 'isTagsByKeyInHeader',
+                'inCookieFlagGetter' => 'isTagsByKeyInCookie',
+                'inRequestFlagGetter' => 'isTagsByKeyInRequest',
+                'constraints' => $constraints['tagsByKey'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<string, Tag>',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['dates'] = 'dates';
+        $aliases['datesByDay'] = 'datesByDay';
+        $aliases['timestamps'] = 'timestamps';
+        $aliases['shapes'] = 'shapes';
+        $aliases['tagsByKey'] = 'tagsByKey';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['dates'] = ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']];
+        $constraints['datesByDay'] = ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'format' => 'date']];
+        $constraints['timestamps'] = ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']];
+        $constraints['shapes'] = ['type' => 'array'];
+        $constraints['tagsByKey'] = ['type' => 'object'];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $datesGiven = array_key_exists('dates', $data);
+        if (!$datesGiven) {
+            $errors[] = 'Required parameter "dates" not found in request.';
+        }
+        $dates = $datesGiven ? $cast('dates', $data['dates'], $errors) : null;
+        $shapesGiven = array_key_exists('shapes', $data);
+        if (!$shapesGiven) {
+            $errors[] = 'Required parameter "shapes" not found in request.';
+        }
+        $shapes = $shapesGiven ? $cast('shapes', $data['shapes'], $errors) : null;
+        $datesByDayGiven = array_key_exists('datesByDay', $data);
+        $datesByDay = $datesByDayGiven ? $cast('datesByDay', $data['datesByDay'], $errors) : null;
+        $timestampsGiven = array_key_exists('timestamps', $data);
+        $timestamps = $timestampsGiven ? $cast('timestamps', $data['timestamps'], $errors) : null;
+        $tagsByKeyGiven = array_key_exists('tagsByKey', $data);
+        $tagsByKey = $tagsByKeyGiven ? $cast('tagsByKey', $data['tagsByKey'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var array $dates */
+        /** @var array $shapes */
+        $dto = new self(
+            dates: $dates,
+            shapes: $shapes,
+            datesByDay: $datesByDayGiven ? $datesByDay : UnsetValue::UNSET,
+            timestamps: $timestampsGiven ? $timestamps : UnsetValue::UNSET,
+            tagsByKey: $tagsByKeyGiven ? $tagsByKey : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
     }
 }
 
@@ -4393,15 +5446,20 @@ class Discriminator implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['type'] = $this->type;
         $result['name'] = $this->name;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -4409,12 +5467,12 @@ class Discriminator implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4625,14 +5683,20 @@ final class Discriminator1 extends Discriminator implements GeneratedDtoInterfac
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        $result = parent::jsonSerialize();
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
         $result['id'] = $this->id;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -4640,12 +5704,12 @@ final class Discriminator1 extends Discriminator implements GeneratedDtoInterfac
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4878,15 +5942,21 @@ final class Discriminator2 extends Discriminator implements GeneratedDtoInterfac
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        $result = parent::jsonSerialize();
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
         $result['id'] = $this->id;
         $result['NAme'] = $this->nAme2;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -4894,12 +5964,12 @@ final class Discriminator2 extends Discriminator implements GeneratedDtoInterfac
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5204,14 +6274,20 @@ class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        $result = parent::jsonSerialize();
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
         $result['bark'] = $this->bark;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -5219,12 +6295,12 @@ class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5410,14 +6486,20 @@ final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringab
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
-        $result = parent::jsonSerialize();
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
         $result['bark'] = $this->bark;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -5425,12 +6507,12 @@ final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringab
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5707,16 +6789,21 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['file'] = $this->file;
         $result['name'] = $this->name;
         $result['surname'] = $this->surname;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -5724,12 +6811,12 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5931,6 +7018,751 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
     }
 }
 
+===== NestedContainers.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+final class NestedContainers implements GeneratedDtoInterface, Stringable
+{
+    /**
+     * @var array<array<int>>
+     */
+    private array $matrix;
+    private bool $matrixInRequest = false;
+    private bool $matrixInPath = false;
+    private bool $matrixInQuery = false;
+    private bool $matrixInHeader = false;
+    private bool $matrixInCookie = false;
+    /**
+     * @var array<array<string, string>>
+     */
+    private array $rowsOfMaps;
+    private bool $rowsOfMapsInRequest = false;
+    private bool $rowsOfMapsInPath = false;
+    private bool $rowsOfMapsInQuery = false;
+    private bool $rowsOfMapsInHeader = false;
+    private bool $rowsOfMapsInCookie = false;
+    /**
+     * @var ?array<string, array<string>>
+     */
+    private ?array $listsByKey;
+    private bool $listsByKeyInRequest = false;
+    private bool $listsByKeyInPath = false;
+    private bool $listsByKeyInQuery = false;
+    private bool $listsByKeyInHeader = false;
+    private bool $listsByKeyInCookie = false;
+    /**
+     * @var ?array<string, array<string, int>>
+     */
+    private ?array $mapsByKey;
+    private bool $mapsByKeyInRequest = false;
+    private bool $mapsByKeyInPath = false;
+    private bool $mapsByKeyInQuery = false;
+    private bool $mapsByKeyInHeader = false;
+    private bool $mapsByKeyInCookie = false;
+    /**
+     * @var ?array<array<mixed>>
+     */
+    private ?array $enumRows;
+    private bool $enumRowsInRequest = false;
+    private bool $enumRowsInPath = false;
+    private bool $enumRowsInQuery = false;
+    private bool $enumRowsInHeader = false;
+    private bool $enumRowsInCookie = false;
+    /**
+     * @var ?array<array<mixed>>
+     */
+    private ?array $tagRows;
+    private bool $tagRowsInRequest = false;
+    private bool $tagRowsInPath = false;
+    private bool $tagRowsInQuery = false;
+    private bool $tagRowsInHeader = false;
+    private bool $tagRowsInCookie = false;
+
+    /**
+     * @param array<array<int>> $matrix
+     * @param array<array<string, string>> $rowsOfMaps
+     * @param ?array<string, array<string>> $listsByKey
+     * @param ?array<string, array<string, int>> $mapsByKey
+     * @param ?array<array<mixed>> $enumRows
+     * @param ?array<array<mixed>> $tagRows
+     */
+    public function __construct(
+        array $matrix,
+        array $rowsOfMaps,
+        array|UnsetValue|null $listsByKey = UnsetValue::UNSET,
+        array|UnsetValue|null $mapsByKey = UnsetValue::UNSET,
+        array|UnsetValue|null $enumRows = UnsetValue::UNSET,
+        array|UnsetValue|null $tagRows = UnsetValue::UNSET,
+    ) {
+        $this->matrixInRequest = true;
+        $this->rowsOfMapsInRequest = true;
+        // Track if parameter was explicitly passed
+        $this->listsByKeyInRequest = $listsByKey !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->mapsByKeyInRequest = $mapsByKey !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->enumRowsInRequest = $enumRows !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->tagRowsInRequest = $tagRows !== UnsetValue::UNSET;
+        $this->matrix = $matrix;
+        $this->rowsOfMaps = $rowsOfMaps;
+        $this->listsByKey = $listsByKey !== UnsetValue::UNSET ? $listsByKey : null;
+        $this->mapsByKey = $mapsByKey !== UnsetValue::UNSET ? $mapsByKey : null;
+        $this->enumRows = $enumRows !== UnsetValue::UNSET ? $enumRows : null;
+        $this->tagRows = $tagRows !== UnsetValue::UNSET ? $tagRows : null;
+    }
+
+    /**
+     * @return array<array<int>>
+     */
+    public function getMatrix(): array
+    {
+        return $this->matrix;
+    }
+
+    public function isMatrixRequired(): bool
+    {
+        return true;
+    }
+
+    public function isMatrixInPath(): bool
+    {
+        return $this->matrixInPath;
+    }
+
+    public function isMatrixInQuery(): bool
+    {
+        return $this->matrixInQuery;
+    }
+
+    public function isMatrixInHeader(): bool
+    {
+        return $this->matrixInHeader;
+    }
+
+    public function isMatrixInCookie(): bool
+    {
+        return $this->matrixInCookie;
+    }
+
+    public function isMatrixInRequest(): bool
+    {
+        return $this->matrixInRequest;
+    }
+
+    public function addItemToMatrix(array $item): void
+    {
+        $this->matrix[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->matrixInRequest) {
+            $this->matrixInRequest = true;
+        }
+    }
+
+    /**
+     * @return array<array<string, string>>
+     */
+    public function getRowsOfMaps(): array
+    {
+        return $this->rowsOfMaps;
+    }
+
+    public function isRowsOfMapsRequired(): bool
+    {
+        return true;
+    }
+
+    public function isRowsOfMapsInPath(): bool
+    {
+        return $this->rowsOfMapsInPath;
+    }
+
+    public function isRowsOfMapsInQuery(): bool
+    {
+        return $this->rowsOfMapsInQuery;
+    }
+
+    public function isRowsOfMapsInHeader(): bool
+    {
+        return $this->rowsOfMapsInHeader;
+    }
+
+    public function isRowsOfMapsInCookie(): bool
+    {
+        return $this->rowsOfMapsInCookie;
+    }
+
+    public function isRowsOfMapsInRequest(): bool
+    {
+        return $this->rowsOfMapsInRequest;
+    }
+
+    public function addItemToRowsOfMaps(array $item): void
+    {
+        $this->rowsOfMaps[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->rowsOfMapsInRequest) {
+            $this->rowsOfMapsInRequest = true;
+        }
+    }
+
+    /**
+     * @return ?array<string, array<string>>
+     */
+    public function getListsByKey(): ?array
+    {
+        return $this->listsByKey;
+    }
+
+    public function isListsByKeyRequired(): bool
+    {
+        return false;
+    }
+
+    public function isListsByKeyInPath(): bool
+    {
+        return $this->listsByKeyInPath;
+    }
+
+    public function isListsByKeyInQuery(): bool
+    {
+        return $this->listsByKeyInQuery;
+    }
+
+    public function isListsByKeyInHeader(): bool
+    {
+        return $this->listsByKeyInHeader;
+    }
+
+    public function isListsByKeyInCookie(): bool
+    {
+        return $this->listsByKeyInCookie;
+    }
+
+    public function isListsByKeyInRequest(): bool
+    {
+        return $this->listsByKeyInRequest;
+    }
+
+    public function addItemToListsByKey(string $key, array $item): void
+    {
+        if ($this->listsByKey === null) {
+            $this->listsByKey = [];
+        }
+        $this->listsByKey[$key] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->listsByKeyInRequest) {
+            $this->listsByKeyInRequest = true;
+        }
+    }
+
+    /**
+     * @return ?array<string, array<string, int>>
+     */
+    public function getMapsByKey(): ?array
+    {
+        return $this->mapsByKey;
+    }
+
+    public function isMapsByKeyRequired(): bool
+    {
+        return false;
+    }
+
+    public function isMapsByKeyInPath(): bool
+    {
+        return $this->mapsByKeyInPath;
+    }
+
+    public function isMapsByKeyInQuery(): bool
+    {
+        return $this->mapsByKeyInQuery;
+    }
+
+    public function isMapsByKeyInHeader(): bool
+    {
+        return $this->mapsByKeyInHeader;
+    }
+
+    public function isMapsByKeyInCookie(): bool
+    {
+        return $this->mapsByKeyInCookie;
+    }
+
+    public function isMapsByKeyInRequest(): bool
+    {
+        return $this->mapsByKeyInRequest;
+    }
+
+    public function addItemToMapsByKey(string $key, array $item): void
+    {
+        if ($this->mapsByKey === null) {
+            $this->mapsByKey = [];
+        }
+        $this->mapsByKey[$key] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->mapsByKeyInRequest) {
+            $this->mapsByKeyInRequest = true;
+        }
+    }
+
+    /**
+     * @return ?array<array<mixed>>
+     */
+    public function getEnumRows(): ?array
+    {
+        return $this->enumRows;
+    }
+
+    public function isEnumRowsRequired(): bool
+    {
+        return false;
+    }
+
+    public function isEnumRowsInPath(): bool
+    {
+        return $this->enumRowsInPath;
+    }
+
+    public function isEnumRowsInQuery(): bool
+    {
+        return $this->enumRowsInQuery;
+    }
+
+    public function isEnumRowsInHeader(): bool
+    {
+        return $this->enumRowsInHeader;
+    }
+
+    public function isEnumRowsInCookie(): bool
+    {
+        return $this->enumRowsInCookie;
+    }
+
+    public function isEnumRowsInRequest(): bool
+    {
+        return $this->enumRowsInRequest;
+    }
+
+    public function addItemToEnumRows(array $item): void
+    {
+        if ($this->enumRows === null) {
+            $this->enumRows = [];
+        }
+        $this->enumRows[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->enumRowsInRequest) {
+            $this->enumRowsInRequest = true;
+        }
+    }
+
+    /**
+     * @return ?array<array<mixed>>
+     */
+    public function getTagRows(): ?array
+    {
+        return $this->tagRows;
+    }
+
+    public function isTagRowsRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTagRowsInPath(): bool
+    {
+        return $this->tagRowsInPath;
+    }
+
+    public function isTagRowsInQuery(): bool
+    {
+        return $this->tagRowsInQuery;
+    }
+
+    public function isTagRowsInHeader(): bool
+    {
+        return $this->tagRowsInHeader;
+    }
+
+    public function isTagRowsInCookie(): bool
+    {
+        return $this->tagRowsInCookie;
+    }
+
+    public function isTagRowsInRequest(): bool
+    {
+        return $this->tagRowsInRequest;
+    }
+
+    public function addItemToTagRows(array $item): void
+    {
+        if ($this->tagRows === null) {
+            $this->tagRows = [];
+        }
+        $this->tagRows[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->tagRowsInRequest) {
+            $this->tagRowsInRequest = true;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        $result['matrix'] = $this->matrix;
+        $result['rowsOfMaps'] = $this->rowsOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->rowsOfMaps);
+        if ($this->listsByKeyInRequest) {
+            $result['listsByKey'] = $this->listsByKey === null ? null : (object)$this->listsByKey;
+        }
+        if ($this->mapsByKeyInRequest) {
+            $result['mapsByKey'] = $this->mapsByKey === null ? null : (object)$this->mapsByKey;
+        }
+        if ($this->enumRowsInRequest) {
+            $result['enumRows'] = $this->enumRows;
+        }
+        if ($this->tagRowsInRequest) {
+            $result['tagRows'] = $this->tagRows;
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = [];
+        $result['matrix'] = $this->matrix;
+        $result['rowsOfMaps'] = $this->rowsOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->rowsOfMaps);
+        if ($this->listsByKeyInRequest) {
+            $result['listsByKey'] = $this->listsByKey === null ? null : (object)$this->listsByKey;
+        }
+        if ($this->mapsByKeyInRequest) {
+            $result['mapsByKey'] = $this->mapsByKey === null ? null : (object)$this->mapsByKey;
+        }
+        if ($this->enumRowsInRequest) {
+            $result['enumRows'] = $this->enumRows;
+        }
+        if ($this->tagRowsInRequest) {
+            $result['tagRows'] = $this->tagRows;
+        }
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['matrix'] = [
+            'getter' => 'getMatrix',
+            'type' => 'array',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'matrix',
+                'required' => true,
+                'inPathFlagGetter' => 'isMatrixInPath',
+                'inQueryFlagGetter' => 'isMatrixInQuery',
+                'inHeaderFlagGetter' => 'isMatrixInHeader',
+                'inCookieFlagGetter' => 'isMatrixInCookie',
+                'inRequestFlagGetter' => 'isMatrixInRequest',
+                'constraints' => $constraints['matrix'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => 'array<array<int>>',
+            ],
+        ];
+        $map['rowsOfMaps'] = [
+            'getter' => 'getRowsOfMaps',
+            'type' => 'array',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'rowsOfMaps',
+                'required' => true,
+                'inPathFlagGetter' => 'isRowsOfMapsInPath',
+                'inQueryFlagGetter' => 'isRowsOfMapsInQuery',
+                'inHeaderFlagGetter' => 'isRowsOfMapsInHeader',
+                'inCookieFlagGetter' => 'isRowsOfMapsInCookie',
+                'inRequestFlagGetter' => 'isRowsOfMapsInRequest',
+                'constraints' => $constraints['rowsOfMaps'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => 'array<array<string, string>>',
+            ],
+        ];
+        $map['listsByKey'] = [
+            'getter' => 'getListsByKey',
+            'type' => 'object',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'listsByKey',
+                'required' => false,
+                'inPathFlagGetter' => 'isListsByKeyInPath',
+                'inQueryFlagGetter' => 'isListsByKeyInQuery',
+                'inHeaderFlagGetter' => 'isListsByKeyInHeader',
+                'inCookieFlagGetter' => 'isListsByKeyInCookie',
+                'inRequestFlagGetter' => 'isListsByKeyInRequest',
+                'constraints' => $constraints['listsByKey'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<string, array<string>>',
+            ],
+        ];
+        $map['mapsByKey'] = [
+            'getter' => 'getMapsByKey',
+            'type' => 'object',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'mapsByKey',
+                'required' => false,
+                'inPathFlagGetter' => 'isMapsByKeyInPath',
+                'inQueryFlagGetter' => 'isMapsByKeyInQuery',
+                'inHeaderFlagGetter' => 'isMapsByKeyInHeader',
+                'inCookieFlagGetter' => 'isMapsByKeyInCookie',
+                'inRequestFlagGetter' => 'isMapsByKeyInRequest',
+                'constraints' => $constraints['mapsByKey'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<string, array<string, int>>',
+            ],
+        ];
+        $map['enumRows'] = [
+            'getter' => 'getEnumRows',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'enumRows',
+                'required' => false,
+                'inPathFlagGetter' => 'isEnumRowsInPath',
+                'inQueryFlagGetter' => 'isEnumRowsInQuery',
+                'inHeaderFlagGetter' => 'isEnumRowsInHeader',
+                'inCookieFlagGetter' => 'isEnumRowsInCookie',
+                'inRequestFlagGetter' => 'isEnumRowsInRequest',
+                'constraints' => $constraints['enumRows'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<array<mixed>>',
+            ],
+        ];
+        $map['tagRows'] = [
+            'getter' => 'getTagRows',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'tagRows',
+                'required' => false,
+                'inPathFlagGetter' => 'isTagRowsInPath',
+                'inQueryFlagGetter' => 'isTagRowsInQuery',
+                'inHeaderFlagGetter' => 'isTagRowsInHeader',
+                'inCookieFlagGetter' => 'isTagRowsInCookie',
+                'inRequestFlagGetter' => 'isTagRowsInRequest',
+                'constraints' => $constraints['tagRows'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<array<mixed>>',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['matrix'] = 'matrix';
+        $aliases['rowsOfMaps'] = 'rowsOfMaps';
+        $aliases['listsByKey'] = 'listsByKey';
+        $aliases['mapsByKey'] = 'mapsByKey';
+        $aliases['enumRows'] = 'enumRows';
+        $aliases['tagRows'] = 'tagRows';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['matrix'] = ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0]]];
+        $constraints['rowsOfMaps'] = ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'string']]];
+        $constraints['listsByKey'] = ['type' => 'object', 'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'string']]];
+        $constraints['mapsByKey'] = ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]];
+        $constraints['enumRows'] = ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['catType', 'dogType']]]];
+        $constraints['tagRows'] = ['type' => 'array', 'items' => ['type' => 'array']];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $matrixGiven = array_key_exists('matrix', $data);
+        if (!$matrixGiven) {
+            $errors[] = 'Required parameter "matrix" not found in request.';
+        }
+        $matrix = $matrixGiven ? $cast('matrix', $data['matrix'], $errors) : null;
+        $rowsOfMapsGiven = array_key_exists('rowsOfMaps', $data);
+        if (!$rowsOfMapsGiven) {
+            $errors[] = 'Required parameter "rowsOfMaps" not found in request.';
+        }
+        $rowsOfMaps = $rowsOfMapsGiven ? $cast('rowsOfMaps', $data['rowsOfMaps'], $errors) : null;
+        $listsByKeyGiven = array_key_exists('listsByKey', $data);
+        $listsByKey = $listsByKeyGiven ? $cast('listsByKey', $data['listsByKey'], $errors) : null;
+        $mapsByKeyGiven = array_key_exists('mapsByKey', $data);
+        $mapsByKey = $mapsByKeyGiven ? $cast('mapsByKey', $data['mapsByKey'], $errors) : null;
+        $enumRowsGiven = array_key_exists('enumRows', $data);
+        $enumRows = $enumRowsGiven ? $cast('enumRows', $data['enumRows'], $errors) : null;
+        $tagRowsGiven = array_key_exists('tagRows', $data);
+        $tagRows = $tagRowsGiven ? $cast('tagRows', $data['tagRows'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var array $matrix */
+        /** @var array $rowsOfMaps */
+        $dto = new self(
+            matrix: $matrix,
+            rowsOfMaps: $rowsOfMaps,
+            listsByKey: $listsByKeyGiven ? $listsByKey : UnsetValue::UNSET,
+            mapsByKey: $mapsByKeyGiven ? $mapsByKey : UnsetValue::UNSET,
+            enumRows: $enumRowsGiven ? $enumRows : UnsetValue::UNSET,
+            tagRows: $tagRowsGiven ? $tagRows : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
+    }
+}
+
 ===== Pet.php =====
 <?php
 
@@ -6016,14 +7848,19 @@ class Pet implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['name'] = $this->name;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -6031,12 +7868,12 @@ class Pet implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -6183,6 +8020,427 @@ class Pet implements GeneratedDtoInterface, Stringable
     }
 }
 
+===== Shape.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use Stringable;
+
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+abstract class Shape implements GeneratedDtoInterface, Stringable
+{
+    public function __construct()
+    {
+    }
+    public static function getDiscriminatorPropertyName(): string
+    {
+        return 'kind';
+    }
+
+    /**
+     * @return array<string, class-string>
+     */
+    public static function getDiscriminatorMapping(): array
+    {
+        return [
+            'circle' => Circle::class,
+            'square' => Square::class,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [];
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        return (object)[];
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
+    }
+}
+
+===== Square.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use Stringable;
+
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+final class Square extends Shape implements GeneratedDtoInterface, Stringable
+{
+    private bool $kindInRequest = false;
+    private bool $kindInPath = false;
+    private bool $kindInQuery = false;
+    private bool $kindInHeader = false;
+    private bool $kindInCookie = false;
+    private bool $sideInRequest = false;
+    private bool $sideInPath = false;
+    private bool $sideInQuery = false;
+    private bool $sideInHeader = false;
+    private bool $sideInCookie = false;
+
+    public function __construct(
+        private readonly string $kind,
+        private readonly int $side,
+    ) {
+        $this->kindInRequest = true;
+        $this->sideInRequest = true;
+    }
+
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function isKindRequired(): bool
+    {
+        return true;
+    }
+
+    public function isKindInPath(): bool
+    {
+        return $this->kindInPath;
+    }
+
+    public function isKindInQuery(): bool
+    {
+        return $this->kindInQuery;
+    }
+
+    public function isKindInHeader(): bool
+    {
+        return $this->kindInHeader;
+    }
+
+    public function isKindInCookie(): bool
+    {
+        return $this->kindInCookie;
+    }
+
+    public function isKindInRequest(): bool
+    {
+        return $this->kindInRequest;
+    }
+
+    public function getSide(): int
+    {
+        return $this->side;
+    }
+
+    public function isSideRequired(): bool
+    {
+        return true;
+    }
+
+    public function isSideInPath(): bool
+    {
+        return $this->sideInPath;
+    }
+
+    public function isSideInQuery(): bool
+    {
+        return $this->sideInQuery;
+    }
+
+    public function isSideInHeader(): bool
+    {
+        return $this->sideInHeader;
+    }
+
+    public function isSideInCookie(): bool
+    {
+        return $this->sideInCookie;
+    }
+
+    public function isSideInRequest(): bool
+    {
+        return $this->sideInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = parent::toArray();
+        $result['kind'] = $this->kind;
+        $result['side'] = $this->side;
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
+        $result['kind'] = $this->kind;
+        $result['side'] = $this->side;
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = parent::getNormalizationMap();
+        $map['kind'] = [
+            'getter' => 'getKind',
+            'type' => 'string',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'kind',
+                'required' => true,
+                'inPathFlagGetter' => 'isKindInPath',
+                'inQueryFlagGetter' => 'isKindInQuery',
+                'inHeaderFlagGetter' => 'isKindInHeader',
+                'inCookieFlagGetter' => 'isKindInCookie',
+                'inRequestFlagGetter' => 'isKindInRequest',
+                'constraints' => $constraints['kind'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['side'] = [
+            'getter' => 'getSide',
+            'type' => 'int',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'side',
+                'required' => true,
+                'inPathFlagGetter' => 'isSideInPath',
+                'inQueryFlagGetter' => 'isSideInQuery',
+                'inHeaderFlagGetter' => 'isSideInHeader',
+                'inCookieFlagGetter' => 'isSideInCookie',
+                'inRequestFlagGetter' => 'isSideInRequest',
+                'constraints' => $constraints['side'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = parent::getAliases();
+        $aliases['kind'] = 'kind';
+        $aliases['side'] = 'side';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = parent::getConstraints();
+        $constraints['kind'] = ['type' => 'string'];
+        $constraints['side'] = ['type' => 'integer'];
+
+        return $constraints;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return parent::getParameterSources();
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return parent::getParameterStyles();
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return parent::getParameterAllowReserved();
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return parent::getParameterAllowEmptyValue();
+    }
+}
+
 ===== Tag.php =====
 <?php
 
@@ -6311,15 +8569,20 @@ final class Tag implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
         $result['name'] = $this->name;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -6327,12 +8590,12 @@ final class Tag implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -6592,14 +8855,19 @@ final class Test implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -6607,12 +8875,12 @@ final class Test implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -7088,9 +9356,14 @@ final class Test2 implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
@@ -7104,7 +9377,7 @@ final class Test2 implements GeneratedDtoInterface, Stringable
         }
         $result['types'] = $this->types;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -7112,12 +9385,12 @@ final class Test2 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -7515,16 +9788,21 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         if ($this->regionInRequest) {
             $result['region'] = $this->getRegion();
         }
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -7532,12 +9810,12 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -7851,16 +10129,21 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
         $result['name'] = $this->name;
         $result['surname'] = $this->surname;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -7868,12 +10151,12 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -8348,9 +10631,14 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
@@ -8363,7 +10651,7 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
             $result['endpoint'] = $this->getEndpoint();
         }
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -8371,12 +10659,12 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -8952,9 +11240,14 @@ final class User implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
@@ -8962,7 +11255,7 @@ final class User implements GeneratedDtoInterface, Stringable
         $result['pet'] = $this->pet;
         $result['createdAt'] = $this->getCreatedAt();
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -8970,12 +11263,12 @@ final class User implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -9433,9 +11726,14 @@ final class User2 implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['id'] = $this->id;
@@ -9443,7 +11741,7 @@ final class User2 implements GeneratedDtoInterface, Stringable
         $result['pet'] = $this->pet;
         $result['createdAt'] = $this->getCreatedAt();
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -9451,12 +11749,12 @@ final class User2 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }
@@ -9903,9 +12201,14 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
         $result = [];
         $result['meow'] = $this->meow;
@@ -9913,7 +12216,7 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
         $result['bark'] = $this->bark;
         $result['test'] = $this->test;
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -9921,12 +12224,12 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }

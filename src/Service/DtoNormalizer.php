@@ -250,10 +250,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 $value = $this->coerceEmptyStringToNull($value, $getterMeta, $meta);
 
                 $error = $this->validateValueAgainstTypes(
-                    $value,
-                    $getterMeta['nonNullTypeNames'],
-                    $getterMeta['allowsNull'],
-                    $methodName,
+                    value: $value,
+                    nonNullTypes: $getterMeta['nonNullTypeNames'],
+                    allowsNull: $getterMeta['allowsNull'],
+                    methodName: $methodName,
                 );
                 if ($error !== null) {
                     $errors[] = $error;
@@ -588,7 +588,17 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     // Strip write-only fields of the nested DTO too (mirrors the root path in
                     // tryFastArray). Generated toArray() already omits them, so this is a
                     // belt-and-suspenders guard against an inconsistent hand-written toArray().
-                    return $this->applyOutputExclusions($value, $this->normalizeArrayPayload($arrayValue, $visited));
+                    $normalized = $this->applyOutputExclusions($value, $this->normalizeArrayPayload($arrayValue, $visited));
+
+                    // An object with nothing to write is `{}`, not `[]`. PHP spells both as the empty
+                    // array, and the only place that still knows the schema said `type: object` is
+                    // here — a generated DTO IS one. Without the cast a nested object with no value
+                    // set left as `[]`, contradicting the document it was generated from, in every
+                    // position: on its own, inside a list and inside a map. Restricted to a generated
+                    // DTO on purpose: a hand-written `toArray()` makes no such promise.
+                    return $normalized === [] && $value instanceof GeneratedDtoInterface
+                        ? new stdClass()
+                        : $normalized;
                 }
             } catch (LogicException $e) {
                 if (!str_contains($e->getMessage(), GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE)) {
@@ -1152,18 +1162,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return [];
         }
 
-        preg_match_all('/(?:array|list)\s*<([^>]+)>/i', $typeString, $genericMatches);
-        $genericParts = $genericMatches[1];
-        if ($genericParts === []) {
-            return [];
-        }
-
         $result = [];
-        foreach ($genericParts as $genericPart) {
-            $valueTypePart = str_contains($genericPart, ',')
-                ? substr($genericPart, (int)strrpos($genericPart, ',') + 1)
-                : $genericPart;
-
+        foreach ($this->topLevelGenericValueTypes($typeString) as $valueTypePart) {
             foreach (explode('|', $valueTypePart) as $rawTypeName) {
                 $normalizedTypeName = $this->normalizeDocTypeNameInClassContext($className, trim($rawTypeName));
                 if ($normalizedTypeName === '' || $normalizedTypeName === 'mixed') {
@@ -1174,6 +1174,125 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         return array_values(array_unique($result));
+    }
+
+    /**
+     * The item type of every TOP-LEVEL `array<…>` / `list<…>` in a docblock type.
+     *
+     * Nesting is the whole point. A regex whose class cannot cross a `>` matches the INNER
+     * generic of `array<array<string, DateTimeImmutable>>` and reports `DateTimeImmutable` as the
+     * OUTER array's item type — so every item, itself a map, was reported as the wrong type and a
+     * valid payload came back with an error for each element. The items of a nested generic are
+     * arrays, which is what this says.
+     *
+     * @return list<string>
+     */
+    private function topLevelGenericValueTypes(string $typeString): array
+    {
+        $valueTypes = [];
+        $length = strlen($typeString);
+
+        for ($position = 0; $position < $length; $position++) {
+            if ($typeString[$position] !== '<') {
+                continue;
+            }
+
+            $inner = $this->balancedGenericContent($typeString, $position);
+            if ($inner === null) {
+                // Unbalanced: nothing after this point can be read with any confidence.
+                break;
+            }
+
+            $genericName = $this->genericNameBefore($typeString, $position);
+            if ($genericName === 'array' || $genericName === 'list') {
+                $valueTypes[] = $this->genericValueType($inner);
+            }
+
+            // Step over the whole generic: what sits inside it is not a top-level item type.
+            $position += strlen($inner) + 1;
+        }
+
+        return $valueTypes;
+    }
+
+    /**
+     * The generic name written immediately before the `<` at $anglePosition, lowercased.
+     */
+    private function genericNameBefore(string $typeString, int $anglePosition): string
+    {
+        $end = $anglePosition;
+        while ($end > 0 && ($typeString[$end - 1] === ' ' || $typeString[$end - 1] === "\t")) {
+            $end--;
+        }
+
+        $start = $end;
+        while ($start > 0) {
+            $character = $typeString[$start - 1];
+            if (!ctype_alnum($character) && $character !== '_') {
+                break;
+            }
+            $start--;
+        }
+
+        return strtolower(substr($typeString, $start, $end - $start));
+    }
+
+    /**
+     * What sits between the `<` at $anglePosition and its MATCHING `>`, or null when unbalanced.
+     */
+    private function balancedGenericContent(string $typeString, int $anglePosition): ?string
+    {
+        $depth = 0;
+        $length = strlen($typeString);
+
+        for ($position = $anglePosition; $position < $length; $position++) {
+            $character = $typeString[$position];
+            if ($character === '<') {
+                $depth++;
+                continue;
+            }
+            if ($character !== '>') {
+                continue;
+            }
+
+            $depth--;
+            if ($depth === 0) {
+                return substr($typeString, $anglePosition + 1, $position - $anglePosition - 1);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The VALUE half of one generic's content: everything after its last depth-0 comma, so
+     * `string, Foo` gives `Foo` and `Foo` gives `Foo`. A value that is itself generic is reported
+     * as `array`, because that is what the item is at runtime.
+     */
+    private function genericValueType(string $inner): string
+    {
+        $depth = 0;
+        $valueStart = 0;
+        $length = strlen($inner);
+
+        for ($position = 0; $position < $length; $position++) {
+            $character = $inner[$position];
+            if ($character === '<') {
+                $depth++;
+                continue;
+            }
+            if ($character === '>') {
+                $depth--;
+                continue;
+            }
+            if ($character === ',' && $depth === 0) {
+                $valueStart = $position + 1;
+            }
+        }
+
+        $valueType = trim(substr($inner, $valueStart));
+
+        return str_contains($valueType, '<') ? 'array' : $valueType;
     }
 
     private function normalizeDocTypeNameInClassContext(string $className, string $typeName): string

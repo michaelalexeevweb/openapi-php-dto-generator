@@ -1,0 +1,20 @@
+# Keep the Packagist dist to what a consumer actually installs. Everything below is
+# development-only: it is in the repository, it is not in the archive.
+#
+# No `text`/`eol` rules on purpose — the golden snapshots are compared byte for byte
+# and must never be rewritten on checkout.
+
+/.claude              export-ignore
+/.github              export-ignore
+/tests                export-ignore
+/OpenApiExamples      export-ignore
+
+/.gitattributes       export-ignore
+/.gitignore           export-ignore
+/.php-cs-fixer.php    export-ignore
+/.phpcs.xml           export-ignore
+/Makefile             export-ignore
+/composer.lock        export-ignore
+/phpstan-baseline.neon export-ignore
+/phpstan.neon.dist    export-ignore
+/phpunit.xml          export-ignore

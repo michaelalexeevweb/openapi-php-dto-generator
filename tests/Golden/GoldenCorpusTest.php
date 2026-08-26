@@ -178,6 +178,53 @@ final class GoldenCorpusTest extends TestCase
         return $provided;
     }
 
+    /**
+     * Two enum templates, and the axis that justifies them: does the enum carry this package's runtime
+     * interface, or is it a plain backed enum?
+     *
+     * Runtime mode needs the interface, the other four do not — and the four then produce the SAME
+     * file, byte for byte. Asserted rather than assumed, because the code that chooses the template
+     * once called that answer `$isSymfony` and read it out of `enum.symfony.php.twig`: a name that was
+     * false for Laravel, laravel-data and Yii3 alike. If a mode ever needs its own enum shape, this
+     * fails and a third template becomes the honest answer.
+     */
+    public function testEveryModeWithoutTheRuntimeInterfaceEmitsTheSameEnum(): void
+    {
+        $enumsByMode = [];
+        foreach (GenerationMode::cases() as $mode) {
+            $this->generateCorpus($mode->value);
+
+            $enums = [];
+            foreach ($this->corpusFiles() as $relativePath => $absolutePath) {
+                $source = (string)file_get_contents($absolutePath);
+                if (preg_match('/^enum \w+/m', $source) === 1) {
+                    $enums[$relativePath] = $source;
+                }
+            }
+            $enumsByMode[$mode->value] = $enums;
+
+            $this->deleteRecursively($this->outputDirectory);
+        }
+
+        self::assertNotSame([], $enumsByMode[GenerationMode::reference()->value], 'the corpus has no enum to compare');
+
+        $standalone = array_diff_key($enumsByMode, [GenerationMode::reference()->value => true]);
+        $first = array_key_first($standalone);
+        foreach ($standalone as $mode => $enums) {
+            self::assertSame(
+                $standalone[$first],
+                $enums,
+                sprintf('%s mode emits a different enum from %s mode — the one axis has grown a second one', $mode, $first),
+            );
+        }
+
+        self::assertNotSame(
+            $standalone[$first],
+            $enumsByMode[GenerationMode::reference()->value],
+            'runtime mode must differ: it is the only one that carries the runtime interface',
+        );
+    }
+
     private function generateCorpusSnapshot(string $mode): string
     {
         $this->generateCorpus($mode);

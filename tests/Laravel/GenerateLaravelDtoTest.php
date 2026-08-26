@@ -168,6 +168,85 @@ final class GenerateLaravelDtoTest extends TestCase
     }
 
     /**
+     * `items: {format: date}` types the ITEM as DateTimeImmutable, and for two releases this mode
+     * only said so: `validated()` hands over strings, nothing cast them, and the property held
+     * strings under a docblock promising objects — a lie a consumer's PHPStan was believing.
+     *
+     * The items now get what the scalar has always had: cast on the way in, formatted by the string
+     * getter, objects through the `AsDateTime` twin. A map goes through the same path, keys intact.
+     */
+    public function testTemporalContainerItemsAreCastAndReadAsStrings(): void
+    {
+        $target = $this->outputDirectory . '/LvDateItems';
+        if (!is_dir($target)) {
+            mkdir($target, 0o755, true);
+        }
+
+        $this->generator->generateFromArray(
+            [
+                'openapi' => '3.0.3',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => [
+                    'schemas' => [
+                        'Report' => [
+                            'type' => 'object',
+                            'required' => ['dates', 'byDay'],
+                            'properties' => [
+                                'dates' => [
+                                    'type' => 'array',
+                                    'items' => ['type' => 'string', 'format' => 'date'],
+                                ],
+                                'byDay' => [
+                                    'type' => 'object',
+                                    'additionalProperties' => ['type' => 'string', 'format' => 'date'],
+                                ],
+                                'stamps' => [
+                                    'type' => 'array',
+                                    'items' => ['type' => 'string', 'format' => 'date-time'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            $target,
+            'LvDateItems',
+            'laravel',
+        );
+        require_once $target . '/Report.php';
+
+        /** @var object $dto */
+        $dto = call_user_func(['LvDateItems\Report', 'fromValidated'], [
+            'dates' => ['2026-01-15', '2026-02-20'],
+            'byDay' => ['mon' => '2026-01-19'],
+            'stamps' => ['2026-03-10T12:00:00+03:00'],
+        ]);
+
+        // Read as the strings the schema declares — a `date` must not grow a time part, and a
+        // `date-time` keeps the offset the payload carried.
+        $this->assertSame(['2026-01-15', '2026-02-20'], $dto->getDates());
+        $this->assertSame(['mon' => '2026-01-19'], $dto->getByDay());
+        $this->assertSame(['2026-03-10T12:00:00+03:00'], $dto->getStamps());
+
+        // The objects the docblock promises are really there, and the map kept its keys.
+        $objects = $dto->getDatesAsDateTime();
+        $this->assertInstanceOf('DateTimeImmutable', $objects[0]);
+        $this->assertSame('2026-01-15', $objects[0]->format('Y-m-d'));
+        $this->assertInstanceOf('DateTimeImmutable', $dto->getByDayAsDateTime()['mon']);
+
+        // Serialization goes through the string getter, so the wire still matches the schema — and a
+        // map still encodes as a JSON object rather than a list.
+        $this->assertSame(['2026-01-15', '2026-02-20'], $dto->toArray()['dates']);
+        $this->assertSame(
+            '{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"},'
+            . '"stamps":["2026-03-10T12:00:00+03:00"]}',
+            (string)json_encode($dto->toArray()),
+        );
+
+        $this->assertNull($this->lintError($target . '/Report.php'));
+    }
+
+    /**
      * `validated()` returns only the keys the payload carried, which is where presence comes from —
      * so "absent" and "sent as null" stay distinguishable without a sentinel.
      */

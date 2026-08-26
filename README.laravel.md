@@ -187,7 +187,17 @@ request.
 `toArray()` is emitted, not delegated, so it follows the schema rather than a serializer's defaults:
 
 - a temporal property is read as the string the schema declares — a `date` stays a date, a `date-time`
-  keeps sub-second precision;
+  keeps sub-second precision, and a CONTAINER of dates gets the same pair of getters per item:
+
+  ```php
+  $dto->getDates();              // ["2026-03-10", "2026-03-11"]
+  $dto->getDatesAsDateTime();    // [DateTimeImmutable, DateTimeImmutable]
+  $dto->getDatesByDay();         // ["mon" => "2026-03-09"] — a map keeps its keys
+  ```
+
+  `fromValidated()` casts each element, so the property really holds the objects its docblock names —
+  it used to name them and hold the strings `validated()` handed over. Two modes hold strings there and
+  say so; see [Temporal container items](README.support-matrix.md#temporal-container-items);
 - a map encodes as a JSON object at every level, empty ones included (`{}`, never `[]`);
 - an enum comes out as its backing value, a nested DTO as its own array;
 - `writeOnly` properties are dropped, and a `readOnly` key sent by the client is ignored on the way in

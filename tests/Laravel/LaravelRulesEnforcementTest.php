@@ -561,6 +561,27 @@ final class LaravelRulesEnforcementTest extends TestCase
                 ['type' => 'string', 'format' => 'date-time', 'not' => ['const' => '2020-01-01T00:00:00+00:00']],
                 ['f' => 123],
             ],
+            // The MAP spelling of the row below it. The prune tested `items` and not
+            // `additionalProperties`, so a map's value schema went to the interpreter whole and
+            // `f.k` failed both `validation.string` and `f.k must be of type string`.
+            'map values + propertyNames' => [
+                [
+                    'type' => 'object',
+                    'additionalProperties' => ['type' => 'string', 'minLength' => 3],
+                    'propertyNames' => ['pattern' => '^[a-z]+$'],
+                ],
+                ['f' => ['k' => 'ab']],
+            ],
+            // A container two deep: the `f.*.*` rules cover the inner scalar, so its schema must not
+            // travel to the interpreter next to them.
+            'nested container values + contains' => [
+                [
+                    'type' => 'array',
+                    'items' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 5]],
+                    'contains' => ['minItems' => 1],
+                ],
+                ['f' => [[1]]],
+            ],
             // The keyword the rules cannot take sits INSIDE the nested property, and the whole nested
             // subschema used to travel with it — `type: string` included, which `f.tags.*` already has.
             'nested items type + contains' => [

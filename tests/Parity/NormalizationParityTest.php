@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Error;
 use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
@@ -213,6 +214,54 @@ final class NormalizationParityTest extends TestCase
     }
 
     /**
+     * A payload this corpus calls valid must also pass the DTO's OWN output check.
+     *
+     * `DtoNormalizer::validate()` reads item types off the getter docblocks, so it can disagree with
+     * what the DTO actually holds while the wire shape stays perfectly right. That is exactly what
+     * happened to a list of maps: every element was reported as the map's VALUE type, so a valid
+     * payload came back with one error per element — and normalization parity could not see it,
+     * because it compares output and the output was correct. This walks the same corpus and asserts
+     * the verdict is silence, which makes the whole shape table a net for that class of mistake
+     * rather than only for the wire form.
+     *
+     * Runtime mode only: it is the mode that owns `DtoNormalizer`.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, array<string, mixed>> $extraSchemas
+     * @param array<string, array<string, mixed>> $expectedByMode
+     * @param array<string, string> $reasonByMode
+     * @param array<string, string> $unsupported
+     */
+    #[DataProvider('normalizationProvider')]
+    public function testRuntimeReportsNoProblemForAnyCorpusPayload(
+        string $key,
+        array $schema,
+        array $extraSchemas,
+        string $json,
+        array $expectedByMode,
+        array $reasonByMode,
+        array $unsupported,
+    ): void {
+        $mode = GenerationMode::reference();
+        $unsupportedReason = $unsupported[$mode->value] ?? null;
+        if ($unsupportedReason !== null) {
+            // The case declares the reference mode cannot build this DTO at all; there is no
+            // verdict to read. `testEveryModeNormalizesTheSameWay` is what pins the failure.
+            self::markTestSkipped(sprintf('"%s" is declared unsupported in %s mode: %s', $key, $mode->value, $unsupportedReason));
+        }
+
+        $fqcn = $this->generate(self::spec($schema, $extraSchemas), $this->namespaceFor($mode, $key), $mode->value);
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+        $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+
+        $this->assertSame(
+            [],
+            (new DtoNormalizer())->validate($dto),
+            sprintf('"%s" is a valid payload, but the DTO reports a problem with itself', $key),
+        );
+    }
+
+    /**
      * @return array<string, array{0: string, 1: array<string, mixed>, 2: array<string, array<string, mixed>>, 3: string, 4: array<string, mixed>, 5: array<string, mixed>, 6: ?string}>
      */
     public static function normalizationProvider(): array
@@ -365,6 +414,23 @@ final class NormalizationParityTest extends TestCase
                     . 'schema default is indistinguishable from one the client sent — the response '
                     . 'direction of the same missing presence tracking',
             ],
+            // A `format: date` default is the one default that cannot be written as a constant
+            // expression: the property is a DateTimeImmutable, and naming an enum case on it emitted
+            // `DateTimeImmutable::VALUE_2020_01_01` — a fatal on class load in symfony mode and on
+            // the first defaulted construction in runtime and laravel. Nothing asserted a defaulted
+            // temporal property before, which is why three modes shipped unloadable classes.
+            'optional temporal property with a default, absent' => [
+                'schema' => self::object(
+                    ['id' => ['type' => 'integer'], 'on' => ['type' => 'string', 'format' => 'date', 'default' => '2020-01-01']],
+                    ['id'],
+                ),
+                'json' => '{"id":1}',
+                'runtime' => ['id' => 1],
+                'symfony' => ['on' => '2020-01-01', 'id' => 1],
+                'reason' => 'the same absent-with-a-default difference as the integer case above: the '
+                    . 'default IS the Symfony DTO\'s value, and it has no presence tracking to tell '
+                    . 'that apart from a date the client sent',
+            ],
             'free-form object' => [
                 'schema' => self::object(['any' => ['type' => 'object']], ['any']),
                 'json' => '{"any":{"k":[1,{"z":null}]}}',
@@ -395,6 +461,93 @@ final class NormalizationParityTest extends TestCase
                     . 'object, Symfony keeps the PHP array — identical JSON while the map has keys, '
                     . 'see the empty-map case for where it stops being identical',
                 'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
+                            . 'is already gone — the same limit laravel-data declares',
+                    ],
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
+                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
+                            . 'as [] rather than {}',
+                    ],
+                ],
+            ],
+            // The three cases below pair each transformed value type with the MAP container. The
+            // array container is pinned above for all three; a map reaches the same value through a
+            // different branch of the emitter, and `format: date` items proved that a container the
+            // matrix does not name is a container nothing checks.
+            'map of dates' => [
+                'schema' => self::object(
+                    ['on' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'format' => 'date']]],
+                    ['on'],
+                ),
+                'json' => '{"on":{"a":"2026-03-10","b":"2026-03-11"}}',
+                'runtime' => ['on' => ['#object' => ['a' => '2026-03-10', 'b' => '2026-03-11']]],
+                'symfony' => ['on' => ['a' => '2026-03-10', 'b' => '2026-03-11']],
+                'reason' => 'the same stdClass-versus-array difference as every other map; the VALUES '
+                    . 'are the point here — a date must stay a date whichever container holds it',
+                'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
+                            . 'is already gone — the same limit laravel-data declares',
+                    ],
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
+                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
+                            . 'as [] rather than {}',
+                    ],
+                ],
+            ],
+            'map of enums' => [
+                'schema' => self::object(
+                    ['es' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['a', 'b']]]],
+                    ['es'],
+                ),
+                'json' => '{"es":{"x":"a","y":"b"}}',
+                'runtime' => ['es' => ['#object' => ['x' => 'a', 'y' => 'b']]],
+                'symfony' => ['es' => ['x' => 'a', 'y' => 'b']],
+                'reason' => 'the same stdClass-versus-array difference as every other map; the values '
+                    . 'are enum cases, which every mode writes back as their backing value',
+                'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
+                            . 'is already gone — the same limit laravel-data declares',
+                    ],
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
+                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
+                            . 'as [] rather than {}',
+                    ],
+                ],
+            ],
+            'map of nested objects' => [
+                'schema' => self::object(
+                    ['kids' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Child']]],
+                    ['kids'],
+                ),
+                'extra' => ['Child' => self::object(['id' => ['type' => 'integer']], ['id'])],
+                'json' => '{"kids":{"a":{"id":1},"b":{"id":2}}}',
+                'runtime' => ['kids' => ['#object' => ['a' => ['id' => 1], 'b' => ['id' => 2]]]],
+                'symfony' => ['kids' => ['a' => ['id' => 1], 'b' => ['id' => 2]]],
+                'reason' => 'the same stdClass-versus-array difference as every other map; the values '
+                    . 'are DTOs, so this also pins that a nested object is reached through a map',
+                'diverges' => [
+                    'laravel' => [
+                        'expected' => ['kids' => ['#object' => ['a' => ['#object' => ['id' => 1]], 'b' => ['#object' => ['id' => 2]]]]],
+                        'reason' => 'laravel casts a map DEEP, on purpose: a free-form value can nest '
+                            . 'maps at any level, so `toJsonObjects()` recurses and turns every keyed '
+                            . 'sub-array into an object — including the array the nested DTO\'s own '
+                            . '`toArray()` just produced. Runtime casts only the map it owns and leaves '
+                            . 'that array alone. Identical JSON while the nested object has keys; they '
+                            . 'part company when it is EMPTY, and there laravel is the one writing what '
+                            . '`type: object` says.',
+                    ],
                     'yii3' => [
                         'like' => 'symfony',
                         'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
@@ -457,6 +610,44 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            // A list of LISTS, which the emitter used to declare `array<mixed>` — the one item type
+            // nothing checks. Pinned for the wire shape too: `[[1,2]]` must survive as nested JSON
+            // arrays, and the cast briefly demanded objects there because the map form and the list
+            // form of a nested container were the same `array` to it.
+            'list of lists' => [
+                'schema' => self::object(
+                    ['matrix' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
+                    ['matrix'],
+                ),
+                'json' => '{"matrix":[[1,2],[3]]}',
+                'runtime' => ['matrix' => [[1, 2], [3]]],
+                'symfony' => ['matrix' => [[1, 2], [3]]],
+            ],
+            'map of lists' => [
+                'schema' => self::object(
+                    ['byKey' => [
+                        'type' => 'object',
+                        'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    ]],
+                    ['byKey'],
+                ),
+                'json' => '{"byKey":{"a":["x","y"]}}',
+                'runtime' => ['byKey' => ['#object' => ['a' => ['x', 'y']]]],
+                'symfony' => ['byKey' => ['a' => ['x', 'y']]],
+                'reason' => 'the same stdClass-versus-array difference as every other map; what is '
+                    . 'pinned here is that the VALUES stay lists',
+                'diverges' => [
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
+                            . 'is already gone — the same limit laravel-data declares',
+                    ],
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does',
+                    ],
+                ],
+            ],
             'aliased property names' => [
                 'schema' => self::object(
                     ['first_name' => ['type' => 'string'], 'x-trace-id' => ['type' => 'string']],
@@ -498,6 +689,28 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"kids":[{"id":1},{"id":2}]}',
                 'runtime' => ['kids' => [['id' => 1], ['id' => 2]]],
                 'symfony' => ['kids' => [['id' => 1], ['id' => 2]]],
+            ],
+            // `type: object` with nothing to write is `{}`, never `[]`. PHP spells both as the empty
+            // array, so the cast has to happen where the schema is still known — the generated
+            // `jsonSerialize()` and `DtoNormalizer` both do it now. It used to leave as `[]` in every
+            // position at once: on its own, inside a list and inside a map.
+            'empty nested object' => [
+                'schema' => self::object(['kid' => ['$ref' => '#/components/schemas/Child']], ['kid']),
+                'extra' => ['Child' => self::object(['id' => ['type' => 'integer']])],
+                'json' => '{"kid":{}}',
+                'runtime' => ['kid' => ['#object' => []]],
+                'symfony' => ['kid' => ['id' => null]],
+                'reason' => 'symfony never gets as far as the shape question: with no presence '
+                    . 'tracking the nested object writes its absent property as an explicit null, so '
+                    . 'the array is not empty in the first place — the nested form of $nullOmission',
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['kid' => []],
+                        'reason' => 'the transformation is spatie\'s, and its normalizer has no notion '
+                            . 'of the wire shape — the same limit it declares on an empty map, reached '
+                            . 'through a nested object instead',
+                    ],
+                ],
             ],
             'deep nesting' => [
                 'schema' => self::object(['a' => ['$ref' => '#/components/schemas/A']], ['a']),
@@ -552,6 +765,43 @@ final class NormalizationParityTest extends TestCase
                             . 'the order laravel-data normalizes in. Same keys and same values; JSON '
                             . 'object order carries no meaning, and assertSame is the only thing that '
                             . 'sees a difference here.',
+                    ],
+                ],
+            ],
+            'array of a discriminated union' => [
+                'schema' => self::object(
+                    ['shapes' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shape']]],
+                    ['shapes'],
+                ),
+                'extra' => [
+                    'Shape' => [
+                        'oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']],
+                        'discriminator' => [
+                            'propertyName' => 'kind',
+                            'mapping' => ['circle' => '#/components/schemas/Circle', 'square' => '#/components/schemas/Square'],
+                        ],
+                    ],
+                    'Circle' => self::object(['kind' => ['type' => 'string'], 'r' => ['type' => 'integer']], ['kind', 'r']),
+                    'Square' => self::object(['kind' => ['type' => 'string'], 'a' => ['type' => 'integer']], ['kind', 'a']),
+                ],
+                'json' => '{"shapes":[{"kind":"circle","r":3},{"kind":"square","a":4}]}',
+                'runtime' => ['shapes' => [['kind' => 'circle', 'r' => 3], ['kind' => 'square', 'a' => 4]]],
+                'symfony' => ['shapes' => [['kind' => 'circle', 'r' => 3], ['kind' => 'square', 'a' => 4]]],
+                'diverges' => [
+                    'yii3' => [
+                        'expected' => ['shapes' => []],
+                        'reason' => 'the same limit as the scalar union case: nothing tells the hydrator '
+                            . 'which member an element is, and yiisoft has no discriminator mapping of '
+                            . 'its own. The list survives as a PROPERTY — unlike the scalar case, where '
+                            . 'the property itself stays unset — but not one element of it can be built, '
+                            . 'so it arrives empty.',
+                    ],
+                    'laravel-data' => [
+                        'expected' => ['shapes' => [['r' => 3, 'kind' => 'circle'], ['a' => 4, 'kind' => 'square']]],
+                        'reason' => 'the same inherited-discriminator key order as the scalar union case, '
+                            . 'once per element: the base is an abstract Data class, so `kind` is an '
+                            . 'INHERITED property and PHP reflection lists a class\'s own properties '
+                            . 'first. Same keys and same values; only assertSame sees it.',
                     ],
                 ],
             ],
@@ -781,13 +1031,6 @@ final class NormalizationParityTest extends TestCase
     }
 
     /**
-     * laravel-data mode: built through the package's own request entry point and normalized by its own
-     * pipeline. None of the array-building is ours here, which is the trade the mode makes.
-     *
-     * @param array<string, mixed> $spec
-     * @return array<string, mixed>
-     */
-    /**
      * yii3 mode has no `toArray()` of its own — the framework ships no response normalizer, so the
      * array form is the DATA SET the class already exposes: what it received, under the names the
      * schema uses. An absent optional is left out, which is the same answer every other mode gives.
@@ -797,21 +1040,9 @@ final class NormalizationParityTest extends TestCase
      */
     private function yii3Normalization(array $spec, string $key, string $json): array
     {
-        // A temporal property is emitted with `#[ToDateTime]`, which yiisoft/hydrator lists ext-intl
-        // as needed for. Without the extension the object cannot be built at all — an environment
-        // fact, not a divergence, so say which rather than assert nonsense.
-        $encoded = json_encode($spec);
-        if (!extension_loaded('intl') && is_string($encoded) && preg_match('/"format":"(date|date-time|time)"/', $encoded) === 1) {
-            self::assertTrue(
-                GenerationMode::Yii3->isLast(),
-                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
-                . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
-            );
-            self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
-        }
-
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
         $payload = json_decode($json, true);
+        $this->skipYii3WithoutIntl($fqcn, $payload, $key);
 
         /** @var array<string, mixed> $normalized */
         $normalized = $this->canonicalize(
@@ -821,6 +1052,49 @@ final class NormalizationParityTest extends TestCase
         return $normalized;
     }
 
+    /**
+     * Skip the yii3 arm when, and only when, THIS document actually needs ext-intl.
+     *
+     * One thing needs it: the `#[ToDateTime]` resolver a SCALAR temporal property carries — its
+     * constructor defaults name `IntlDateFormatter`, so it cannot be built without the extension.
+     * Which documents that covers used to be guessed from the schema (`"format":"date"` anywhere in
+     * it), and the guess went stale the moment a temporal CONTAINER stopped emitting the attribute:
+     * those cases were skipped while hydrating perfectly well. The resolver's own failure is the one
+     * witness that cannot rot.
+     *
+     * @param mixed $payload the decoded body, passed to the probe hydration
+     */
+    private function skipYii3WithoutIntl(string $fqcn, mixed $payload, string $key): void
+    {
+        if (extension_loaded('intl')) {
+            return;
+        }
+
+        try {
+            (new Yii3Container())->hydrate($fqcn, is_array($payload) ? $payload : []);
+        } catch (Error $error) {
+            if (!str_contains($error->getMessage(), 'IntlDateFormatter')) {
+                return;
+            }
+
+            self::assertTrue(
+                GenerationMode::Yii3->isLast(),
+                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
+                . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
+            );
+            self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
+        } catch (Throwable) {
+            // Anything else is this case's real answer; the measurement below reports it.
+        }
+    }
+
+    /**
+     * laravel-data mode: built through the package's own request entry point and normalized by its own
+     * pipeline. None of the array-building is ours here, which is the trade the mode makes.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<string, mixed>
+     */
     private function laravelDataNormalization(array $spec, string $key, string $json): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');

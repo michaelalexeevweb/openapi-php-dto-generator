@@ -3,6 +3,73 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.4 — 2026-08-26
+
+- six bugs in one family: "container plus type"
+- laravel casts temporal ITEMS; laravel-data and yii3 declare the strings they hold
+- a container inside a container declares what it holds, and its values are checked
+- yii3 renders from a template like the other four modes
+- one mistake, one message: a map's value schema no longer reports twice
+- the Packagist archive drops from 4.3 MB to 1.2 MB
+
+One class of bug, found six times, each faster than the last because the parity matrix and the golden
+corpus kept growing: the SCALAR path of a keyword gets its treatment and the ITEMS path does not.
+
+**Temporal container items.** `items: {type: string, format: date}` types the item as
+`DateTimeImmutable`, and three modes now really hold one there: runtime and symfony already did, laravel
+casts each element in `fromValidated()` and gained the same getter pair the scalar has
+(`getDates(): array<string>`, `getDatesAsDateTime()`). Before this its property held the strings
+`validated()` handed over while the docblock promised objects — a lie a consumer's PHPStan was believing.
+laravel-data and yii3 cannot convert without emitting a class of ours into generated code that depends on
+nothing from this package (`#[WithCast]` casts the property and never its items — measured against the
+package; the yii3 `#[ToDateTime]` resolver fails on an array outright), so they declare `array<string>`,
+which is what they hold. The WIRE form was already identical in all five and still is. A yii3 schema whose
+only temporal values are container items no longer pulls in `ext-intl`.
+
+**Containers inside containers.** `array<array<X>>` collapsed to `array<mixed>` — the one item type
+`DtoNormalizer::validate()` skips — so a matrix with a scalar where a row belonged passed in silence.
+Worse, the map spelling did the opposite: `array<array<string, Tag>>` NAMED a class while holding the
+`stdClass` `json_decode()` produced. Both are declarations now: a scalar keeps its type at any depth
+(`array<array<int>>`, `array<string, array<string, int>>`) and anything that would need converting down
+there says `mixed`. The values are checked in every mode — the emitted interpreter carries the depth-2
+`enum` and `$ref`ed enum members (they were dropped by the constraint extractor, which four modes out of
+five entered through the class schema rather than the property one), and laravel's dotted rules go as deep
+as the schema does (`matrix.*.*`). A `$ref`ed OBJECT two containers deep is still not hydrated in any
+mode, and the support matrix says so.
+
+**One mistake, one message.** The Laravel interpreter prune tested `items` and not
+`additionalProperties`, so a map's value schema travelled to the interpreter whole and every violation in
+it was reported twice — `validation.string` plus `plainMap.k must be of type string`. Symmetric now.
+
+**yii3 renders from a template.** `RendersYii3Dto` was the only mode assembling its class from strings —
+59 `$lines[]` sites and five `implode()`s, no `.twig` at all — and that is where the container bug in this mode hid: four dead
+`#[ToDateTime]` attributes on array properties, invisible in a diff that a template would have shown. The
+markup moved to `dto.yii3.php.twig`; the renderer keeps only the decisions, the same border the other four
+draw. Proven neutral block by block: all 40 classes of the yii3 snapshot are byte-identical.
+`enum.symfony.php.twig` is now `enum.standalone.php.twig` and `$isSymfony` is
+`$rendersStandaloneEnum` — there is one axis, "does the enum carry this package's runtime interface", and
+the old names were false for laravel, laravel-data and yii3 alike. A test now holds that axis: the four
+non-runtime modes must emit the same enum, byte for byte.
+
+**Also fixed this release.** `DtoNormalizer::extractArrayItemTypeNames()` parses nesting instead of
+matching a regex, which had reported the INNER type of a list of maps for any member type. The temporal
+mapper tolerates a hand-built DTO holding a string where a date belongs, instead of a `TypeError` from
+inside the getter that took `validate()` — the call whose job is to report it — down with it. Laravel
+hydrates an array of a discriminated union through the discriminator (it called `fromValidated()` on the
+base interface and died with `Call to undefined method`) and a MAP of DTOs at all (a list-only regex fed
+nine places); laravel-data gained `#[DataCollectionOf]` on a map from the same fix. An empty nested object
+writes `{}` rather than `[]` in every position, in runtime, laravel and yii3. A temporal `default`
+emits `new DateTimeImmutable('…')` parsed at generation time, not the unusable
+`DateTimeImmutable::VALUE_2020_01_01`. The interpreter shared by symfony and yii3 refuses an overflowing
+`date-time` (`2026-13-45T99:99:99+00:00` used to pass `createFromFormat()` silently). The yii3 `ext-intl`
+skip is now proof-based — a trial hydration rather than a regex over the spec — which takes the parity
+suites from 5 and 9 skips down to 1 and 5, so the yii3 half of 2.15.3 is verified locally and not only on
+CI.
+
+**Distribution.** A `.gitattributes` marks `tests/`, `.github/`, `OpenApiExamples/` and the tooling
+config `export-ignore`. The Packagist archive goes from 4.3 MB to 1.2 MB (275 KB gzipped); `.claude/` also
+stops travelling to consumers. Tags 2.10.0…2.15.3 keep what they shipped — history is not rewritten.
+
 ## 2.15.3 — 2026-08-24
 
 - an array of `format: date` items is written back as dates

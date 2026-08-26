@@ -174,10 +174,10 @@ trait RendersLaravelDto
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $interpreter = $this->renderLaravelInterpreterBlock(
-            $interpreterConstraints,
+            constraints: $interpreterConstraints,
             // A class whose fold carries no assertion needs no entry: the marker pointing at it resolves
             // to nothing, which is what "nothing left to check here" means.
-            array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
+            recursiveSchemas: array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
         );
         $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [];
         $this->laravelClassesWithInterpreter[$className] = $hasWithValidator;
@@ -271,8 +271,9 @@ trait RendersLaravelDto
      * @return array{declaredType: string, docType: ?string, name: string, required: bool,
      *     openApiName: string, default: string, docDescription: ?string, getter: string,
      *     providedGetter: string, temporalGetterBody: ?string, temporalObjectGetter: string,
-     *     isTemporal: bool, isEnum: bool, isDto: bool, itemClass: ?string, isDtoList: bool,
-     *     toArrayExpression: string, needsIntCoercion: bool}
+     *     temporalGetterReturnType: string, temporalGetterDocType: ?string, temporalObjectDocType: ?string,
+     *     isTemporal: bool, isTemporalItems: bool, isEnum: bool, isDto: bool, itemClass: ?string,
+     *     isDtoList: bool, toArrayExpression: string, needsIntCoercion: bool}
      */
     private function resolveLaravelParam(array $property, string $namespace): array
     {
@@ -311,9 +312,25 @@ trait RendersLaravelDto
             'docDescription' => $this->resolveSymfonyDocDescription($property),
             'getter' => 'get' . ucfirst($property['name']),
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
-            'temporalGetterBody' => $this->symfonyTemporalGetterBody($property),
+            // Scalar first, then the container: `items: {format: date}` types the ITEM as
+            // DateTimeImmutable and owes the reader the same formatted string the scalar getter
+            // returns. Both bodies come from the Symfony renderer — hydration differs between the
+            // modes, the FORMATTING does not, and a second copy of it is a second thing to drift.
+            'temporalGetterBody' => $this->symfonyTemporalGetterBody($property)
+                ?? $this->symfonyTemporalArrayGetterBody($property),
             'temporalObjectGetter' => 'get' . ucfirst($property['name']) . 'AsDateTime',
+            // A temporal SCALAR reads as a string; a temporal CONTAINER stays an array and only its
+            // items become strings, so there the declared type is unchanged and the docblock carries
+            // the difference.
+            'temporalGetterReturnType' => str_replace('DateTimeImmutable', 'string', $declaredType),
+            'temporalGetterDocType' => $docType !== null
+                ? str_replace('DateTimeImmutable', 'string', $this->composePhpTypeHint($docType, $declaredNullable))
+                : null,
+            'temporalObjectDocType' => $docType !== null
+                ? $this->composePhpTypeHint($docType, $declaredNullable)
+                : null,
             'isTemporal' => $this->symfonyTemporalGetterBody($property) !== null,
+            'isTemporalItems' => $this->symfonyTemporalArrayGetterBody($property) !== null,
             'isEnum' => $this->laravelEnumClass($property) !== null,
             'isDto' => $this->laravelDtoClass($property) !== null,
             'itemClass' => $itemClass,
@@ -439,7 +456,6 @@ trait RendersLaravelDto
     private function laravelRuleSpecFor(array $property): array
     {
         $constraints = $this->laravelConstraintsFor($property);
-        $declaredType = $constraints['type'] ?? null;
         $nullable = $this->laravelSchemaDeclaresNullable($property);
 
         // OpenAPI `required` means "the key is there". Laravel's `required` means "present and NOT
@@ -684,7 +700,7 @@ trait RendersLaravelDto
         // A DTO-valued item is expanded by `laravelNestedRules()` into dotted paths instead. `distinct`
         // over object items is not expressible either — Laravel compares scalars — so it is reported.
         // `distinct` compares scalars, so uniqueItems over object items belongs to the interpreter
-        // (`laravelSchemaNeedsInterpreter()` picks it up).
+        // (`laravelUnconsumedKeywords()` picks it up, through `laravelInterpreterSchemaFor()`).
         if ($itemClass !== null) {
             return [];
         }
@@ -697,7 +713,53 @@ trait RendersLaravelDto
             $rules[] = "'distinct'";
         }
 
-        return $rules === [] ? [] : [$property['openApiName'] . '.*' => $rules];
+        $itemPath = $property['openApiName'] . '.*';
+        $paths = $rules === [] ? [] : [$itemPath => $rules];
+
+        // And a container INSIDE the container. Laravel's dotted paths go as deep as the schema does;
+        // stopping at one `.*` said `matrix.*` is an array and then checked its members with nothing —
+        // while `laravelUnconsumedKeywords()` was already pruning those keywords from the interpreter
+        // on the grounds that a rule covered them. Two halves that disagreed; the rules were the half
+        // that was missing.
+        foreach ($this->laravelDeepItemRules($itemSchema, $itemPath) as $deepPath => $deepRules) {
+            $paths[$deepPath] = $deepRules;
+        }
+
+        return $paths;
+    }
+
+    /**
+     * The `x.*.*` rules and deeper: one entry per container level the schema declares.
+     *
+     * @param array<string, mixed>|null $schema the container whose items these are
+     * @return array<string, array<int, string>>
+     */
+    private function laravelDeepItemRules(?array $schema, string $pathPrefix, int $depth = 0): array
+    {
+        // A guard, not a limit anyone reaches: a self-referential schema is a `$ref`, and a `$ref` two
+        // containers deep is not expanded here at all.
+        if ($schema === null || $depth >= 8) {
+            return [];
+        }
+
+        $nested = match (true) {
+            is_array($schema['items'] ?? null) => $schema['items'],
+            is_array($schema['additionalProperties'] ?? null) => $schema['additionalProperties'],
+            default => null,
+        };
+        if ($nested === null) {
+            return [];
+        }
+
+        $path = $pathPrefix . '.*';
+        $rules = $this->laravelRulesForSchema($nested);
+        $paths = $rules === [] ? [] : [$path => $rules];
+
+        foreach ($this->laravelDeepItemRules($nested, $path, $depth + 1) as $deepPath => $deepRules) {
+            $paths[$deepPath] = $deepRules;
+        }
+
+        return $paths;
     }
 
     /**
@@ -834,6 +896,14 @@ trait RendersLaravelDto
 
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
+            // The ITEMS of a temporal container, cast the same way the scalar above is. Without this
+            // the property held the strings `validated()` handed over while its docblock promised
+            // `array<DateTimeImmutable>` — a lie PHPStan downstream was already believing. `array_map`
+            // keeps string keys, so a MAP of dates survives as a map.
+            $param['isTemporalItems'] === true => sprintf(
+                'array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), %s)',
+                $raw,
+            ),
             $enumClass !== null => sprintf('%s::from(%s)', $this->shortClassName($enumClass), $raw),
             $dtoClass !== null => $this->laravelNestedDtoExpression($dtoClass, $raw, $property['openApiName']),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) => sprintf(
@@ -842,12 +912,18 @@ trait RendersLaravelDto
                 $raw,
             ),
             $itemClass !== null && $this->isUnhydratableUnionClass($itemClass) => $this->laravelUnhydratableUnionThrow(
-                $itemClass,
-                $property['openApiName'],
+                unionClass: $itemClass,
+                wireName: $property['openApiName'],
             ),
+            // The ITEM is built exactly the way a scalar nested value is — through the one place
+            // that knows a discriminated union base is an interface with no `fromValidated()` to
+            // call. Emitting `%1$s::fromValidated($item)` here was the array half of that same
+            // mistake: the scalar path dispatched on the discriminator, the items path called the
+            // interface, and the request died on `Error: Call to undefined method`.
             $itemClass !== null => sprintf(
-                'array_map(static fn(array $item): %1$s => %1$s::fromValidated($item), %2$s)',
+                'array_map(static fn(array $item): %s => %s, %s)',
                 $this->shortClassName($itemClass),
+                $this->laravelNestedDtoExpression($itemClass, '$item', $property['openApiName']),
                 $raw,
             ),
             default => $raw,
@@ -877,7 +953,7 @@ trait RendersLaravelDto
     {
         $imports = [];
 
-        if ($this->symfonyTemporalGetterBody($property) !== null) {
+        if ($this->symfonyTemporalGetterBody($property) !== null || $this->symfonyTemporalArrayGetterBody($property) !== null) {
             $imports[] = 'DateTimeImmutable';
         }
         if ($this->laravelIsUploadedFileProperty($property)) {
@@ -972,7 +1048,13 @@ trait RendersLaravelDto
      */
     private function laravelDtoItemClass(array $property): ?string
     {
-        if (preg_match('/^\??array<\??([A-Za-z_][A-Za-z0-9_\\\]*)>$/', $property['type'], $matches) !== 1) {
+        // A MAP counts, not only a list: `array<string, Tag>` carries the same class in the same
+        // position as `array<Tag>`, and every caller asks the same question — "what class sits
+        // inside this container". Matching lists alone left a map of DTOs unhydrated AND
+        // unvalidated, with the docblock still promising the class. The value type is the last
+        // segment either way; a nested generic cannot match, because `<` is not in the class
+        // character set.
+        if (preg_match('/^\??array<(?:[A-Za-z_][A-Za-z0-9_]*,\s*)?\??([A-Za-z_][A-Za-z0-9_\\\]*)>$/', $property['type'], $matches) !== 1) {
             return null;
         }
 
@@ -1038,6 +1120,22 @@ trait RendersLaravelDto
             return sprintf('$this->%s()', 'get' . ucfirst($name));
         }
 
+        // A temporal container goes out through its getter for the same reason the scalar does — the
+        // getter is the one place that knows `format: date` must not grow a time part. A MAP still
+        // needs the object cast around it: `type: object` is `{}` on the wire even when empty, and
+        // `json_encode()` cannot tell an empty map from an empty list.
+        if ($this->symfonyTemporalArrayGetterBody($property) !== null) {
+            $formatted = sprintf('$this->%s()', 'get' . ucfirst($name));
+
+            if (($property['isMap'] ?? null) !== true) {
+                return $formatted;
+            }
+
+            return $nullable
+                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $property_access, $formatted)
+                : sprintf('self::toJsonObjects(%s)', $formatted);
+        }
+
         if ($this->laravelEnumClass($property) !== null) {
             return $property_access . $arrow . 'value';
         }
@@ -1046,13 +1144,27 @@ trait RendersLaravelDto
         // casts for exactly that reason. Nothing third-party sits in the way here. The cast is deep: a
         // free-form value can nest maps at any level, and each one is an object on the wire.
         if (($property['isMap'] ?? null) === true) {
+            // `toJsonObjects()` converts ARRAYS and hands anything else back untouched, so a map whose
+            // VALUES are DTOs or enums has to be flattened first — otherwise the objects reach
+            // `json_encode()`, which sees only public state and writes `{}` for a DTO whose properties
+            // are private. `array_map()` over one array keeps the string keys, so the map survives.
+            $valueClass = $this->laravelDtoItemClass($property);
+            $mapped = $valueClass === null
+                ? $property_access
+                : sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass), $property_access);
+
             return $nullable
-                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $property_access, $property_access)
-                : sprintf('self::toJsonObjects(%s)', $property_access);
+                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $property_access, $mapped)
+                : sprintf('self::toJsonObjects(%s)', $mapped);
         }
 
         if ($this->laravelDtoClass($property) !== null) {
-            return $property_access . $arrow . 'toArray()';
+            // `?: (object)[]` because `type: object` with nothing to write is `{}`, and `toArray()`
+            // hands back the empty array PHP cannot tell from an empty LIST. Spelled long-hand for
+            // the nullable case: `?->toArray() ?: (object)[]` would turn a legitimate null into `{}`.
+            return $nullable
+                ? sprintf('%s === null ? null : (%s->toArray() ?: (object)[])', $property_access, $property_access)
+                : sprintf('%s->toArray() ?: (object)[]', $property_access);
         }
 
         if ($this->laravelDescribesListOfMaps($property['type'])) {
@@ -1065,9 +1177,7 @@ trait RendersLaravelDto
 
         $itemClass = $this->laravelDtoItemClass($property);
         if ($itemClass !== null) {
-            $mapper = $this->laravelIsEnumClass($itemClass)
-                ? sprintf('static fn(%s $item): int|string => $item->value', $this->shortClassName($itemClass))
-                : sprintf('static fn(%s $item): array => $item->toArray()', $this->shortClassName($itemClass));
+            $mapper = $this->laravelItemToWireMapper($itemClass);
 
             return $nullable
                 ? sprintf('%s === null ? null : array_map(%s, %s)', $property_access, $mapper, $property_access)
@@ -1075,6 +1185,21 @@ trait RendersLaravelDto
         }
 
         return $property_access;
+    }
+
+    /**
+     * The closure that turns ONE container value into its wire form: an enum into its backing value,
+     * a DTO into its array. Used by both containers — a list maps it over the items, a map maps it
+     * over the values and then casts the result.
+     */
+    private function laravelItemToWireMapper(string $itemClass): string
+    {
+        return $this->laravelIsEnumClass($itemClass)
+            ? sprintf('static fn(%s $item): int|string => $item->value', $this->shortClassName($itemClass))
+            // Same reason as the scalar embed: an ITEM that is a `type: object` with nothing to write
+            // is `{}`. `toJsonObjects()` leaves a non-array alone, so a cast item survives the map
+            // cast that follows it.
+            : sprintf('static fn(%s $item): array|object => $item->toArray() ?: (object)[]', $this->shortClassName($itemClass));
     }
 
     /**
@@ -1180,20 +1305,6 @@ trait RendersLaravelDto
         }
 
         return $constraints;
-    }
-
-    /**
-     * Whether a subschema — at any depth — carries an assertion the rules did not take.
-     *
-     * Driven by what the rule builder actually consumed, not by a list of "hard" keywords: the parity
-     * suite showed that a static list silently dropped `exclusiveMinimum`, `dependentRequired` and every
-     * format Laravel has no rule for.
-     *
-     * @param array<string, mixed> $schema
-     */
-    private function laravelSchemaNeedsInterpreter(array $schema): bool
-    {
-        return $this->laravelUnconsumedKeywords($schema) !== [];
     }
 
     /**
@@ -1379,9 +1490,15 @@ trait RendersLaravelDto
         }
 
         // `items` at the top level is covered by the `field.*` rules, but only when the item schema
-        // itself needs nothing more than rules.
-        $itemsCoveredByRules = is_array($schema['items'] ?? null)
-            && $this->laravelUnconsumedKeywords($schema['items']) === [];
+        // itself needs nothing more than rules. `additionalProperties` is the MAP spelling of the same
+        // thing and reaches the same `field.*` rules — left out of this test, a map's value schema was
+        // handed to the interpreter whole and every mistake in it was reported twice: once as
+        // `validation.string`, once as `plainMap.k must be of type string`.
+        $containerCoveredByRules = [];
+        foreach (['items', 'additionalProperties'] as $containerKey) {
+            $containerCoveredByRules[$containerKey] = is_array($schema[$containerKey] ?? null)
+                && $this->laravelUnconsumedKeywords($schema[$containerKey]) === [];
+        }
 
         // A nested object's properties are covered by the dotted rules. The NAMES still have to survive
         // when `additionalProperties`/`unevaluatedProperties` is present — those keywords are defined in
@@ -1413,12 +1530,12 @@ trait RendersLaravelDto
                 continue;
             }
 
-            if ($keyword === 'items' && is_array($value)) {
-                if ($itemsCoveredByRules) {
+            if (($keyword === 'items' || $keyword === 'additionalProperties') && is_array($value)) {
+                if ($containerCoveredByRules[$keyword]) {
                     continue;
                 }
 
-                $pruned['items'] = $this->laravelPruneNestedRuleCoveredKeywords($value);
+                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value);
                 continue;
             }
 
@@ -1455,12 +1572,12 @@ trait RendersLaravelDto
 
         $pruned = [];
         foreach ($schema as $keyword => $value) {
-            if ($keyword === 'items' && is_array($value)) {
+            if (($keyword === 'items' || $keyword === 'additionalProperties') && is_array($value)) {
                 if ($this->laravelUnconsumedKeywords($value) === []) {
                     continue;
                 }
 
-                $pruned['items'] = $this->laravelPruneNestedRuleCoveredKeywords($value);
+                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value);
                 continue;
             }
 
@@ -1710,8 +1827,8 @@ trait RendersLaravelDto
         bool $insideRecursiveFold = false,
     ): array {
         $constraints = $this->laravelRestoreUnionEnumBranches(
-            $this->laravelConstraintsFor($property),
-            $property['type'],
+            schema: $this->laravelConstraintsFor($property),
+            phpType: $property['type'],
         );
         $schema = $pruneByOwnRules
             ? $this->laravelPruneRuleCoveredKeywords($constraints, $property)
@@ -1736,7 +1853,7 @@ trait RendersLaravelDto
 
             return $nestedClass !== null
                 ? $this->laravelWithNullableNestedMarker($schema, $property, $target)
-                : [...$schema, 'items' => ['x-openapi-recurse' => $target]];
+                : [...$schema, $this->laravelContainerValueKey($property) => ['x-openapi-recurse' => $target]];
         }
 
         $nested = $this->laravelInterpreterSchemaForClass($target, [...$visitedClasses, $target], $insideRecursiveFold);
@@ -1756,11 +1873,27 @@ trait RendersLaravelDto
             return $merged;
         }
 
-        $schema['items'] = array_key_exists('items', $schema) && is_array($schema['items'])
-            ? [...$schema['items'], ...$nested]
+        // A map's values live under `additionalProperties`, a list's under `items`. Writing `items`
+        // for both put a map's value schema where the walk only looks for a LIST — `array_is_list()`
+        // is false for a populated map, so every keyword folded in from the value class was skipped
+        // in silence.
+        $containerKey = $this->laravelContainerValueKey($property);
+        $schema[$containerKey] = array_key_exists($containerKey, $schema) && is_array($schema[$containerKey])
+            ? [...$schema[$containerKey], ...$nested]
             : $nested;
 
         return $schema;
+    }
+
+    /**
+     * Where the VALUE schema of a container belongs: `additionalProperties` for a map, `items` for a
+     * list. The emitted walk reads the two through different branches.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelContainerValueKey(array $property): string
+    {
+        return ($property['isMap'] ?? null) === true ? 'additionalProperties' : 'items';
     }
 
     /**
@@ -1795,8 +1928,8 @@ trait RendersLaravelDto
 
         $this->laravelRecursiveFolds[$className] = [];
         $this->laravelRecursiveFolds[$className] = $this->laravelInterpreterSchemaForClass(
-            $className,
-            [$className],
+            className: $className,
+            visitedClasses: [$className],
             insideRecursiveFold: true,
         );
     }
@@ -1825,8 +1958,8 @@ trait RendersLaravelDto
             // a cycle — so nothing may be pruned on their behalf. That is exactly what left a `minimum`
             // inside a recursive schema enforced by nobody.
             $nested = $this->laravelInterpreterSchemaFor(
-                $property,
-                $visitedClasses,
+                property: $property,
+                visitedClasses: $visitedClasses,
                 pruneByOwnRules: !$insideRecursiveFold,
                 insideRecursiveFold: $insideRecursiveFold,
             );

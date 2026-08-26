@@ -3207,4 +3207,98 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             }
         }
     }
+
+    /**
+     * A container inside a container, and the two things that were true of it: the DECLARATION named a
+     * type nothing delivered, and the CONSTRAINTS named nothing at all.
+     *
+     * Nothing is materialized below the first level of items — no DTO, no enum class — so
+     * `array<array<StrEnum>>` was a promise the hydrator never kept (the values stayed strings) and
+     * `array<array<Tag>>` one it kept even less (a `stdClass` from `json_decode()`). Both spellings
+     * now declare `mixed`, and the enum members ride in the constraints instead, where the value can
+     * actually be checked. A nested SCALAR keeps its type, because JSON already delivers it.
+     */
+    public function testNestedContainerDeclarationsAreHonestAndItsValuesAreChecked(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Kind' => ['type' => 'string', 'enum' => ['a', 'b']],
+                'Tag' => [
+                    'type' => 'object',
+                    'required' => ['id'],
+                    'properties' => ['id' => ['type' => 'integer']],
+                ],
+                'Nested' => [
+                    'type' => 'object',
+                    'required' => ['matrix', 'byKey', 'kindRows', 'tagRows'],
+                    'properties' => [
+                        'matrix' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0]],
+                        ],
+                        'byKey' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        ],
+                        'kindRows' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Kind']],
+                        ],
+                        'tagRows' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'NestedContainerNs', 'Nested');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Nested.php');
+        // A scalar two deep keeps its type; anything that would have to be CONVERTED there does not.
+        $this->assertStringContainsString('@param array<array<int>> $matrix', $source);
+        $this->assertStringContainsString('@param array<string, array<string>> $byKey', $source);
+        $this->assertStringContainsString('@param array<array<mixed>> $kindRows', $source);
+        $this->assertStringContainsString('@param array<array<mixed>> $tagRows', $source);
+        // No class is synthesized down there — one that nothing references would still be written out.
+        $this->assertSame(
+            ['Kind.php', 'Nested.php', 'Tag.php'],
+            array_map('basename', glob($this->outputDirectory . '/*.php') ?: []),
+        );
+
+        $valid = '{"matrix":[[1,2],[3]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+        $this->assertSame([[1, 2], [3]], $dto->getMatrix());
+        $this->assertSame(['a' => ['x']], $dto->getByKey());
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+        $this->assertSame(
+            $valid,
+            (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            'a nested list must not turn into a map on the way out, nor a nested map into a list',
+        );
+
+        // THE case that passed in silence: a member the enum does not have, two containers deep.
+        $cases = [
+            '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["zzz"]],"tagRows":[[{"id":1}]]}'
+                => 'kindRows".0.0 must be one of: "a", "b"',
+            '{"matrix":[[-1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+                => 'matrix".0.0 must be greater than or equal to 0',
+            '{"matrix":[[1]],"byKey":{"a":[7]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+                => 'byKey".a.0 must be of type string',
+            // And the wire shape of the container itself, which the item cast owns.
+            '{"matrix":[1],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
+                => 'param "matrix.0" expects array, got int',
+        ];
+
+        foreach ($cases as $json => $expected) {
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+                $this->fail(sprintf('%s was accepted', $json));
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString($expected, $exception->getMessage(), $json);
+            }
+        }
+    }
 }

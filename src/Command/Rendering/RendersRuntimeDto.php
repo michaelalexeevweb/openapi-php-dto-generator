@@ -377,7 +377,21 @@ trait RendersRuntimeDto
 
     /**
      * @param SchemaProperty $property
-     * @return array{description: ?string, example: ?string, constraintsLine: ?string, docVarType: ?string, type: string, name: string, inRequestFlagName: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, isArray: bool, usesUnsetSentinel: bool}
+     * @return array{
+     *     description: ?string,
+     *     example: ?string,
+     *     constraintsLine: ?string,
+     *     docVarType: ?string,
+     *     type: string,
+     *     name: string,
+     *     inRequestFlagName: string,
+     *     inPathFlagName: string,
+     *     inQueryFlagName: string,
+     *     inHeaderFlagName: string,
+     *     inCookieFlagName: string,
+     *     isArray: bool,
+     *     usesUnsetSentinel: bool,
+     * }
      */
     private function resolvePropertyDeclarationData(array $property, string $namespace): array
     {
@@ -560,7 +574,40 @@ trait RendersRuntimeDto
 
     /**
      * @param SchemaProperty $property
-     * @return array{name: string, openApiName: string, nameSuffix: string, methodName: string, returnType: string, hasGuard: bool, docDescriptionLines: array<int, string>, docReturnType: ?string, expectedFormat: ?string, returnKind: string, phpDateFormat: ?string, isNullableTemporal: bool, temporalArrayNullable: bool, temporalItemsNullable: bool, requiredLiteral: string, inPathFlagName: string, inQueryFlagName: string, inHeaderFlagName: string, inCookieFlagName: string, inRequestFlagName: string, presenceFlagName: string, isMap: bool, hasArrayAdder: bool, arrayAdderMethodName: string, arrayAdderItemType: string, nullableArray: bool, usesUnsetSentinel: bool, getterUsesSentinel: bool, hasObjectGetter: bool, objectGetterMethodName: string, objectGetterReturnType: string, objectGetterDocReturnType: ?string, isParameter: bool}
+     * @return array{
+     *     name: string,
+     *     openApiName: string,
+     *     nameSuffix: string,
+     *     methodName: string,
+     *     returnType: string,
+     *     hasGuard: bool,
+     *     docDescriptionLines: array<int, string>,
+     *     docReturnType: ?string,
+     *     expectedFormat: ?string,
+     *     returnKind: string,
+     *     phpDateFormat: ?string,
+     *     isNullableTemporal: bool,
+     *     temporalArrayNullable: bool,
+     *     requiredLiteral: string,
+     *     inPathFlagName: string,
+     *     inQueryFlagName: string,
+     *     inHeaderFlagName: string,
+     *     inCookieFlagName: string,
+     *     inRequestFlagName: string,
+     *     presenceFlagName: string,
+     *     isMap: bool,
+     *     hasArrayAdder: bool,
+     *     arrayAdderMethodName: string,
+     *     arrayAdderItemType: string,
+     *     nullableArray: bool,
+     *     usesUnsetSentinel: bool,
+     *     getterUsesSentinel: bool,
+     *     hasObjectGetter: bool,
+     *     objectGetterMethodName: string,
+     *     objectGetterReturnType: string,
+     *     objectGetterDocReturnType: ?string,
+     *     isParameter: bool,
+     * }
      */
     private function resolveMethodPropertyData(array $property, string $namespace): array
     {
@@ -604,7 +651,6 @@ trait RendersRuntimeDto
 
         $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
         $arrayItemPhpType = $phpType === 'array' ? $this->resolveArrayItemPhpType($property['type']) : '';
-        $temporalItemsNullable = str_starts_with($arrayItemPhpType, '?');
         // An array (or map) of `format: date` items is stored as DateTimeImmutable objects and owes
         // the reader the same formatted string the scalar getter returns. Without this the items
         // leave as RFC 3339 date-times and the response contradicts its own schema.
@@ -625,8 +671,8 @@ trait RendersRuntimeDto
             // The getter hands back strings, so its docblock — and the `arrayItemType` the
             // normalization map reads off it — must say strings.
             $docReturnType = $this->composePhpTypeHint(
-                $this->replaceTemporalItemTypeWithString($phpDocType),
-                $property['nullable'],
+                type: $this->replaceTemporalItemTypeWithString($phpDocType),
+                nullable: $property['nullable'],
             );
         } elseif ($phpType !== $phpDocType) {
             $docReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
@@ -673,9 +719,9 @@ trait RendersRuntimeDto
             'phpDateFormat' => $phpDateFormat,
             'isNullableTemporal' => $isNullableTemporal,
             // A temporal ARRAY getter maps over the items, so it needs to know whether the array
-            // itself can be null (sentinel or `nullable: true`) and whether an item can be.
+            // itself can be null (sentinel or `nullable: true`). A NULL ITEM needs no flag: the
+            // mapper tests `instanceof`, which a null fails like any other non-date value.
             'temporalArrayNullable' => str_starts_with($returnType, '?'),
-            'temporalItemsNullable' => $temporalItemsNullable,
             'requiredLiteral' => $property['required'] ? 'true' : 'false',
             'inPathFlagName' => $this->normalizeInPathFlagName($property['name']),
             'inQueryFlagName' => $this->normalizeInQueryFlagName($property['name']),

@@ -194,6 +194,56 @@ Laravel route parameters (`/users/{id}`) resolve automatically; see below.
 become serialization groups the application has to pass — see
 [the Symfony guide](README.symfony.md#serialization-groups-readonly--writeonly).)
 
+### Dates, and containers of dates
+
+`format: date` / `date-time` becomes a `DateTimeImmutable` property, and the reader gets two getters:
+the primary one formats the value the way the schema declares it, the `AsDateTime` twin hands back the
+object.
+
+```php
+$dto->getOn();               // "2026-03-10"  — a `format: date` stays a date
+$dto->getAt();               // "2026-03-10T12:00:00.123456+03:00" — precision preserved
+$dto->getAtAsDateTime();     // the DateTimeImmutable
+```
+
+A CONTAINER of dates gets the same pair, per item, and a map keeps its keys:
+
+```php
+// items: {type: string, format: date}
+$dto->getDates();            // ["2026-03-10", "2026-03-11"]
+$dto->getDatesAsDateTime();  // [DateTimeImmutable, DateTimeImmutable]
+
+// additionalProperties: {type: string, format: date}
+$dto->getDatesByDay();       // ["mon" => "2026-03-09"]
+$dto->getDatesByDayAsDateTime();
+```
+
+Serialization goes through the formatting getter, so `toArray()`, `toJson()` and `DtoNormalizer` all
+write what the schema asked for rather than the objects the property holds. Whether the items really
+are dates depends on the mode — see
+[Temporal container items](README.support-matrix.md#temporal-container-items).
+
+### Containers inside containers
+
+A container nested in another container is where materialization stops: no DTO and no enum class is
+synthesized below the first level of items, and nothing casts a value there. The declarations say so
+rather than promising otherwise:
+
+| schema | declared |
+| --- | --- |
+| array of arrays of scalars | `array<array<int>>` |
+| array of maps of scalars | `array<array<string, string>>` |
+| map of arrays / map of maps | `array<string, array<string>>` / `array<string, array<string, int>>` |
+| array of arrays of a `$ref` / an enum / a date | `array<array<mixed>>` |
+
+`mixed` in the last row is deliberate: those values arrive as whatever `json_decode()` produced — a
+`stdClass` for a `$ref`, a plain string for an enum — so naming the class would be a docblock the
+object never honours.
+
+The VALUES are still checked, by the emitted constraints rather than by the PHP types: a scalar keeps
+its type, bounds and pattern at any depth, and an enum's members are checked too. What is not checked
+two levels down is the shape of a `$ref`ed object.
+
 ### Free-form objects
 
 `{type: object}` with no `properties` — and its longer spelling `{type: object, additionalProperties: true}`

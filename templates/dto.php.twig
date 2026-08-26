@@ -227,34 +227,20 @@ interface {{ className }}
         }
 
 {% endif %}
-{% if property.temporalItemsNullable %}
 {% if property.phpDateFormat == 'c' %}
         return array_map(
-            static fn (?DateTimeImmutable $item): ?string => $item === null
-                ? null
-                : ($item->format('u') === '000000' ? $item->format('c') : $item->format('Y-m-d\TH:i:s.uP')),
+            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
+                ? ($item->format('u') === '000000' ? $item->format('c') : $item->format('Y-m-d\TH:i:s.uP'))
+                : $item,
             $this->{{ property.name }},
         );
 {% else %}
         return array_map(
-            static fn (?DateTimeImmutable $item): ?string => $item?->format('{{ property.phpDateFormat }}'),
+            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
+                ? $item->format('{{ property.phpDateFormat }}')
+                : $item,
             $this->{{ property.name }},
         );
-{% endif %}
-{% else %}
-{% if property.phpDateFormat == 'c' %}
-        return array_map(
-            static fn (DateTimeImmutable $item): string => $item->format('u') === '000000'
-                ? $item->format('c')
-                : $item->format('Y-m-d\TH:i:s.uP'),
-            $this->{{ property.name }},
-        );
-{% else %}
-        return array_map(
-            static fn (DateTimeImmutable $item): string => $item->format('{{ property.phpDateFormat }}'),
-            $this->{{ property.name }},
-        );
-{% endif %}
 {% endif %}
 {% else %}
 {% if property.getterUsesSentinel %}
@@ -433,19 +419,25 @@ interface {{ className }}
     }
 
     /**
-     * @return array<string, mixed>
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
      */
-    public function jsonSerialize(): array
+    public function jsonSerialize(): array|object
     {
 {% if serializableProperties is empty %}
 {% if extends is not null %}
         return parent::jsonSerialize();
 {% else %}
-        return [];
+        return (object)[];
 {% endif %}
 {% else %}
 {% if extends is not null %}
-        $result = parent::jsonSerialize();
+        // Cast back: the parent hands out an object when it has nothing to write.
+        $result = (array)parent::jsonSerialize();
 {% else %}
         $result = [];
 {% endif %}
@@ -479,7 +471,7 @@ interface {{ className }}
 {% endif %}
 {% endfor %}
 
-        return $result;
+        return $result === [] ? (object)$result : $result;
 {% endif %}
     }
 
@@ -488,12 +480,12 @@ interface {{ className }}
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->toArray(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
 
         return is_string($json) ? $json : '{}';
     }

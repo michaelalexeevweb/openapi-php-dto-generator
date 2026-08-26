@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command;
 
+use DateTimeImmutable;
+use Exception;
 use JsonException;
 use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
 use OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses;
@@ -331,45 +333,38 @@ final class GenerateDtoCommand extends Command
         );
         $this->addOption(
             name: 'namespace',
-            shortcut: null,
             mode: InputOption::VALUE_REQUIRED,
             description: 'Namespace for generated DTO classes (overrides directory-derived namespace)',
         );
         $this->addOption(
             name: 'dto-generator-directory',
-            shortcut: null,
             mode: InputOption::VALUE_OPTIONAL,
             description: 'Copy DTO generator services to specified subdirectory (can be absolute path)',
             default: false,
         );
         $this->addOption(
             name: 'dto-generator-namespace',
-            shortcut: null,
             mode: InputOption::VALUE_REQUIRED,
             description: 'Custom namespace for DTO generator services',
         );
         $this->addOption(
             name: 'attributes',
-            shortcut: null,
             mode: InputOption::VALUE_REQUIRED,
             description: 'Generation mode: "runtime" (default, library runtime), "symfony" (Symfony Validator/Serializer attributes), "laravel" (plain DTO + Laravel validation rules) or "laravel-data" (spatie/laravel-data Data classes)',
             default: self::ATTRIBUTE_MODE_RUNTIME,
         );
         $this->addOption(
             name: 'with-psr7',
-            shortcut: null,
             mode: InputOption::VALUE_NONE,
             description: 'Also copy the PSR-7 deserializer (DtoDeserializerPsr7) when vendoring the runtime. Requires symfony/psr-http-message-bridge in the consuming project.',
         );
         $this->addOption(
             name: 'ref',
-            shortcut: null,
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
             description: 'Explicit output directory for an external $ref file or directory: "<refFileOrDir>=<directory>". A directory key maps every ref\'d file inside it. Repeatable. Requires a matching --ref-namespace.',
         );
         $this->addOption(
             name: 'ref-namespace',
-            shortcut: null,
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
             description: 'Explicit namespace for an external $ref file or directory: "<refFileOrDir>=<namespace>". A directory key maps every ref\'d file inside it. Repeatable. Requires a matching --ref.',
         );
@@ -2239,6 +2234,12 @@ final class GenerateDtoCommand extends Command
     private function extractValidationConstraints(array $propertySchema): array
     {
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
+        // Applied HERE rather than where the property schemas are prepared, because that is not the
+        // only entrance: Symfony, Laravel and Yii3 modes extract the constraints of a whole CLASS
+        // straight from its registered schema, so anything done to the prepared property schema was
+        // invisible to four modes out of five. Runtime mode alone saw it, which is exactly how the
+        // hole looked when measured.
+        $propertySchema = $this->inlineNestedContainerValidation($propertySchema);
 
         $allowedKeys = [
             'type',
@@ -2450,6 +2451,111 @@ final class GenerateDtoCommand extends Command
         }
 
         return $constraints;
+    }
+
+    /**
+     * Everything at depth two or deeper inside a container, made validatable.
+     *
+     * At depth ONE the generator materializes: `items: {$ref: StrEnum}` becomes a PHP enum and
+     * `items: {enum: [...]}` becomes a synthesized one, so the value's own type is the check and the
+     * constraints deliberately carry no `enum` (see `extractValidationConstraints()`).
+     *
+     * Below that it materializes nothing — `resolveNestedContainerDocType()` declares `mixed` for
+     * exactly that reason — and the same two spellings were then checked by NOTHING: a `$ref` is not
+     * a constraint keyword, so `scrubUnvalidatableSubschemas()` dropped the whole subschema, and an
+     * unmarked `enum` was filtered out of it. `array<array<StrEnum>>` holding the string `"zzz"`, or
+     * an integer, came back from `validate()` with no problems at all.
+     *
+     * So at depth two and below: a `$ref` is inlined even when it names a backed-enum schema (there is
+     * no class here to carry the check), and every `enum` is marked for inline validation.
+     *
+     * @param array<string, mixed> $schema
+     * @param int $depth how many containers were entered to reach this schema
+     * @return array<string, mixed>
+     */
+    private function inlineNestedContainerValidation(array $schema, int $depth = 0): array
+    {
+        if ($depth >= 2) {
+            $ref = $schema['$ref'] ?? null;
+            if (is_string($ref)) {
+                $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+                if ($definition !== null) {
+                    unset($schema['$ref']);
+                    $schema += $definition;
+                }
+            }
+
+            if (is_array($schema['enum'] ?? null) && $schema['enum'] !== []) {
+                $schema['x-php-inline-enum'] = true;
+            }
+        }
+
+        foreach (['items', 'additionalProperties'] as $containerKey) {
+            if (is_array($schema[$containerKey] ?? null)) {
+                $schema[$containerKey] = $this->inlineNestedContainerValidation(
+                    schema: $schema[$containerKey],
+                    depth: $depth + 1,
+                );
+            }
+        }
+
+        // A PROPERTY restarts the count, at the class level and inside a container item alike: it is a
+        // value of its own, and where an item did become a DTO that class runs this for itself.
+        if (is_array($schema['properties'] ?? null)) {
+            foreach ($schema['properties'] as $name => $propertySchema) {
+                if (is_array($propertySchema)) {
+                    $schema['properties'][$name] = $this->inlineNestedContainerValidation($propertySchema);
+                }
+            }
+        }
+
+        return $schema;
+    }
+
+    /**
+     * The definition behind a `$ref` used at depth two or deeper: any scalar-typed schema, an enum
+     * included.
+     *
+     * `scalarAliasDefinition()` refuses a backed-enum schema because at depth one that ref DOES get a
+     * class. Here it does not, so refusing would leave the values unchecked.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function nestedScalarRefDefinition(string $ref, ?string $currentSourceFile): ?array
+    {
+        $alias = $this->scalarAliasDefinition($ref, $currentSourceFile);
+        if ($alias !== null) {
+            return $alias;
+        }
+
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
+
+        $definition = $this->dtoSchemas[$className] ?? null;
+        if (
+            is_array($definition)
+            && $this->isEnumSchema($definition)
+            && in_array($definition['type'] ?? null, ['string', 'integer', 'number', 'boolean'], true)
+        ) {
+            return $definition;
+        }
+
+        // A named enum COMPONENT is registered as an enum rather than a schema, and its members live
+        // under `values`. Spelled back into `enum` here, which is the keyword a constraint carries.
+        $enum = $this->enumSchemas[$className] ?? null;
+        if (
+            $enum !== null
+            && $enum['values'] !== []
+            && in_array($enum['type'], ['string', 'integer', 'number', 'boolean'], true)
+        ) {
+            return ['type' => $enum['type'], 'enum' => $enum['values']];
+        }
+
+        return null;
     }
 
     /**
@@ -2687,9 +2793,9 @@ final class GenerateDtoCommand extends Command
             // object: resolve it to the aliased array type (e.g. array<Item>) so the property
             // is typed as a list, instead of pointing at an empty generated class.
             $aliasArrayType = $this->resolveArrayAliasRefType(
-                $propertySchema['$ref'],
-                $ownerClassName,
-                $propertyName,
+                ref: $propertySchema['$ref'],
+                ownerClassName: $ownerClassName,
+                propertyName: $propertyName,
             );
             if ($aliasArrayType !== null) {
                 return [$aliasArrayType, $nullable];
@@ -2840,12 +2946,12 @@ final class GenerateDtoCommand extends Command
                     /** @var array<int, string|int> $values */
                     $values = $items['enum'];
                     $this->registerEnum(
-                        $enumName,
-                        $enumType,
-                        $values,
-                        $this->getSchemaSourceFile($ownerClassName),
-                        $this->extractEnumVarnames($items, $values),
-                        $this->extractEnumDescriptions($items, $values),
+                        enumName: $enumName,
+                        type: $enumType,
+                        values: $values,
+                        sourceFile: $this->getSchemaSourceFile($ownerClassName),
+                        varnames: $this->extractEnumVarnames($items, $values),
+                        descriptions: $this->extractEnumDescriptions($items, $values),
                     );
                     $this->recordSynthesizedOrigin($enumName, $ownerClassName, $propertyName, arrayItem: true);
                     return ['array<' . $itemPrefix . $enumName . '>', $nullable];
@@ -2858,26 +2964,27 @@ final class GenerateDtoCommand extends Command
             }
 
             $itemsType = $items['type'] ?? null;
+
+            // A list of lists. Left to the scalar mapping below it landed on `default => 'mixed'`, so
+            // `array<array<int>>` was declared `array<mixed>` — and `mixed` is the one item type
+            // `DtoNormalizer::validate()` skips, which is why a matrix with a scalar where a row
+            // belonged passed in silence.
+            if ($itemsType === 'array') {
+                return [
+                    'array<' . $itemPrefix . $this->resolveNestedContainerDocType($items) . '>',
+                    $nullable,
+                ];
+            }
+
             if ($itemsType === 'object') {
                 // Free-form / pattern-keyed item objects have no fixed properties: synthesizing a
                 // DTO for them would yield a class with an empty constructor and the payload data
                 // would be dropped at deserialization. Keep them as maps instead.
-                if ($this->isPatternPropertiesOnlyObjectSchema($items)) {
-                    $itemValueType = $this->resolvePatternPropertiesValueType(
-                        propertySchema: $items,
-                        ownerClassName: $ownerClassName,
-                        propertyName: $propertyName . 'Item',
-                    );
-                    return ['array<array<string, ' . $itemValueType . '>>', $nullable];
-                }
-
-                if ($this->isMapLikeObjectSchema($items)) {
-                    $itemValueType = $this->resolveAdditionalPropertiesValueType(
-                        propertySchema: $items,
-                        ownerClassName: $ownerClassName,
-                        propertyName: $propertyName . 'Item',
-                    );
-                    return ['array<array<string, ' . $itemValueType . '>>', $nullable];
+                if ($this->isPatternPropertiesOnlyObjectSchema($items) || $this->isMapLikeObjectSchema($items)) {
+                    return [
+                        'array<' . $itemPrefix . $this->resolveNestedContainerDocType($items) . '>',
+                        $nullable,
+                    ];
                 }
 
                 $nestedClassName = $ownerClassName . $this->normalizeClassName($propertyName) . 'Item';
@@ -3447,6 +3554,94 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The docblock type of a container nested inside another container: `array<int>` for the items of
+     * `array<array<int>>`, `array<string, int>` for the values of `array<string, array<string, int>>`.
+     *
+     * Its own resolver rather than a recursion into `resolvePropertyType()`, for two reasons.
+     *
+     * That one REGISTERS a synthesized class for an object-shaped item — and at this depth nothing
+     * hydrates one, so the class would be emitted into the output and never referenced by anything.
+     *
+     * And it would promise more than the generated code delivers. Casting stops at the first level of
+     * items: a `$ref` two containers deep arrives as the `stdClass` `json_decode()` produced, never as
+     * the DTO. `array<array<string, Tag>>` was exactly that lie — the declaration named `Tag`, the
+     * value was a `stdClass`, and `validate()` reported nothing either way. So a value that would need
+     * CONVERTING is declared `mixed`: a DTO, an enum, a date, an uploaded file, and `number` too,
+     * because JSON hands `1` over as an int and nothing widens it at this depth.
+     *
+     * What survives is what `json_decode()` already produces in the declared form — `string`, `int`,
+     * `bool` — plus containers, recursively.
+     *
+     * @param array<string, mixed> $schema the nested container's OWN schema
+     */
+    private function resolveNestedContainerDocType(array $schema, int $remainingDepth = 8): string
+    {
+        if ($remainingDepth <= 0) {
+            return 'mixed';
+        }
+
+        $type = $schema['type'] ?? null;
+
+        if ($type === 'array') {
+            $items = $schema['items'] ?? null;
+
+            return is_array($items)
+                ? 'array<' . $this->nestedContainerValueDocType($items, $remainingDepth) . '>'
+                : 'array';
+        }
+
+        if ($type === 'object' || $this->isMapLikeObjectSchema($schema)) {
+            $valueSchema = $schema['additionalProperties'] ?? null;
+
+            // `patternProperties` is the other dictionary spelling. One value schema is a type; several
+            // are a union nothing here can narrow, so `mixed`.
+            if (!is_array($valueSchema) && is_array($schema['patternProperties'] ?? null)) {
+                $patterned = array_values(array_filter($schema['patternProperties'], 'is_array'));
+                $valueSchema = count($patterned) === 1 ? $patterned[0] : null;
+            }
+
+            return is_array($valueSchema)
+                ? 'array<string, ' . $this->nestedContainerValueDocType($valueSchema, $remainingDepth) . '>'
+                : 'array<string, mixed>';
+        }
+
+        return 'mixed';
+    }
+
+    /**
+     * One value of a nested container: another container, a scalar JSON already delivers in that form,
+     * or `mixed`.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function nestedContainerValueDocType(array $schema, int $remainingDepth): string
+    {
+        $type = $schema['type'] ?? null;
+
+        if ($type === 'array' || $type === 'object' || $this->isMapLikeObjectSchema($schema)) {
+            return $this->resolveNestedContainerDocType($schema, $remainingDepth - 1);
+        }
+
+        // An enum is a `string` on the wire but an ENUM CASE once cast, and nothing casts it here.
+        if (array_key_exists('enum', $schema) || array_key_exists('$ref', $schema)) {
+            return 'mixed';
+        }
+
+        // `format: date`/`binary` turn the value into an object one level up; at this depth they do
+        // not, and saying `string` would be true of the payload but not of the declared schema shape.
+        if (is_string($schema['format'] ?? null) && $this->mapStringFormatType($schema['format']) !== null) {
+            return 'mixed';
+        }
+
+        return match ($type) {
+            'integer' => 'int',
+            'string' => 'string',
+            'boolean' => 'bool',
+            default => 'mixed',
+        };
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      */
     private function resolveAdditionalPropertiesValueType(
@@ -3464,9 +3659,23 @@ final class GenerateDtoCommand extends Command
             return 'mixed';
         }
 
+        // A map whose values are themselves containers. Resolved WITHOUT the general resolver, which
+        // would both synthesize a class nothing at that depth hydrates and name types the generated
+        // code does not deliver — see `resolveNestedContainerDocType()`. It used to collapse to a bare
+        // `mixed`, the one item type `DtoNormalizer::validate()` skips entirely.
+        // A value with fixed `properties` is a DTO and stays one: that IS hydrated at this depth, and
+        // the map-like predicate says no to it for exactly that reason.
+        if (
+            ($additionalProperties['type'] ?? null) === 'array'
+            || $this->isPatternPropertiesOnlyObjectSchema($additionalProperties)
+            || $this->isMapLikeObjectSchema($additionalProperties)
+        ) {
+            return $this->resolveNestedContainerDocType($additionalProperties);
+        }
+
         [$valueType] = $this->resolvePropertyType($additionalProperties, $ownerClassName, $propertyName . 'Value');
 
-        // Keep map value generic simple in phpdoc: array<scalar|class|mixed>.
+        // A union is a claim no single item type can carry.
         if (str_contains($valueType, '<') || str_contains($valueType, '|')) {
             return 'mixed';
         }
@@ -5014,10 +5223,10 @@ final class GenerateDtoCommand extends Command
 
                         $ownerKey = strtoupper($method) . ' ' . $path;
                         $schemaName = $this->uniqueEndpointSchemaName(
-                            $this->pathItemNamingKey($path),
-                            (string)$statusCode,
-                            $ownerKey,
-                            $inlineOwners,
+                            path: $this->pathItemNamingKey($path),
+                            tail: (string)$statusCode,
+                            ownerKey: $ownerKey,
+                            owners: $inlineOwners,
                         );
                         $inlineSchemas[$schemaName] = $schema;
                         $inlineOwners[$schemaName] = $ownerKey;
@@ -5089,10 +5298,10 @@ final class GenerateDtoCommand extends Command
 
                     $ownerKey = strtoupper($method) . ' ' . $path;
                     $schemaName = $this->uniqueEndpointSchemaName(
-                        $this->pathItemNamingKey($path),
-                        ucfirst(strtolower($method)) . 'Request',
-                        $ownerKey,
-                        $inlineOwners,
+                        path: $this->pathItemNamingKey($path),
+                        tail: ucfirst(strtolower($method)) . 'Request',
+                        ownerKey: $ownerKey,
+                        owners: $inlineOwners,
                     );
                     $inlineSchemas[$schemaName] = $schema;
                     $inlineOwners[$schemaName] = $ownerKey;
@@ -5325,15 +5534,23 @@ final class GenerateDtoCommand extends Command
             ];
         }
 
-        // Symfony and Laravel modes emit a plain backed enum (no library runtime interface/methods):
-        // the Symfony serializer handles backed enums natively via BackedEnumNormalizer, and in
-        // Laravel mode the generated hydration factory maps the value itself.
-        $isSymfony = $this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME;
+        // There is ONE axis here, and it is not the framework: does the enum carry this package's
+        // runtime interface and its methods, or is it a plain backed enum?
+        //
+        // Runtime mode needs the interface — `DtoNormalizer` reads it. The other four do not: the
+        // Symfony serializer handles a backed enum natively through `BackedEnumNormalizer`, Laravel's
+        // and laravel-data's generated hydration map the value themselves, and Yii3's `ObjectParser`
+        // does too. So all four emit the same enum, byte for byte — which is why there are two
+        // templates and not five.
+        //
+        // The old spelling of this was `$isSymfony` plus `enum.symfony.php.twig`, and both names were
+        // false four times out of five: nothing about either is Symfony's.
+        $rendersStandaloneEnum = $this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME;
 
         $imports = [];
         $generatedDtoInterfaceRef = 'GeneratedDtoInterface';
         $jsonExceptionRef = 'JsonException';
-        if (!$isSymfony) {
+        if (!$rendersStandaloneEnum) {
             // Import the runtime interface only when it lives in another namespace (avoid a
             // self-import), and JsonException for the enum's toJson() (@throws + json_encode with
             // JSON_THROW_ON_ERROR). Sort so the output matches php-cs-fixer's ordered_imports.
@@ -5346,8 +5563,8 @@ final class GenerateDtoCommand extends Command
         }
 
         return $this->renderPhpTemplate(
-            $isSymfony ? 'enum.symfony.php.twig' : 'enum.php.twig',
-            [
+            templateName: $rendersStandaloneEnum ? 'enum.standalone.php.twig' : 'enum.php.twig',
+            context: [
                 'namespace' => $namespace,
                 'imports' => $imports,
                 'enumName' => $enumName,
@@ -5716,10 +5933,41 @@ final class GenerateDtoCommand extends Command
         return null;
     }
 
+    /**
+     * A `format: date` / `date-time` default as a constructor-parameter default expression.
+     *
+     * Parsed here rather than trusted: a document may carry anything under `default`, and a value
+     * `DateTimeImmutable` cannot read would move the failure from generation time (where the spec
+     * author can see it) to every request. An unusable default is simply not emitted.
+     */
+    private function renderTemporalDefaultValue(mixed $defaultValue): string
+    {
+        if (!is_string($defaultValue) || $defaultValue === '') {
+            return '';
+        }
+
+        try {
+            new DateTimeImmutable($defaultValue);
+        } catch (Exception) {
+            return '';
+        }
+
+        return " = new DateTimeImmutable('" . $this->escapeSingleQuoted($defaultValue) . "')";
+    }
+
     private function renderDefaultValue(mixed $defaultValue, string $phpType, string $fullType): string
     {
         if ($defaultValue === null) {
             return '';
+        }
+
+        // A temporal default is NOT an enum case, and the branch below would name one that does not
+        // exist: `format: date, default: "2020-01-01"` produced
+        // `DateTimeImmutable::VALUE_2020_01_01` — a fatal on class load in symfony mode and on the
+        // first defaulted construction in runtime and laravel. Measured in all three. `new` is legal
+        // in a PARAMETER default (PHP 8.1), which is where those two put it.
+        if ($phpType === 'DateTimeImmutable') {
+            return $this->renderTemporalDefaultValue($defaultValue);
         }
 
         // Handle enum types - need to use the enum case
@@ -5846,10 +6094,10 @@ final class GenerateDtoCommand extends Command
 
                 $ownerKey = strtoupper($method) . ' ' . $path;
                 $schemaName = $this->uniqueEndpointSchemaName(
-                    $this->pathItemNamingKey($path),
-                    ucfirst(strtolower($method)) . 'QueryParams',
-                    $ownerKey,
-                    $parameterOwners,
+                    path: $this->pathItemNamingKey($path),
+                    tail: ucfirst(strtolower($method)) . 'QueryParams',
+                    ownerKey: $ownerKey,
+                    owners: $parameterOwners,
                 );
                 $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
                 $parameterOwners[$schemaName] = $ownerKey;
@@ -6065,8 +6313,8 @@ final class GenerateDtoCommand extends Command
                 } else {
                     $schema['x-parameter-style'] = $this->resolveParameterStyle($parameter, $paramIn);
                     $schema['x-parameter-explode'] = $this->resolveParameterExplode(
-                        $parameter,
-                        $schema['x-parameter-style'],
+                        parameter: $parameter,
+                        style: $schema['x-parameter-style'],
                     );
                 }
                 $schema['x-parameter-allow-reserved'] = $this->toBoolean($parameter['allowReserved'] ?? false);

@@ -825,10 +825,10 @@ final class DtoValidator implements DtoValidatorInterface
                 array_push(
                     $errors,
                     ...$this->validateConstraints(
-                        sprintf('%s.%s', $subject, (string)$key),
-                        $itemValue,
-                        $additionalProperties,
-                        $depth + 1,
+                        subject: sprintf('%s.%s', $subject, (string)$key),
+                        value: $itemValue,
+                        constraints: $additionalProperties,
+                        depth: $depth + 1,
                     ),
                 );
             }
@@ -874,10 +874,10 @@ final class DtoValidator implements DtoValidatorInterface
                     array_push(
                         $errors,
                         ...$this->validateConstraints(
-                            sprintf('%s.%s', $subject, $keyStr),
-                            $itemValue,
-                            $unevaluated,
-                            $depth + 1,
+                            subject: sprintf('%s.%s', $subject, $keyStr),
+                            value: $itemValue,
+                            constraints: $unevaluated,
+                            depth: $depth + 1,
                         ),
                     );
                 }
@@ -958,11 +958,11 @@ final class DtoValidator implements DtoValidatorInterface
                 array_push(
                     $errors,
                     ...$this->validateConstraints(
-                        sprintf('%s.%s', $subject, (string)$index),
-                        $itemValue,
-                        $itemConstraints,
-                        $depth + 1,
-                        $itemsHaveComposition,
+                        subject: sprintf('%s.%s', $subject, (string)$index),
+                        value: $itemValue,
+                        constraints: $itemConstraints,
+                        depth: $depth + 1,
+                        hasComposition: $itemsHaveComposition,
                     ),
                 );
             }
@@ -1006,10 +1006,10 @@ final class DtoValidator implements DtoValidatorInterface
                 array_push(
                     $errors,
                     ...$this->validateConstraints(
-                        sprintf('%s.%s', $subject, (string)$index),
-                        $value[$index],
-                        $itemSchema,
-                        $depth + 1,
+                        subject: sprintf('%s.%s', $subject, (string)$index),
+                        value: $value[$index],
+                        constraints: $itemSchema,
+                        depth: $depth + 1,
                     ),
                 );
             }
@@ -1035,10 +1035,10 @@ final class DtoValidator implements DtoValidatorInterface
                     array_push(
                         $errors,
                         ...$this->validateConstraints(
-                            sprintf('%s.%s', $subject, (string)$index),
-                            $itemValue,
-                            $unevaluated,
-                            $depth + 1,
+                            subject: sprintf('%s.%s', $subject, (string)$index),
+                            value: $itemValue,
+                            constraints: $unevaluated,
+                            depth: $depth + 1,
                         ),
                     );
                 }

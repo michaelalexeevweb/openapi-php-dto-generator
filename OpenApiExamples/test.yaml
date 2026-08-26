@@ -587,3 +587,107 @@ components:
               type: integer
             NAme:
               type: string
+    Shape:
+      oneOf:
+        - $ref: '#/components/schemas/Circle'
+        - $ref: '#/components/schemas/Square'
+      discriminator:
+        propertyName: kind
+        mapping:
+          circle: '#/components/schemas/Circle'
+          square: '#/components/schemas/Square'
+    Circle:
+      type: object
+      required:
+        - kind
+        - radius
+      properties:
+        kind:
+          type: string
+        radius:
+          type: integer
+    Square:
+      type: object
+      required:
+        - kind
+        - side
+      properties:
+        kind:
+          type: string
+        side:
+          type: integer
+    Containers:
+      type: object
+      required:
+        - dates
+        - shapes
+      properties:
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+        datesByDay:
+          type: object
+          additionalProperties:
+            type: string
+            format: date
+        timestamps:
+          type: array
+          items:
+            type: string
+            format: date-time
+        shapes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Shape'
+        tagsByKey:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Tag'
+    # Containers INSIDE containers. Nothing is materialized below the first level of items — no DTO,
+    # no enum class — so this schema is where the declarations have to stay honest and the constraints
+    # have to carry the checks the PHP types cannot.
+    NestedContainers:
+      type: object
+      required:
+        - matrix
+        - rowsOfMaps
+      properties:
+        matrix:
+          type: array
+          items:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        rowsOfMaps:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+        listsByKey:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        mapsByKey:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
+        enumRows:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/TypeEnum'
+        tagRows:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/Tag'

@@ -209,6 +209,12 @@ All measured and pinned; the full table with reasons is in
 - drops sub-second precision from a `format: date-time` **response** (its transformer takes one format
   string, which cannot say "keep the precision the payload carried"); the emitted `#[WithCast]` accepts
   all four patterns on the way in;
+- holds STRINGS in a container of dates, and declares `array<string>` rather than
+  `array<DateTimeImmutable>`. `#[WithCast]` casts the PROPERTY, never its items — measured against the
+  package, `['2026-03-10']` comes back unchanged — and `#[DataCollectionOf]` wants a `Data` class, which
+  `DateTimeImmutable` is not. A per-item cast would have to be a `Cast` class of ours emitted into
+  generated code that today depends on nothing from this package. The wire form is unaffected; see
+  [Temporal container items](README.support-matrix.md#temporal-container-items);
 - echoes a `readOnly` property the client sent — `#[Hidden]` is an exact counterpart to `writeOnly` and
   there is none for `readOnly`;
 - normalizes a discriminated union member with the discriminator LAST, because it is inherited from the

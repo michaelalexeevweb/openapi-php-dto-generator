@@ -79,9 +79,13 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     private bool ${{ param.providedFlag }} = false;
 
 {% endfor %}
+{% set temporalDefaults = optionalParams|filter(param => param.temporalDefault is not null) %}
 {% if requiredParams is empty %}
     public function __construct()
     {
+{% for param in temporalDefaults %}
+        $this->{{ param.name }} = {{ param.temporalDefault|raw }};
+{% endfor %}
     }
 {% else %}
 {% set docParams = requiredParams|filter(param => param.docType is not null or param.docDescription is not null) %}
@@ -103,6 +107,9 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
         private readonly {{ param.declaredType }} ${{ param.name }},
 {% endfor %}
     ) {
+{% for param in temporalDefaults %}
+        $this->{{ param.name }} = {{ param.temporalDefault|raw }};
+{% endfor %}
     }
 {% endif %}
 {% for param in requiredParams %}

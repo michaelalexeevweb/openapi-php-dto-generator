@@ -213,14 +213,14 @@ trait RendersLaravelDataDto
 
         $useStatements = [];
         $morphForRef = $this->libraryClassRef(
-            'Spatie\LaravelData\Attributes\PropertyForMorph',
-            $namespace,
-            $useStatements,
+            fqcn: 'Spatie\LaravelData\Attributes\PropertyForMorph',
+            namespace: $namespace,
+            useStatements: $useStatements,
         );
         $morphableRef = $this->libraryClassRef(
-            'Spatie\LaravelData\Contracts\PropertyMorphableData',
-            $namespace,
-            $useStatements,
+            fqcn: 'Spatie\LaravelData\Contracts\PropertyMorphableData',
+            namespace: $namespace,
+            useStatements: $useStatements,
         );
         $dataBase = $this->libraryClassRef('Spatie\LaravelData\Data', $namespace, $useStatements);
 
@@ -368,6 +368,18 @@ trait RendersLaravelDataDto
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
         }
 
+        // What the ITEMS of a temporal container really are here: strings.
+        //
+        // `#[WithCast]` casts the PROPERTY, not the items — measured, not assumed: with the attribute on
+        // an `array` property, `['2020-01-01']` arrives as `['2020-01-01']`. laravel-data has no built-in
+        // per-item date cast (`#[DataCollectionOf]` wants a `Data` class), so converting would mean
+        // emitting a `Cast` class of ours into a mode whose generated code currently depends on NOTHING
+        // of this package. The declaration is made honest instead, and the divergence from runtime,
+        // Symfony and Laravel modes is stated in the support matrix.
+        if ($docType !== null && $this->propertyHasTemporalItems($property)) {
+            $docType = str_replace('DateTimeImmutable', 'string', $docType);
+        }
+
         $attributes = [];
         $attributeImports = [];
 
@@ -402,9 +414,9 @@ trait RendersLaravelDataDto
             $attributes[] = sprintf(
                 '#[%s]',
                 $this->libraryClassRef(
-                    'Spatie\LaravelData\Attributes\WithoutValidation',
-                    $namespace,
-                    $attributeImports,
+                    fqcn: 'Spatie\LaravelData\Attributes\WithoutValidation',
+                    namespace: $namespace,
+                    useStatements: $attributeImports,
                 ),
             );
         }
@@ -413,9 +425,9 @@ trait RendersLaravelDataDto
             $attributes[] = sprintf(
                 '#[%s(%s::class)]',
                 $this->libraryClassRef(
-                    'Spatie\LaravelData\Attributes\DataCollectionOf',
-                    $namespace,
-                    $attributeImports,
+                    fqcn: 'Spatie\LaravelData\Attributes\DataCollectionOf',
+                    namespace: $namespace,
+                    useStatements: $attributeImports,
                 ),
                 $this->formatClassNameForNamespace($itemClass, $namespace),
             );
@@ -440,10 +452,10 @@ trait RendersLaravelDataDto
             : $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $attributeImports);
 
         [$declaredType, $tracksPresence] = $this->laravelDataDeclaredType(
-            $phpType,
-            $property['required'],
-            $nullable,
-            $optionalRef,
+            phpType: $phpType,
+            required: $property['required'],
+            nullable: $nullable,
+            optionalRef: $optionalRef,
         );
 
         return [
@@ -582,9 +594,9 @@ trait RendersLaravelDataDto
         $castImports = [];
         $withCastRef = $this->libraryClassRef('Spatie\LaravelData\Attributes\WithCast', $namespace, $castImports);
         $castRef = $this->libraryClassRef(
-            'Spatie\LaravelData\Casts\DateTimeInterfaceCast',
-            $namespace,
-            $castImports,
+            fqcn: 'Spatie\LaravelData\Casts\DateTimeInterfaceCast',
+            namespace: $namespace,
+            useStatements: $castImports,
         );
 
         $attributes = [
@@ -605,14 +617,14 @@ trait RendersLaravelDataDto
         if ($temporalFormat === 'Y-m-d') {
             $transformerImports = [];
             $withTransformerRef = $this->libraryClassRef(
-                'Spatie\LaravelData\Attributes\WithTransformer',
-                $namespace,
-                $transformerImports,
+                fqcn: 'Spatie\LaravelData\Attributes\WithTransformer',
+                namespace: $namespace,
+                useStatements: $transformerImports,
             );
             $transformerRef = $this->libraryClassRef(
-                'Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer',
-                $namespace,
-                $transformerImports,
+                fqcn: 'Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer',
+                namespace: $namespace,
+                useStatements: $transformerImports,
             );
 
             $attributes[] = [

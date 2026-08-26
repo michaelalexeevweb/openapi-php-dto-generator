@@ -102,11 +102,11 @@ only in how the subject is named — pinned by `tests/Parity/InterpreterMessageP
 
 ## Divergences
 
-Thirteen, all deliberate, all pinned by a test that names the cause. Each is one of seven things: Symfony
+Fourteen, all deliberate, all pinned by a test that names the cause. Each is one of eight things: Symfony
 mode's serializer or the yii3 hydrator deciding before generated code gets a say, that serializer having no
 way to say ABSENT on the way out, a mode not holding the raw body, laravel-data's own normalizer having no
-notion of the wire shape, the yii3 hydrator casting only to DECLARED types, or PHP itself refusing to let
-`mixed` join a union.
+notion of the wire shape, the yii3 hydrator casting only to DECLARED types, a mode having no per-ITEM cast to
+give a container, or PHP itself refusing to let `mixed` join a union.
 
 **Reading the icons:** ✅ means the mode does what the DOCUMENT asks for that value, ❌ means it does
 not — not "accepted" versus "refused". `42.0` for `type: integer` is a conformant payload (JSON Schema
@@ -126,6 +126,7 @@ not — not "accepted" versus "refused". `42.0` for `type: integer` is a conform
 | an unprovided optional property in `toArray()`, with or without a schema `default` | omitted | echoed as `null`, or as the `default` | omitted | omitted | omitted | The four modes that carry presence in the property itself leave the key out; the Symfony serializer normalizes every property it has, and the constructor default IS that property's value — so an absent key and a `default` the document declared come back the same way. `isXxxProvided()` still answers the question on the object — `NormalizationParityTest`, cases "optional property missing" and "optional property with a default, absent" |
 | an unprovided optional property with NO type in its schema | omitted | echoed as `null`² | omitted | echoed as `null` | omitted | `mixed` cannot take part in a union type, so this is the one property shape with no `\|Optional` (laravel-data) and no sentinel union (runtime) to mark absence with. laravel-data fills the missing key with `null` and echoes it; yii3 leaves the property uninitialised, which is absence without a type to express it — `NormalizationParityTest`, case "untyped optional property missing" |
 | a discriminated union arriving in a PAYLOAD | ✅ built | ✅ built | ✅ built | ✅ built | ❌ left unset | `yiisoft/hydrator` casts to a DECLARED type, and the declared type here is the union interface. Reading the discriminator to choose a member would need a type caster of ours in the generated output, which this mode does not emit — the interface is still the right type for a response and for code that builds a member itself. Pinned by `Yii3RequestShapeTest::testAUnionMemberImplementsTheUnionInterface` |
+| the ITEMS of an array or map of `format: date` / `date-time` | `DateTimeImmutable` | `DateTimeImmutable` | `DateTimeImmutable` | `string` | `string` | See [Temporal container items](#temporal-container-items) below. Runtime and Laravel cast each item themselves, Symfony's `ArrayDenormalizer` does it; laravel-data's `#[WithCast]` casts the PROPERTY and never reaches an item, and the yii3 `#[ToDateTime]` resolver refuses an array outright. The two that hold strings SAY `array<string>` — `GenerateLaravelDtoTest::testTemporalContainerItemsAreCastAndReadAsStrings`, `LaravelDataSemanticsTest::testACastOnAnArrayPropertyDoesNotReachItsItems` |
 | key order of a discriminated union member in `toArray()` | discriminator first | discriminator first | discriminator first | discriminator last | discriminator first | The base is an abstract `Data` class here, so the discriminator is an INHERITED property, and PHP reflection lists a class's own properties before its parent's. Same keys, same values; JSON object order carries no meaning — `NormalizationParityTest`, case "discriminated union" |
 
 ¹ laravel-data reads the raw body from the current request. On the `validateAndCreate($array)` entry
@@ -137,6 +138,47 @@ laravel-data enforces `writeOnly` unconditionally via `#[Hidden]`.
 
 Everything else about the response shape is identical in all five.
 
+### Temporal container items
+
+`items: {type: string, format: date}` asks for a container whose ELEMENTS are dates. Three modes deliver
+objects there and two deliver strings — and every mode's DECLARATION now says which:
+
+| | holds | declares | reader |
+|---|---|---|---|
+| runtime | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` formats, `getXAsDateTime()` gives the objects |
+| symfony | `DateTimeImmutable` | `array<DateTimeImmutable>` | same pair, the object getter `#[Ignore]`d |
+| laravel | `DateTimeImmutable` | `array<DateTimeImmutable>` | same pair |
+| laravel-data | `string` | `array<string>` | the public property |
+| yii3 | `string` | `array<string>` | `getX()` |
+
+For laravel-data and yii3 the honest declaration is the whole fix: converting would mean emitting a
+`Cast` class (laravel-data) or a `ParameterAttributeResolverInterface` plus a hydrator registration
+(yii3) into generated code that today depends on **nothing** from this package — a dependency for a
+convenience, given that every mode already writes the right STRING to the wire.
+
+What does not differ: a `format: date` element leaves as a date and a `date-time` element keeps its
+offset, in all five. Only the type of the value you read off the object does.
+
+### Containers inside containers
+
+Below the first level of items nothing is materialized — no DTO, no enum class — and nothing casts a
+value. All five modes declare that rather than promising otherwise:
+
+| schema | declared, every mode |
+|---|---|
+| array of arrays / maps of scalars | `array<array<int>>`, `array<array<string, string>>` |
+| map of arrays / map of maps | `array<string, array<string>>`, `array<string, array<string, int>>` |
+| a `$ref`, an enum or a date two containers deep | `array<array<mixed>>` |
+
+`mixed` in the last row is measured, not cautious: a `$ref` two deep arrives as the `stdClass`
+`json_decode()` produced and an enum as a plain string, so naming the class would be a docblock the
+object never honours. It used to — `array<array<string, Tag>>` while holding `stdClass`.
+
+The VALUES are still checked, by whichever layer the mode uses: the emitted interpreter (runtime,
+symfony, yii3) or dotted `field.*.*` rules (laravel, laravel-data). A scalar keeps its type, bounds and
+pattern at any depth, and an enum's members are checked too. What no mode checks is the SHAPE of a
+`$ref`ed object two containers deep — see [Not generated in any mode](#not-generated-in-any-mode).
+
 
 ## Beyond validation
 
@@ -145,6 +187,8 @@ Everything else about the response shape is identical in all five.
 | Typed immutable DTO | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Generated backed enums | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Temporal properties (`DateTimeImmutable` + the schema's own string form) | ✅ | ✅ | ✅ | ✅ (ATOM out for `date-time`) | ✅ (needs `ext-intl`) |
+| Temporal container ITEMS as objects | ✅ | ✅ | ✅ | ➖ strings, declared as such | ➖ strings, declared as such |
+| Containers inside containers | ✅ declared, values checked | ✅ | ✅ | ✅ | ✅ |
 | Nested DTOs, lists of DTOs, maps | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Discriminated unions | ✅ interface + members | ✅ interface + members | ✅ interface + members | ✅ abstract `Data` + `morph()` | ➖ interface + members, no hydration |
 | PATCH / partial updates | ✅ `UnsetValue` | ✅ `isXxxProvided()` via the setter | ✅ `isXxxProvided()` from the validated keys | ✅ `Optional` — the property's own type | ✅ `isXxxProvided()` from `hasProperty()` |
@@ -170,6 +214,7 @@ at all, so a property declaring either is emitted with no source rather than a w
 | | Why |
 |---|---|
 | hydration of a union of OBJECTS with no `discriminator` | the document does not say which member a given object is, and choosing by structure would be a guess two overlapping branches could not settle. The union is emitted as an interface — useful as a type, and fine for a response — but a payload cannot be turned back into a member in ANY mode. The generator names the property at generation time instead of letting the request find out; add a `discriminator` and every mode resolves it. Pinned by `tests/Parity/UnhydratableUnionParityTest` |
+| hydration or shape-checking of a `$ref`ed OBJECT two containers deep | materialization stops below the first level of items, so `array<array<Tag>>` holds whatever `json_decode()` produced. The declaration says `array<array<mixed>>` rather than naming a class that is not there, and the scalar/enum values at that depth ARE checked — see [Containers inside containers](#containers-inside-containers). Prefer a named component for the ROW (`array<Row>` where `Row` wraps the list) when the elements need validating |
 | `authorize()` / any policy | an OpenAPI document describes payload shape, not authorization |
 | server, security scheme and callback objects | out of scope: this generates DTOs, not a router or an auth layer |
 | subschema-local `$defs` (`#/components/schemas/Foo/$defs/Bar`) | top-level `components.schemas` / `$defs` are folded and supported; a nested `$defs` pointer is not — prefer top-level shared types |

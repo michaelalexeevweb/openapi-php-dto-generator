@@ -655,9 +655,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if ($rawWasProvided && is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
                     $this->constraintValidator->validate(
-                        sprintf('param "%s"', $requestFieldName),
-                        $value,
-                        $paramMeta['fieldConstraints'],
+                        subject: sprintf('param "%s"', $requestFieldName),
+                        value: $value,
+                        constraints: $paramMeta['fieldConstraints'],
                     ) as $constraintError
                 ) {
                     $errors[] = $constraintError;
@@ -1142,15 +1142,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $this->stripSerializedScalarPrefix($rawValue, $paramName, $parameterStyle);
         }
 
-        $tokens = $this->splitSerializedPathTokens($rawValue, $paramName, $parameterStyle, $parameterExplode === true);
+        $tokens = $this->splitSerializedPathTokens($rawValue, $parameterStyle, $parameterExplode === true);
         if ($tokens === []) {
             return [];
         }
 
         if ($expectsAssociative) {
             return $this->parseSerializedPathAssociativeValue(
-                $this->stripParameterNameFromFirstToken($tokens, $paramName, $parameterExplode === true),
-                $paramName,
+                tokens: $this->stripParameterNameFromFirstToken($tokens, $paramName, $parameterExplode === true),
+                paramName: $paramName,
             );
         }
 
@@ -1180,12 +1180,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function splitSerializedPathTokens(
         string $rawValue,
-        string $paramName,
         string $parameterStyle,
         bool $explode,
     ): array {
         // Strip style prefix: matrix (;), label (.)
-        // Do NOT strip paramName.= or paramName., — those are not array/object prefixes
+        // Do NOT strip a `<paramName>.=` / `<paramName>.,` prefix — those are not array/object
+        // prefixes, which is why the parameter name is not needed here at all.
         $value = match (true) {
             $parameterStyle === 'matrix' && str_starts_with($rawValue, ';') => substr($rawValue, 1),
             $parameterStyle === 'label' && str_starts_with($rawValue, '.') => substr($rawValue, 1),
@@ -1673,9 +1673,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             $this->assignRawQueryValue(
-                $result,
-                rawurldecode(substr($pair, 0, $eqPos)),
-                rawurldecode(substr($pair, $eqPos + 1)),
+                result: $result,
+                key: rawurldecode(substr($pair, 0, $eqPos)),
+                value: rawurldecode(substr($pair, $eqPos + 1)),
             );
         }
 
@@ -1941,6 +1941,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'string' => 'string',
             'bool' => 'bool',
             'array' => 'array',
+            // The LIST form of a nested container. Same cast as `array`, different wire shape: its
+            // items must arrive as JSON arrays, not objects.
+            'list' => 'list',
             'mixed' => 'mixed',
             DateTimeImmutable::class => 'datetime',
             UploadedFile::class => 'file',
@@ -2206,9 +2209,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             if (is_array($value)) {
                 $targetDtoClass = $this->resolveDiscriminatorTargetClass(
-                    $typeName,
-                    $value,
-                    $paramPath,
+                    baseClass: $typeName,
+                    value: $value,
+                    paramPath: $paramPath,
                 ) ?? $typeName;
                 // Recursively deserialize nested DTO.
                 // $targetDtoClass existence already guaranteed: resolveDiscriminatorTargetClass()
@@ -2290,18 +2293,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // per array element.
         $kind = $this->resolveTypeKind($arrayItemType);
 
-        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
+        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array', 'list', 'mixed'], true)) {
             return $this->castValue(
                 value: $itemValue,
                 paramName: $itemPath,
-                typeName: $arrayItemType,
+                // `list` is not a PHP type: it is this method's name for the shape, and the cast that
+                // follows is the `array` one either way.
+                typeName: $kind === 'list' ? 'array' : $arrayItemType,
                 allowsNull: false,
                 source: $source,
+                // NOT $arrayItemType: this call casts the ITEM, so the item type has already been
+                // consumed and forwarding it would descend a level that is not there. Spelled out
+                // because a variable of that name is in scope and reads like an omission otherwise.
                 arrayItemType: null,
                 paramPath: $itemPath,
-                // An `array` item can itself be a map (a list of maps is `array<array<string, V>>`),
-                // and JSON decodes a map to stdClass — so the item must accept one. What shape it
-                // really has is the validator's business, not the cast's.
+                // An `array` item is the MAP form — a list of maps is `array<array<string, V>>` — and
+                // JSON decodes a map to stdClass, so the item must accept one and must not be a JSON
+                // array. A `list` item is the opposite: `array<array<int>>` items arrive as JSON
+                // arrays, and it is `resolveTypeKind()` that tells the two apart now.
                 allowsAssociativeArray: $kind === 'array',
             );
         }
@@ -2555,7 +2564,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)) {
+        if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'list', 'mixed'], true)) {
             return $rawType;
         }
 
@@ -2626,14 +2635,59 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $inner = trim($inner);
 
-        // A generic item (a nested list or map) is just `array` as far as casting goes.
+        // A generic item is a container as far as casting goes, but WHICH container decides the wire
+        // shape the item must have: `array<array<string, V>>` items are JSON objects,
+        // `array<array<int>>` items are JSON arrays. Collapsing both to `array` made the map form the
+        // only one, so a matrix `[[1,2]]` was rejected with "expects object, got array".
         if (preg_match('/^\??(?:array|list)</i', $inner) === 1) {
-            return 'array';
+            return $this->nestedContainerItemTypeName($inner);
         }
 
         return preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/', $inner, $matches) === 1
             ? $matches[1]
             : null;
+    }
+
+    /**
+     * Which container a nested generic is: `array` for the MAP form (`array<string, V>`), `list` for
+     * the LIST form (`array<V>`, `list<V>`).
+     *
+     * Only the shape matters here — the item's own items are not cast at this depth, which is why the
+     * generator stops naming types down there (`resolveNestedContainerDocType()`), and why
+     * `DtoNormalizer::validate()` is the one that checks them.
+     */
+    private function nestedContainerItemTypeName(string $nestedType): string
+    {
+        $nestedType = ltrim($nestedType, '?');
+
+        if (preg_match('/^list</i', $nestedType) === 1) {
+            return 'list';
+        }
+
+        $open = strpos($nestedType, '<');
+        if ($open === false) {
+            return 'array';
+        }
+
+        // A comma at depth 0 of the generic's own content is the key/value separator, and a key is
+        // what makes it a map.
+        $depth = 0;
+        $length = strlen($nestedType);
+        for ($i = $open + 1; $i < $length; $i++) {
+            $character = $nestedType[$i];
+            if ($character === '<') {
+                $depth++;
+            } elseif ($character === '>') {
+                if ($depth === 0) {
+                    break;
+                }
+                $depth--;
+            } elseif ($character === ',' && $depth === 0) {
+                return 'array';
+            }
+        }
+
+        return 'list';
     }
 
     private function getTypeString(mixed $value): string

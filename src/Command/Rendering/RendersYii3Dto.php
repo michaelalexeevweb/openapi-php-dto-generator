@@ -220,9 +220,8 @@ trait RendersYii3Dto
         $interpreter = $this->renderYii3InterpreterBlock(
             constraints: $this->yii3PruneNativelyCovered(
                 $this->filterSymfonyValidationConstraints(
-                    $this->extractValidationConstraints($this->dtoSchemas[$className] ?? []),
-                    true,
-                    [],
+                    constraints: $this->extractValidationConstraints($this->dtoSchemas[$className] ?? []),
+                    allowScalarKeywords: true,
                 ),
                 $properties,
             ),
@@ -291,133 +290,41 @@ trait RendersYii3Dto
         $implements[] = $this->yii3Lib('DataSetInterface');
         $implements[] = $this->yii3Lib('RulesProviderInterface');
 
-        $lines = ['<?php', '', 'declare(strict_types=1);', '', 'namespace ' . $namespace . ';', ''];
-        foreach ($this->yii3SortedImports($useStatements, $ruleImports, $sourceImports) as $import) {
-            $lines[] = 'use ' . $import . ';';
-        }
-        $lines[] = '';
-        foreach ($classAttributes as $attribute) {
-            $lines[] = $attribute;
-        }
-        // The two framework contracts are always in the list, so there is always something to
-        // implement — a union interface simply adds to it.
-        $lines[] = 'final class ' . $className . ' extends ' . $this->yii3Lib('AbstractInput')
-            . ' implements ' . implode(', ', $implements);
-        $lines[] = '{';
-
-        // The wire-name map belongs with the other class constants, before the properties — the same
-        // question `#[SerializedName]` answers in Symfony mode, and only interesting when an OpenAPI
-        // name and a PHP property name differ.
-        $lines[] = '    /** OpenAPI name => PHP property name. */';
-        $lines[] = '    private const array OPENAPI_PROPERTY_NAMES = [';
+        // Every DECISION is above this line; what follows is the shape of the file, and the shape
+        // lives in the template — the same border the other four modes draw. It was the odd one out
+        // for a while, and a `$lines[]` builder hides in a diff what a template shows: both
+        // container-plus-type bugs in Laravel mode were found by READING a golden snapshot, and the
+        // one that sat in this mode (a dead `#[ToDateTime]` on a container) was not.
+        $temporalParams = [];
         foreach ($parameters as $parameter) {
-            $lines[] = sprintf(
-                "        '%s' => '%s',",
-                str_replace("'", "\\'", $parameter['openApiName']),
-                $parameter['name'],
-            );
-        }
-        $lines[] = '    ];';
-        $lines[] = '';
-
-        // `writeOnly` means "accepted on input, never echoed back" — the same thing laravel-data says
-        // with `#[Hidden]`. `readOnly` is the mirror: server-to-client only, so a client that sends it
-        // anyway must not see it reflected. This mode emits INPUT classes, so both are dropped from
-        // the wire form and Yii3 has no attribute for either.
-        $lines[] = '    /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */';
-        $lines[] = '    private const array OPENAPI_WRITE_ONLY = [';
-        foreach ($parameters as $parameter) {
-            if (!$parameter['writeOnly']) {
-                continue;
-            }
-            $lines[] = sprintf("        '%s',", str_replace("'", "\\'", $parameter['openApiName']));
-        }
-        $lines[] = '    ];';
-        $lines[] = '';
-
-        // What `getData()` needs to write a temporal property in the shape its schema asked for.
-        // Emitted only when there IS one: an empty map would be read by nobody.
-        $temporalLines = [];
-        foreach ($parameters as $parameter) {
-            if ($parameter['temporalFormat'] === null) {
-                continue;
-            }
-            $temporalLines[] = sprintf(
-                "        '%s' => '%s',",
-                str_replace("'", "\\'", $parameter['openApiName']),
-                $parameter['temporalFormat'],
-            );
-        }
-        if ($temporalLines !== []) {
-            $lines[] = '    /** OpenAPI name => the `format` its temporal value is written back as. */';
-            $lines[] = '    private const array OPENAPI_TEMPORAL_FORMATS = [';
-            foreach ($temporalLines as $temporalLine) {
-                $lines[] = $temporalLine;
-            }
-            $lines[] = '    ];';
-            $lines[] = '';
-        }
-
-        // The interpreter's own constants belong with these, not with the methods that read them
-        // 200 lines below: constants come before properties, as in every other mode's output.
-        if ($interpreter['entered']) {
-            $lines[] = rtrim($interpreter['consts'], "\n");
-            $lines[] = '';
-        }
-
-        foreach ($parameters as $index => $parameter) {
-            if ($parameter['docType'] !== null) {
-                $lines[] = '    /** @var ' . $parameter['docType'] . ' */';
-            }
-            foreach ($parameter['attributes'] as $attribute) {
-                $lines[] = '    ' . $attribute;
-            }
-            $lines[] = '    ' . $parameter['declaration'];
-            if ($index !== array_key_last($parameters)) {
-                $lines[] = '';
+            if ($parameter['temporalFormat'] !== null) {
+                $temporalParams[] = $parameter;
             }
         }
 
-        foreach ($parameters as $parameter) {
-            $name = $parameter['name'];
-            $lines[] = '';
-            if ($parameter['docType'] !== null) {
-                $lines[] = '    /** @return ' . $parameter['docType'] . ' */';
-            }
-            $lines[] = '    public function get' . ucfirst($name) . '(): ' . $parameter['propertyType'];
-            $lines[] = '    {';
-            $lines[] = $parameter['tracksPresence']
-                ? '        return $this->hasProperty(\'' . $parameter['openApiName'] . '\') ? $this->' . $name . ' : null;'
-                : '        return $this->' . $name . ';';
-            $lines[] = '    }';
-
-            if (!$parameter['tracksPresence']) {
-                continue;
-            }
-
-            $lines[] = '';
-            $lines[] = '    /** Whether the payload carried `' . $parameter['openApiName'] . '` at all. */';
-            $lines[] = '    public function is' . ucfirst($name) . 'Provided(): bool';
-            $lines[] = '    {';
-            $lines[] = '        return $this->hasProperty(\'' . $parameter['openApiName'] . '\');';
-            $lines[] = '    }';
-        }
-
-        foreach ($this->renderYii3DataSetMethods($parameters) as $line) {
-            $lines[] = $line;
-        }
-
-        if ($interpreter['entered']) {
-            $lines[] = '';
-            $lines[] = rtrim($interpreter['methods'], "\n");
-        }
-        if ($standalonePayload !== '') {
-            $lines[] = '';
-            $lines[] = rtrim($standalonePayload, "\n");
-        }
-        $lines[] = '}';
-
-        return GlobalFunctionImports::apply(implode("\n", $lines) . "\n");
+        return $this->renderPhpTemplate('dto.yii3.php.twig', [
+            'namespace' => $namespace,
+            'className' => $className,
+            'imports' => $this->yii3SortedImports($useStatements, $ruleImports, $sourceImports),
+            'classAttributes' => $classAttributes,
+            'libAbstractInput' => $this->yii3Lib('AbstractInput'),
+            'implements' => $implements,
+            'params' => $parameters,
+            'temporalParams' => $temporalParams,
+            'interpreterConstsBlock' => $interpreter['entered'] ? rtrim($interpreter['consts'], "\n") : '',
+            'interpreterMethodsBlock' => $interpreter['entered'] ? rtrim($interpreter['methods'], "\n") : '',
+            // The payload view is a BLOCK rather than markup in the template, because the interpreter
+            // repackaging splices the very same method into its own string — one source, two places it
+            // can land.
+            'standalonePayloadBlock' => rtrim($standalonePayload, "\n"),
+            'libObjectParser' => $this->yii3Lib('ObjectParser'),
+            'libReflectionProperty' => $this->yii3Lib('ReflectionProperty'),
+            'libBackedEnum' => $this->yii3Lib('BackedEnum'),
+            'libDateTimeInterface' => $this->yii3Lib('DateTimeInterface'),
+            // Only the class branch of the template; the interface branch is entered above.
+            'unionMembers' => null,
+            'discriminatorProperty' => null,
+        ]);
     }
 
     /**
@@ -428,8 +335,8 @@ trait RendersYii3Dto
      * @param array<int, string> $sourceImports
      * @param array<int, string> $useStatements
      * @return array{attributes: array<int, string>, declaration: string, docType: string|null,
-     *     tracksPresence: bool, propertyType: string, name: string, openApiName: string, writeOnly: bool,
-     *     temporalFormat: string|null}
+     *     tracksPresence: bool, propertyType: string, name: string, openApiName: string,
+     *     getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}
      */
     private function renderYii3Parameter(
         array $property,
@@ -465,7 +372,13 @@ trait RendersYii3Dto
         $type = $property['type'];
         $docType = null;
         if (str_contains($type, '<')) {
-            $docType = $this->formatDocblockTypeForNamespace($type, $namespace);
+            // The ITEMS of a temporal container stay strings in this mode — `#[ToDateTime]` cannot
+            // convert them (see the attribute emitter), so promising `DateTimeImmutable` here would
+            // be a docblock the object never honours.
+            $docType = $this->formatDocblockTypeForNamespace(
+                str_replace('DateTimeImmutable', 'string', $type),
+                $namespace,
+            );
             $type = 'array';
         } else {
             $type = $this->formatPhpTypeForNamespace($type, $namespace);
@@ -549,6 +462,8 @@ trait RendersYii3Dto
             'propertyType' => $propertyType,
             'name' => $property['name'],
             'openApiName' => $property['openApiName'],
+            'getter' => 'get' . ucfirst($property['name']),
+            'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
             'writeOnly' => ($property['writeOnly'] ?? false) === true || ($property['readOnly'] ?? false) === true,
             'temporalFormat' => $this->yii3TemporalFormat($property, $propertyType),
         ];
@@ -711,7 +626,14 @@ trait RendersYii3Dto
         // A `DateTimeImmutable` property needs a HYDRATOR attribute as well as a rule: without it the
         // string never becomes a date, the parameter falls back to its default and a value the client
         // DID send reads back as "not provided". Measured on the demo spec.
-        if (str_contains($property['type'], 'DateTimeImmutable')) {
+        // A CONTAINER of temporal values gets none: `ToDateTimeResolver::getParameterValue()` accepts
+        // a `DateTimeInterface`, an int or a non-empty string and returns `Result::fail()` for
+        // anything else, so on an `array` property every one of these attributes fails and the items
+        // stay strings. Four attributes that cannot fire read like conversion that happens; they also
+        // drag in the `ToDateTime` import, and with it ext-intl, for a schema that needs neither. The
+        // items' `format` is still enforced — the emitted interpreter carries `items`/
+        // `additionalProperties` and checks it there.
+        if (str_contains($property['type'], 'DateTimeImmutable') && !str_contains($property['type'], '<')) {
             $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\ToDateTime';
             // A `php:` format keeps this off ext-intl: a bare `#[ToDateTime]` goes through
             // `IntlDateFormatter`, and measured with the extension present it parses NONE of the
@@ -901,31 +823,18 @@ trait RendersYii3Dto
         ?array $discriminator,
     ): string {
         $members = $unionTypes !== [] ? $unionTypes : array_values($discriminator['mapping'] ?? []);
-        $shortMembers = array_map(
-            fn(string $member): string => $this->shortClassName($member),
-            $members,
-        );
 
-        $lines = ['<?php', '', 'declare(strict_types=1);', '', 'namespace ' . $namespace . ';', ''];
-        $lines[] = '/**';
-        $lines[] = ' * NOTE: This DTO is auto-generated from an OpenAPI schema.';
-        $lines[] = ' * Do not edit this file manually.';
-        if ($shortMembers !== []) {
-            $lines[] = ' *';
-            $lines[] = ' * Members: ' . implode('|', $shortMembers);
-        }
-        if ($discriminator !== null) {
-            $lines[] = ' *';
-            $lines[] = ' * Discriminated by `' . $discriminator['propertyName']
-                . '`; the branch is chosen by the emitted interpreter, not by an attribute — Yii3 has';
-            $lines[] = ' * no discriminator mapping of its own.';
-        }
-        $lines[] = ' */';
-        $lines[] = 'interface ' . $className;
-        $lines[] = '{';
-        $lines[] = '}';
-
-        return GlobalFunctionImports::apply(implode("\n", $lines) . "\n");
+        return $this->renderPhpTemplate('dto.yii3.php.twig', [
+            'namespace' => $namespace,
+            'className' => $className,
+            // A non-null `unionMembers` is what selects the interface branch of the template — the
+            // same switch `dto.symfony.php.twig` uses, so the two modes read alike.
+            'unionMembers' => array_map(
+                fn(string $member): string => $this->shortClassName($member),
+                $members,
+            ),
+            'discriminatorProperty' => $discriminator === null ? null : $discriminator['propertyName'],
+        ]);
     }
 
     /**
@@ -946,7 +855,7 @@ trait RendersYii3Dto
      * @param array<string, mixed> $constraints
      * @param array<string, string> $phpToOpenApiNameMap
      * @param array{enum: bool, temporal: bool} $valueKinds
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, writeOnly: bool, temporalFormat: string|null}> $parameters
+     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
      * @return array{consts: string, methods: string, imports: array<int, string>, entered: bool}
      */
     private function renderYii3InterpreterBlock(
@@ -991,7 +900,7 @@ trait RendersYii3Dto
      * pay (which is why `EmitsOpenApiInterpreter` was folded away), and with three the entry point is
      * still the ONLY difference — the interpreter body below it is identical, character for character.
      *
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, writeOnly: bool, temporalFormat: string|null}> $parameters
+     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
      */
     private function yii3RepackageInterpreterEntry(string $methods, array $parameters): string
     {
@@ -1081,8 +990,8 @@ PHP;
         $imports = array_values(array_filter(
             $imports,
             fn(string $import): bool => !$this->namespaceDeclaresClass(
-                $this->shortClassName($import),
-                $this->yii3RenderNamespace,
+                shortName: $this->shortClassName($import),
+                namespace: $this->yii3RenderNamespace,
             ),
         ));
         sort($imports);
@@ -1103,137 +1012,13 @@ PHP;
     }
 
     /**
-     * The three methods that make the class a first-class Yii3 data set, plus the rules re-export.
-     *
-     * Presence is `ReflectionProperty::isInitialized()` — the language's own answer. No sentinel, no
-     * flag array, nothing a Yii3 developer has not seen before.
-     *
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, writeOnly: bool, temporalFormat: string|null}> $parameters
-     * @return array<int, string>
-     */
-    private function renderYii3DataSetMethods(array $parameters): array
-    {
-        // Only a class that HAS a temporal property carries the format map, so only that shape may
-        // read it — the other one would name a constant the class does not declare.
-        $hasTemporal = false;
-        foreach ($parameters as $parameter) {
-            if ($parameter['temporalFormat'] !== null) {
-                $hasTemporal = true;
-                break;
-            }
-        }
-
-        return [
-            '',
-            '    /**',
-            '     * Rules come from the attributes above; this only re-exposes them. A class that provides a',
-            '     * data set has its own attribute parsing skipped by the validator, so without this method',
-            '     * NOTHING would be validated — not even a missing required property.',
-            '     */',
-            '    public function getRules(): iterable',
-            '    {',
-            '        return (new ' . $this->yii3Lib('ObjectParser') . '($this))->getRules();',
-            '    }',
-            '',
-            '    /**',
-            '     * Whether the payload carried this property at all.',
-            '     *',
-            '     * An unhydrated typed property is UNINITIALISED, which is the language\'s own record of',
-            '     * what the payload did not contain. A property sent as null IS initialised, so the two',
-            '     * are distinguishable without any sentinel value.',
-            '     */',
-            '    public function hasProperty(string $property): bool',
-            '    {',
-            '        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;',
-            '',
-            '        return property_exists($this, $name)',
-            '            && (new ' . $this->yii3Lib('ReflectionProperty') . '($this, $name))->isInitialized($this);',
-            '    }',
-            '',
-            '    public function getPropertyValue(string $property): mixed',
-            '    {',
-            '        return $this->hasProperty($property)',
-            '            ? $this->{self::OPENAPI_PROPERTY_NAMES[$property] ?? $property}',
-            '            : null;',
-            '    }',
-            '',
-            '    /**',
-            '     * What the object holds, under the names the schema uses, in WIRE form.',
-            '     *',
-            '     * Yii3 ships no response normalizer, so this doubles as the array form: a backed enum',
-            '     * becomes its value and a date its ISO-8601 string, which is what every other mode',
-            '     * produces. The interpreter reads `toOpenApiValidationPayload()` instead and sees the',
-            '     * values as held.',
-            '     *',
-            '     * @return array<string, mixed>',
-            '     */',
-            '    public function getData(): ?array',
-            '    {',
-            '        $payload = $this->toOpenApiValidationPayload();',
-            '        foreach (self::OPENAPI_WRITE_ONLY as $writeOnly) {',
-            '            unset($payload[$writeOnly]);',
-            '        }',
-            '',
-            ...$hasTemporal
-                ? [
-                    '        $wire = [];',
-                    '        foreach ($payload as $name => $value) {',
-                    '            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);',
-                    '        }',
-                    '',
-                    '        return $wire;',
-                ]
-                : ['        return array_map(self::openApiWireValue(...), $payload);'],
-            '    }',
-            '',
-            '    /**',
-            '     * One value in wire form. Recurses, because a nested DTO and a list of them are values',
-            '     * too — without it `getData()` handed back objects where every other mode gives arrays.',
-            '     */',
-            '    private static function openApiWireValue(mixed $value, ?string $temporalFormat = null): mixed',
-            '    {',
-            '        if ($value instanceof ' . $this->yii3Lib('BackedEnum') . ') {',
-            '            return $value->value;',
-            '        }',
-            '        if ($value instanceof ' . $this->yii3Lib('DateTimeInterface') . ') {',
-            '            // The schema decides the shape: `format: date` is a DATE, and writing a whole',
-            '            // timestamp for it diverged from every other mode. Sub-second precision is kept',
-            '            // only when the value carries it, so a plain timestamp is not widened with a',
-            '            // `.000000` the client never sent.',
-            '            if ($temporalFormat === \'date\') {',
-            '                return $value->format(\'Y-m-d\');',
-            '            }',
-            '            if ($temporalFormat === \'time\') {',
-            '                return $value->format(\'H:i:sP\');',
-            '            }',
-            '',
-            '            return $value->format(\'u\') === \'000000\'',
-            '                ? $value->format(\'c\')',
-            '                : $value->format(\'Y-m-d\TH:i:s.uP\');',
-            '        }',
-            '        if (is_object($value) && method_exists($value, \'getData\')) {',
-            '            return $value->getData();',
-            '        }',
-            '        if (is_array($value)) {',
-            '            return array_map(',
-            '                static fn(mixed $item): mixed => self::openApiWireValue($item, $temporalFormat),',
-            '                $value,',
-            '            );',
-            '        }',
-            '',
-            '        return $value;',
-            '    }',
-        ];
-    }
-
-    /**
      * The payload view: what the object received, under the names the schema uses.
      *
      * An enclosing DTO's callback reads a nested one through here, and `getData()` returns it as the
      * data set. An absent optional is left OUT — `hasProperty()` decides, so the interpreter never
      * sees a property the payload did not carry.
      *
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, writeOnly: bool, temporalFormat: string|null}> $parameters
+     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
      */
     private function renderYii3StandalonePayloadMethod(array $parameters): string
     {

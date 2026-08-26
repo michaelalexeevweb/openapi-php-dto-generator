@@ -92,6 +92,7 @@ public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
 | `format: email` / `uuid` / `url` / `ipv4`,`ipv6` / `hostname` | `#[Assert\Email]` / `Uuid` / `Url` / `Ip` / `Hostname` |
 | `format: int32` / `uint32` | `#[Assert\Range]` (bounds) |
 | `format: date` / `date-time` | `DateTimeImmutable` property; the getter returns the formatted string and `getXAsDateTime()` the object (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
+| `items` / `additionalProperties` with `format: date` / `date-time` | `array<DateTimeImmutable>`; same pair of getters, per item (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `format: binary` | `UploadedFile` type |
 | `items` (scalar) / `additionalProperties` | `#[Assert\All([...])]` |
 | `anyOf` | `#[Assert\AtLeastOneOf([...])]` |
@@ -276,6 +277,22 @@ $dto->getAtAsDateTime();   // the DateTimeImmutable, #[Ignore]d so it stays out 
 
 The property itself is still a `DateTimeImmutable`, so denormalization, `#[Assert\*]` and the
 `#[Assert\Valid]` cascade are unchanged — only the read side differs.
+
+A CONTAINER of dates gets the same pair. `items: {type: string, format: date}` types the ITEM as
+`DateTimeImmutable` — `ArrayDenormalizer` casts each one — and without a formatting getter every
+element left as an RFC 3339 date-time, contradicting the `format: date` it came from:
+
+```php
+/** @return array<string> */          $dto->getDates();              // ["2026-03-10", "2026-03-11"]
+/** @return array<DateTimeImmutable> */ $dto->getDatesAsDateTime();  // the objects
+
+// A map keeps its keys through both:
+$dto->getDatesByDay();               // ["mon" => "2026-03-09"]
+$dto->getDatesByDayAsDateTime();     // ["mon" => DateTimeImmutable]
+```
+
+Where the items are really dates and where they are strings differs by mode — see
+[Temporal container items](README.support-matrix.md#temporal-container-items) in the support matrix.
 
 ### An empty map serializes as `[]`
 

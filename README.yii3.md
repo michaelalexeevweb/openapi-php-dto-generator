@@ -114,6 +114,26 @@ pecl install intl
 
 If you cannot install it, a spec with no `format: date`/`date-time` property is unaffected.
 
+### A container of dates holds strings, and says so
+
+`#[ToDateTime]` is emitted on a temporal SCALAR only. Its resolver takes a `DateTimeInterface`, an int
+or a non-empty string and fails on an array, so on a container the attribute converted nothing — four of
+them sat on `array<DateTimeImmutable>` properties that held plain strings. They are gone, and the
+docblock reads `array<string>`, which is what the property holds:
+
+```php
+/** @var array<string> */
+public readonly array $dates;        // ["2026-03-10", "2026-03-11"]
+```
+
+`getData()` still writes the schema's own string form either way, so the wire is identical to every
+other mode. Converting would mean emitting a `ParameterAttributeResolverInterface` of ours plus a
+hydrator registration into code whose whole point is to depend only on yiisoft — see
+[Temporal container items](README.support-matrix.md#temporal-container-items).
+
+A schema whose ONLY temporal values are container items needs no `ext-intl` at all now, for the same
+reason: no `#[ToDateTime]` is emitted for it.
+
 ## What the generated class looks like
 
 ```php

@@ -3509,9 +3509,12 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($this->outputDirectory . '/WriteOnlyModel.php');
         // toArray() and jsonSerialize() each build the serialized array independently
         // (bodies are duplicated, not delegated); neither must include the writeOnly field.
+        // `return $result` without the semicolon: jsonSerialize() ends with a conditional
+        // (`$result === [] ? (object)$result : $result`) because an object with nothing to write is
+        // `{}`, so the old boundary ran past the method and swept in the next one.
         foreach (['function toArray', 'function jsonSerialize'] as $marker) {
             $bodyStart = strpos($content, $marker);
-            $bodyEnd = strpos($content, 'return $result;', (int)$bodyStart);
+            $bodyEnd = strpos($content, 'return $result', (int)$bodyStart);
             $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
             $this->assertStringNotContainsString("'password'", $body);
             $this->assertStringContainsString("'name'", $body);
@@ -3622,23 +3625,26 @@ final class GenerateDtoCommandTest extends TestCase
         // No-property DTO: collection methods must return the literal directly (no
         // "$x = []; return $x;" that trips the return_assignment rule, and no multi-line
         // empty array that trips no_whitespace_in_empty_array).
+        // `jsonSerialize()` is the WIRE form and the DTO is a `type: object`, so with nothing to
+        // write it returns `(object)[]` — `[]` would encode as a JSON array and contradict the
+        // schema. Everything else here is a PHP array by contract and returns `[]`.
         foreach (
             [
-                'function toArray',
-                'function jsonSerialize',
-                'function getNormalizationMap',
-                'function getAliases',
-                'function getConstraints',
-                'function getParameterSources',
-                'function getParameterStyles',
-            ] as $marker
+                'function toArray' => 'return [];',
+                'function jsonSerialize' => 'return (object)[];',
+                'function getNormalizationMap' => 'return [];',
+                'function getAliases' => 'return [];',
+                'function getConstraints' => 'return [];',
+                'function getParameterSources' => 'return [];',
+                'function getParameterStyles' => 'return [];',
+            ] as $marker => $expectedReturn
         ) {
             $start = strpos($content, $marker);
             $this->assertNotFalse($start, "method not found: {$marker}");
             $bodyStart = strpos($content, '{', (int)$start);
             $bodyEnd = strpos($content, '}', (int)$bodyStart);
             $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
-            $this->assertStringContainsString('return [];', $body, "method must return [] directly: {$marker}");
+            $this->assertStringContainsString($expectedReturn, $body, "method must return directly: {$marker}");
             $this->assertStringNotContainsString(' = [];', $body, "method must not assign temp array: {$marker}");
         }
     }
