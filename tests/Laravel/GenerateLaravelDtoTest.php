@@ -495,7 +495,7 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertSame([], $verdict('{"flags":{"a":1}}'));
         // A JSON object whose keys are 0..n-1 is still an object — the check must not overreach.
         $this->assertSame([], $verdict('{"flags":{"0":1,"1":2}}'));
-        $this->assertSame(['flags expects object, got array'], $verdict('{"flags":[1,2]}'));
+        $this->assertSame(['flags expects object, got array.'], $verdict('{"flags":[1,2]}'));
     }
 
     private function generateEndpointSpec(string $namespace): string

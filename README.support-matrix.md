@@ -114,7 +114,7 @@ not — not "accepted" versus "refused". `42.0` for `type: integer` is a conform
 
 | Behaviour | runtime | symfony | laravel | laravel-data | yii3 | Why |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `42.0` for `type: integer` (JSON Schema 2020-12 §6.1.1) | ✅ accepted | ❌ 422 | ✅ accepted | ✅ accepted | ✅ accepted | A number with a ZERO fractional part IS an integer, so accepting it is the conformant answer. Symfony's serializer type-checks the `int` property before any generated constraint runs, so it refuses the one value the spec calls an integer — a gap it cannot close from generated code — `ValidationParityTest::testAnIntegralFloatIsAnIntegerWhereverTheGeneratorOwnsTheCheck` |
+| `42.0` for `type: integer` (JSON Schema 2020-12 §6.1.1) | ✅ accepted | ❌ 422 | ✅ accepted | ✅ accepted | ✅ accepted | A number with a ZERO fractional part IS an integer, so accepting it is the conformant answer. Symfony's serializer type-checks the `int` property before any generated constraint runs, so it refuses the one value the spec calls an integer — a gap it cannot close from generated code — `ValidationParityTest::testAnIntegralFloatIsAnIntegerWhereverTheGeneratorOwnsTheCheck`. It is the PROPERTY that is refused: inside a container the value goes to the callback, which reads the spec's answer, so a list AND a map of `type: integer` both accept `42.0` |
 | `42.5` for `type: integer` | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ❌ accepted as `42` | The mirror of the row above, and the reason it is two rows: `yiisoft/hydrator` casts to the DECLARED type before the validator sees the object, so a fractional number arrives as an `int` and clears every rule. Symfony refuses it for the same reason it refuses `42.0` — the serializer, not the document — which happens to be right here. Same test |
 | a loose `format: date-time` string (`"yesterday"`) | ✅ refused | ❌ accepted | ✅ refused | ✅ refused | ✅ refused | The property is a `DateTimeImmutable`, so the serializer parses the string first, and PHP's parser is generous. Runtime and laravel accept only the four patterns every mode agrees on (`GeneratedDtoInterface::DATE_TIME_FORMATS`) — `testALooseDateTimeStringIsRefusedWhereverTheGeneratorOwnsTheCheck` |
 | a JSON array for a `type: object` property | ✅ refused | ❌ accepted | ✅ refused | ✅ refused¹ | ❌ accepted | The distinction lives in the RAW body: once decoded, `{"0":1,"1":2}` and `[1,2]` are the same PHP value. Runtime decodes the body itself, the generated Laravel FormRequest hands `withValidator()` the undecoded body; `#[MapRequestPayload]` denormalizes first, and the yii3 hydrator likewise builds the object before the validator runs — `testAJsonArrayIsRefusedForATypeObjectPropertyWhereverTheRawBodyIsReachable` |
@@ -171,6 +171,7 @@ value. All five modes declare that rather than promising otherwise:
 | `format: date` / `binary`, or an `enum` | `array<array<string>>` |
 | `type: number` | `array<array<float\|int>>` |
 | a `$ref` to a scalar or enum component | that component's backing type |
+| a `$ref` to a CONTAINER component | the container it aliases — `array<array<string>>` |
 | a `$ref` to an OBJECT component | `array<array<mixed>>` |
 
 Every row is the value that is really there, measured rather than reasoned. A date and an enum member
@@ -193,9 +194,9 @@ an object at all:
 array<array<Tag>>, Tag = {required: [id], properties: {id: {type: integer, minimum: 5}}}
 
 [[{"id": 9}]]     accepted
-[[{"id": 1}]]     tagRows.0.0.id must be greater than or equal to 5
-[[{}]]            tagRows.0.0.id is required
-[["zzz"]]         tagRows.0.0 must be of type object
+[[{"id": 1}]]     tagRows.0.0.id must be greater than or equal to 5.
+[[{}]]            tagRows.0.0.id is required.
+[["zzz"]]         tagRows.0.0 must be of type object.
 ```
 
 What is still NOT done at that depth is HYDRATION: the value stays the `stdClass` `json_decode()`

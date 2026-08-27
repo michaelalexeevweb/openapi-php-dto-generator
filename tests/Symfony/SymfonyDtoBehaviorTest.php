@@ -648,7 +648,11 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Counters.php');
         $this->assertStringContainsString('#[Assert\Count(min: 1)]', $content);
-        $this->assertStringContainsString("#[Assert\\All([new Assert\\Type('int'), new Assert\\Range(min: 0)])]", $content);
+        // No `Assert\Type` for a SCALAR map value, and that is the point: it would refuse `42.0`,
+        // which JSON Schema calls an integer. `type` is left to the callback, exactly as the LIST
+        // spelling of the same schema has always left it.
+        $this->assertStringContainsString('#[Assert\All([new Assert\Range(min: 0)])]', $content);
+        $this->assertStringNotContainsString("new Assert\\Type('int')", $content);
 
         require_once $this->outputDirectory . '/Counters.php';
         $cls = $ns . '\Counters';
@@ -659,8 +663,14 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertGreaterThan(0, count($validator->validate(new $cls(counts: []))));
         // additionalProperties value constraint: negative value fails Range inside All.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(counts: ['a' => -1]))));
-        // additionalProperties value type: a string value fails Type inside All.
+        // additionalProperties value type: a string value is still refused — by the callback now,
+        // which is also what lets an integral float through where `Assert\Type` would not.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(counts: ['a' => 'x']))));
+        $this->assertCount(
+            0,
+            $validator->validate(new $cls(counts: ['a' => 42.0])),
+            'a zero-fraction float IS an integer (JSON Schema 2020-12 §6.1.1)',
+        );
     }
 
     public function testAnyOfMapsToAtLeastOneOf(): void

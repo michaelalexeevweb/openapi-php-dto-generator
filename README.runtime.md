@@ -100,7 +100,7 @@ foreach ($elements as $index => $element) {
         // nested DTOs, discriminator resolution. $index names the element in the message.
         $accepted[] = $deserializer->deserializeValue($element, Item::class, (string)$index);
     } catch (RuntimeException $e) {
-        $errors[$index] = $e->getMessage();   // param "3.id" expects int, got string
+        $errors[$index] = $e->getMessage();   // param "3.id" expects int, got string.
     }
 }
 ```
@@ -236,6 +236,7 @@ rather than promising otherwise:
 | map of arrays / map of maps | `array<string, array<string>>` / `array<string, array<string, int>>` |
 | `format: date` / `binary`, or an `enum` | `array<array<string>>` |
 | `type: number` | `array<array<float\|int>>` |
+| a `$ref` to a CONTAINER component | the container it aliases — `array<array<string>>` |
 | a `$ref` to an OBJECT | `array<array<mixed>>` |
 
 Each row is what the property really holds. A date and an enum member are the plain string the payload

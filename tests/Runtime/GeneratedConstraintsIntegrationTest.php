@@ -1346,7 +1346,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // Skipping unprovided fields must NOT disable validation of provided ones:
         // a provided value violating a schema constraint must still be reported.
         $invalid = $normalizer->validate(new $cls(5, note: 'hi'));
-        $this->assertContains('field "note" length must be at least 3 characters', $invalid);
+        $this->assertContains('field "note" length must be at least 3 characters.', $invalid);
     }
 
     public function testEnumWithBoolOrNullMembersFallsBackToInlineConstraints(): void
@@ -1392,8 +1392,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $invalid = new $cls(boolOnly: false, mixed: 'zzz', nullableText: 'c');
         $errors = $normalizer->validate($invalid);
-        $this->assertContains('field "mixed" must be one of: 1, "a", true', $errors);
-        $this->assertContains('field "nullableText" must be one of: "a", "b", null', $errors);
+        $this->assertContains('field "mixed" must be one of: 1, "a", true.', $errors);
+        $this->assertContains('field "nullableText" must be one of: "a", "b", null.', $errors);
     }
 
     public function testAllNewlyAllowedConstraintKeysSurviveIntoGetConstraints(): void
@@ -1438,10 +1438,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $normalizer = new DtoNormalizer();
 
         $valid = $normalizer->validate(new $cls('locked', ['a' => 1]));
-        $this->assertNotContains('field "constField" must equal "locked"', $valid);
+        $this->assertNotContains('field "constField" must equal "locked".', $valid);
 
         $invalid = $normalizer->validate(new $cls('WRONG', ['a' => 1]));
-        $this->assertContains('field "constField" must equal "locked"', $invalid);
+        $this->assertContains('field "constField" must equal "locked".', $invalid);
     }
 
     public function testNotConstraintIsEnforcedThroughGeneratedDto(): void
@@ -1450,10 +1450,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $normalizer = new DtoNormalizer();
 
         $valid = $normalizer->validate(new $cls('locked', ['a' => 1], notField: 'allowed'));
-        $this->assertNotContains("field \"notField\" must not match the 'not' schema", $valid);
+        $this->assertNotContains("field \"notField\" must not match the 'not' schema.", $valid);
 
         $invalid = $normalizer->validate(new $cls('locked', ['a' => 1], notField: 'forbidden'));
-        $this->assertContains("field \"notField\" must not match the 'not' schema", $invalid);
+        $this->assertContains("field \"notField\" must not match the 'not' schema.", $invalid);
     }
 
     public function testMapObjectConstraintsAreEnforcedThroughGeneratedDto(): void
@@ -1463,14 +1463,14 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // minProperties: 1 — an empty map must fail.
         $tooFew = $normalizer->validate(new $cls('locked', []));
-        $this->assertContains('field "mapField" must have at least 1 property', $tooFew);
+        $this->assertContains('field "mapField" must have at least 1 property.', $tooFew);
 
         // additionalProperties: { type: integer } — a string value must fail.
         $wrongItemType = $normalizer->validate(new $cls('locked', ['a' => 'not-an-int']));
-        $this->assertContains('field "mapField".a must be of type integer', $wrongItemType);
+        $this->assertContains('field "mapField".a must be of type integer.', $wrongItemType);
 
         $ok = $normalizer->validate(new $cls('locked', ['a' => 1, 'b' => 2]));
-        $this->assertNotContains('field "mapField" must have at least 1 property', $ok);
+        $this->assertNotContains('field "mapField" must have at least 1 property.', $ok);
     }
 
     public function testPrefixItemsConstraintIsEnforcedThroughGeneratedDto(): void
@@ -1480,10 +1480,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // prefixItems: [string, integer] — index 0 must be a string.
         $invalid = $normalizer->validate(new $cls('locked', ['a' => 1], tupleField: [123, 7]));
-        $this->assertContains('field "tupleField".0 must be of type string', $invalid);
+        $this->assertContains('field "tupleField".0 must be of type string.', $invalid);
 
         $valid = $normalizer->validate(new $cls('locked', ['a' => 1], tupleField: ['ok', 7]));
-        $this->assertNotContains('field "tupleField".0 must be of type string', $valid);
+        $this->assertNotContains('field "tupleField".0 must be of type string.', $valid);
     }
 
     public function testUnevaluatedItemsIsEnforcedThroughGeneratedDto(): void
@@ -1580,7 +1580,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $validator = new DtoValidator();
         $this->assertSame([], $validator->validate('config', ['a' => 'x', 'b' => 1], $constraints['config']));
         $this->assertContains(
-            'config has unevaluated property "extra" which is not allowed',
+            'config has unevaluated property "extra" which is not allowed.',
             $validator->validate('config', ['a' => 'x', 'b' => 1, 'extra' => 9], $constraints['config']),
         );
     }
@@ -2012,7 +2012,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $deserializer->deserializeCollection($this->jsonPostRequest('[1,"x",3]'), 'int');
             $this->fail('Expected a type error for the non-int element.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('Element 1', $e->getMessage());
             $this->assertStringContainsString('expects int', $e->getMessage());
         }
     }
@@ -2058,7 +2058,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $deserializer->deserializeCollection($this->jsonPostRequest('["early","WRONG"]'), $enumClass);
             $this->fail('Expected an enum error for the unknown value.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('Element 1', $e->getMessage());
             $this->assertStringContainsString('Allowed: early, late', $e->getMessage());
         }
     }
@@ -2157,7 +2157,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $deserializer->deserializeCollection($this->jsonPostRequest('[{"id":1},{}]'), $itemClass);
             $this->fail('Expected a validation error for the invalid element.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('Element 1', $e->getMessage());
         }
 
         // An object root (not an array) is rejected by the collection path.
@@ -2276,7 +2276,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $deserializer->deserializeCollection($this->jsonPostRequest('[1,null,3]'), 'int');
             $this->fail('Expected a null element to be refused without $itemsNullable.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('element 1', $e->getMessage());
+            $this->assertStringContainsString('Element 1', $e->getMessage());
         }
 
         $this->assertSame(
@@ -2593,8 +2593,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             );
             $this->fail('Expected the collection path to fail on the invalid elements.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('element 1', $e->getMessage());
-            $this->assertStringContainsString('element 3', $e->getMessage());
+            $this->assertStringContainsString('Element 1', $e->getMessage());
+            $this->assertStringContainsString('Element 3', $e->getMessage());
         }
     }
 
@@ -3201,6 +3201,151 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 /** @var class-string $fqcn */
                 $fqcn = 'DeepPathNs\A';
                 (new DtoDeserializer())->deserialize($request, $fqcn);
+                $this->fail(sprintf('%s was accepted', $json));
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString($expected, $exception->getMessage(), $json);
+            }
+        }
+    }
+
+    /**
+     * A component whose top level is a CONTAINER is a type ALIAS, and that reading has to hold
+     * wherever the `$ref` appears — not only on a property.
+     *
+     * Under `items` it did not, and the two shapes failed differently and badly. A `$ref` to a
+     * `type: array` component was named as a class that is never written, so a VALID payload died
+     * with `unknown type "…\StringList"` — the endpoint could not be called at all. A `$ref` to a
+     * map component was named as a class that IS written, empty, so `{"f":[{"a":7}]}` came back as
+     * `{"f":[{}]}` with the keys gone and nothing reported.
+     */
+    public function testAContainerComponentIsAnAliasWhereverItIsReferenced(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'StringList' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]],
+                'CountMap' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer', 'minimum' => 0]],
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['listOfLists', 'listOfMaps', 'mapOfLists'],
+                    'properties' => [
+                        'listOfLists' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/StringList']],
+                        'listOfMaps' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/CountMap']],
+                        'mapOfLists' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['$ref' => '#/components/schemas/StringList'],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'ContainerAliasNs', 'Holder');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Holder.php');
+        $this->assertStringContainsString('@param array<array<string>> $listOfLists', $source);
+        $this->assertStringContainsString('@param array<array<string, mixed>> $listOfMaps', $source);
+        $this->assertStringContainsString('@param array<string, array<string>> $mapOfLists', $source);
+        // The class that is never written must not be named anywhere, in a docblock or a type hint.
+        $this->assertStringNotContainsString('StringList', $source);
+
+        // A valid payload survives whole — this is the half that used to throw, and the half that
+        // used to come back with its keys missing.
+        $json = '{"listOfLists":[["ab","cd"]],"listOfMaps":[{"a":7}],"mapOfLists":{"k":["ef"]}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+        $this->assertSame(
+            $json,
+            (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            'the payload must round-trip: no dangling class, no empty one swallowing the keys',
+        );
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+    }
+
+    /**
+     * A `$ref` inside a `oneOf`/`anyOf` that sits UNDER a container.
+     *
+     * On a property an inline union becomes a PHP union type — `Circle|Square` — so the value is a
+     * generated DTO and `validateDtoRecursive()` walks into it. Under a container the property type
+     * collapses to `array`, the branch type is gone with it, and a `$ref` there materializes nothing.
+     * The branch also never reached the `$ref` inlining, so it stayed bare, extracted to `[]`, and —
+     * because one empty branch makes a union unenforceable — the WHOLE subschema was dropped:
+     * `['type' => 'object']`, and every value under it accepted in silence.
+     *
+     * Measured on the shape that produced it, a recursive report tree, where it cost a real endpoint
+     * its response validation for a year.
+     */
+    public function testAUnionBranchUnderAContainerCarriesItsConstraints(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Leaf' => [
+                    'type' => 'object',
+                    'required' => ['value'],
+                    'properties' => ['value' => ['type' => 'integer', 'minimum' => 0]],
+                ],
+                // Refers to itself THROUGH the union branch: inlining has to terminate.
+                'Node' => [
+                    'type' => 'object',
+                    'required' => ['title', 'children'],
+                    'properties' => [
+                        'title' => ['type' => 'string', 'minLength' => 1],
+                        'children' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['oneOf' => [
+                                ['$ref' => '#/components/schemas/Node'],
+                                [
+                                    'type' => 'object',
+                                    'additionalProperties' => ['$ref' => '#/components/schemas/Leaf'],
+                                ],
+                            ]],
+                        ],
+                    ],
+                ],
+                'Root' => [
+                    'type' => 'object',
+                    'required' => ['report'],
+                    'properties' => ['report' => ['$ref' => '#/components/schemas/Node']],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'UnionUnderContainerNs', 'Root');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Node.php');
+        // The branch schemas are there — and the recursive one stops after a single level, which is
+        // what keeps a self-referential component from inlining until memory runs out.
+        $this->assertStringContainsString("'required' => ['value']", $source);
+        $this->assertStringContainsString("'minLength' => 1", $source);
+        $this->assertStringContainsString(
+            "'properties' => ['title' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object']]",
+            $source,
+            'the recursive branch must be inlined exactly one level deep',
+        );
+
+        $valid = '{"report":{"title":"root","children":{"sub":{"title":"sub","children":{}},"leaves":{"s1":{"value":7}}}}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+        $this->assertSame([], (new DtoNormalizer())->validate($dto), 'a valid tree must stay valid');
+
+        // Four levels of recursion, still valid: the emitted constraints must not fire on depth alone.
+        $deep = '{"report":{"title":"a","children":{"b":{"title":"b","children":'
+            . '{"c":{"title":"c","children":{"d":{"title":"d","children":{}}}}}}}}}';
+        $deepDto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($deep), $fqcn);
+        $this->assertSame([], (new DtoNormalizer())->validate($deepDto));
+
+        // And what used to pass in silence.
+        $cases = [
+            '{"report":{"title":"root","children":{"leaves":{"s1":{"value":-1}}}}}'
+                => 'leaves.s1.value must be greater than or equal to 0',
+            '{"report":{"title":"root","children":{"leaves":{"s1":{}}}}}'
+                => 'leaves.s1.value is required',
+            '{"report":{"title":"root","children":{"sub":{"title":"","children":{}}}}}'
+                => 'sub.title length must be at least 1 characters',
+        ];
+
+        foreach ($cases as $json => $expected) {
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
                 $this->fail(sprintf('%s was accepted', $json));
             } catch (RuntimeException $exception) {
                 $this->assertStringContainsString($expected, $exception->getMessage(), $json);

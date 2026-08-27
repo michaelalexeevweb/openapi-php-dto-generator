@@ -81,7 +81,7 @@ final class ValidateAndCreateTest extends TestCase
             $fqcn::validateAndCreate(['m' => ['nope' => 1], 'n' => 9]);
         } catch (ValidationException $exception) {
             $this->assertSame(
-                ['m' => ['m key "nope" must match pattern ^x']],
+                ['m' => ['m key "nope" must match pattern ^x.']],
                 $exception->errors(),
             );
 
@@ -124,7 +124,7 @@ final class ValidateAndCreateTest extends TestCase
         );
 
         $this->assertSame(
-            ['m' => ['m expects object, got array']],
+            ['m' => ['m expects object, got array.']],
             $rejection,
             'through a request the same payload must be refused',
         );

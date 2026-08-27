@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use RuntimeException;
+
 /**
  * yii3-mode emitter: one `yiisoft/input-http` input class per schema, decorated with
  * `yiisoft/validator` attributes and hydrated by `yiisoft/hydrator`.
@@ -909,7 +911,7 @@ trait RendersYii3Dto
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation($error)->addViolation();
+            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
         }
     }
 PHP;
@@ -926,12 +928,24 @@ PHP;
     {
         \$result = new {$this->yii3Lib('Result')}();
         foreach (\$this->validateOpenApiNode(\$this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as \$error) {
-            \$result->addError(\$error);
+            \$result->addError(str_ends_with(\$error, '.') ? \$error : \$error . '.');
         }
 
         return \$result;
     }
 PHP;
+
+        // A string rewrite has one failure mode, and it is silent: edit the Symfony entry over there
+        // and the needle stops matching here, so the Yii3 class keeps Symfony's `#[Assert\Callback]`
+        // and its `ExecutionContextInterface` — a file that does not even load. That happened, and the
+        // parity suite caught it two steps later. Say so at the source instead.
+        if (!str_contains($methods, $symfonyEntry)) {
+            throw new RuntimeException(
+                'The Symfony interpreter entry this mode swaps out has changed shape. Update the '
+                . '`$symfonyEntry` heredoc in ' . __METHOD__ . ' to match '
+                . 'RendersSymfonyDto::renderSymfonyValidationBlock() again.',
+            );
+        }
 
         $methods = str_replace($symfonyEntry, $yii3Entry, $methods);
 

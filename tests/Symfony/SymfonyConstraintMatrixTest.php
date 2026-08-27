@@ -685,7 +685,7 @@ final class SymfonyConstraintMatrixTest extends TestCase
 
         $violations = $validator->validate(new $fqcn(v: 5));
         $this->assertCount(1, $violations);
-        $this->assertSame('field "v" must be greater than or equal to 10', $violations->get(0)->getMessage());
+        $this->assertSame('field "v" must be greater than or equal to 10.', $violations->get(0)->getMessage());
     }
 
     public function testAnyOfBranchThatIsPureNullDropsTheConstraint(): void

@@ -145,7 +145,7 @@ final class InterpreterMessageParityTest extends TestCase
                     'contains' => ['type' => 'integer', 'minimum' => 5],
                 ],
                 '{"f":[1,2]}',
-                "must contain at least 1 item(s) matching the 'contains' schema",
+                "must contain at least 1 item(s) matching the 'contains' schema.",
             ],
             'minContains' => [
                 [
@@ -155,7 +155,7 @@ final class InterpreterMessageParityTest extends TestCase
                     'minContains' => 2,
                 ],
                 '{"f":[5,1]}',
-                "must contain at least 2 item(s) matching the 'contains' schema",
+                "must contain at least 2 item(s) matching the 'contains' schema.",
             ],
             'maxContains' => [
                 [
@@ -165,12 +165,12 @@ final class InterpreterMessageParityTest extends TestCase
                     'maxContains' => 1,
                 ],
                 '{"f":[5,6]}',
-                "must contain at most 1 item(s) matching the 'contains' schema",
+                "must contain at most 1 item(s) matching the 'contains' schema.",
             ],
             'not' => [
                 ['not' => ['type' => 'string', 'pattern' => '^a']],
                 '{"f":"ab"}',
-                "must not match the 'not' schema",
+                "must not match the 'not' schema.",
             ],
             'uniqueItems over objects' => [
                 [
@@ -179,7 +179,7 @@ final class InterpreterMessageParityTest extends TestCase
                     'uniqueItems' => true,
                 ],
                 '{"f":[{"a":1},{"a":1}]}',
-                'must contain unique items',
+                'must contain unique items.',
             ],
             'propertyNames' => [
                 [
@@ -188,7 +188,7 @@ final class InterpreterMessageParityTest extends TestCase
                     'propertyNames' => ['pattern' => '^x'],
                 ],
                 '{"f":{"y":1}}',
-                'key "y" must match pattern ^x',
+                'key "y" must match pattern ^x.',
             ],
         ];
 
@@ -243,8 +243,8 @@ final class InterpreterMessageParityTest extends TestCase
 
             $matching = array_filter(
                 $messages,
-                static fn(string $message): bool => str_ends_with($message, 'b is required when a is present')
-                    || str_ends_with($message, '"b" is required when a is present'),
+                static fn(string $message): bool => str_ends_with($message, 'b is required when a is present.')
+                    || str_ends_with($message, '"b" is required when a is present.'),
             );
             $this->assertNotSame(
                 [],
@@ -286,7 +286,7 @@ final class InterpreterMessageParityTest extends TestCase
         // first, and a bool is refused by the property type before any constraint runs.
         $laravel = $this->messages(GenerationMode::Laravel, $spec, 'union mismatch', '{"f":true}');
         $this->assertContains(
-            'f does not match any oneOf branch (expected object or integer, got boolean)',
+            'f does not match any oneOf branch (expected object or integer, got boolean).',
             $laravel,
         );
 

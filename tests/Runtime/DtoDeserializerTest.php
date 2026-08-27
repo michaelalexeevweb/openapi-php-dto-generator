@@ -518,7 +518,7 @@ final class DtoDeserializerTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage(
-            "param \"tags.1.id\" expects int, got string\nparam \"tags.2.name\" expects string, got int",
+            "param \"tags.1.id\" expects int, got string.\nparam \"tags.2.name\" expects string, got int.",
         );
 
         $this->deserializer->deserialize($request, NestedArrayDto::class);
@@ -712,7 +712,7 @@ final class DtoDeserializerTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage(
-            "param \"amount\" must be greater than 1\nparam \"amount\" must be a multiple of 2.5\nparam \"email\" must match format email\nparam \"code\" length must be at least 3 characters\nparam \"code\" must match pattern ^\\d{3}-\\d{2}-\\d{4}$\nparam \"tags\" must contain unique items",
+            "param \"amount\" must be greater than 1.\nparam \"amount\" must be a multiple of 2.5.\nparam \"email\" must match format email.\nparam \"code\" length must be at least 3 characters.\nparam \"code\" must match pattern ^\\d{3}-\\d{2}-\\d{4}$.\nparam \"tags\" must contain unique items.",
         );
 
         $this->deserializer->deserialize($request, ConstraintsDto::class);

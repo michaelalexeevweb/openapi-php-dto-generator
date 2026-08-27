@@ -292,6 +292,12 @@ final class GenerateDtoCommand extends Command
     public array $rawSchemasByClass = [];
 
     public ?string $rootSpecFile = null;
+
+    /**
+     * How many `extractValidationConstraints()` frames are on the stack — see the note there. Zero
+     * means the next call is the outermost one and owns the `$ref` inlining.
+     */
+    private int $constraintExtractionDepth = 0;
     public string $baseOutputDirectory = '';
     public string $baseNamespace = '';
 
@@ -2234,13 +2240,38 @@ final class GenerateDtoCommand extends Command
      */
     private function extractValidationConstraints(array $propertySchema): array
     {
+        // The inlining runs in the OUTERMOST extraction only, and then walks the whole tree itself.
+        //
+        // This function re-enters itself a lot — once per `oneOf`/`anyOf` branch, for `not`, and four
+        // more times from `scrubUnvalidatableSubschemas()` — and an inlining that ran on every entry
+        // peeled one more level off a self-referential component per pass. A recursive report tree
+        // exhausted memory before it finished generating. The walk below is recursive on its own, so
+        // one pass reaches everything a hundred passes would.
+        $outermost = $this->constraintExtractionDepth === 0;
+        $this->constraintExtractionDepth++;
+
+        try {
+            return $this->extractValidationConstraintsFrom($propertySchema, $outermost);
+        } finally {
+            $this->constraintExtractionDepth--;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function extractValidationConstraintsFrom(array $propertySchema, bool $mayInline): array
+    {
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
         // Applied HERE rather than where the property schemas are prepared, because that is not the
         // only entrance: Symfony, Laravel and Yii3 modes extract the constraints of a whole CLASS
         // straight from its registered schema, so anything done to the prepared property schema was
         // invisible to four modes out of five. Runtime mode alone saw it, which is exactly how the
         // hole looked when measured.
-        $propertySchema = $this->inlineNestedContainerValidation($propertySchema);
+        if ($mayInline) {
+            $propertySchema = $this->inlineNestedContainerValidation($propertySchema);
+        }
 
         $allowedKeys = [
             'type',
@@ -2473,14 +2504,14 @@ final class GenerateDtoCommand extends Command
      * @param array<string, mixed> $schema
      * @param int $depth how many containers were entered to reach this schema
      * @param bool $belowMaterialization whether no class is generated for anything from here down
-     * @param array<int, string> $visitedRefs refs already inlined on THIS path, to stop a cycle
+     * @param bool $mayInlineRefs false once a `$ref` has been inlined on this path — see below
      * @return array<string, mixed>
      */
     private function inlineNestedContainerValidation(
         array $schema,
         int $depth = 0,
         bool $belowMaterialization = false,
-        array $visitedRefs = [],
+        bool $mayInlineRefs = true,
     ): array {
         // Two containers down, nothing is materialized any more — and that stays true for everything
         // INSIDE what gets inlined here, however many `properties` hops away it is. A depth counter
@@ -2490,15 +2521,20 @@ final class GenerateDtoCommand extends Command
 
         if ($belowMaterialization) {
             $ref = $schema['$ref'] ?? null;
-            if (is_string($ref) && !in_array($ref, $visitedRefs, true)) {
+            if (is_string($ref) && $mayInlineRefs) {
                 $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
                     ?? $this->nestedObjectRefDefinition($ref);
                 if ($definition !== null) {
-                    // Recorded on THIS path only: a schema reachable twice through different
-                    // properties is inlined in both, a schema reachable from itself is inlined once
-                    // and its recursion left as the bare `$ref` the scrubber drops. Without it a
-                    // self-referential component inlined until memory ran out.
-                    $visitedRefs[] = $ref;
+                    // ONE level, and then no more on this path. A per-path "already seen" set is not
+                    // enough: `extractValidationConstraints()` re-enters itself for every `oneOf`
+                    // branch, for `not`, and once more from the scrubber, and each re-entry starts a
+                    // fresh set — so a self-referential component peeled off one more level per pass
+                    // and a recursive report tree exhausted memory before it finished generating.
+                    //
+                    // One level is also all that is worth having: it puts the referenced component's
+                    // own `required`/`properties`/bounds where something can read them, and what sits
+                    // below THAT is reached by the same rule the next level down already applies.
+                    $mayInlineRefs = false;
                     unset($schema['$ref']);
                     $schema += $definition;
                 }
@@ -2515,8 +2551,38 @@ final class GenerateDtoCommand extends Command
                     schema: $schema[$containerKey],
                     depth: $depth + 1,
                     belowMaterialization: $belowMaterialization,
-                    visitedRefs: $visitedRefs,
+                    mayInlineRefs: $mayInlineRefs,
                 );
+            }
+        }
+
+        // A BRANCH of an inline `oneOf`/`anyOf`, once there is a container above it.
+        //
+        // On a PROPERTY such a union becomes a PHP union type — `Circle|Square` — so the value is a
+        // generated DTO and validates itself; nothing to do. Under a container the property type
+        // collapses to `array` and the branch type is gone with it, so a `$ref` there materializes
+        // NOTHING. It also never reached the inlining above, which only walks containers and
+        // properties, so the branch stayed a bare `$ref`, `extractValidationConstraints()` returned
+        // `[]` for it, and — because one empty branch makes a union unenforceable — the WHOLE
+        // subschema was dropped. Measured: a map of `oneOf[$ref Leaf | map of $ref Leaf]` emitted
+        // `['type' => 'object']` and nothing below it was checked by anything.
+        //
+        // `allOf` is deliberately not walked: a single-`$ref` `allOf` is how this generator spells
+        // inheritance and alias-inlining, and that ref DOES get a class.
+        foreach (['oneOf', 'anyOf'] as $unionKey) {
+            if (!is_array($schema[$unionKey] ?? null)) {
+                continue;
+            }
+
+            foreach ($schema[$unionKey] as $index => $branch) {
+                if (is_array($branch)) {
+                    $schema[$unionKey][$index] = $this->inlineNestedContainerValidation(
+                        schema: $branch,
+                        depth: $depth,
+                        belowMaterialization: $belowMaterialization || $depth >= 1,
+                        mayInlineRefs: $mayInlineRefs,
+                    );
+                }
             }
         }
 
@@ -2530,7 +2596,7 @@ final class GenerateDtoCommand extends Command
                         schema: $propertySchema,
                         depth: 0,
                         belowMaterialization: $belowMaterialization,
-                        visitedRefs: $visitedRefs,
+                        mayInlineRefs: $mayInlineRefs,
                     );
                 }
             }
@@ -2991,6 +3057,22 @@ final class GenerateDtoCommand extends Command
                 $temporalItemType = $this->resolveTemporalRefType($items['$ref'], $this->getSchemaSourceFile($ownerClassName));
                 if ($temporalItemType !== null) {
                     return ['array<' . $itemPrefix . $temporalItemType . '>', $nullable];
+                }
+
+                // A component whose top level is a CONTAINER is a type alias, not an object — the
+                // same thing the property level says two hundred lines up, and it has to be said
+                // here too. Naming the class instead produced code that could not run: a `$ref` to
+                // a `type: array` component wrote `array<StrList>` and no `StrList.php`, so a VALID
+                // payload died with `unknown type "…\StrList"`; a `$ref` to a map component wrote
+                // `array<IntMap>` and an EMPTY class, so `{"f":[{"a":7}]}` came back as `{"f":[{}]}`
+                // — the keys silently gone.
+                $aliasItemType = $this->resolveArrayAliasRefType(
+                    ref: $items['$ref'],
+                    ownerClassName: $ownerClassName,
+                    propertyName: $propertyName . 'Item',
+                );
+                if ($aliasItemType !== null) {
+                    return ['array<' . $itemPrefix . $aliasItemType . '>', $nullable];
                 }
 
                 return [
@@ -3743,6 +3825,20 @@ final class GenerateDtoCommand extends Command
         // would both synthesize a class nothing at that depth hydrates and name types the generated
         // code does not deliver — see `resolveNestedContainerDocType()`. It used to collapse to a bare
         // `mixed`, the one item type `DtoNormalizer::validate()` skips entirely.
+        // A `$ref` to a CONTAINER component names an alias, not a class — the same reading the
+        // property level and the `items` branch take. Without it the value collapsed to `mixed`,
+        // which was true but said less than was known.
+        if (is_string($additionalProperties['$ref'] ?? null)) {
+            $aliasValueType = $this->resolveArrayAliasRefType(
+                ref: $additionalProperties['$ref'],
+                ownerClassName: $ownerClassName,
+                propertyName: $propertyName . 'Value',
+            );
+            if ($aliasValueType !== null) {
+                return $aliasValueType;
+            }
+        }
+
         // A value with fixed `properties` is a DTO and stays one: that IS hydrated at this depth, and
         // the map-like predicate says no to it for exactly that reason.
         if (

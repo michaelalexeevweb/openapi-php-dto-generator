@@ -155,7 +155,7 @@ UserPostRequest::withValidator($validator, $this->getContent());
 ```
 
 The generated FormRequest passes it for you. With the raw body in hand, a JSON array sent for a
-`type: object` property is refused (`flags expects object, got array`) while a JSON object keyed
+`type: object` property is refused (`flags expects object, got array.`) while a JSON object keyed
 `0..n-1` still passes. Omit the argument and only that one check is skipped — everything else runs.
 
 ### One thing this mode can do that the others cannot

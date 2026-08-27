@@ -618,7 +618,7 @@ final class DtoValidatorTest extends TestCase
         // With every branch gated out there is no branch reason to report, so the sentence names the
         // types the union accepts instead of leaving the caller to open the spec.
         $this->assertSame(
-            'v does not match any anyOf branch (expected integer or string, got boolean)',
+            'v does not match any anyOf branch (expected integer or string, got boolean).',
             $errors[0],
         );
     }
@@ -677,7 +677,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertNotEmpty($errors);
         $this->assertSame(
-            'v does not match any oneOf branch (expected integer or string, got boolean)',
+            'v does not match any oneOf branch (expected integer or string, got boolean).',
             $errors[0],
         );
     }
@@ -693,7 +693,7 @@ final class DtoValidatorTest extends TestCase
 
         // The same sentence the emitted interpreter writes, subject prefix aside.
         $this->assertSame(
-            ['f does not match any oneOf branch (expected object or integer, got boolean)'],
+            ['f does not match any oneOf branch (expected object or integer, got boolean).'],
             $errors,
         );
     }
@@ -1495,7 +1495,7 @@ final class DtoValidatorTest extends TestCase
         // additionalProperties: false without 'properties' → no defined keys → every key is
         // additional and must be rejected (previously skipped due to a null-guard bug).
         $errors = $this->validator->validate('obj', ['key' => 'value'], ['additionalProperties' => false]);
-        $this->assertContains('obj has additional property "key" which is not allowed', $errors);
+        $this->assertContains('obj has additional property "key" which is not allowed.', $errors);
     }
 
     public function testAdditionalPropertiesAsSchemaValidatesExtraPropertyValues(): void
@@ -2115,16 +2115,16 @@ final class DtoValidatorTest extends TestCase
     public function testInt32FormatRejectsOverflow(): void
     {
         $errors = $this->validator->validate('f', 2147483648, ['type' => 'integer', 'format' => 'int32']);
-        $this->assertContains('f must be within int32 range (-2147483648 to 2147483647)', $errors);
+        $this->assertContains('f must be within int32 range (-2147483648 to 2147483647).', $errors);
 
         $errors = $this->validator->validate('f', -2147483649, ['type' => 'integer', 'format' => 'int32']);
-        $this->assertContains('f must be within int32 range (-2147483648 to 2147483647)', $errors);
+        $this->assertContains('f must be within int32 range (-2147483648 to 2147483647).', $errors);
     }
 
     public function testInt32FormatRejectsFractionalValue(): void
     {
         $errors = $this->validator->validate('f', 2.5, ['type' => 'number', 'format' => 'int32']);
-        $this->assertContains('f must be an integer (int32)', $errors);
+        $this->assertContains('f must be an integer (int32).', $errors);
     }
 
     public function testInt64FormatAcceptsNativeIntButRejectsFloatOverflow(): void
@@ -2132,7 +2132,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', 9000000000, ['type' => 'integer', 'format' => 'int64']));
 
         $errors = $this->validator->validate('f', 1.0e30, ['type' => 'number', 'format' => 'int64']);
-        $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
+        $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807).', $errors);
     }
 
     public function testUint32FormatEnforcesBothBounds(): void
@@ -2140,11 +2140,11 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', 4294967295, ['type' => 'integer', 'format' => 'uint32']));
 
         $this->assertContains(
-            'f must be within uint32 range (0 to 4294967295)',
+            'f must be within uint32 range (0 to 4294967295).',
             $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint32']),
         );
         $this->assertContains(
-            'f must be within uint32 range (0 to 4294967295)',
+            'f must be within uint32 range (0 to 4294967295).',
             $this->validator->validate('f', 4294967296, ['type' => 'integer', 'format' => 'uint32']),
         );
     }
@@ -2155,15 +2155,15 @@ final class DtoValidatorTest extends TestCase
 
         // 2^64-1 exceeds PHP_INT_MAX, so the upper bound is expressed (and reported) as a literal.
         $this->assertContains(
-            'f must be within uint64 range (0 to 18446744073709551615)',
+            'f must be within uint64 range (0 to 18446744073709551615).',
             $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint64']),
         );
         $this->assertContains(
-            'f must be within uint64 range (0 to 18446744073709551615)',
+            'f must be within uint64 range (0 to 18446744073709551615).',
             $this->validator->validate('f', 2.0e19, ['type' => 'number', 'format' => 'uint64']),
         );
         $this->assertContains(
-            'f must be an integer (uint64)',
+            'f must be an integer (uint64).',
             $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'uint64']),
         );
     }
@@ -2193,7 +2193,7 @@ final class DtoValidatorTest extends TestCase
     public function testUuidFormatRejectsGarbage(): void
     {
         $errors = $this->validator->validate('f', 'not-a-uuid', ['format' => 'uuid']);
-        $this->assertContains('f must match format uuid', $errors);
+        $this->assertContains('f must match format uuid.', $errors);
     }
 
     // =========================================================================
@@ -2204,13 +2204,13 @@ final class DtoValidatorTest extends TestCase
     {
         // Unbalanced group → invalid regex pattern in schema.
         $errors = $this->validator->validate('f', 'abc', ['pattern' => '(']);
-        $this->assertContains('f has invalid regex pattern in schema: (', $errors);
+        $this->assertContains('f has invalid regex pattern in schema: (.', $errors);
     }
 
     public function testValidPatternNoMatchReportsMustMatch(): void
     {
         $errors = $this->validator->validate('f', 'abc', ['pattern' => '^[0-9]+$']);
-        $this->assertContains('f must match pattern ^[0-9]+$', $errors);
+        $this->assertContains('f must match pattern ^[0-9]+$.', $errors);
     }
 
     public function testInvalidUtf8SubjectBlamesInputNotSchema(): void
@@ -2218,7 +2218,7 @@ final class DtoValidatorTest extends TestCase
         // preg_match with `u` returns false for invalid UTF-8 in the subject too
         // (e.g. raw bytes from a query param) — must not blame the schema pattern.
         $errors = $this->validator->validate('f', "\xFF\xFE", ['pattern' => '^[0-9]+$']);
-        $this->assertContains('f contains invalid UTF-8 characters', $errors);
+        $this->assertContains('f contains invalid UTF-8 characters.', $errors);
         $this->assertNotContains('f has invalid regex pattern in schema: ^[0-9]+$', $errors);
     }
 
@@ -2248,7 +2248,7 @@ final class DtoValidatorTest extends TestCase
             ['type' => 'integer', 'minimum' => 0],
             ['type' => 'integer', 'maximum' => 100],
         ]]);
-        $this->assertContains('f matches more than one allowed oneOf branch', $errors);
+        $this->assertContains('f matches more than one allowed oneOf branch.', $errors);
     }
 
     public function testAnyOfMatchesAtLeastOneBranch(): void
@@ -2285,9 +2285,9 @@ final class DtoValidatorTest extends TestCase
     public function testTimeFormatRejectsInvalid(): void
     {
         // Missing offset, bad hour, not a time.
-        $this->assertContains('f must match format time', $this->validator->validate('f', '08:30:00', ['format' => 'time']));
-        $this->assertContains('f must match format time', $this->validator->validate('f', '24:00:00Z', ['format' => 'time']));
-        $this->assertContains('f must match format time', $this->validator->validate('f', 'noon', ['format' => 'time']));
+        $this->assertContains('f must match format time.', $this->validator->validate('f', '08:30:00', ['format' => 'time']));
+        $this->assertContains('f must match format time.', $this->validator->validate('f', '24:00:00Z', ['format' => 'time']));
+        $this->assertContains('f must match format time.', $this->validator->validate('f', 'noon', ['format' => 'time']));
     }
 
     // =========================================================================
@@ -2302,7 +2302,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', ['x-count' => 5, 'other' => 'free'], $constraints));
 
         $errors = $this->validator->validate('f', ['x-count' => 'not-int'], $constraints);
-        $this->assertContains('f.x-count must be of type integer', $errors);
+        $this->assertContains('f.x-count must be of type integer.', $errors);
     }
 
     public function testPropertyNamesValidatesEveryKey(): void
@@ -2311,7 +2311,7 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', ['foo' => 1, 'bar' => 2], $constraints));
 
         $errors = $this->validator->validate('f', ['Foo1' => 1], $constraints);
-        $this->assertContains('f key "Foo1" must match pattern ^[a-z]+$', $errors);
+        $this->assertContains('f key "Foo1" must match pattern ^[a-z]+$.', $errors);
     }
 
     public function testAdditionalPropertiesFalseAllowsPatternMatchedKeys(): void
@@ -2326,14 +2326,14 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', ['id' => 1, 'x-foo' => 'ok'], $constraints));
 
         $errors = $this->validator->validate('f', ['id' => 1, 'other' => 'no'], $constraints);
-        $this->assertContains('f has additional property "other" which is not allowed', $errors);
+        $this->assertContains('f has additional property "other" which is not allowed.', $errors);
     }
 
     public function testAdditionalPropertiesFalseWithoutPropertiesRejectsAnyKey(): void
     {
         // Bare additionalProperties:false (no 'properties') must still reject every key.
         $errors = $this->validator->validate('o', ['bad' => 1], ['type' => 'object', 'additionalProperties' => false]);
-        $this->assertContains('o has additional property "bad" which is not allowed', $errors);
+        $this->assertContains('o has additional property "bad" which is not allowed.', $errors);
     }
 
     public function testAdditionalPropertiesFalseWithOnlyPatternPropertiesRejectsUnmatched(): void
@@ -2341,7 +2341,7 @@ final class DtoValidatorTest extends TestCase
         $constraints = ['type' => 'object', 'patternProperties' => ['^x-' => ['type' => 'string']], 'additionalProperties' => false];
         $this->assertSame([], $this->validator->validate('o', ['x-a' => 'ok'], $constraints));
         $this->assertContains(
-            'o has additional property "bad" which is not allowed',
+            'o has additional property "bad" which is not allowed.',
             $this->validator->validate('o', ['bad' => 1], $constraints),
         );
     }
@@ -2350,7 +2350,7 @@ final class DtoValidatorTest extends TestCase
     {
         // (float)PHP_INT_MAX rounds to 2^63 = PHP_INT_MAX + 1 — must be rejected.
         $errors = $this->validator->validate('f', 9223372036854775808.0, ['format' => 'int64']);
-        $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807)', $errors);
+        $this->assertContains('f must be within int64 range (-9223372036854775808 to 9223372036854775807).', $errors);
     }
 
     public function testInt64FormatAcceptsLargeValidInteger(): void
@@ -2361,8 +2361,8 @@ final class DtoValidatorTest extends TestCase
     public function testDateTimeFormatRejectsRolloverCalendarDates(): void
     {
         // createFromFormat silently rolls Feb 30 → Mar 2; these must be rejected, not accepted.
-        $this->assertContains('f must match format date-time', $this->validator->validate('f', '2026-02-30T12:00:00Z', ['format' => 'date-time']));
-        $this->assertContains('f must match format date-time', $this->validator->validate('f', '2026-13-01T12:00:00Z', ['format' => 'date-time']));
+        $this->assertContains('f must match format date-time.', $this->validator->validate('f', '2026-02-30T12:00:00Z', ['format' => 'date-time']));
+        $this->assertContains('f must match format date-time.', $this->validator->validate('f', '2026-13-01T12:00:00Z', ['format' => 'date-time']));
         // A real date still validates.
         $this->assertSame([], $this->validator->validate('f', '2026-03-30T12:00:00Z', ['format' => 'date-time']));
     }
@@ -2418,7 +2418,7 @@ final class DtoValidatorTest extends TestCase
     public function testObjectRequiredPropertyMissingReported(): void
     {
         $errors = $this->validator->validate('o', ['a' => 1], ['required' => ['b']]);
-        $this->assertContains('o.b is required', $errors);
+        $this->assertContains('o.b is required.', $errors);
     }
 
     public function testObjectPatternPropertiesValidated(): void
@@ -2669,7 +2669,7 @@ final class DtoValidatorTest extends TestCase
         ];
 
         $errors = $this->validator->validate('o', ['name' => 'Bob', 'age' => 30, 'extra' => 1], $constraints);
-        $this->assertContains('o has unevaluated property "extra" which is not allowed', $errors);
+        $this->assertContains('o has unevaluated property "extra" which is not allowed.', $errors);
     }
 
     public function testUnevaluatedPropertiesFalseWithOwnProperties(): void
@@ -2681,7 +2681,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['id' => 1], $constraints));
         $this->assertContains(
-            'o has unevaluated property "nope" which is not allowed',
+            'o has unevaluated property "nope" which is not allowed.',
             $this->validator->validate('o', ['id' => 1, 'nope' => 2], $constraints),
         );
     }
@@ -2695,7 +2695,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['x_a' => 'v', 'x_b' => 'w'], $constraints));
         $this->assertContains(
-            'o has unevaluated property "y" which is not allowed',
+            'o has unevaluated property "y" which is not allowed.',
             $this->validator->validate('o', ['x_a' => 'v', 'y' => 'z'], $constraints),
         );
     }
@@ -2723,7 +2723,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['id' => 1, 'extra' => 'ok'], $constraints));
         $this->assertContains(
-            'o.extra must be of type string',
+            'o.extra must be of type string.',
             $this->validator->validate('o', ['id' => 1, 'extra' => 99], $constraints),
         );
     }
@@ -2752,7 +2752,7 @@ final class DtoValidatorTest extends TestCase
         // if matches (kind=a) → aValue is evaluated, bValue is not.
         $this->assertSame([], $this->validator->validate('o', ['kind' => 'a', 'aValue' => 1], $constraints));
         $this->assertContains(
-            'o has unevaluated property "bValue" which is not allowed',
+            'o has unevaluated property "bValue" which is not allowed.',
             $this->validator->validate('o', ['kind' => 'a', 'bValue' => 1], $constraints),
         );
 
@@ -2773,7 +2773,7 @@ final class DtoValidatorTest extends TestCase
         ];
 
         $errors = $this->validator->validate('o', ['other' => 1, 'extra' => 5], $constraints);
-        $this->assertContains('o has unevaluated property "extra" which is not allowed', $errors);
+        $this->assertContains('o has unevaluated property "extra" which is not allowed.', $errors);
     }
 
     // =========================================================================
@@ -2800,7 +2800,7 @@ final class DtoValidatorTest extends TestCase
         ];
 
         $errors = $this->validator->validate('a', ['x', 1, 'extra'], $constraints);
-        $this->assertContains('a has an unevaluated item at index 2 which is not allowed', $errors);
+        $this->assertContains('a has an unevaluated item at index 2 which is not allowed.', $errors);
     }
 
     public function testUnevaluatedItemsFalseWithItemsSuffixIsNoOp(): void
@@ -2826,7 +2826,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('a', ['x', 1, 2], $constraints));
         $this->assertContains(
-            'a.1 must be of type integer',
+            'a.1 must be of type integer.',
             $this->validator->validate('a', ['x', 'not-int'], $constraints),
         );
     }
@@ -2844,7 +2844,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
         $this->assertContains(
-            'a has an unevaluated item at index 2 which is not allowed',
+            'a has an unevaluated item at index 2 which is not allowed.',
             $this->validator->validate('a', ['x', 1, true], $constraints),
         );
     }
@@ -2863,7 +2863,7 @@ final class DtoValidatorTest extends TestCase
 
         // 'str' matches neither contains nor anything else → unevaluated.
         $this->assertContains(
-            'a has an unevaluated item at index 1 which is not allowed',
+            'a has an unevaluated item at index 1 which is not allowed.',
             $this->validator->validate('a', [1, 'str'], $constraints),
         );
     }
@@ -2900,7 +2900,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['a' => 'x', 'b' => 1], $constraints));
         $this->assertContains(
-            'o has unevaluated property "c" which is not allowed',
+            'o has unevaluated property "c" which is not allowed.',
             $this->validator->validate('o', ['a' => 'x', 'b' => 1, 'c' => true], $constraints),
         );
     }
@@ -2927,7 +2927,7 @@ final class DtoValidatorTest extends TestCase
 
         // z not covered by any branch → unevaluated.
         $this->assertContains(
-            'o has unevaluated property "z" which is not allowed',
+            'o has unevaluated property "z" which is not allowed.',
             $this->validator->validate('o', ['base' => 's', 'y' => 1, 'z' => 9], $constraints),
         );
     }
@@ -2945,7 +2945,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['dog' => 'rex'], $constraints));
         $this->assertContains(
-            'o has unevaluated property "fish" which is not allowed',
+            'o has unevaluated property "fish" which is not allowed.',
             $this->validator->validate('o', ['dog' => 'rex', 'fish' => 'nemo'], $constraints),
         );
     }
@@ -2987,7 +2987,7 @@ final class DtoValidatorTest extends TestCase
 
         // Without the trigger, billingAddress is not evaluated → rejected.
         $this->assertContains(
-            'o has unevaluated property "billingAddress" which is not allowed',
+            'o has unevaluated property "billingAddress" which is not allowed.',
             $this->validator->validate('o', ['billingAddress' => 'Main St'], $constraints),
         );
     }
@@ -3009,7 +3009,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
         $this->assertContains(
-            'a has an unevaluated item at index 2 which is not allowed',
+            'a has an unevaluated item at index 2 which is not allowed.',
             $this->validator->validate('a', ['x', 1, 'extra'], $constraints),
         );
     }
@@ -3134,7 +3134,7 @@ final class DtoValidatorTest extends TestCase
             $this->validator->validate('c', base64_encode('hello'), ['contentEncoding' => 'base64']),
         );
         $this->assertContains(
-            'c is not valid base64-encoded content',
+            'c is not valid base64-encoded content.',
             $this->validator->validate('c', 'not valid base64 !!!', ['contentEncoding' => 'base64']),
         );
     }
@@ -3160,7 +3160,7 @@ final class DtoValidatorTest extends TestCase
             $this->validator->validate('c', '{"a":1}', ['contentMediaType' => 'application/json']),
         );
         $this->assertContains(
-            'c is not valid application/json content',
+            'c is not valid application/json content.',
             $this->validator->validate('c', '{bad json', ['contentMediaType' => 'application/json']),
         );
     }
@@ -3178,7 +3178,7 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('c', '{"a":1}', $constraints));
         // a is a string → contentSchema fails.
-        $this->assertContains('c.a must be of type integer', $this->validator->validate('c', '{"a":"x"}', $constraints));
+        $this->assertContains('c.a must be of type integer.', $this->validator->validate('c', '{"a":"x"}', $constraints));
     }
 
     public function testContentEncodingPlusMediaTypePlusSchema(): void
@@ -3195,12 +3195,12 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('c', base64_encode('{"n":42}'), $constraints));
         $this->assertContains(
-            'c.n must be of type integer',
+            'c.n must be of type integer.',
             $this->validator->validate('c', base64_encode('{"n":"nope"}'), $constraints),
         );
         // Bad base64 short-circuits before the JSON/schema checks.
         $this->assertContains(
-            'c is not valid base64-encoded content',
+            'c is not valid base64-encoded content.',
             $this->validator->validate('c', '!!!bad!!!', $constraints),
         );
     }

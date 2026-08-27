@@ -59,7 +59,7 @@ exactly how this mode records "the client did not send this key". So a request t
 `{"status":"queued"}` comes back as:
 
 ```
-field "status" is required
+field "status" is required.
 ```
 
 The symptom accuses the client of omitting a value it sent, and says nothing about enums — which is
@@ -95,7 +95,7 @@ Measured: the hydrator tries each in turn and the first that parses wins. The fo
 `GeneratedDtoInterface::DATE_TIME_FORMATS`, so this mode accepts what every other mode accepts — and
 still refuses what they refuse, since a loose `"yesterday"` matches none of them. One rigid pattern was
 a real bug: `2026-03-10T12:00:00.123456+03:00` failed to parse, the property was skipped, and the
-request came back as `field "at" is required` for a value the client had sent.
+request came back as `field "at" is required.` for a value the client had sent.
 
 `format: time` is NOT one of these. It stays a `string`, because the `Rule\Date\*` family needs a
 `DateTimeInterface` — measured over a plain string, `#[Time]` rejected `13:45:00Z`, a value the
@@ -182,7 +182,7 @@ and an optional `string` sent as null produced three: the interpreter's "must be
 There is no `#[Required]`. Yii's rule means "not blank" while OpenAPI's keyword means "the key is
 present", and the two disagree on every empty value — an explicit `null` and a legal `{}` were both
 rejected. Presence needs no rule here either: an absent required key leaves its property uninitialised,
-and the emitted interpreter reports that as `field "title" is required` — once, and only for that key.
+and the emitted interpreter reports that as `field "title" is required.` — once, and only for that key.
 
 **The class has no constructor, and that is the point.** With none, the hydrator fills PROPERTIES
 directly — so a key the payload did not carry leaves its property uninitialised, which is PHP's own
@@ -278,7 +278,7 @@ keyword asks for and was dropped.
   allowed values. Here the hydrator cannot cast `"nope"` to the generated enum, so it skips the
   property — and a skipped property is indistinguishable from one the payload never carried, which is
   the same signal this mode reads for presence. The verdict is still "invalid"; the sentence is
-  `field "status" is required`. Nothing in generated code can separate the two cases, because the raw
+  `field "status" is required.`. Nothing in generated code can separate the two cases, because the raw
   value never reaches the object;
 - **a discriminated union in a PAYLOAD is not built.** The hydrator casts to the DECLARED type, and
   the declared type is the union interface. The interface is still the right type for a response and

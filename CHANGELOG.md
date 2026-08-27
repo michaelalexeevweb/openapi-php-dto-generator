@@ -3,6 +3,69 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.6 — 2026-08-27
+
+- a `$ref` in a `oneOf`/`anyOf` branch under a container was checked by nothing
+- a `$ref` to a CONTAINER component crashed the deserializer, or lost the keys in silence
+- one shape for every message: a full stop, and a capital only where a sentence starts
+- a map and a list of the same schema now answer alike, `42.0` included
+- the docs stopped showing messages the code no longer writes
+
+Two of these came from a real document that a consumer had been running for a year with its response
+validation switched off by hand, because the generated checks were unusable on that schema.
+
+**A union branch under a container.** `additionalProperties: {oneOf: [{$ref: Leaf}, …]}` emitted
+`['type' => 'object']` and nothing else: every value under it was accepted in silence. The inlining
+that turns a `$ref` into constraints walked containers and properties but not union BRANCHES, so the
+branch stayed a bare `$ref`, extracted to nothing, and — because one empty branch makes a union
+unenforceable — took the whole subschema with it. Branches are walked now, and only where it is true
+that nothing materializes: on a PROPERTY an inline union becomes a PHP union type (`Circle|Square`),
+the value is a generated DTO and validates itself, so that case is left alone. `allOf` is not walked
+either, because a single-`$ref` `allOf` is how this generator spells inheritance and that ref does get
+a class.
+
+The first attempt at this exhausted memory on a self-referential component. `extractValidationConstraints()`
+re-enters itself once per union branch, once for `not`, and four more times from the scrubber, and an
+inlining that ran on every entry peeled one more level off the recursion per pass. It runs in the
+OUTERMOST extraction now and walks the whole tree itself, one level per path.
+
+**A `$ref` to a container component.** A component whose top level is `type: array` or a map is a type
+ALIAS, not an object — which the property level has known for releases, comment and all. Under `items`
+it was named as a class instead, and the two shapes failed differently: `array<StringList>` for a
+`type: array` component, where no `StringList.php` is ever written, so a VALID payload died with
+`unknown type` and the endpoint could not be called; `array<CountMap>` for a map component, where the
+class IS written and is empty, so `{"f":[{"a":7}]}` came back as `{"f":[{}]}` with the keys gone and
+nothing reported. Both branches now ask the same resolver the property level asks. A map VALUE that is
+such a `$ref` gains the same precision — `array<string, array<string>>` where it used to say `mixed`.
+
+**One shape for every message.** Half of them ended in a full stop and half did not, which reads as a
+defect in a list joined behind `DTO validation failed:`. All of them do now. Capitalisation follows the
+grammar rather than a blanket rule: `Required parameter "id" not found in request.` is a sentence with
+its own subject and takes a capital, while `param "f" expects int, got string.` opens with a subject
+LABEL and does not. That distinction is load-bearing — the same messages are spelled `field "f"` in
+Symfony mode and, in Laravel mode, as the bare property path, because Laravel keys its error bag by
+that path. Capitalising there would rewrite an identifier the document owns: `children.leaves.title`
+is not `Children.leaves.title`. The rule lives in one place (`DtoValidator::finalizeMessage()`) and is
+applied at each class's single exit, plus once per emitted interpreter packaging.
+
+**A map and a list of the same schema.** `additionalProperties: {type: integer}` emitted a native
+`#[Assert\Type('int')]` for its values while `items: {type: integer}` did not, so a map refused `42.0`
+and a list accepted it — and JSON Schema 2020-12 §6.1.1 says a zero-fraction float IS an integer, so
+the list was right. The attribute is no longer emitted for a SCALAR map value and `type` goes back to
+the callback, exactly as in the list spelling; a map of a CLASS keeps its `Assert\Type`, because
+nothing else can say "this is that enum". The support matrix said the `42.0` divergence reached map
+values; it no longer does, and now says so.
+
+**Docs.** Eleven examples across six files showed messages in the old shape the moment the shape
+changed. A `$ref` to a container component is now a row in both depth tables.
+
+Not changed, deliberately: a wrong TYPE inside a container still produces two messages in Symfony mode,
+and the second one is Symfony's own — `Assert\Range` applied to a non-number adds "This value should be
+a valid number." A hand-written `#[Assert\All([new Assert\Range(min: 5)])]` produces it too, the user's
+translations apply to it, and `InterpreterMessageParityTest` has always held that a framework's own
+sentences are not ours to overwrite.
+
+
 ## 2.15.5 — 2026-08-27
 
 - a property name with a quote produced PHP that did not parse

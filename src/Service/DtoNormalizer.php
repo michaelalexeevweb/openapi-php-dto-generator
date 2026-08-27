@@ -201,10 +201,20 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $visited = [];
 
-        return $this->validateDtoRecursive(
-            dto: $dto,
-            pathPrefix: '',
-            visited: $visited,
+        // Finalised HERE, at the one exit, rather than at the dozen places that build a message.
+        // A message this class writes either opens with `field "…"` — the subject label, a name the
+        // document owns — or with an English word; `DtoValidator::finalizeMessage()` capitalises only the second
+        // kind, and ends both with a full stop. Anything the constraint validator already finalised
+        // passes through unchanged, because the operation is idempotent.
+        return array_map(
+            static fn(string $message): string => str_starts_with($message, 'field "')
+                ? DtoValidator::finalizeMessage($message, 'field "')
+                : DtoValidator::finalizeMessage($message),
+            $this->validateDtoRecursive(
+                dto: $dto,
+                pathPrefix: '',
+                visited: $visited,
+            ),
         );
     }
 

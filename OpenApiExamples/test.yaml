@@ -752,3 +752,72 @@ components:
             type: string
             minLength: 2
             pattern: '^[a-z]+$'
+    # A union UNDER a container, with a $ref in a branch — the one shape whose constraints used to be
+    # thrown away whole. On a property an inline union becomes a PHP union type and the value is a
+    # generated DTO that validates itself; under a container the type collapses to `array` and the
+    # branch materializes nothing, so the branch schemas have to reach the emitted constraints.
+    # `TreeNode` refers to itself through such a branch: inlining it has to terminate.
+    TreeNode:
+      type: object
+      required:
+        - label
+        - children
+      properties:
+        label:
+          type: string
+          minLength: 1
+        children:
+          type: object
+          additionalProperties:
+            oneOf:
+              - $ref: '#/components/schemas/TreeNode'
+              - type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/Tag'
+    UnionUnderContainer:
+      type: object
+      required:
+        - tree
+      properties:
+        tree:
+          $ref: '#/components/schemas/TreeNode'
+        listOfUnions:
+          type: array
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/Tag'
+              - type: string
+                minLength: 2
+    # A component whose top level is a CONTAINER is a type ALIAS, not an object. Referenced from a
+    # property that was already understood; referenced from `items` or `additionalProperties` it used
+    # to be named as a class — and for `type: array` that class is never written, so a valid payload
+    # died with `unknown type`, while for a map it was written EMPTY and the keys vanished in silence.
+    StringList:
+      type: array
+      items:
+        type: string
+        minLength: 2
+    CountMap:
+      type: object
+      additionalProperties:
+        type: integer
+        minimum: 0
+    ContainerAliases:
+      type: object
+      required:
+        - listOfLists
+      properties:
+        listOfLists:
+          type: array
+          items:
+            $ref: '#/components/schemas/StringList'
+        listOfMaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/CountMap'
+        mapOfLists:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/StringList'
+        plain:
+          $ref: '#/components/schemas/StringList'

@@ -230,7 +230,7 @@ final class Yii3RuleCoverageTest extends TestCase
         );
         self::assertCount(2, $messages, 'two absent properties, two messages: ' . implode(' | ', $messages));
         self::assertSame(
-            ['field "name" is required', 'field "age" is required'],
+            ['field "name" is required.', 'field "age" is required.'],
             $messages,
         );
     }
@@ -267,7 +267,7 @@ final class Yii3RuleCoverageTest extends TestCase
 
             self::assertFalse($result->isValid(), $property . ' sent as null must be refused');
             self::assertSame(
-                [sprintf('field "%s" must be of type %s', $property, $type)],
+                [sprintf('field "%s" must be of type %s.', $property, $type)],
                 array_map(static fn(object $error): string => $error->getMessage(), $result->getErrors()),
             );
         }

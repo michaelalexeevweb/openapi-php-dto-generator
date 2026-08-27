@@ -271,7 +271,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($errors !== []) {
-            throw new RuntimeException(implode("\n", array_unique($errors)));
+            throw new RuntimeException(implode("\n", array_unique(DtoValidator::finalizeMessages($errors, 'param "'))));
         }
 
         return $result;
@@ -671,7 +671,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if ($errors !== []) {
             throw $this->withUnreadableBodyHint(
-                exception: new RuntimeException(implode("\n", array_unique(array_filter($errors)))),
+                exception: new RuntimeException(implode("\n", array_unique(array_filter(DtoValidator::finalizeMessages($errors, 'param "'))))),
                 request: $request,
                 bodyData: $bodyData,
                 queryData: $queryData,
@@ -1588,7 +1588,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        throw new RuntimeException(implode("\n", array_values(array_unique($errors))));
+        throw new RuntimeException(implode("\n", array_values(array_unique(DtoValidator::finalizeMessages($errors, 'param "')))));
     }
 
     /**
@@ -1975,7 +1975,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if ($schemaAllowsNull) {
                     return null;
                 }
-                throw new RuntimeException("param \"{$paramPath}\" expects {$typeName}, got null");
+                throw new RuntimeException(DtoValidator::finalizeMessage(
+                    "param \"{$paramPath}\" expects {$typeName}, got null",
+                    'param "',
+                ));
             }
             if ($allowsNull) {
                 return null;
@@ -2268,7 +2271,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($errors !== []) {
-            throw new RuntimeException(implode("\n", $errors));
+            throw new RuntimeException(implode("\n", DtoValidator::finalizeMessages($errors, 'param "')));
         }
 
         return $normalized;
@@ -2761,7 +2764,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $allowedStr = implode(', ', $allowed);
             $actualValue = $this->formatValueForError($value);
             throw new RuntimeException(
-                "param \"{$paramPath}\" expects enum {$enumClass}, got {$actualValue}. Allowed: {$allowedStr}",
+                DtoValidator::finalizeMessage(
+                    "param \"{$paramPath}\" expects enum {$enumClass}, got {$actualValue}. Allowed: {$allowedStr}",
+                    'param "',
+                ),
             );
         }
 
@@ -3141,7 +3147,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if (!array_key_exists($discriminatorKey, $mapping)) {
             $allowedKeys = implode(', ', array_keys($mapping));
             throw new RuntimeException(
-                "param \"{$fullDiscriminatorPath}\" has invalid discriminator value \"{$discriminatorKey}\". Allowed: {$allowedKeys}",
+                DtoValidator::finalizeMessage(
+                    "param \"{$fullDiscriminatorPath}\" has invalid discriminator value \"{$discriminatorKey}\". Allowed: {$allowedKeys}",
+                    'param "',
+                ),
             );
         }
 
@@ -3171,7 +3180,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             ? $value
             : $this->getTypeString($value);
 
-        return "param \"{$paramPath}\" expects {$expectedType}, got {$actualType}";
+        return DtoValidator::finalizeMessage(
+            "param \"{$paramPath}\" expects {$expectedType}, got {$actualType}",
+            'param "',
+        );
     }
 
     private function isStrictIntValue(mixed $value): bool

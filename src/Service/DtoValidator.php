@@ -18,12 +18,73 @@ final class DtoValidator implements DtoValidatorInterface
     private const int MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * One shape for every message this package writes: a full stop at the end, and a capital at the
+     * start unless the sentence begins with a name the document chose.
+     *
+     * It lives on the validator because the validator is what writes these sentences; the normalizer
+     * and the deserializer, which both already default to an instance of this class, call it for the
+     * messages they build themselves so there is ONE spelling of the rule rather than three.
+     *
+     * The two halves are not a style preference, they are what the messages already are:
+     *
+     *     Required parameter "value.id" not found in request.   a sentence with its own subject
+     *     param "platforms" expects array, got string.          a SUBJECT LABEL plus a predicate
+     *
+     * The second kind is shared by three modes and spelled differently on purpose — `param "f"` in
+     * runtime mode, `field "f"` in Symfony mode, and in Laravel mode the bare property path, because
+     * Laravel keys its error bag by that path and the message sits beside the key. Capitalising there
+     * would rewrite an identifier the document owns: `children.leaves.title` is not
+     * `Children.leaves.title`. So the subject is left as its owner spelled it, and only a sentence
+     * opening with an English word is capitalised.
+     *
+     * The full stop is unconditional, because these are read as a list — `DtoNormalizer` joins them
+     * with `', '` behind `DTO validation failed:` — and half of them ending in one reads as a defect.
+     *
+     * Idempotent: what has been through already may go through again, which is what lets each class
+     * finalise at its own exit without minding what another one did.
+     *
+     * @param array<int, string> $messages
+     * @param string|null $subject the subject label these messages may begin with, when the caller
+     *        knows it; a message starting with it keeps its spelling
+     * @return array<int, string>
+     */
+    public static function finalizeMessages(array $messages, ?string $subject = null): array
+    {
+        return array_map(
+            static fn(string $message): string => self::finalizeMessage($message, $subject),
+            $messages,
+        );
+    }
+
+    public static function finalizeMessage(string $message, ?string $subject = null): string
+    {
+        $message = rtrim($message);
+        if ($message === '') {
+            return $message;
+        }
+
+        // A message that opens with the subject opens with a name, not a word.
+        $startsWithSubject = $subject !== null && $subject !== '' && str_starts_with($message, $subject);
+        if (!$startsWithSubject) {
+            $message = ucfirst($message);
+        }
+
+        return str_ends_with($message, '.') ? $message : $message . '.';
+    }
+
+    /**
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
     public function validate(string $subject, mixed $value, array $constraints): array
     {
-        return $this->validateConstraints($subject, $value, $constraints, 0);
+        // The one exit: every message this class writes is finalised here rather than at the eighty
+        // places that build one. `$subject` is passed on so a message that OPENS with it keeps the
+        // name as its owner spelled it — see `finalizeMessages()`.
+        return self::finalizeMessages(
+            $this->validateConstraints($subject, $value, $constraints, 0),
+            $subject,
+        );
     }
 
     /**

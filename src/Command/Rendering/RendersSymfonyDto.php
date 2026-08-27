@@ -696,7 +696,7 @@ PHP,
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation($error)->addViolation();
+            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
         }
     }
 
@@ -3112,6 +3112,13 @@ PHP,
                 schema: $additionalProperties,
                 preferredPhpTypeExpression: $mapValueTypeExpression,
                 skipScalarConstraintSpecs: $this->shouldSkipSymfonyScalarSpecsForPreferredType($mapValueTypeExpression),
+                // A CLASS still gets its `Assert\Type` — nothing else can say "this is that enum".
+                // A SCALAR does not: `Assert\Type('int')` refuses `42.0`, which JSON Schema 2020-12
+                // §6.1.1 calls an integer and the callback accepts. The LIST spelling of the same
+                // schema always left `type` to the callback and answered correctly — measured, a map
+                // refused `{"a":42.0}` while a list accepted `[42.0]`. One schema, one answer now;
+                // `symfonyItemCoveredKeywords()` stops claiming `type` in step.
+                assertType: $mapValueTypeExpression !== null,
             );
             if ($valueExpressions !== []) {
                 $attributes[] = '#[Assert\All([' . implode(', ', $valueExpressions) . '])]';
@@ -3268,16 +3275,10 @@ PHP,
                 return [];
             }
 
-            $covered = $this->scalarConstraintSpecList($additionalProperties)['covered'];
-
-            // The MAP branch goes through `valueConstraintExpressions()`, which leads with an
-            // `Assert\Type` — so unlike the list branch, `type` IS covered here. The list branch
-            // emits the scalar specs alone, which is why `type` stays with the callback there.
-            if ($this->openApiTypeToSymfonyType($additionalProperties['type'] ?? null) !== null) {
-                $covered[] = 'type';
-            }
-
-            return array_values(array_unique($covered));
+            // `type` is deliberately absent, exactly as in the list branch above: no attribute
+            // asserts it for a scalar map value any more, so the callback owns it — and the callback
+            // is the one that reads `42.0` as the integer the spec calls it.
+            return $this->scalarConstraintSpecList($additionalProperties)['covered'];
         }
 
         return [];
@@ -3496,12 +3497,13 @@ PHP,
         array $schema,
         ?string $preferredPhpTypeExpression = null,
         bool $skipScalarConstraintSpecs = false,
+        bool $assertType = true,
     ): array {
         $expressions = [];
 
         if ($preferredPhpTypeExpression !== null) {
             $expressions[] = 'new Assert\Type(' . $preferredPhpTypeExpression . ')';
-        } else {
+        } elseif ($assertType) {
             $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
             if ($symfonyType !== null) {
                 $expressions[] = "new Assert\\Type('" . $symfonyType . "')";

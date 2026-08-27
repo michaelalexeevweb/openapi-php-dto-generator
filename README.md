@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.5
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.6
 ```
 
 ---
@@ -94,7 +94,7 @@ cannot express. And when the document is not satisfied:
 | request body | error |
 |---|---|
 | `{"age":30}` | `Required parameter "email" not found in request.` |
-| `{"email":"nope","age":12}` | `param "email" must match format email`<br>`param "age" must be greater than or equal to 18` |
+| `{"email":"nope","age":12}` | `param "email" must match format email.`<br>`param "age" must be greater than or equal to 18.` |
 
 `format: email` and `minimum: 18` are enforced by code the generator wrote, and both problems are
 reported together rather than one at a time.
@@ -133,7 +133,7 @@ no classes at all. This is the only one that does both.
 On real payloads that means `code: 5` against `minimum: 10` is refused here and accepted by Jane; a
 malformed `uri-template` is refused here and accepted by both Jane and league; and where league answers
 `Keyword validation failed: Data must match exactly one schema`, this answers
-`param "code" must match format uuid`.
+`param "code" must match format uuid.`
 **[Every payload, every verdict, the versions, and where we are behind →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md)**
 
 ### Three things that only fall out of generating the checks

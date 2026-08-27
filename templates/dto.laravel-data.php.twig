@@ -200,7 +200,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
                 }
 
                 foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
-                    $validator->errors()->add($property, $error);
+                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
                 }
             }
 {% endif %}
@@ -248,7 +248,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
                 if (is_array($node)) {
-                    $validator->errors()->add($foundPath, sprintf('%s expects object, got array', $foundPath));
+                    $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
         }

@@ -20,9 +20,9 @@ A few behaviours worth knowing when validating against the schema:
 
   | Mode | Sentence |
   |---|---|
-  | runtime | `param "tags" must contain unique items` |
-  | symfony | `field "tags" must contain unique items` |
-  | laravel | `tags must contain unique items` — keyed by `tags` in the error bag |
+  | runtime | `param "tags" must contain unique items.` |
+  | symfony | `field "tags" must contain unique items.` |
+  | laravel | `tags must contain unique items.` — keyed by `tags` in the error bag |
 
   This holds for every keyword the interpreter owns (`oneOf`, `anyOf`, `not`, `contains`, `if`/`then`, `propertyNames`, `unevaluated*`, …) and is pinned by `tests/Parity/InterpreterMessageParityTest`. A keyword the framework has its own rule for keeps the FRAMEWORK's message — `exclusiveMinimum` reads *"This value should be greater than 3."* in Symfony mode and `multipleOf` resolves `validation.multiple_of` in Laravel mode — so your own translations still apply.
 - **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
