@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.7 — 2026-08-28
+
+- a container value the schema lets be null was refused
+- an object two containers deep is hydrated, not a `stdClass`
+- `nullable` alone no longer emits a Symfony interpreter
+- a nested item's error path is quoted whole
+
+**A message changed shape.** An error inside a `$ref`ed object two containers deep now reads
+`param "tagRows.0.0.id" must be greater than or equal to 5.` where it read `tagRows".0.0.id must be
+greater than or equal to 5.` The report moved to the cast that already handles a DTO one level up, and
+that one has always quoted the whole path. Anything matching on the old spelling needs updating.
+
+`nullable` on a container value is a permission, and each of the four ways to write it was wrong in its
+own way. The 3.0 map value died in the cast with `expects string, got null`, because only `items` was
+consulted for the permission and never `additionalProperties`. The 3.0 list declared `array<?string>`
+honestly, but the docblock parser split on `|` alone and read `?string` as one unknown name, so the null
+came back as `returned null but type is non-nullable string`. The 3.1 list lost its item type outright
+and declared a bare `array`, whose items are never checked at all. The 3.1 map declared
+`array<string, string>`, forbidding the null the document had just allowed. All four agree now, and a
+non-null value of the wrong type is still refused, once.
+
+Hydration reaches two containers deep in all four spellings — list of lists, list of maps, map of lists,
+map of maps. `array<array<Tag>>` holds real `Tag` instances; until now it held the `stdClass`
+`json_decode()` produced, which is why 2.15.4 had replaced the declaration with the true-but-poorer
+`mixed`. Checking already reached that depth in 2.15.5, so what was missing was the typed object, not
+the checks. Three containers deep nothing is hydrated and the declaration still says `mixed`. A nested
+SCALAR is deliberately left where it was: it is already the value it claims to be, and casting it would
+only reword a message consumers have had for three releases.
+
 ## 2.15.6 — 2026-08-27
 
 - a `$ref` in a `oneOf`/`anyOf` branch under a container was checked by nothing

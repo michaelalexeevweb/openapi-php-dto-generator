@@ -673,6 +673,65 @@ final class SymfonyDtoBehaviorTest extends TestCase
         );
     }
 
+    /**
+     * `nullable` on a container value grants permission; it asserts nothing. Both spellings of that
+     * permission — an `items` one and an `additionalProperties` one — must let the null through, and
+     * neither may drag an interpreter into a class that has nothing else to check.
+     */
+    public function testANullableContainerValueIsAllowedInBothSpellings(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holes' => [
+                        'type' => 'object',
+                        'required' => ['items', 'values', 'bare'],
+                        'properties' => [
+                            'items' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string', 'nullable' => true],
+                            ],
+                            'values' => [
+                                'type' => 'object',
+                                'additionalProperties' => ['type' => 'string', 'nullable' => true],
+                            ],
+                            // Permission with nothing beside it. `type` above legitimately keeps the
+                            // callback busy; here there is nothing left to assert, and a subschema
+                            // holding only permissions must not survive the filter.
+                            'bare' => [
+                                'type' => 'array',
+                                'items' => ['nullable' => true],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $ns = 'SymNullableValues';
+        $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
+        $content = (string)file_get_contents($this->outputDirectory . '/Holes.php');
+        $this->assertStringContainsString("'bare' => [],", $content);
+
+        require_once $this->outputDirectory . '/Holes.php';
+        $cls = $ns . '\Holes';
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+
+        // The null the document allows goes through in BOTH spellings. Before 2.15.7 the map one was
+        // refused: only `items` was consulted for the permission, so `additionalProperties` never saw it.
+        $this->assertCount(0, $validator->validate(new $cls(items: [null], values: ['a' => null], bare: [null])));
+        $this->assertCount(0, $validator->validate(new $cls(items: ['ok'], values: ['a' => 'ok'], bare: [1])));
+        // Permission is not a licence: a wrong non-null type is still refused, once, in both spellings.
+        $this->assertCount(1, $validator->validate(new $cls(items: [7], values: ['a' => 'ok'], bare: [])));
+        $this->assertCount(1, $validator->validate(new $cls(items: ['ok'], values: ['a' => 7], bare: [])));
+    }
+
     public function testAnyOfMapsToAtLeastOneOf(): void
     {
         if (!class_exists(Validation::class)) {

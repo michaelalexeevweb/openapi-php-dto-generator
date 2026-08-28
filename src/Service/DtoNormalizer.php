@@ -1175,7 +1175,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $result = [];
         foreach ($this->topLevelGenericValueTypes($typeString) as $valueTypePart) {
             foreach (explode('|', $valueTypePart) as $rawTypeName) {
-                $normalizedTypeName = $this->normalizeDocTypeNameInClassContext($className, trim($rawTypeName));
+                $rawTypeName = trim($rawTypeName);
+                // `?X` is `X|null` written short, and the generator writes it short: an item schema
+                // marked `nullable` emits `array<?string>`. Read as one name it resolved to nothing
+                // known, so the permission was lost and the null the document allows came back as
+                // `returned null but type is non-nullable string`.
+                if (str_starts_with($rawTypeName, '?')) {
+                    $rawTypeName = substr($rawTypeName, 1);
+                    $result[] = 'null';
+                }
+                $normalizedTypeName = $this->normalizeDocTypeNameInClassContext($className, $rawTypeName);
                 if ($normalizedTypeName === '' || $normalizedTypeName === 'mixed') {
                     continue;
                 }

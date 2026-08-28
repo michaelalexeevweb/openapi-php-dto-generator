@@ -821,3 +821,38 @@ components:
             $ref: '#/components/schemas/StringList'
         plain:
           $ref: '#/components/schemas/StringList'
+    # `nullable` on the value of a container. It grants permission, it asserts nothing — and dropping
+    # it did not relax anything, it made the callback REJECT a null the document allows. The two
+    # spellings disagreed on top of that: a nullable ITEM was accepted in runtime mode while a
+    # nullable map VALUE died in the cast, because only `items` was consulted for it.
+    NullableContainerValues:
+      type: object
+      required:
+        - listOfNullable
+      properties:
+        listOfNullable:
+          type: array
+          items:
+            type: string
+            minLength: 2
+            nullable: true
+        mapOfNullable:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 5
+            nullable: true
+        # The 3.1 spelling of the same permission. It has to declare what the 3.0 one declares: the
+        # list used to lose its item type outright and the map used to forbid the allowed null.
+        listOfNullable31:
+          type: array
+          items:
+            type:
+              - string
+              - "null"
+        mapOfNullable31:
+          type: object
+          additionalProperties:
+            type:
+              - integer
+              - "null"

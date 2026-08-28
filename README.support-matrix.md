@@ -172,16 +172,37 @@ value. All five modes declare that rather than promising otherwise:
 | `type: number` | `array<array<float\|int>>` |
 | a `$ref` to a scalar or enum component | that component's backing type |
 | a `$ref` to a CONTAINER component | the container it aliases — `array<array<string>>` |
-| a `$ref` to an OBJECT component | `array<array<mixed>>` |
+| a `$ref` to an OBJECT component | that component's DTO — `array<array<Tag>>` |
+
+#### A container value the schema lets be null
+
+`nullable` on a container value is a permission, and it is honoured in BOTH spellings — under `items`
+and under `additionalProperties` — in all five modes:
+
+```yaml
+listOfNullable: { type: array,  items:                { type: string, nullable: true } }
+mapOfNullable:  { type: object, additionalProperties: { type: string, nullable: true } }
+```
+
+declares `array<?string>` and `array<string, ?string>`, deserializes `[null]` and `{"k": null}`
+without complaint, and still refuses a non-null value of the wrong type — once, naming the element.
+The 3.1 spelling of the same permission, `type: [string, "null"]`, declares and behaves identically.
+
+Before 2.15.7 each of the four combinations was wrong in its own way: the 3.0 map value died in the
+cast with `param "mapOfNullable.k" expects string, got null`; the 3.0 list was declared `array<?string>`
+but `?string` was read as one unknown name, so the null it permits came back as
+`returned null but type is non-nullable string`; the 3.1 list lost its item type outright and was
+declared a bare `array`, whose items are never checked at all; and the 3.1 map declared
+`array<string, string>`, forbidding the null the document had just allowed.
 
 Every row is the value that is really there, measured rather than reasoned. A date and an enum member
 are the plain `string` the payload carried — one level up they would be a `DateTimeImmutable` and an
 enum case, at this depth nothing converts them. `type: number` is BOTH: JSON hands `1` over as an int
 and `1.5` as a float, and a single array holds both, so `float` alone would be wrong half the time.
 
-`mixed` is left for exactly one row, the object: it arrives as the `stdClass` `json_decode()` produced,
-so neither the class nor `array` is true of it. That row used to say `array<array<string, Tag>>` while
-holding a `stdClass` — and the rows above it used to say `mixed` while holding a perfectly ordinary
+The object row is the one that moved. It said `array<array<string, Tag>>` while holding a `stdClass`,
+which was a lie; 2.15.4 replaced it with the true-but-poorer `mixed`; 2.15.7 hydrates the value, so the
+name is what is true again. The rows above it used to say `mixed` while holding a perfectly ordinary
 string, which said less than was known.
 
 The VALUES are still checked, by whichever layer the mode uses: `DtoValidator` (runtime), the emitted
@@ -194,14 +215,19 @@ an object at all:
 array<array<Tag>>, Tag = {required: [id], properties: {id: {type: integer, minimum: 5}}}
 
 [[{"id": 9}]]     accepted
-[[{"id": 1}]]     tagRows.0.0.id must be greater than or equal to 5.
-[[{}]]            tagRows.0.0.id is required.
-[["zzz"]]         tagRows.0.0 must be of type object.
+[[{"id": 1}]]     param "tagRows.0.0.id" must be greater than or equal to 5.
+[[{}]]            Required parameter "tagRows.0.0.id" not found in request.
+[["zzz"]]         param "tagRows.0.0" expects object, got string.
 ```
 
-What is still NOT done at that depth is HYDRATION: the value stays the `stdClass` `json_decode()`
-produced, which is why the declaration says `mixed` — see
-[Not generated in any mode](#not-generated-in-any-mode).
+HYDRATION reaches that depth too, as of 2.15.7: the value IS the DTO the declaration names, in all four
+spellings of two-deep — list of lists, list of maps, map of lists, map of maps. The path is quoted whole
+because the report comes from the same cast that reports a DTO one level up; while the value was a bare
+`stdClass` the container interpreter reported it instead and quoted only the property, `tagRows".0.0.id`.
+
+THREE containers deep nothing is hydrated and the declaration says `mixed` — see
+[Not generated in any mode](#not-generated-in-any-mode). A nested SCALAR is deliberately left to the
+validator: it is already the value it claims to be, and casting it would only reword a message.
 
 
 ## Beyond validation
@@ -238,7 +264,7 @@ at all, so a property declaring either is emitted with no source rather than a w
 | | Why |
 |---|---|
 | hydration of a union of OBJECTS with no `discriminator` | the document does not say which member a given object is, and choosing by structure would be a guess two overlapping branches could not settle. The union is emitted as an interface — useful as a type, and fine for a response — but a payload cannot be turned back into a member in ANY mode. The generator names the property at generation time instead of letting the request find out; add a `discriminator` and every mode resolves it. Pinned by `tests/Parity/UnhydratableUnionParityTest` |
-| hydration of a `$ref`ed OBJECT two containers deep | materialization stops below the first level of items, so `array<array<Tag>>` holds the `stdClass` `json_decode()` produced, not a `Tag`. The declaration says `array<array<mixed>>` rather than naming a class that is not there. VALIDATION does reach it — the referenced component's own rules are inlined into the emitted constraints, see [Containers inside containers](#containers-inside-containers) — so what is missing is the typed object, not the checks. Use a named component for the ROW (`array<Row>` where `Row` wraps the list) when you want `Tag` instances |
+| hydration of a `$ref`ed OBJECT THREE containers deep | hydration reaches two deep as of 2.15.7 — `array<array<Tag>>` holds real `Tag` instances in all four spellings. Below that it stops: `array<array<array<Tag>>>` holds the `stdClass` `json_decode()` produced, and the declaration says `array<array<array<mixed>>>` rather than naming a class that is not there. VALIDATION does reach it — the referenced component's own rules are inlined into the emitted constraints, see [Containers inside containers](#containers-inside-containers) — so what is missing is the typed object, not the checks. Use a named component for the ROW (`array<Row>` where `Row` wraps the list) when you want instances that deep |
 | `authorize()` / any policy | an OpenAPI document describes payload shape, not authorization |
 | server, security scheme and callback objects | out of scope: this generates DTOs, not a router or an auth layer |
 | subschema-local `$defs` (`#/components/schemas/Foo/$defs/Bar`) | top-level `components.schemas` / `$defs` are folded and supported; a nested `$defs` pointer is not — prefer top-level shared types |

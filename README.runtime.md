@@ -237,20 +237,21 @@ rather than promising otherwise:
 | `format: date` / `binary`, or an `enum` | `array<array<string>>` |
 | `type: number` | `array<array<float\|int>>` |
 | a `$ref` to a CONTAINER component | the container it aliases — `array<array<string>>` |
-| a `$ref` to an OBJECT | `array<array<mixed>>` |
+| a `$ref` to an OBJECT | that component's DTO — `array<array<Tag>>` |
 
 Each row is what the property really holds. A date and an enum member are the plain string the payload
 carried — one level up they become a `DateTimeImmutable` and an enum case, here nothing converts them.
 `type: number` is both an int and a float, because JSON decides per value.
 
-`mixed` is left for the object alone: it arrives as the `stdClass` `json_decode()` produced, so naming
-the class would be a docblock the value never honours.
+The object row names its class because, as of 2.15.7, the value IS that class. It arrived as the
+`stdClass` `json_decode()` produced until then, and naming it would have been a docblock the value
+never honoured.
 
 The VALUES are still checked, by the emitted constraints rather than by the PHP types: a scalar keeps
 its type, bounds and pattern at any depth, an enum's members are checked, and an object is checked
 against the component it references — `required`, property types and bounds, and that it is an object
-at all. What is not done two levels down is HYDRATION: the value stays the array or `stdClass` the
-body decoded to, which is what `mixed` in the table above says.
+at all. HYDRATION reaches two levels down too, in all four spellings — list of lists, list of maps,
+map of lists, map of maps. THREE levels down it stops, and the declaration says `mixed` there.
 
 ### Free-form objects
 

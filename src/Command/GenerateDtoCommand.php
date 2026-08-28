@@ -3045,7 +3045,7 @@ final class GenerateDtoCommand extends Command
                 return ['array', $nullable];
             }
 
-            $itemNullable = (bool)($items['nullable'] ?? false);
+            $itemNullable = $this->schemaAllowsNull($items);
             $itemPrefix = $itemNullable ? '?' : '';
 
             if (array_key_exists('$ref', $items) && is_string($items['$ref'])) {
@@ -3108,7 +3108,7 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
-            $itemsType = $items['type'] ?? null;
+            $itemsType = $this->soleTypeBesidesNull($items['type'] ?? null);
 
             // A list of lists. Left to the scalar mapping below it landed on `default => 'mixed'`, so
             // `array<array<int>>` was declared `array<mixed>` — and `mixed` is the one item type
@@ -3116,7 +3116,10 @@ final class GenerateDtoCommand extends Command
             // belonged passed in silence.
             if ($itemsType === 'array') {
                 return [
-                    'array<' . $itemPrefix . $this->resolveNestedContainerDocType($items) . '>',
+                    'array<' . $itemPrefix . $this->resolveNestedContainerDocType(
+                        schema: $items,
+                        currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
+                    ) . '>',
                     $nullable,
                 ];
             }
@@ -3127,7 +3130,10 @@ final class GenerateDtoCommand extends Command
                 // would be dropped at deserialization. Keep them as maps instead.
                 if ($this->isPatternPropertiesOnlyObjectSchema($items) || $this->isMapLikeObjectSchema($items)) {
                     return [
-                        'array<' . $itemPrefix . $this->resolveNestedContainerDocType($items) . '>',
+                        'array<' . $itemPrefix . $this->resolveNestedContainerDocType(
+                            schema: $items,
+                            currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
+                        ) . '>',
                         $nullable,
                     ];
                 }
@@ -3699,6 +3705,13 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The recursion budget for a nested container's declared type, and — read as an equality — the
+     * marker for the FIRST hop below the property. That hop is the one the deserializer hydrates, so
+     * it is the one allowed to name a DTO; every hop under it counts down and stays `mixed`.
+     */
+    private const int NESTED_CONTAINER_DOC_DEPTH = 8;
+
+    /**
      * The docblock type of a container nested inside another container: `array<int>` for the items of
      * `array<array<int>>`, `array<string, int>` for the values of `array<string, array<string, int>>`.
      *
@@ -3707,20 +3720,23 @@ final class GenerateDtoCommand extends Command
      * That one REGISTERS a synthesized class for an object-shaped item — and at this depth nothing
      * hydrates one, so the class would be emitted into the output and never referenced by anything.
      *
-     * And it would promise more than the generated code delivers. Casting stops at the first level of
-     * items: a `$ref` two containers deep arrives as the `stdClass` `json_decode()` produced, never as
-     * the DTO. `array<array<string, Tag>>` was exactly that lie — the declaration named `Tag`, the
-     * value was a `stdClass`, and `validate()` reported nothing either way. So a value that would need
-     * CONVERTING is declared `mixed`: a DTO, an enum, a date, an uploaded file, and `number` too,
-     * because JSON hands `1` over as an int and nothing widens it at this depth.
+     * And it must promise no more than the generated code delivers. Casting reaches the SECOND level
+     * of items and stops: a `$ref` to an object component two containers deep is hydrated into its DTO
+     * and named here, a third container deep it is the `stdClass` `json_decode()` produced and is
+     * named `mixed`. Everything else that would need CONVERTING is `mixed` at any nested depth — an
+     * enum, a date, an uploaded file, and `number` too, because JSON hands `1` over as an int and
+     * nothing widens it here.
      *
      * What survives is what `json_decode()` already produces in the declared form — `string`, `int`,
      * `bool` — plus containers, recursively.
      *
      * @param array<string, mixed> $schema the nested container's OWN schema
      */
-    private function resolveNestedContainerDocType(array $schema, int $remainingDepth = 8): string
-    {
+    private function resolveNestedContainerDocType(
+        array $schema,
+        int $remainingDepth = self::NESTED_CONTAINER_DOC_DEPTH,
+        ?string $currentSourceFile = null,
+    ): string {
         if ($remainingDepth <= 0) {
             return 'mixed';
         }
@@ -3731,7 +3747,7 @@ final class GenerateDtoCommand extends Command
             $items = $schema['items'] ?? null;
 
             return is_array($items)
-                ? 'array<' . $this->nestedContainerValueDocType($items, $remainingDepth) . '>'
+                ? 'array<' . $this->nestedContainerValueDocType($items, $remainingDepth, $currentSourceFile) . '>'
                 : 'array';
         }
 
@@ -3746,7 +3762,7 @@ final class GenerateDtoCommand extends Command
             }
 
             return is_array($valueSchema)
-                ? 'array<string, ' . $this->nestedContainerValueDocType($valueSchema, $remainingDepth) . '>'
+                ? 'array<string, ' . $this->nestedContainerValueDocType($valueSchema, $remainingDepth, $currentSourceFile) . '>'
                 : 'array<string, mixed>';
         }
 
@@ -3759,24 +3775,36 @@ final class GenerateDtoCommand extends Command
      *
      * @param array<string, mixed> $schema
      */
-    private function nestedContainerValueDocType(array $schema, int $remainingDepth): string
-    {
+    private function nestedContainerValueDocType(
+        array $schema,
+        int $remainingDepth,
+        ?string $currentSourceFile = null,
+    ): string {
         $type = $schema['type'] ?? null;
 
         if ($type === 'array' || $type === 'object' || $this->isMapLikeObjectSchema($schema)) {
-            return $this->resolveNestedContainerDocType($schema, $remainingDepth - 1);
+            return $this->resolveNestedContainerDocType($schema, $remainingDepth - 1, $currentSourceFile);
         }
 
         // A `$ref` naming a scalar alias or an enum COMPONENT: the value here is that scalar, because
         // nothing casts it at this depth — an `enum` two containers deep arrives as the plain string
-        // the payload carried, measured. A `$ref` to an OBJECT is the one that stays `mixed`: there
-        // the value is the `stdClass` `json_decode()` produced, and naming the class would be exactly
-        // the lie 2.15.4 removed.
+        // the payload carried, measured.
         $ref = $schema['$ref'] ?? null;
         if (is_string($ref)) {
             $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+            if ($definition !== null) {
+                return $this->nestedScalarDocType($definition['type'] ?? null);
+            }
 
-            return $definition === null ? 'mixed' : $this->nestedScalarDocType($definition['type'] ?? null);
+            // A `$ref` to an OBJECT, on the FIRST hop below the property — the one hop the
+            // deserializer now hydrates. Naming the class here used to be exactly the lie 2.15.4
+            // removed, because the value was the `stdClass` `json_decode()` produced; it is the DTO
+            // now, so the name is what is true. Deeper the hydration stops and so does the name.
+            if ($remainingDepth === self::NESTED_CONTAINER_DOC_DEPTH && $this->nestedObjectRefDefinition($ref) !== null) {
+                return $this->schemaRefToClassName(ref: $ref, currentSourceFile: $currentSourceFile);
+            }
+
+            return 'mixed';
         }
 
         // `format: date` and an inline `enum` used to answer `mixed` here on the grounds that the
@@ -3821,6 +3849,12 @@ final class GenerateDtoCommand extends Command
             return 'mixed';
         }
 
+        // `nullable` on the VALUE, spelled the way `items` spells it one branch over. Without this the
+        // map declared `array<string, string>` for a schema that permits nulls, and the declaration is
+        // what `DtoNormalizer::validate()` reads: the null the document allows was reported as one the
+        // type forbids. The list spelling of the same schema had always been honest here.
+        $valueNullable = $this->schemaAllowsNull($additionalProperties);
+
         // A map whose values are themselves containers. Resolved WITHOUT the general resolver, which
         // would both synthesize a class nothing at that depth hydrates and name types the generated
         // code does not deliver — see `resolveNestedContainerDocType()`. It used to collapse to a bare
@@ -3835,7 +3869,7 @@ final class GenerateDtoCommand extends Command
                 propertyName: $propertyName . 'Value',
             );
             if ($aliasValueType !== null) {
-                return $aliasValueType;
+                return $this->composePhpTypeHint($aliasValueType, $valueNullable);
             }
         }
 
@@ -3846,7 +3880,13 @@ final class GenerateDtoCommand extends Command
             || $this->isPatternPropertiesOnlyObjectSchema($additionalProperties)
             || $this->isMapLikeObjectSchema($additionalProperties)
         ) {
-            return $this->resolveNestedContainerDocType($additionalProperties);
+            return $this->composePhpTypeHint(
+                $this->resolveNestedContainerDocType(
+                    schema: $additionalProperties,
+                    currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
+                ),
+                $valueNullable,
+            );
         }
 
         [$valueType] = $this->resolvePropertyType($additionalProperties, $ownerClassName, $propertyName . 'Value');
@@ -3856,7 +3896,7 @@ final class GenerateDtoCommand extends Command
             return 'mixed';
         }
 
-        return $valueType;
+        return $this->composePhpTypeHint($valueType, $valueNullable);
     }
 
     private function mapStringFormatType(mixed $format): ?string
@@ -4990,6 +5030,27 @@ final class GenerateDtoCommand extends Command
         $type = $schema['type'] ?? null;
 
         return is_array($type) && in_array('null', $type, true);
+    }
+
+    /**
+     * The 3.1 spelling of a nullable container value, `type: [string, "null"]`, read as the 3.0 one.
+     *
+     * `schemaAllowsNull()` above already answers the permission half for both spellings. This answers
+     * the other half: what the value IS once the permission is set aside. Without it a list under 3.1
+     * declared a bare `array` — the item type gone, so `DtoNormalizer::validate()` skipped the items
+     * altogether — and a map declared `array<string, string>`, which forbade the very null the
+     * document had just allowed. Only a single named type survives; a genuine 3.1 union of two types
+     * is a claim no one item type can carry, and it is left alone for the caller to fall through on.
+     */
+    private function soleTypeBesidesNull(mixed $type): mixed
+    {
+        if (!is_array($type)) {
+            return $type;
+        }
+
+        $named = array_values(array_filter($type, static fn(mixed $t): bool => $t !== 'null'));
+
+        return count($named) === 1 ? $named[0] : $type;
     }
 
     /**

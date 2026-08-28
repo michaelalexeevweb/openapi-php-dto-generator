@@ -52,6 +52,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     defaultValue: mixed,
      *     schemaAllowsNull: bool,
      *     arrayItemType: string|null,
+     *     nestedArrayItemType: string|null,
      *     openApiFormat: string|null,
      *     allowsAssociativeArray: bool,
      *     temporalFormat: string|null,
@@ -624,6 +625,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                        nestedArrayItemType: $paramMeta['nestedArrayItemType'],
                     );
                 } else {
                     $value = $this->castUnionValue(
@@ -639,6 +641,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                        nestedArrayItemType: $paramMeta['nestedArrayItemType'],
                     );
                 }
             } catch (RuntimeException $e) {
@@ -724,6 +727,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     defaultValue: mixed,
      *     schemaAllowsNull: bool,
      *     arrayItemType: string|null,
+     *     nestedArrayItemType: string|null,
      *     openApiFormat: string|null,
      *     allowsAssociativeArray: bool,
      *     temporalFormat: string|null,
@@ -832,6 +836,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $arrayItemType = in_array('array', $typeNames, true)
                 ? $this->resolveArrayItemType(reflection: $reflection, paramName: $paramName)
                 : null;
+            $nestedArrayItemType = $arrayItemType === 'array' || $arrayItemType === 'list'
+                ? $this->resolveNestedArrayItemType(reflection: $reflection, paramName: $paramName)
+                : null;
             $arrayItemsNullable = $this->resolveArrayItemsNullable($fieldConstraints);
 
             // Pre-compute temporal format for DateTimeImmutable fields.
@@ -897,6 +904,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'defaultValue' => $hasDefaultValue ? $param->getDefaultValue() : null,
                 'schemaAllowsNull' => $schemaAllowsNull,
                 'arrayItemType' => $arrayItemType,
+                'nestedArrayItemType' => $nestedArrayItemType,
                 'openApiFormat' => $openApiFormat,
                 'allowsAssociativeArray' => $allowsAssociativeArray,
                 'temporalFormat' => $temporalFormat,
@@ -1546,6 +1554,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $allowsAssociativeArray,
         bool $arrayItemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
+        ?string $nestedArrayItemType = null,
     ): mixed {
         // A missing value here always belongs to a required parameter: optional
         // missing params are short-circuited in deserialize() before this call,
@@ -1582,6 +1591,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     allowsAssociativeArray: $allowsAssociativeArray,
                     arrayItemsNullable: $arrayItemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
+                    nestedArrayItemType: $nestedArrayItemType,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -1967,6 +1977,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $allowsAssociativeArray = false,
         bool $arrayItemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
+        ?string $nestedArrayItemType = null,
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -2083,6 +2094,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     source: $source,
                     itemsNullable: $arrayItemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
+                    nestedArrayItemType: $nestedArrayItemType,
                 );
             }
         }
@@ -2164,6 +2176,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 source: $source,
                 itemsNullable: $arrayItemsNullable,
                 arrayItemTemporalFormat: $arrayItemTemporalFormat,
+                nestedArrayItemType: $nestedArrayItemType,
             );
         }
 
@@ -2251,6 +2264,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $source,
         bool $itemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
+        ?string $nestedArrayItemType = null,
     ): array {
         $normalized = [];
         $errors = [];
@@ -2264,6 +2278,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     source: $source,
                     itemsNullable: $itemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
+                    nestedArrayItemType: $nestedArrayItemType,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -2284,6 +2299,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $source,
         bool $itemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
+        ?string $nestedArrayItemType = null,
     ): mixed {
         // A null element is accepted only when the items schema declares it nullable
         // (items: {nullable: true} or type containing null); otherwise it falls through
@@ -2305,10 +2321,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 typeName: $kind === 'list' ? 'array' : $arrayItemType,
                 allowsNull: false,
                 source: $source,
-                // NOT $arrayItemType: this call casts the ITEM, so the item type has already been
-                // consumed and forwarding it would descend a level that is not there. Spelled out
-                // because a variable of that name is in scope and reads like an omission otherwise.
-                arrayItemType: null,
+                // NOT $arrayItemType: that one names THIS item, and forwarding it would cast the
+                // item's own elements to the container they sit in. What belongs here is the type the
+                // nested generic was holding — the `Tag` of `array<array<Tag>>` — which the item type
+                // dropped when it collapsed to a shape. Null below that hop, and the declaration says
+                // `mixed` there, which stays true.
+                arrayItemType: $nestedArrayItemType,
                 paramPath: $itemPath,
                 // An `array` item is the MAP form — a list of maps is `array<array<string, V>>` — and
                 // JSON decodes a map to stdClass, so the item must accept one and must not be a JSON
@@ -2535,16 +2553,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function resolveArrayItemsNullable(?array $fieldConstraints): bool
     {
-        $items = $fieldConstraints['items'] ?? null;
-        if (!is_array($items)) {
+        // `additionalProperties` as well as `items`: a map's VALUE schema is spelled the other way,
+        // and reading only one of them made the two spellings of one schema disagree — a nullable
+        // ITEM was accepted, a nullable map VALUE died in the cast with `expects string, got null`.
+        $itemSchema = $fieldConstraints['items'] ?? $fieldConstraints['additionalProperties'] ?? null;
+        if (!is_array($itemSchema)) {
             return false;
         }
 
-        if (($items['nullable'] ?? false) === true) {
+        if (($itemSchema['nullable'] ?? false) === true) {
             return true;
         }
 
-        $type = $items['type'] ?? null;
+        $type = $itemSchema['type'] ?? null;
+
         return is_array($type) && in_array('null', $type, true);
     }
 
@@ -2567,6 +2589,62 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
+        return $this->qualifyDocTypeName($reflection, $rawType);
+    }
+
+    /**
+     * The item type of a NESTED container — the `Tag` of `array<array<Tag>>`, and of the three other
+     * ways to spell two containers deep.
+     *
+     * One hop only. `resolveArrayItemType()` above collapses the nested generic to the SHAPE it is,
+     * because that is what decides the wire form the item must arrive in; the type it was holding is
+     * dropped there, and this puts it back so the elements below can be hydrated instead of left as
+     * the `stdClass` `json_decode()` produced. Below this hop nothing is cast and the declaration
+     * says `mixed`, which stays true.
+     *
+     * @param ReflectionClass<object> $reflection
+     */
+    private function resolveNestedArrayItemType(ReflectionClass $reflection, string $paramName): ?string
+    {
+        if (!$reflection->hasProperty($paramName)) {
+            return null;
+        }
+
+        $docComment = $reflection->getProperty($paramName)->getDocComment();
+        if ($docComment === false) {
+            return null;
+        }
+
+        $itemType = $this->genericValuePart($docComment);
+        if ($itemType === null || preg_match('/^\??(?:array|list)</i', $itemType) !== 1) {
+            return null;
+        }
+
+        $nested = $this->genericValuePart($itemType);
+        if ($nested === null || preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/', $nested, $matches) !== 1) {
+            return null;
+        }
+
+        $nestedType = $this->qualifyDocTypeName($reflection, $matches[1]);
+
+        // A DTO and nothing else. What this hop adds is HYDRATION — turning the `stdClass`
+        // `json_decode()` produced into the class the declaration names — and only a generated DTO has
+        // one to be turned into. A nested scalar is already the value it claims to be and is already
+        // checked, by `DtoValidator`, in the message shape three releases of consumers have; casting
+        // it here would move the report to another layer and reword it for no gain. `mixed` is the
+        // declaration for a depth where nothing is cast at all, and casting to it is not even a no-op:
+        // the `stdClass` would come back an array, a shape the consumer never had.
+        return $this->resolveTypeKind($nestedType) === 'dto' ? $nestedType : null;
+    }
+
+    /**
+     * A doc-comment type name as the emitted file means it: a built-in stays itself, a short class
+     * name is resolved through the file's `use` imports and then its namespace.
+     *
+     * @param ReflectionClass<object> $reflection
+     */
+    private function qualifyDocTypeName(ReflectionClass $reflection, string $rawType): string
+    {
         if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'list', 'mixed'], true)) {
             return $rawType;
         }
@@ -2587,25 +2665,25 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * The item type of the first `array<…>` / `list<…>` in a doc comment: `array<V>` yields `V`,
-     * and the map form `array<string, V>` yields `V` too — the key prefix is dropped so map values
-     * are cast to their declared type rather than left raw.
+     * The VALUE part of the first `array<…>` / `list<…>` in a string: `array<V>` and the map form
+     * `array<string, V>` both yield `V`, with the key prefix dropped. Returns the part raw — a nested
+     * generic comes back whole, which is what lets a caller descend into it.
      *
      * Bracket-aware on purpose. A flat regex matches the INNERMOST generic, so a list of maps,
      * `array<array<string, int>>`, used to report `int` as its item type and every item then failed
      * to cast with "expects int, got object" — the whole payload was undeserializable.
      */
-    private function itemTypeFromDocComment(string $docComment): ?string
+    private function genericValuePart(string $type): ?string
     {
-        if (preg_match('/\b(?:array|list)</i', $docComment, $match, PREG_OFFSET_CAPTURE) !== 1) {
+        if (preg_match('/\b(?:array|list)</i', $type, $match, PREG_OFFSET_CAPTURE) !== 1) {
             return null;
         }
 
         $inner = '';
         $depth = 1;
-        $length = strlen($docComment);
+        $length = strlen($type);
         for ($i = $match[0][1] + strlen($match[0][0]); $i < $length; $i++) {
-            $character = $docComment[$i];
+            $character = $type[$i];
             if ($character === '<') {
                 $depth++;
             } elseif ($character === '>') {
@@ -2636,7 +2714,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        $inner = trim($inner);
+        return trim($inner);
+    }
+
+    /**
+     * The item type a doc comment declares, as a name the cast can use: a nested generic collapses to
+     * the SHAPE it is, a plain name comes back as itself.
+     */
+    private function itemTypeFromDocComment(string $docComment): ?string
+    {
+        $inner = $this->genericValuePart($docComment);
+        if ($inner === null) {
+            return null;
+        }
 
         // A generic item is a container as far as casting goes, but WHICH container decides the wire
         // shape the item must have: `array<array<string, V>>` items are JSON objects,
@@ -2922,6 +3012,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                        nestedArrayItemType: $paramMeta['nestedArrayItemType'],
                     )
                     : $this->castUnionValue(
                         paramName: $name,
@@ -2936,6 +3027,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                        nestedArrayItemType: $paramMeta['nestedArrayItemType'],
                     );
             } catch (RuntimeException $e) {
                 foreach (explode("\n", $e->getMessage()) as $message) {

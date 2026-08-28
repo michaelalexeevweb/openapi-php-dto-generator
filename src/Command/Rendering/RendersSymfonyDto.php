@@ -2548,6 +2548,14 @@ PHP,
     }
 
     /**
+     * Keywords that grant permission rather than assert anything. They survive the filter so the
+     * callback knows a null is allowed, but they cannot make a schema worth entering.
+     *
+     * @var array<int, string>
+     */
+    private const array SYMFONY_ANNOTATION_KEYWORDS = ['nullable'];
+
+    /**
      * Keeps only the Symfony-mode keywords that need the callback path. Supported scalar / count /
      * regex constraints are intentionally removed here so the callback does not duplicate
      * attribute-based violations.
@@ -2719,6 +2727,13 @@ PHP,
                         $filtered[$key] = $value;
                     }
                     break;
+                case 'nullable':
+                    // Not an assertion — permission. Dropping it did not relax anything, it made the
+                    // callback REJECT a null the document allows: `items: {nullable: true}` and its
+                    // map twin both came back "must be of type string". It belongs with the other
+                    // annotations, which survive whatever `allowScalarKeywords` says.
+                    $filtered[$key] = $value;
+                    break;
                 case 'x-php-instanceof':
                 case 'x-discriminator-property':
                 case 'x-discriminator-php-property':
@@ -2753,6 +2768,14 @@ PHP,
                     unset($filtered['properties']);
                 }
             }
+        }
+
+        // `nullable` rides along, it never keeps a subschema alive on its own: it grants permission,
+        // it asserts nothing, and a schema holding only permissions has nothing for the callback to
+        // do. Without this the callback was emitted for classes that needed none — measured, the
+        // symfony corpus grew five hundred lines of interpreter that would never report anything.
+        if ($filtered !== [] && array_diff(array_keys($filtered), self::SYMFONY_ANNOTATION_KEYWORDS) === []) {
+            return [];
         }
 
         return $filtered;

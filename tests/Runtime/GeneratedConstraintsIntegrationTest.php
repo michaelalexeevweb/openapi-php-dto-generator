@@ -3209,6 +3209,191 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * Two containers deep has FOUR spellings, and hydration has to reach all of them.
+     *
+     * The one the corpus held was the list of lists. A `$ref`ed object under a list of maps, a map of
+     * lists or a map of maps arrived as the `stdClass` `json_decode()` produced just the same, and the
+     * declaration said `mixed` for each. Checking already reached them (2.15.5); the value did not.
+     */
+    public function testAnObjectTwoContainersDeepIsHydratedInAllFourSpellings(): void
+    {
+        $tagRef = ['$ref' => '#/components/schemas/Tag'];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Tag' => [
+                    'type' => 'object',
+                    'required' => ['name'],
+                    'properties' => ['name' => ['type' => 'string', 'minLength' => 2]],
+                ],
+                'Four' => [
+                    'type' => 'object',
+                    'required' => ['listOfLists', 'listOfMaps', 'mapOfLists', 'mapOfMaps'],
+                    'properties' => [
+                        'listOfLists' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => $tagRef]],
+                        'listOfMaps' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'object', 'additionalProperties' => $tagRef],
+                        ],
+                        'mapOfLists' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => 'array', 'items' => $tagRef],
+                        ],
+                        'mapOfMaps' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => 'object', 'additionalProperties' => $tagRef],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'FourSpellingsNs', 'Four');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Four.php');
+        $this->assertStringContainsString('@param array<array<Tag>> $listOfLists', $source);
+        $this->assertStringContainsString('@param array<array<string, Tag>> $listOfMaps', $source);
+        $this->assertStringContainsString('@param array<string, array<Tag>> $mapOfLists', $source);
+        $this->assertStringContainsString('@param array<string, array<string, Tag>> $mapOfMaps', $source);
+
+        $tag = '{"name":"ok"}';
+        $json = '{"listOfLists":[[' . $tag . ']],"listOfMaps":[{"k":' . $tag . '}],'
+            . '"mapOfLists":{"k":[' . $tag . ']},"mapOfMaps":{"k":{"j":' . $tag . '}}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+
+        $tagClass = 'FourSpellingsNs\Tag';
+        $this->assertInstanceOf($tagClass, $dto->getListOfLists()[0][0]);
+        $this->assertInstanceOf($tagClass, $dto->getListOfMaps()[0]['k']);
+        $this->assertInstanceOf($tagClass, $dto->getMapOfLists()['k'][0]);
+        $this->assertInstanceOf($tagClass, $dto->getMapOfMaps()['k']['j']);
+
+        // Round-trips whole: a nested list must not come back a map, nor a map a list.
+        $this->assertSame($json, (string)json_encode((new DtoNormalizer())->toArray($dto)));
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+
+        // And the component's own rules still reach every spelling, one message each.
+        foreach (
+            [
+                'listOfLists' => '{"listOfLists":[[{"name":"x"}]],"listOfMaps":[],"mapOfLists":{},"mapOfMaps":{}}',
+                'listOfMaps' => '{"listOfLists":[],"listOfMaps":[{"k":{"name":"x"}}],"mapOfLists":{},"mapOfMaps":{}}',
+                'mapOfLists' => '{"listOfLists":[],"listOfMaps":[],"mapOfLists":{"k":[{"name":"x"}]},"mapOfMaps":{}}',
+                'mapOfMaps' => '{"listOfLists":[],"listOfMaps":[],"mapOfLists":{},"mapOfMaps":{"k":{"j":{"name":"x"}}}}',
+            ] as $spelling => $bad
+        ) {
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($bad), $fqcn);
+                $this->fail(sprintf('%s was accepted', $spelling));
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString(
+                    'length must be at least 2 characters',
+                    $exception->getMessage(),
+                    $spelling,
+                );
+                $this->assertSame(1, substr_count($exception->getMessage(), "\n") + 1, $spelling);
+            }
+        }
+    }
+
+    /**
+     * The two spellings of "this value may be null" must answer alike.
+     *
+     * `items: {nullable: true}` was honoured, `additionalProperties: {nullable: true}` was not — the
+     * deserializer looked only at `items` when deciding whether a container may hold nulls, so a map
+     * value the document explicitly allows died in the cast with `expects string, got null`. Nothing
+     * in the corpus held a nullable container value, so golden had never seen either form.
+     */
+    public function testANullableContainerValueIsHonouredInBothSpellings(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holes' => [
+                    'type' => 'object',
+                    'required' => ['listOfNullable', 'mapOfNullable'],
+                    'properties' => [
+                        'listOfNullable' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string', 'nullable' => true],
+                        ],
+                        'mapOfNullable' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => 'string', 'nullable' => true],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'NullableValuesNs', 'Holes');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Holes.php');
+        $this->assertStringContainsString('@param array<?string> $listOfNullable', $source);
+        $this->assertStringContainsString('@param array<string, ?string> $mapOfNullable', $source);
+
+        $json = '{"listOfNullable":["a",null],"mapOfNullable":{"k":null,"j":"b"}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+        $this->assertSame(
+            $json,
+            (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            'a null the document allows must survive the cast in BOTH spellings',
+        );
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+
+        // Permission is not a licence: a wrong non-null type is still refused, in both spellings.
+        foreach (
+            [
+                '{"listOfNullable":[7],"mapOfNullable":{}}',
+                '{"listOfNullable":[],"mapOfNullable":{"k":7}}',
+            ] as $bad
+        ) {
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($bad), $fqcn);
+                self::fail('a non-null value of the wrong type must still be refused: ' . $bad);
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('expects string', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * The 3.1 spelling of the same permission, `type: [string, "null"]`.
+     *
+     * The document says the same thing; the declaration used to say two different wrong things. The
+     * list lost its item type entirely — a bare `array`, whose items `DtoNormalizer::validate()` does
+     * not look at — and the map kept `array<string, string>`, forbidding the null the schema allows.
+     */
+    public function testTheThreeOneSpellingOfANullableContainerValueSaysTheSameThing(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holes31' => [
+                    'type' => 'object',
+                    'required' => ['listOfNullable', 'mapOfNullable'],
+                    'properties' => [
+                        'listOfNullable' => ['type' => 'array', 'items' => ['type' => ['string', 'null']]],
+                        'mapOfNullable' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => ['string', 'null']],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'NullableValues31Ns', 'Holes31');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Holes31.php');
+        $this->assertStringContainsString('@param array<?string> $listOfNullable', $source);
+        $this->assertStringContainsString('@param array<string, ?string> $mapOfNullable', $source);
+
+        $json = '{"listOfNullable":["a",null],"mapOfNullable":{"k":null,"j":"b"}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+        $this->assertSame($json, (string)json_encode((new DtoNormalizer())->toArray($dto)));
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+    }
+
+    /**
      * A component whose top level is a CONTAINER is a type ALIAS, and that reading has to hold
      * wherever the `$ref` appears — not only on a property.
      *
@@ -3409,9 +3594,11 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertStringContainsString('@param array<array<int>> $matrix', $source);
         $this->assertStringContainsString('@param array<string, array<string>> $byKey', $source);
         $this->assertStringContainsString('@param array<array<string>> $kindRows', $source);
-        // The one that stays `mixed`, and the only honest answer for it: an OBJECT two deep is the
-        // `stdClass` `json_decode()` produced, so neither `Tag` nor `array` is true of it.
-        $this->assertStringContainsString('@param array<array<mixed>> $tagRows', $source);
+        // An OBJECT two deep IS hydrated as of 2.15.7, so the class is what is true of it. Before
+        // that the value was the `stdClass` `json_decode()` produced and `mixed` was the only honest
+        // answer; naming `Tag` while holding a `stdClass` is the lie 2.15.4 removed, and the name
+        // came back only once the value did.
+        $this->assertStringContainsString('@param array<array<Tag>> $tagRows', $source);
         // No class is synthesized down there — one that nothing references would still be written out.
         $this->assertSame(
             ['Kind.php', 'Nested.php', 'Tag.php'],
@@ -3422,6 +3609,11 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
         $this->assertSame([[1, 2], [3]], $dto->getMatrix());
         $this->assertSame(['a' => ['x']], $dto->getByKey());
+        // The value the declaration names, not the `stdClass` it used to be.
+        $this->assertInstanceOf('NestedContainerNs\Tag', $dto->getTagRows()[0][0]);
+        // A nested SCALAR is untouched by that: it was already the value it claims to be, and moving
+        // its report to the cast would have reworded a message consumers have had for three releases.
+        $this->assertSame('a', $dto->getKindRows()[0][0]);
         $this->assertSame([], (new DtoNormalizer())->validate($dto));
         $this->assertSame(
             $valid,
@@ -3440,18 +3632,21 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             // And the wire shape of the container itself, which the item cast owns.
             '{"matrix":[1],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":9}]]}'
                 => 'param "matrix.0" expects array, got int',
-            // A `$ref`ed OBJECT two containers deep. Nothing hydrates it — the value stays the
-            // `stdClass` `json_decode()` produced, which is why the declaration above says
-            // `array<array<mixed>>` — but the component's own rules now reach it. All three used to
-            // pass in silence: the emitted constraint stopped at `items => ['type' => 'array']`
-            // because `$ref` is not a constraint keyword, and even once it did not,
-            // `DtoValidator` skipped every object keyword for a value that was not a generated DTO.
+            // A `$ref`ed OBJECT two containers deep. Its path is quoted whole — `param "a.0.0.id"` —
+            // because the report comes from the same cast that reports a DTO one level up, where it
+            // has always read that way. While the value was a bare `stdClass` the container
+            // interpreter reported it instead and quoted only the property, `a".0.0.id`.
+            // All three used to pass in silence: the emitted
+            // constraint stopped at `items => ['type' => 'array']` because `$ref` is not a constraint
+            // keyword, and even once it did not, `DtoValidator` skipped every object keyword for a
+            // value that was not a generated DTO. 2.15.5 closed the checking; 2.15.7 made the value
+            // the DTO the declaration names.
             '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":1}]]}'
-                => 'tagRows".0.0.id must be greater than or equal to 5',
+                => 'param "tagRows.0.0.id" must be greater than or equal to 5',
             '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{}]]}'
-                => 'tagRows".0.0.id is required',
+                => 'Required parameter "tagRows.0.0.id" not found in request.',
             '{"matrix":[[1]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[["zzz"]]}'
-                => 'tagRows".0.0 must be of type object',
+                => 'param "tagRows.0.0" expects object',
         ];
 
         foreach ($cases as $json => $expected) {
