@@ -113,18 +113,22 @@ shape instead.
 
 ## Why this one
 
-Five PHP tools were downloaded and run on the **same spec** with the **same payloads**. Nothing below is
-quoted from anyone's README — every cell is a verdict the tool actually returned.
+Four PHP tools that read an OpenAPI document were downloaded and run on the **same spec** with the
+**same payloads** — a fifth, `php-collective/dto`, generates from its own XML config and never saw the
+spec, so it is [reported separately](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md)
+and holds no cell here. Nothing below is quoted from anyone's README — every cell is a verdict the tool
+actually returned, on the versions and date named there.
 
-| enforced by the code it generates | `minimum` / `maximum` | `pattern` | `format` | `oneOf` | builds a typed object |
+| enforced on the payload | `minimum` / `maximum` | `pattern` | `format` | `oneOf` | builds a typed object |
 |---|:--:|:--:|:--:|:--:|:--:|
 | JanePHP `open-api-3` 7.13, `validation: true` | ❌ | ❌ | ❌ | ❌ | ✅ |
 | OpenAPI Generator 7.24 — `php-symfony`, `php-dt`, `php-nextgen` | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `maxbeckers/php-openapi-generator` 0.1.6 | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `league/openapi-psr7-validator` 0.24 | ✅ | ✅ | ✅¹ | ✅ | ❌ |
+| `league/openapi-psr7-validator` 0.24² | ✅ | ✅ | ✅¹ | ✅ | ❌ |
 | **this library** | **✅** | **✅** | **✅** | **✅** | **✅** |
 
-<sub>¹ everything except `uri-template`.</sub>
+<sub>¹ everything except `uri-template`. ² at runtime — league generates no code at all, which is what the
+last column says. Every other row is enforced by the code the tool generated.</sub>
 
 **Every other generator in the set checks the type and whether the key is present, and stops there.** In
 the whole set the OpenAPI vocabulary is enforced by exactly one tool — a runtime validator that generates
@@ -205,7 +209,7 @@ from the parity test suites, so a row that stops being true fails a test.
 
 | | what is in it |
 |---|---|
-| [How it compares](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md) | five tools downloaded and run on the same spec, same payloads |
+| [How it compares](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.comparison.md) | five tools downloaded and run, the four OpenAPI ones on the same spec and payloads |
 | [Support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md) | every keyword per mode, every divergence, what is out of scope |
 | [Performance](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md) | bind / validate / normalize per mode, measured, with the benchmark |
 | [Validation notes](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.validation.md) | where a careless reading of the spec and a correct one disagree |

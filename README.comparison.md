@@ -1,8 +1,10 @@
 # How this compares, and how that was measured
 
 The claims on the [README](README.md) are verdicts, not readings. Every tool below was **downloaded,
-installed and run** on the same OpenAPI document, and fed the same payloads. Nothing here is quoted from
-anyone's documentation — where a table says a tool accepts something, it accepted it.
+installed and run**; the four that read an OpenAPI document got the same one, and the same payloads.
+`php-collective/dto` is the exception and is counted apart throughout — it generates from its own XML
+config and never saw the spec, so it holds no cell in the vocabulary or verdict tables. Nothing here is
+quoted from anyone's documentation — where a table says a tool accepts something, it accepted it.
 
 Measured 2026-08-19/20. Spec: `OpenApiExamples/test.yaml` (19 schemas, 589 lines — a discriminated union,
 an undiscriminated `anyOf`, a scalar `oneOf`, recursion, `format`). Machine: Apple M3 Pro.
@@ -167,7 +169,7 @@ figures above are kept as measured on the day, beside the competitors, rather th
 - **No HTTP client generation.** Jane emits `Endpoint/` plus a `Client.php` — 96 files on our spec — and
   OpenAPI Generator is what most published PHP SDKs come out of. This library generates the server side
   only. That is the largest gap in the set.
-- **No TypeScript output.** None of the four measured competitors generates it either, so it is not a gap
+- **No TypeScript output.** None of the four OpenAPI competitors generates it either, so it is not a gap
   against them — but it is a thing this does not do.
 - **Several generation modes is not unique.** OpenAPI Generator ships nine PHP generators. What differs is
   what the emitted code enforces, not the number of choices.
@@ -184,3 +186,6 @@ figures above are kept as measured on the day, beside the competitors, rather th
   `servers: [{url: 'https'}]` in our own example spec.
 - **Versions move.** Everything above is the version named in the first table, on the date named at the top.
   Re-run before quoting it anywhere that matters.
+- **Nothing here is reproducible from this repository.** The competitors are not vendored and there is no
+  harness: the tables are a record of a run, not a test that fails when a verdict changes. Treat them as
+  dated evidence, and re-measure rather than trust them.
