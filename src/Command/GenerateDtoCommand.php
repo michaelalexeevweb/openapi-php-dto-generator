@@ -2676,8 +2676,9 @@ final class GenerateDtoCommand extends Command
      */
     private function reportInlineCeilingReached(string $ref): void
     {
-        if (($this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
-            ?? $this->nestedObjectRefDefinition($ref)) === null) {
+        $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
+            ?? $this->nestedObjectRefDefinition($ref);
+        if ($definition === null) {
             return;
         }
 
