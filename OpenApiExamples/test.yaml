@@ -774,10 +774,20 @@ components:
               - type: object
                 additionalProperties:
                   $ref: '#/components/schemas/Tag'
-    # The NON-recursive chain through a union branch, A -> B -> C, which is what the one-level inline
-    # budget could not reach. B's own rules landed in the emitted constraints; C's did not, and a
-    # violation inside C passed in silence. Nothing materializes anywhere on this path — under a
-    # container the branch type collapses to `array` — so there is no class on the way to catch it.
+    # The NON-recursive chain through a union branch, A -> B -> C -> D. Nothing materializes anywhere
+    # on this path — under a container the branch type collapses to `array` — so there is no class on
+    # the way to catch a violation, and every level has to reach the emitted constraints on its own.
+    # A one-hop inline stopped at B (before 2.15.8), a two-hop one at C (2.15.8); D is here because
+    # a hop CEILING can only move that border, never remove it. What removes it is the cycle guard:
+    # this chain names something new at every hop, so it is inlined whole.
+    ChainTag:
+      type: object
+      required:
+        - label
+      properties:
+        label:
+          type: string
+          minLength: 2
     ChainLink:
       type: object
       required:
@@ -786,6 +796,10 @@ components:
         code:
           type: string
           minLength: 3
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChainTag'
     ChainMiddle:
       type: object
       required:

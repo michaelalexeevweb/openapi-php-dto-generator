@@ -2486,13 +2486,30 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * How many `$ref`s may be inlined along one path below materialization. Two, because the shape that
-     * needed it is A -> B -> C: the first hop puts B's rules where something can read them, the second
-     * does the same for C. Raising it multiplies work per nesting level rather than adding to it — see
-     * the budget note inside the method — so it is raised only against a measured miss and a re-run of
-     * the recursive corpus forms.
+     * The hop ceiling for `$ref` inlining below materialization — the BLOWUP guard, not the cycle one.
+     *
+     * A cycle is stopped by `REF_REPEAT_LIMIT`; this is what stops the other shape, an ACYCLIC schema
+     * that branches, where nothing ever repeats and there is no cycle to catch.
+     * Measured on a DAG of three distinct components per level, each referring to all three of the
+     * next: the emitted constraints grow about 2.9x PER LEVEL — 70 KB at depth five, 194 KB at six,
+     * 568 KB and 68 MB at seven. Five hops is where that curve is still cheap (36 KB for the same
+     * depth-seven document) and deeper than any chain measured in a real one.
+     *
+     * On a linear chain the cost is linear instead — the whole demo corpus moves by a few hundred
+     * bytes across every value from two to twenty — so this ceiling is about the branching case only.
      */
-    private const int REF_INLINE_BUDGET = 2;
+    private const int REF_INLINE_BUDGET = 5;
+
+    /**
+     * How often ONE `$ref` may repeat on a single path — the CYCLE guard.
+     *
+     * Two, so a self-referential component is unrolled to the same depth the hop budget of 2.15.6-8
+     * gave it: the block-wise diff of the golden corpus shows `TreeNode` byte-identical in four modes
+     * and GAINING a level in the fifth. One would have cost the recursive forms a level of checking,
+     * which is a regression paid for nothing — the chain case this release fixes is about refs that
+     * DON'T repeat.
+     */
+    private const int REF_REPEAT_LIMIT = 2;
 
     /**
      * Everything at depth two or deeper inside a container, made validatable.
@@ -2514,6 +2531,7 @@ final class GenerateDtoCommand extends Command
      * @param int $depth how many containers were entered to reach this schema
      * @param bool $belowMaterialization whether no class is generated for anything from here down
      * @param int $refInlineBudget how many more `$ref`s may be inlined on this path — see below
+     * @param array<string, int> $seenRefs how often each `$ref` is already inlined on THIS path
      * @return array<string, mixed>
      */
     private function inlineNestedContainerValidation(
@@ -2521,6 +2539,7 @@ final class GenerateDtoCommand extends Command
         int $depth = 0,
         bool $belowMaterialization = false,
         int $refInlineBudget = self::REF_INLINE_BUDGET,
+        array $seenRefs = [],
     ): array {
         // Two containers down, nothing is materialized any more — and that stays true for everything
         // INSIDE what gets inlined here, however many `properties` hops away it is. A depth counter
@@ -2530,21 +2549,39 @@ final class GenerateDtoCommand extends Command
 
         if ($belowMaterialization) {
             $ref = $schema['$ref'] ?? null;
-            if (is_string($ref) && $refInlineBudget > 0) {
+            if (is_string($ref) && $refInlineBudget > 0 && ($seenRefs[$ref] ?? 0) < self::REF_REPEAT_LIMIT) {
                 $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
                     ?? $this->nestedObjectRefDefinition($ref);
                 if ($definition !== null) {
-                    // A BUDGET, not a set. A per-path "already seen" set is not enough:
-                    // `extractValidationConstraints()` re-enters itself for every `oneOf` branch, for
-                    // `not`, and once more from the scrubber, and each re-entry starts a fresh set — so
-                    // a self-referential component peeled off one more level per pass and a recursive
-                    // report tree exhausted memory before it finished generating. A budget cannot do
-                    // that: it counts DOWN on the path and cannot be refilled by descending.
+                    // TWO guards, because there are two ways this runs away, and neither one catches
+                    // the other's shape.
                     //
-                    // It was one level until 2.15.8, on the reasoning that what sits below is reached
-                    // by the same rule the next level down applies. Measured, it is not: that rule
-                    // needs a class to materialize, and under a union branch below a container nothing
-                    // does — so A -> B -> C through a `oneOf` was checked at B and unchecked at C.
+                    // `$seenRefs` stops a CYCLE: a component that refers to itself, however many hops
+                    // around, is unrolled `REF_REPEAT_LIMIT` times and no more. It counts per PATH —
+                    // the array is copied into every branch below, so two siblings never see each
+                    // other's marks — and it is what lets a plain chain be inlined for as long as it
+                    // keeps naming something NEW.
+                    //
+                    // A per-path set was tried in 2.15.5 and exhausted memory, which is why 2.15.6
+                    // fell back to inlining a single level. The reason it failed then is gone now:
+                    // `extractValidationConstraints()` re-enters itself for every `oneOf` branch, for
+                    // `not`, and once more from the scrubber, and back then the inlining ran on every
+                    // entry with a FRESH set, so a self-referential component peeled off one more
+                    // level per pass. Since 2.15.6 it runs once, in the outermost extraction, and
+                    // walks the whole tree itself, so the set is no longer refilled behind its own
+                    // back. Measured on the recursive corpus forms: 12 MB and 0.04s, the same numbers
+                    // a plain hop budget gave.
+                    //
+                    // `$refInlineBudget` stops the other shape — see `REF_INLINE_BUDGET`. Nothing
+                    // repeats on an acyclic branching path, so the set never fires there, and the
+                    // constraints grow exponentially with depth if nothing else says stop.
+                    //
+                    // What this replaced: one hop and no more, which was enough wherever the chain
+                    // MATERIALIZES (`items: {$ref: B}` becomes a DTO and that DTO applies the same
+                    // rule to C) and one hop short wherever it does not. Under a union branch below a
+                    // container nothing materializes, so A -> B -> C -> D was checked at B, at C from
+                    // 2.15.8, and never at D. Now it is checked as deep as the document is named.
+                    $seenRefs[$ref] = ($seenRefs[$ref] ?? 0) + 1;
                     $refInlineBudget--;
                     unset($schema['$ref']);
                     $schema += $definition;
@@ -2563,6 +2600,7 @@ final class GenerateDtoCommand extends Command
                     depth: $depth + 1,
                     belowMaterialization: $belowMaterialization,
                     refInlineBudget: $refInlineBudget,
+                    seenRefs: $seenRefs,
                 );
             }
         }
@@ -2592,6 +2630,7 @@ final class GenerateDtoCommand extends Command
                         depth: $depth,
                         belowMaterialization: $belowMaterialization || $depth >= 1,
                         refInlineBudget: $refInlineBudget,
+                        seenRefs: $seenRefs,
                     );
                 }
             }
@@ -2608,6 +2647,7 @@ final class GenerateDtoCommand extends Command
                         depth: 0,
                         belowMaterialization: $belowMaterialization,
                         refInlineBudget: $refInlineBudget,
+                        seenRefs: $seenRefs,
                     );
                 }
             }

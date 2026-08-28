@@ -3,6 +3,40 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.9 — 2026-08-28
+
+- a `$ref` chain under a union branch is checked at every hop, not the first two
+
+2.15.8 moved the border and left it in place: the inlining that carries a `$ref`'s rules into the
+emitted constraints counted HOPS, so `A -> B -> C` was checked and `A -> B -> C -> D` was not. Under a
+`oneOf` below a container nothing materializes — the property type collapses to `array` — so there is
+no class on the path to catch what the constraints miss, and the level past the count passed in
+silence. Raising the count would have moved the border again.
+
+What sets it is asking the right question. A hop count was standing in for a CYCLE guard, and the two
+are not the same: a chain that names something new at every hop is not a cycle and is now inlined for
+as long as it keeps doing so. The guard proper is a per-path count of what has already been inlined,
+which unrolls a self-referential component twice and stops — the depth the hop budget gave it, so the
+recursive forms in the corpus are byte-identical in four modes and gain a level in the fifth.
+
+That count was tried in 2.15.5 and exhausted memory. The reason is gone: back then the inlining ran on
+every re-entry of `extractValidationConstraints()` — once per `oneOf` branch, once for `not`, once more
+from the scrubber — and each re-entry started a fresh set, so a recursive component peeled off one more
+level per pass. Since 2.15.6 it runs once, in the outermost extraction, and walks the whole tree itself.
+Measured on the recursive corpus forms: 12 MB and 0.04s, the same numbers a hop budget gave.
+
+One test had to be rewritten rather than re-expected. `testAUnionBranchUnderAContainerCarriesItsConstraints()`
+asserted a SUBSTRING and called it "exactly one level deep" — but the innermost level satisfies that
+substring at any depth, so it passed whether the component was unrolled once or ten times. It counts the
+unrolls now, and fails at one and at three.
+
+**A hop ceiling remains, at five, and it is now documented.** A count of repeats cannot see the other
+runaway shape — an ACYCLIC document that branches, where nothing ever repeats. Measured on three
+distinct components per level, each referring to all three of the next, the emitted constraints grow
+about 2.9x per level: 70 KB at depth five, 194 KB at six, 568 KB and 68 MB at seven. Five hops is where
+that curve is still cheap and deeper than any chain measured in a real document. Past it, values are
+accepted unchecked — see "Not generated in any mode" in the support matrix.
+
 ## 2.15.8 — 2026-08-28
 
 - a `$ref` chain under a union branch went unchecked past its first hop

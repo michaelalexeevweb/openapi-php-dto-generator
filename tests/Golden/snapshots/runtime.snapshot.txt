@@ -1,4 +1,4 @@
-# runtime mode — 49 files, 16039 lines
+# runtime mode — 50 files, 16393 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -20,6 +20,7 @@
 # Cat.php
 # ChainLink.php
 # ChainMiddle.php
+# ChainTag.php
 # Circle.php
 # ContainerAliases.php
 # Containers.php
@@ -4832,6 +4833,7 @@ namespace GoldenCorpus;
 use Closure;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use RuntimeException;
 use Stringable;
 
@@ -4853,15 +4855,29 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
     private bool $codeInQuery = false;
     private bool $codeInHeader = false;
     private bool $codeInCookie = false;
+    /**
+     * @var ?array<ChainTag>
+     */
+    private ?array $tags;
+    private bool $tagsInRequest = false;
+    private bool $tagsInPath = false;
+    private bool $tagsInQuery = false;
+    private bool $tagsInHeader = false;
+    private bool $tagsInCookie = false;
 
     /**
      * @param string $code
      * Constraints: minLength=3
+     * @param ?array<ChainTag> $tags
      */
     public function __construct(
         private readonly string $code,
+        array|UnsetValue|null $tags = UnsetValue::UNSET,
     ) {
         $this->codeInRequest = true;
+        // Track if parameter was explicitly passed
+        $this->tagsInRequest = $tags !== UnsetValue::UNSET;
+        $this->tags = $tags !== UnsetValue::UNSET ? $tags : null;
     }
 
     public function getCode(): string
@@ -4900,12 +4916,65 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * @return ?array<ChainTag>
+     */
+    public function getTags(): ?array
+    {
+        return $this->tags;
+    }
+
+    public function isTagsRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTagsInPath(): bool
+    {
+        return $this->tagsInPath;
+    }
+
+    public function isTagsInQuery(): bool
+    {
+        return $this->tagsInQuery;
+    }
+
+    public function isTagsInHeader(): bool
+    {
+        return $this->tagsInHeader;
+    }
+
+    public function isTagsInCookie(): bool
+    {
+        return $this->tagsInCookie;
+    }
+
+    public function isTagsInRequest(): bool
+    {
+        return $this->tagsInRequest;
+    }
+
+    public function addItemToTags(ChainTag $item): void
+    {
+        if ($this->tags === null) {
+            $this->tags = [];
+        }
+        $this->tags[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->tagsInRequest) {
+            $this->tagsInRequest = true;
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
         $result = [];
         $result['code'] = $this->code;
+        if ($this->tagsInRequest) {
+            $result['tags'] = $this->tags;
+        }
 
         return $result;
     }
@@ -4922,6 +4991,9 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
     {
         $result = [];
         $result['code'] = $this->code;
+        if ($this->tagsInRequest) {
+            $result['tags'] = $this->tags;
+        }
 
         return $result === [] ? (object)$result : $result;
     }
@@ -4968,6 +5040,25 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['tags'] = [
+            'getter' => 'getTags',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'tags',
+                'required' => false,
+                'inPathFlagGetter' => 'isTagsInPath',
+                'inQueryFlagGetter' => 'isTagsInQuery',
+                'inHeaderFlagGetter' => 'isTagsInHeader',
+                'inCookieFlagGetter' => 'isTagsInCookie',
+                'inRequestFlagGetter' => 'isTagsInRequest',
+                'constraints' => $constraints['tags'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '?array<ChainTag>',
+            ],
+        ];
 
         return $map;
     }
@@ -4979,6 +5070,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
     {
         $aliases = [];
         $aliases['code'] = 'code';
+        $aliases['tags'] = 'tags';
 
         return $aliases;
     }
@@ -4990,6 +5082,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
     {
         $constraints = [];
         $constraints['code'] = ['type' => 'string', 'minLength' => 3];
+        $constraints['tags'] = ['type' => 'array'];
 
         return $constraints;
     }
@@ -5020,6 +5113,8 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
             $errors[] = 'Required parameter "code" not found in request.';
         }
         $code = $codeGiven ? $cast('code', $data['code'], $errors) : null;
+        $tagsGiven = array_key_exists('tags', $data);
+        $tags = $tagsGiven ? $cast('tags', $data['tags'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
@@ -5028,6 +5123,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
         /** @var string $code */
         $dto = new self(
             code: $code,
+            tags: $tagsGiven ? $tags : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -5305,6 +5401,267 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
         /** @var array $links */
         $dto = new self(
             links: $links,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
+    }
+}
+
+===== ChainTag.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+final class ChainTag implements GeneratedDtoInterface, Stringable
+{
+    private bool $labelInRequest = false;
+    private bool $labelInPath = false;
+    private bool $labelInQuery = false;
+    private bool $labelInHeader = false;
+    private bool $labelInCookie = false;
+
+    /**
+     * @param string $label
+     * Constraints: minLength=2
+     */
+    public function __construct(
+        private readonly string $label,
+    ) {
+        $this->labelInRequest = true;
+    }
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
+
+    public function isLabelRequired(): bool
+    {
+        return true;
+    }
+
+    public function isLabelInPath(): bool
+    {
+        return $this->labelInPath;
+    }
+
+    public function isLabelInQuery(): bool
+    {
+        return $this->labelInQuery;
+    }
+
+    public function isLabelInHeader(): bool
+    {
+        return $this->labelInHeader;
+    }
+
+    public function isLabelInCookie(): bool
+    {
+        return $this->labelInCookie;
+    }
+
+    public function isLabelInRequest(): bool
+    {
+        return $this->labelInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        $result['label'] = $this->label;
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = [];
+        $result['label'] = $this->label;
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['label'] = [
+            'getter' => 'getLabel',
+            'type' => 'string',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'label',
+                'required' => true,
+                'inPathFlagGetter' => 'isLabelInPath',
+                'inQueryFlagGetter' => 'isLabelInQuery',
+                'inHeaderFlagGetter' => 'isLabelInHeader',
+                'inCookieFlagGetter' => 'isLabelInCookie',
+                'inRequestFlagGetter' => 'isLabelInRequest',
+                'constraints' => $constraints['label'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['label'] = 'label';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['label'] = ['type' => 'string', 'minLength' => 2];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $labelGiven = array_key_exists('label', $data);
+        if (!$labelGiven) {
+            $errors[] = 'Required parameter "label" not found in request.';
+        }
+        $label = $labelGiven ? $cast('label', $data['label'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var string $label */
+        $dto = new self(
+            label: $label,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -14638,7 +14995,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     public static function getConstraints(): array
     {
         $constraints = [];
-        $constraints['chain'] = ['type' => 'array', 'items' => ['oneOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3]]]]]]]]];
+        $constraints['chain'] = ['type' => 'array', 'items' => ['oneOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3], 'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]]]]]]]]];
         $constraints['listOfUnions'] = ['type' => 'array', 'items' => ['anyOf' => [['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]], ['type' => 'string', 'minLength' => 2]]]];
 
         return $constraints;

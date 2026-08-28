@@ -3498,14 +3498,26 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'UnionUnderContainerNs', 'Root');
 
         $source = (string)file_get_contents($this->outputDirectory . '/Node.php');
-        // The branch schemas are there — and the recursive one stops after a single level, which is
-        // what keeps a self-referential component from inlining until memory runs out.
+        // The branch schemas are there — and the recursive one TERMINATES, which is what keeps a
+        // self-referential component from inlining until memory runs out.
         $this->assertStringContainsString("'required' => ['value']", $source);
         $this->assertStringContainsString("'minLength' => 1", $source);
-        $this->assertStringContainsString(
-            "'properties' => ['title' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object']]",
-            $source,
-            'the recursive branch must be inlined exactly one level deep',
+        // Counted, not matched: until 2.15.9 this asserted the SUBSTRING below and called it "exactly
+        // one level deep", which the innermost level satisfies at any depth — the assertion passed
+        // whether the component was unrolled once, twice or ten times. What the rule actually says is
+        // `REF_REPEAT_LIMIT`: a `$ref` repeats twice on a path and then stops.
+        $this->assertSame(
+            2,
+            substr_count($source, "'required' => ['title', 'children']"),
+            'the recursive branch is unrolled exactly REF_REPEAT_LIMIT times',
+        );
+        $this->assertSame(
+            1,
+            substr_count(
+                $source,
+                "'properties' => ['title' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object']]",
+            ),
+            'and the deepest unrolled level collapses, once',
         );
 
         $valid = '{"report":{"title":"root","children":{"sub":{"title":"sub","children":{}},"leaves":{"s1":{"value":7}}}}}';
@@ -3539,29 +3551,37 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
-     * The SECOND `$ref` on a path that materializes nothing — A -> B -> C through a union branch.
+     * Every `$ref` on a path that materializes nothing — A -> B -> C -> D through a union branch.
      *
      * A `$ref` chain normally needs no inlining past the first hop: B becomes a class and checks
      * itself, so C is reached by the rule one level down. Under a `oneOf` below a container there is
-     * no class anywhere on the path — the property type collapses to `array` — and the one-level
-     * inline budget of 2.15.6 stopped exactly one hop short: B's `required` and bounds were emitted,
-     * C's were not, and a violation inside C passed in SILENCE while the same payload through the
-     * plain chain was refused.
+     * no class anywhere on the path — the property type collapses to `array` — and each level has to
+     * reach the emitted constraints on its own. A one-hop inline stopped at B and a two-hop one at C,
+     * each leaving a violation one level further down to pass in SILENCE while the same payload
+     * through the plain chain was refused.
      *
-     * Two levels is the measured need, not a round number: the budget counts DOWN on the path and
-     * cannot be refilled by descending, which is what keeps the recursive forms above from inlining
-     * until memory runs out.
+     * A hop ceiling can only move that border. What removes it is asking the right question: this
+     * chain names something NEW at every hop, so there is no cycle to guard against and it is inlined
+     * whole. `testInliningStopsAtACycleAndAtTheHopCeiling()` holds the other half.
      */
-    public function testARefChainUnderAUnionBranchIsCheckedBelowItsFirstHop(): void
+    public function testARefChainUnderAUnionBranchIsCheckedAllTheWayDown(): void
     {
         $spec = [
             'openapi' => '3.1.0',
             'info' => ['title' => 'T', 'version' => '1.0.0'],
             'components' => ['schemas' => [
+                'Tag' => [
+                    'type' => 'object',
+                    'required' => ['label'],
+                    'properties' => ['label' => ['type' => 'string', 'minLength' => 2]],
+                ],
                 'Link' => [
                     'type' => 'object',
                     'required' => ['code'],
-                    'properties' => ['code' => ['type' => 'string', 'minLength' => 3]],
+                    'properties' => [
+                        'code' => ['type' => 'string', 'minLength' => 3],
+                        'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']],
+                    ],
                 ],
                 'Middle' => [
                     'type' => 'object',
@@ -3594,22 +3614,27 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         /** @var class-string<GeneratedDtoInterface> $union */
         $union = '\RefChainDepthNs\UnionChain';
 
-        // The second hop's own rules are in the emitted constraints, not just the first hop's.
+        // Every hop's own rules are in the emitted constraints, not just the first one's.
         $source = (string)file_get_contents($this->outputDirectory . '/UnionChain.php');
         $this->assertStringContainsString("'required' => ['links']", $source);
         $this->assertStringContainsString("'minLength' => 3", $source, "the C level's bound must be emitted");
+        $this->assertStringContainsString("'required' => ['label']", $source, 'the D level must be emitted');
+        $this->assertStringContainsString("'minLength' => 2", $source, "the D level's bound must be emitted");
 
-        $valid = '{"middles":[{"links":[{"code":"abc"}]}]}';
+        $valid = '{"middles":[{"links":[{"code":"abc","tags":[{"label":"ok"}]}]}]}';
         foreach ([$plain, $union] as $fqcn) {
             $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
             $this->assertSame([], (new DtoNormalizer())->validate($dto), $fqcn);
         }
 
-        // Level B was caught before this release and must stay caught; level C is what passed.
+        // B and C were caught before this release and must stay caught; D is what passed.
         $cases = [
             '{"middles":[{}]}' => 'links',
             '{"middles":[{"links":[{"code":"x"}]}]}' => 'must be at least 3 characters',
             '{"middles":[{"links":[{}]}]}' => 'code',
+            '{"middles":[{"links":[{"code":"abc","tags":[{"label":"z"}]}]}]}'
+                => 'must be at least 2 characters',
+            '{"middles":[{"links":[{"code":"abc","tags":[{}]}]}]}' => 'label',
         ];
 
         foreach ([$plain, $union] as $fqcn) {
@@ -3622,6 +3647,86 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 }
             }
         }
+    }
+
+    /**
+     * The two ways `$ref` inlining runs away, and the guard that fits each.
+     *
+     * A CYCLE — a component that refers to itself — is stopped by a per-path COUNT of what has already
+     * been inlined, and is unrolled twice, the depth a hop budget used to give it. That count was
+     * tried as a set in 2.15.5 and exhausted memory, because
+     * `extractValidationConstraints()` re-enters itself per union branch and the inlining then ran on
+     * every entry with a fresh set, peeling one more level off the recursion each pass. Since 2.15.6
+     * it runs once, in the outermost extraction, and the set is safe.
+     *
+     * An ACYCLIC schema that BRANCHES is the shape the set cannot see: nothing repeats, so nothing
+     * fires, and the constraints grow about 2.9x per level — measured at 568 KB and 68 MB on a
+     * seven-deep document of three components per level. `REF_INLINE_BUDGET` is the ceiling for that,
+     * and this pins where it falls: a chain of distinct components is inlined to the ceiling and no
+     * further, silently, which is the price of a bounded file.
+     */
+    public function testInliningStopsAtACycleAndAtTheHopCeiling(): void
+    {
+        $schemas = [];
+        for ($level = 0; $level <= 7; $level++) {
+            $properties = ['code' => ['type' => 'string', 'minLength' => 10 + $level]];
+            if ($level < 7) {
+                $properties['next'] = ['type' => 'array', 'items' => ['oneOf' => [
+                    ['$ref' => '#/components/schemas/L' . ($level + 1)],
+                ]]];
+            }
+            $schemas['L' . $level] = ['type' => 'object', 'required' => ['code'], 'properties' => $properties];
+        }
+        // Refers to ITSELF, so the set is what stops it, not the ceiling.
+        $schemas['Loop'] = [
+            'type' => 'object',
+            'required' => ['code'],
+            'properties' => [
+                'code' => ['type' => 'string', 'minLength' => 42],
+                'kids' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+            ],
+        ];
+        $schemas['Root'] = [
+            'type' => 'object',
+            'required' => ['chain', 'loops'],
+            'properties' => [
+                'chain' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/L0']]]],
+                'loops' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+            ],
+        ];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => $schemas],
+        ];
+        $this->generateFromInlineSpec($spec, 'InlineCeilingNs', 'Root');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Root.php');
+
+        // Five hops of a chain that names something new each time.
+        for ($level = 0; $level <= 4; $level++) {
+            $this->assertStringContainsString(
+                sprintf("'minLength' => %d", 10 + $level),
+                $source,
+                sprintf('level %d is within the ceiling', $level),
+            );
+        }
+
+        // And nothing past it — the honest statement of the limit, not a claim that there is none.
+        foreach ([5, 6, 7] as $level) {
+            $this->assertStringNotContainsString(
+                sprintf("'minLength' => %d", 10 + $level),
+                $source,
+                sprintf('level %d is past the ceiling', $level),
+            );
+        }
+
+        // The self-referential one is unrolled twice per path, not to the ceiling.
+        $this->assertSame(
+            2,
+            substr_count($source, "'minLength' => 42"),
+            'a cycle costs REF_REPEAT_LIMIT hops, not the whole budget',
+        );
     }
 
     /**
