@@ -1577,6 +1577,32 @@ trait RendersLaravelDto
                 continue;
             }
 
+            // An `allOf` BRANCH describes the same value as the property that carries it, so the same
+            // dotted rules cover it and the same pruning applies. Copied whole — which is what happened
+            // until 2.15.11, when the interpreter learnt the keyword — a branch repeated every check
+            // the rules already make: `bag.test` reported `validation.string` AND
+            // `bag.test must be of type string`. What no rule expresses (a `required` list inside the
+            // branch) survives the pruning and is reported once.
+            if ($keyword === 'allOf' && is_array($value)) {
+                $branches = [];
+                foreach ($value as $branch) {
+                    if (!is_array($branch)) {
+                        continue;
+                    }
+
+                    $prunedBranch = $this->laravelPruneNestedRuleCoveredKeywords($branch);
+                    if ($prunedBranch !== []) {
+                        $branches[] = $prunedBranch;
+                    }
+                }
+
+                if ($branches !== []) {
+                    $pruned[$keyword] = $branches;
+                }
+
+                continue;
+            }
+
             if (in_array($keyword, $consumed, true)) {
                 continue;
             }

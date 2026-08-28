@@ -600,6 +600,7 @@ PHP,
         $hasDependentSchemas = $this->schemaUsesKeyword($constraints, 'dependentSchemas');
         $hasOneOf = $this->schemaUsesKeyword($constraints, 'oneOf');
         $hasAnyOf = $this->schemaUsesKeyword($constraints, 'anyOf');
+        $hasAllOf = $this->schemaUsesKeyword($constraints, 'allOf');
         $hasNot = $this->schemaUsesKeyword($constraints, 'not');
         $hasIf = $this->schemaUsesKeyword($constraints, 'if');
         $hasPrefixItems = $this->schemaUsesKeyword($constraints, 'prefixItems');
@@ -1420,6 +1421,24 @@ PHP
             \$minContains = {$minContainsExpression};
 {$maxContainsCheck}            if (\$matchCount < \$minContains) {
                 \$errors[] = sprintf('%s must contain at least %d item(s) matching the \\'contains\\' schema', \$path, \$minContains);
+            }
+        }
+PHP;
+        }
+
+        if ($hasAllOf) {
+            // Every branch must pass, so there is no matching to do and no branch to skip on type:
+            // each one is validated and its errors are all kept, exactly as the runtime validator
+            // does it. Only a NESTED allOf gets here — see the filter — because a property-level one
+            // is already covered by attributes or by the class it became.
+            $sections[] = <<<'PHP'
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...$this->validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 PHP;
@@ -2576,6 +2595,7 @@ PHP,
         bool $isPropertySchema = false,
         array $itemKeywordsCoveredByProperty = [],
         array $coveredItemKeywords = [],
+        bool $belowContainer = false,
     ): array {
         $constraints = $this->foldScalarAllOfConstraints($constraints);
         $filtered = [];
@@ -2594,6 +2614,7 @@ PHP,
                                 allowScalarKeywords: $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
                                 isPropertySchema: true,
                                 coveredItemKeywords: $itemKeywordsCoveredByProperty[$name] ?? [],
+                                belowContainer: $belowContainer,
                             );
                         }
                     }
@@ -2605,7 +2626,11 @@ PHP,
                     $filtered[$key] = [];
                     foreach ($value as $schema) {
                         $filtered[$key][] = is_array($schema)
-                            ? $this->filterSymfonyValidationConstraints($schema, allowScalarKeywords: true)
+                            ? $this->filterSymfonyValidationConstraints(
+                                $schema,
+                                allowScalarKeywords: true,
+                                belowContainer: true,
+                            )
                             : [];
                     }
                     break;
@@ -2614,7 +2639,11 @@ PHP,
                         // `allowScalarKeywords: true` stays: `Assert\All` does not nest, so from the
                         // SECOND container down there is no attribute and the callback owns everything.
                         // What the attribute does cover at THIS hop is subtracted instead.
-                        $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
+                        $nested = $this->filterSymfonyValidationConstraints(
+                            $value,
+                            allowScalarKeywords: true,
+                            belowContainer: true,
+                        );
                         $nested = $this->withoutKeywords($nested, $coveredItemKeywords);
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
@@ -2625,7 +2654,11 @@ PHP,
                 case 'unevaluatedProperties':
                 case 'unevaluatedItems':
                     if (is_array($value)) {
-                        $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
+                        $nested = $this->filterSymfonyValidationConstraints(
+                            $value,
+                            allowScalarKeywords: true,
+                            belowContainer: true,
+                        );
                         if ($key === 'additionalProperties') {
                             $nested = $this->withoutKeywords($nested, $coveredItemKeywords);
                         }
@@ -2652,7 +2685,20 @@ PHP,
                     break;
                 case 'oneOf':
                 case 'anyOf':
+                case 'allOf':
+                    // `anyOf` and `allOf` are kept only NESTED (`$allowScalarKeywords` is what every
+                    // recursive call sets). On a property both are already covered without the
+                    // callback: `anyOf` becomes `#[Assert\AtLeastOneOf]`, and `allOf` is either folded
+                    // into scalar attributes by `foldScalarAllOfConstraints()` or becomes a class the
+                    // `#[Assert\Valid]` cascade walks. Letting them through there would report every
+                    // violation twice. Below a container neither is true — no attribute nests and no
+                    // class is written — and until 2.15.11 `allOf` was dropped here with nothing to
+                    // replace it: `items: {allOf: [$ref M]}` emitted no callback at all and every
+                    // value under it was accepted.
                     if ($key === 'anyOf' && !$allowScalarKeywords) {
+                        break;
+                    }
+                    if ($key === 'allOf' && !$belowContainer) {
                         break;
                     }
                     if (!is_array($value)) {
@@ -2663,7 +2709,11 @@ PHP,
                         if (!is_array($branch)) {
                             continue;
                         }
-                        $nested = $this->filterSymfonyValidationConstraints($branch, allowScalarKeywords: true);
+                        $nested = $this->filterSymfonyValidationConstraints(
+                            $branch,
+                            allowScalarKeywords: true,
+                            belowContainer: $belowContainer,
+                        );
                         if ($nested !== []) {
                             $branches[] = $nested;
                         }

@@ -1,4 +1,4 @@
-# runtime mode — 50 files, 16393 lines
+# runtime mode — 50 files, 16480 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -14698,6 +14698,12 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     private bool $chainInQuery = false;
     private bool $chainInHeader = false;
     private bool $chainInCookie = false;
+    private ?array $chainAllOf;
+    private bool $chainAllOfInRequest = false;
+    private bool $chainAllOfInPath = false;
+    private bool $chainAllOfInQuery = false;
+    private bool $chainAllOfInHeader = false;
+    private bool $chainAllOfInCookie = false;
     private bool $treeInRequest = false;
     private bool $treeInPath = false;
     private bool $treeInQuery = false;
@@ -14713,14 +14719,18 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     public function __construct(
         private readonly TreeNode $tree,
         array|UnsetValue|null $chain = UnsetValue::UNSET,
+        array|UnsetValue|null $chainAllOf = UnsetValue::UNSET,
         array|UnsetValue|null $listOfUnions = UnsetValue::UNSET,
     ) {
         $this->treeInRequest = true;
         // Track if parameter was explicitly passed
         $this->chainInRequest = $chain !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
+        $this->chainAllOfInRequest = $chainAllOf !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
         $this->listOfUnionsInRequest = $listOfUnions !== UnsetValue::UNSET;
         $this->chain = $chain !== UnsetValue::UNSET ? $chain : null;
+        $this->chainAllOf = $chainAllOf !== UnsetValue::UNSET ? $chainAllOf : null;
         $this->listOfUnions = $listOfUnions !== UnsetValue::UNSET ? $listOfUnions : null;
     }
 
@@ -14768,6 +14778,53 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         // Mark as being in request if it wasn't explicitly passed to constructor
         if (!$this->chainInRequest) {
             $this->chainInRequest = true;
+        }
+    }
+
+    public function getChainAllOf(): ?array
+    {
+        return $this->chainAllOf;
+    }
+
+    public function isChainAllOfRequired(): bool
+    {
+        return false;
+    }
+
+    public function isChainAllOfInPath(): bool
+    {
+        return $this->chainAllOfInPath;
+    }
+
+    public function isChainAllOfInQuery(): bool
+    {
+        return $this->chainAllOfInQuery;
+    }
+
+    public function isChainAllOfInHeader(): bool
+    {
+        return $this->chainAllOfInHeader;
+    }
+
+    public function isChainAllOfInCookie(): bool
+    {
+        return $this->chainAllOfInCookie;
+    }
+
+    public function isChainAllOfInRequest(): bool
+    {
+        return $this->chainAllOfInRequest;
+    }
+
+    public function addItemToChainAllOf(mixed $item): void
+    {
+        if ($this->chainAllOf === null) {
+            $this->chainAllOf = [];
+        }
+        $this->chainAllOf[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->chainAllOfInRequest) {
+            $this->chainAllOfInRequest = true;
         }
     }
 
@@ -14862,6 +14919,9 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         if ($this->chainInRequest) {
             $result['chain'] = $this->chain;
         }
+        if ($this->chainAllOfInRequest) {
+            $result['chainAllOf'] = $this->chainAllOf;
+        }
         $result['tree'] = $this->tree;
         if ($this->listOfUnionsInRequest) {
             $result['listOfUnions'] = $this->listOfUnions;
@@ -14883,6 +14943,9 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         $result = [];
         if ($this->chainInRequest) {
             $result['chain'] = $this->chain;
+        }
+        if ($this->chainAllOfInRequest) {
+            $result['chainAllOf'] = $this->chainAllOf;
         }
         $result['tree'] = $this->tree;
         if ($this->listOfUnionsInRequest) {
@@ -14928,6 +14991,25 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
                 'inCookieFlagGetter' => 'isChainInCookie',
                 'inRequestFlagGetter' => 'isChainInRequest',
                 'constraints' => $constraints['chain'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['chainAllOf'] = [
+            'getter' => 'getChainAllOf',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'chainAllOf',
+                'required' => false,
+                'inPathFlagGetter' => 'isChainAllOfInPath',
+                'inQueryFlagGetter' => 'isChainAllOfInQuery',
+                'inHeaderFlagGetter' => 'isChainAllOfInHeader',
+                'inCookieFlagGetter' => 'isChainAllOfInCookie',
+                'inRequestFlagGetter' => 'isChainAllOfInRequest',
+                'constraints' => $constraints['chainAllOf'] ?? [],
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
@@ -14983,6 +15065,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     {
         $aliases = [];
         $aliases['chain'] = 'chain';
+        $aliases['chainAllOf'] = 'chainAllOf';
         $aliases['tree'] = 'tree';
         $aliases['listOfUnions'] = 'listOfUnions';
 
@@ -14996,6 +15079,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     {
         $constraints = [];
         $constraints['chain'] = ['type' => 'array', 'items' => ['oneOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3], 'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]]]]]]]]];
+        $constraints['chainAllOf'] = ['type' => 'array', 'items' => ['allOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3], 'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]]]]]]]]];
         $constraints['listOfUnions'] = ['type' => 'array', 'items' => ['anyOf' => [['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]], ['type' => 'string', 'minLength' => 2]]]];
 
         return $constraints;
@@ -15029,6 +15113,8 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         $tree = $treeGiven ? $cast('tree', $data['tree'], $errors) : null;
         $chainGiven = array_key_exists('chain', $data);
         $chain = $chainGiven ? $cast('chain', $data['chain'], $errors) : null;
+        $chainAllOfGiven = array_key_exists('chainAllOf', $data);
+        $chainAllOf = $chainAllOfGiven ? $cast('chainAllOf', $data['chainAllOf'], $errors) : null;
         $listOfUnionsGiven = array_key_exists('listOfUnions', $data);
         $listOfUnions = $listOfUnionsGiven ? $cast('listOfUnions', $data['listOfUnions'], $errors) : null;
 
@@ -15040,6 +15126,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         $dto = new self(
             tree: $tree,
             chain: $chainGiven ? $chain : UnsetValue::UNSET,
+            chainAllOf: $chainAllOfGiven ? $chainAllOf : UnsetValue::UNSET,
             listOfUnions: $listOfUnionsGiven ? $listOfUnions : UnsetValue::UNSET,
         );
 

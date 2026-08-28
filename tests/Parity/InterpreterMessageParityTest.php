@@ -352,6 +352,72 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
+     * A property-level `allOf` reports each violation ONCE, in every mode.
+     *
+     * 2.15.11 taught the emitted interpreter the keyword — it had none, so an `allOf` that could not be
+     * folded into attributes was carried in the constants and checked by nothing. The risk of teaching
+     * it is the opposite failure: where a mode's own rules already cover a keyword, the interpreter
+     * would say the same thing a second time. Laravel is the case to watch — its rule map already
+     * spells `pet.test` as `['string']` — so both a missing key and a wrong type are asserted here.
+     */
+    public function testAPropertyLevelAllOfReportsEachViolationOnceInEveryMode(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['bag'],
+                        'properties' => [
+                            'bag' => ['allOf' => [
+                                [
+                                    'type' => 'object',
+                                    'required' => ['test'],
+                                    'properties' => ['test' => ['type' => 'string']],
+                                ],
+                            ]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        foreach ([
+            'missing key' => '{"bag":{}}',
+            'wrong type' => '{"bag":{"test":5}}',
+        ] as $case => $json) {
+            foreach (GenerationMode::cases() as $mode) {
+                $messages = $this->messages($mode, $spec, 'allOf once ' . $case, $json);
+
+                // yii3 says NOTHING here, and that is measured, not assumed: its constraints never
+                // carried a property-level `allOf` in the first place, so there was nothing for the
+                // interpreter to start checking. Pinned as it is rather than skipped — the day yii3
+                // starts reporting, this test says so instead of staying quiet.
+                $expected = $mode === GenerationMode::Yii3 ? 0 : 1;
+
+                $this->assertCount(
+                    $expected,
+                    $messages,
+                    sprintf(
+                        "%s mode reports a %s violation %d times, expected %d:\n %s",
+                        $mode->value,
+                        $case,
+                        count($messages),
+                        $expected,
+                        implode("\n ", $messages),
+                    ),
+                );
+            }
+        }
+    }
+
+    /**
      * How each mode names the subject of the sentence. Stripping it is what lets the CLAIM be compared
      * across modes whose surfaces differ by design (a single exception message, a violation, an error
      * bag keyed by path).

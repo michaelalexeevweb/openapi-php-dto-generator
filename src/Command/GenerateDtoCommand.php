@@ -2620,9 +2620,15 @@ final class GenerateDtoCommand extends Command
         // subschema was dropped. Measured: a map of `oneOf[$ref Leaf | map of $ref Leaf]` emitted
         // `['type' => 'object']` and nothing below it was checked by anything.
         //
-        // `allOf` is deliberately not walked: a single-`$ref` `allOf` is how this generator spells
-        // inheritance and alias-inlining, and that ref DOES get a class.
-        foreach (['oneOf', 'anyOf'] as $unionKey) {
+        // `allOf` is walked too, and only for the same reason. Until 2.15.11 it was skipped outright,
+        // on the rule that a single-`$ref` `allOf` is how this generator spells inheritance and that
+        // ref DOES get a class. Measured, that rule holds on a PROPERTY (`f: {allOf: [$ref M]}` is
+        // hydrated as `M` and `M` checks itself) and inside a MAP, and fails under `items`: there the
+        // property collapses to a bare `array`, no class is written for the item, and the emitted
+        // constraints were `['type' => 'array']` and nothing else — `required`, bounds and every level
+        // below them silently gone. The guard is `$belowMaterialization`, which is false on a property,
+        // so inheritance is untouched; a branch is walked only where nothing materializes to carry it.
+        foreach (['oneOf', 'anyOf', 'allOf'] as $unionKey) {
             if (!is_array($schema[$unionKey] ?? null)) {
                 continue;
             }

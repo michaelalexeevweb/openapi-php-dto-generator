@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.11 — 2026-08-28
+
+- `items: {allOf: [...]}` was checked by nothing, in every mode
+- Symfony's interpreter learnt `allOf`; Laravel stopped repeating what its rules already say
+
+`allOf` was the one composition keyword the inlining skipped, on a rule that reads reasonably: a
+single-`$ref` `allOf` is how this generator spells inheritance, and that ref DOES become a class which
+checks itself. Measured, the rule holds on a PROPERTY and inside a MAP, and fails under `items`: there
+the value collapses to a bare `array`, no class is written for the item, and the emitted constraints
+were `['type' => 'array']` and nothing else. `required`, every bound, and every level below them were
+accepted in silence, while the identical chain spelled with `oneOf` was refused. Branches are walked
+now under the same guard as a union branch — only where nothing materializes — so inheritance on a
+property is untouched.
+
+Symfony needed a second half: its emitted interpreter had no `allOf` at all, so the keyword reached the
+generated constants and was read by nothing. It has the section now, and a `$ref` chain under `items`
+is refused in all five modes — pinned per level and per spelling by `ValidationParityTest`.
+
+**Laravel says less, not more.** Teaching the interpreter a keyword the rule map also covers is how one
+violation becomes two messages, and `bag.test` did report both `validation.string` and
+`bag.test must be of type string`. The rule-coverage pruning now descends into `allOf` branches, so a
+branch keeps only what no rule expresses — a `required` list, typically — and each violation is
+reported once. `InterpreterMessageParityTest` holds that per mode, yii3 included, where a property-level
+`allOf` still reports nothing: its constraints never carried the keyword, and that gap is pinned as it
+is rather than left to be rediscovered.
+
 ## 2.15.10 — 2026-08-28
 
 - the inline ceiling now says so instead of truncating in silence

@@ -3666,6 +3666,91 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * `items: {allOf: [...]}` — the spelling the inlining used to skip on purpose.
+     *
+     * A single-`$ref` `allOf` is how this generator spells inheritance, and on a PROPERTY that ref is
+     * hydrated into the class it names, which then checks itself; walking it there would be pointless.
+     * Measured under `items` the rule does not hold: the property collapses to a bare `array`, nothing
+     * is written for the item, and the emitted constraints were `['type' => 'array']` — the referenced
+     * component's `required`, its bounds, and every level below them accepted in silence, while the
+     * same chain under `oneOf` was refused. `allOf` is walked now, under the same guard as a union
+     * branch: only where nothing materializes.
+     *
+     * Both shapes are here because they fail alike and are reached differently: one branch, which is
+     * the inheritance spelling, and several, which is composition.
+     */
+    public function testAnAllOfUnderItemsCarriesTheConstraintsOfWhatItRefers(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Tag' => [
+                    'type' => 'object',
+                    'required' => ['label'],
+                    'properties' => ['label' => ['type' => 'string', 'minLength' => 2]],
+                ],
+                'Link' => [
+                    'type' => 'object',
+                    'required' => ['code'],
+                    'properties' => [
+                        'code' => ['type' => 'string', 'minLength' => 3],
+                        'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']],
+                    ],
+                ],
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['one', 'several', 'onProperty'],
+                    'properties' => [
+                        'one' => ['type' => 'array', 'items' => ['allOf' => [
+                            ['$ref' => '#/components/schemas/Link'],
+                        ]]],
+                        'several' => ['type' => 'array', 'items' => ['allOf' => [
+                            ['$ref' => '#/components/schemas/Link'],
+                            ['type' => 'object', 'required' => ['code']],
+                        ]]],
+                        // The inheritance spelling, where a class IS written and checks itself. It must
+                        // keep working exactly as it did — this is the half the old rule was right about.
+                        'onProperty' => ['allOf' => [['$ref' => '#/components/schemas/Link']]],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'AllOfUnderItemsNs', 'Holder');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Holder.php');
+        $this->assertStringContainsString("'minLength' => 3", $source, "the referenced component's bound");
+        $this->assertStringContainsString("'minLength' => 2", $source, 'and the level below it');
+
+        $valid = '{"one":[{"code":"abc","tags":[{"label":"ok"}]}],'
+            . '"several":[{"code":"abc"}],"onProperty":{"code":"abc"}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+        $this->assertSame([], (new DtoNormalizer())->validate($dto), 'a valid payload must stay valid');
+
+        $cases = [
+            '{"one":[{"code":"x"}],"several":[{"code":"abc"}],"onProperty":{"code":"abc"}}'
+                => 'must be at least 3 characters',
+            '{"one":[{}],"several":[{"code":"abc"}],"onProperty":{"code":"abc"}}' => 'code',
+            '{"one":[{"code":"abc","tags":[{"label":"z"}]}],"several":[{"code":"abc"}],"onProperty":{"code":"abc"}}'
+                => 'must be at least 2 characters',
+            '{"one":[{"code":"abc"}],"several":[{"code":"x"}],"onProperty":{"code":"abc"}}'
+                => 'must be at least 3 characters',
+            // The property spelling was never broken and must not become so.
+            '{"one":[{"code":"abc"}],"several":[{"code":"abc"}],"onProperty":{"code":"x"}}'
+                => 'must be at least 3 characters',
+        ];
+
+        foreach ($cases as $json => $expected) {
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+                $this->fail(sprintf('%s was accepted', $json));
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString($expected, $exception->getMessage(), $json);
+            }
+        }
+    }
+
+    /**
      * The two ways `$ref` inlining runs away, and the guard that fits each.
      *
      * A CYCLE — a component that refers to itself — is stopped by a per-path COUNT of what has already

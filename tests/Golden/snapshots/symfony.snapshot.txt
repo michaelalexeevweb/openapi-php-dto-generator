@@ -1,4 +1,4 @@
-# symfony mode — 50 files, 5644 lines
+# symfony mode — 50 files, 5726 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5127,6 +5127,50 @@ final class UnionUnderContainer
                     ],
                 ],
             ],
+            'chainAllOf' => [
+                'items' => [
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'links',
+                            ],
+                            'properties' => [
+                                'links' => [
+                                    'type' => 'array',
+                                    'items' => [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'code',
+                                        ],
+                                        'properties' => [
+                                            'code' => [
+                                                'type' => 'string',
+                                                'minLength' => 3,
+                                            ],
+                                            'tags' => [
+                                                'type' => 'array',
+                                                'items' => [
+                                                    'type' => 'object',
+                                                    'required' => [
+                                                        'label',
+                                                    ],
+                                                    'properties' => [
+                                                        'label' => [
+                                                            'type' => 'string',
+                                                            'minLength' => 2,
+                                                        ],
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
             'listOfUnions' => [
                 'items' => [
                     'anyOf' => [
@@ -5158,11 +5202,13 @@ final class UnionUnderContainer
     private const array OPENAPI_PHP_TO_NAME_MAP = [
         'tree' => 'tree',
         'chain' => 'chain',
+        'chainAllOf' => 'chainAllOf',
         'listOfUnions' => 'listOfUnions',
     ];
 
     private const array OPENAPI_PROVIDED_FLAGS = [
         'chain' => 'chainProvided',
+        'chainAllOf' => 'chainAllOfProvided',
         'listOfUnions' => 'listOfUnionsProvided',
     ];
 
@@ -5172,6 +5218,11 @@ final class UnionUnderContainer
 
     #[Ignore]
     private bool $chainProvided = false;
+
+    private ?array $chainAllOf = null;
+
+    #[Ignore]
+    private bool $chainAllOfProvided = false;
 
     private ?array $listOfUnions = null;
 
@@ -5209,6 +5260,27 @@ final class UnionUnderContainer
     public function isChainProvided(): bool
     {
         return $this->chainProvided;
+    }
+
+    public function getChainAllOf(): ?array
+    {
+        return $this->chainAllOf;
+    }
+
+    public function setChainAllOf(?array $chainAllOf): void
+    {
+        $this->chainAllOf = $chainAllOf;
+        $this->chainAllOfProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isChainAllOfProvided(): bool
+    {
+        return $this->chainAllOfProvided;
     }
 
     public function getListOfUnions(): ?array
@@ -5417,6 +5489,16 @@ final class UnionUnderContainer
                     ...$errors,
                     ...$this->validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...$this->validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 

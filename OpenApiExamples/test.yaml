@@ -819,6 +819,15 @@ components:
           items:
             oneOf:
               - $ref: '#/components/schemas/ChainMiddle'
+        # The same chain under `allOf`. Skipped by the inlining until 2.15.11 on the rule that a
+        # single-`$ref` `allOf` spells inheritance and gets a class — true on a property and in a map,
+        # false HERE: under `items` the value is a bare `array`, nothing is written for it, and the
+        # emitted constraints were `['type' => 'array']` with every level below silently unchecked.
+        chainAllOf:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/ChainMiddle'
         tree:
           $ref: '#/components/schemas/TreeNode'
         listOfUnions:

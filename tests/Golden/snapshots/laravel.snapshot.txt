@@ -1,4 +1,4 @@
-# laravel mode — 62 files, 8859 lines
+# laravel mode — 62 files, 8890 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7779,6 +7779,50 @@ final class UnionUnderContainer
                 ],
             ],
         ],
+        'chainAllOf' => [
+            'items' => [
+                'allOf' => [
+                    [
+                        'type' => 'object',
+                        'required' => [
+                            'links',
+                        ],
+                        'properties' => [
+                            'links' => [
+                                'type' => 'array',
+                                'items' => [
+                                    'type' => 'object',
+                                    'required' => [
+                                        'code',
+                                    ],
+                                    'properties' => [
+                                        'code' => [
+                                            'type' => 'string',
+                                            'minLength' => 3,
+                                        ],
+                                        'tags' => [
+                                            'type' => 'array',
+                                            'items' => [
+                                                'type' => 'object',
+                                                'required' => [
+                                                    'label',
+                                                ],
+                                                'properties' => [
+                                                    'label' => [
+                                                        'type' => 'string',
+                                                        'minLength' => 2,
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ],
         'listOfUnions' => [
             'items' => [
                 'anyOf' => [
@@ -7820,6 +7864,7 @@ final class UnionUnderContainer
     public function __construct(
         private readonly TreeNode $tree,
         private readonly ?array $chain = null,
+        private readonly ?array $chainAllOf = null,
         private readonly ?array $listOfUnions = null,
     ) {
     }
@@ -7837,6 +7882,7 @@ final class UnionUnderContainer
             'tree.label' => ['string', 'min:1'],
             'tree.children' => ['array'],
             'chain' => ['sometimes', 'array', 'list'],
+            'chainAllOf' => ['sometimes', 'array', 'list'],
             'listOfUnions' => ['sometimes', 'array', 'list'],
         ];
     }
@@ -7958,6 +8004,7 @@ final class UnionUnderContainer
         $dto = new self(
             tree: TreeNode::fromValidated($data['tree']),
             chain: ($data['chain'] ?? null) === null ? null : $data['chain'],
+            chainAllOf: ($data['chainAllOf'] ?? null) === null ? null : $data['chainAllOf'],
             listOfUnions: ($data['listOfUnions'] ?? null) === null ? null : $data['listOfUnions'],
         );
         $dto->providedOpenApiKeys = array_keys($data);
@@ -7978,6 +8025,16 @@ final class UnionUnderContainer
     public function isChainProvided(): bool
     {
         return in_array('chain', $this->providedOpenApiKeys, true);
+    }
+
+    public function getChainAllOf(): ?array
+    {
+        return $this->chainAllOf;
+    }
+
+    public function isChainAllOfProvided(): bool
+    {
+        return in_array('chainAllOf', $this->providedOpenApiKeys, true);
     }
 
     public function getListOfUnions(): ?array
@@ -8138,6 +8195,16 @@ final class UnionUnderContainer
                     ...$errors,
                     ...self::validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
@@ -8323,6 +8390,10 @@ final class UnionUnderContainer
 
         if ($this->isChainProvided()) {
             $result['chain'] = $this->chain;
+        }
+
+        if ($this->isChainAllOfProvided()) {
+            $result['chainAllOf'] = $this->chainAllOf;
         }
 
         if ($this->isListOfUnionsProvided()) {
@@ -8615,25 +8686,13 @@ final class User2
         'pet' => [
             'allOf' => [
                 [
-                    'type' => 'object',
                     'required' => [
                         'test',
-                    ],
-                    'properties' => [
-                        'test' => [
-                            'type' => 'string',
-                        ],
                     ],
                 ],
                 [
-                    'type' => 'object',
                     'required' => [
                         'test',
-                    ],
-                    'properties' => [
-                        'test' => [
-                            'type' => 'string',
-                        ],
                     ],
                 ],
             ],
@@ -8846,17 +8905,7 @@ final class User2
             return [];
         }
 
-        $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
-
-        if (array_key_exists('type', $schema)) {
-            $typeConstraint = $schema['type'];
-            if (is_string($typeConstraint)) {
-                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
-                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
-                }
-            }
-        }
 
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
@@ -8866,35 +8915,17 @@ final class User2
             }
         }
 
-        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
-            foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
                     continue;
                 }
-                if (!array_key_exists($propertyName, $structuredValue)) {
-                    continue;
-                }
-                $errors = [
-                    ...$errors,
-                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
-                ];
+
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
         return $errors;
-    }
-
-    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
-    {
-        if (!is_string($type) || $type === '') {
-            return true;
-        }
-
-        return match ($type) {
-            'string' => is_string($value),
-            'object' => is_array($value) || is_object($value),
-            default => true,
-        };
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed

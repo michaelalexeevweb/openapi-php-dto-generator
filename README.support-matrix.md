@@ -51,6 +51,7 @@ changes who reports it, not whether it is caught.
 | `oneOf` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `anyOf` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `allOf` of scalar fragments | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `allOf` of `$ref`s or objects UNDER a container | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `not` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `if` / `then` / `else` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | composition nested inside `items` / `additionalProperties` / `not` | ✅ | ✅ | ✅ | ✅ | ✅ |

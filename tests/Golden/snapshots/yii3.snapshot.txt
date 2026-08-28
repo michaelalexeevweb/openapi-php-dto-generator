@@ -1,4 +1,4 @@
-# yii3 mode — 50 files, 15038 lines
+# yii3 mode — 50 files, 15110 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -13678,6 +13678,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
     private const array OPENAPI_PROPERTY_NAMES = [
         'tree' => 'tree',
         'chain' => 'chain',
+        'chainAllOf' => 'chainAllOf',
         'listOfUnions' => 'listOfUnions',
     ];
 
@@ -13695,6 +13696,51 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                 'type' => 'array',
                 'items' => [
                     'oneOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'links',
+                            ],
+                            'properties' => [
+                                'links' => [
+                                    'type' => 'array',
+                                    'items' => [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'code',
+                                        ],
+                                        'properties' => [
+                                            'code' => [
+                                                'type' => 'string',
+                                                'minLength' => 3,
+                                            ],
+                                            'tags' => [
+                                                'type' => 'array',
+                                                'items' => [
+                                                    'type' => 'object',
+                                                    'required' => [
+                                                        'label',
+                                                    ],
+                                                    'properties' => [
+                                                        'label' => [
+                                                            'type' => 'string',
+                                                            'minLength' => 2,
+                                                        ],
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'chainAllOf' => [
+                'type' => 'array',
+                'items' => [
+                    'allOf' => [
                         [
                             'type' => 'object',
                             'required' => [
@@ -13772,6 +13818,8 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
     public readonly ?array $chain;
 
+    public readonly ?array $chainAllOf;
+
     public readonly ?array $listOfUnions;
 
     public function getTree(): TreeNode
@@ -13788,6 +13836,17 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
     public function isChainProvided(): bool
     {
         return $this->hasProperty('chain');
+    }
+
+    public function getChainAllOf(): ?array
+    {
+        return $this->hasProperty('chainAllOf') ? $this->chainAllOf : null;
+    }
+
+    /** Whether the payload carried `chainAllOf` at all. */
+    public function isChainAllOfProvided(): bool
+    {
+        return $this->hasProperty('chainAllOf');
     }
 
     public function getListOfUnions(): ?array
@@ -13925,6 +13984,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         }
         if ($this->hasProperty('chain')) {
             $payload['chain'] = $this->chain;
+        }
+        if ($this->hasProperty('chainAllOf')) {
+            $payload['chainAllOf'] = $this->chainAllOf;
         }
         if ($this->hasProperty('listOfUnions')) {
             $payload['listOfUnions'] = $this->listOfUnions;
@@ -14083,6 +14145,16 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                     ...$errors,
                     ...$this->validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...$this->validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 

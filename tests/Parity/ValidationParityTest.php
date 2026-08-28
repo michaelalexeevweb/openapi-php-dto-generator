@@ -812,12 +812,18 @@ final class ValidationParityTest extends TestCase
      * 2.15.8 and 2.15.9 were measured on runtime alone, which is exactly the gap that let a recursive
      * schema go unchecked in Laravel mode once before. This is the same question asked of all five.
      *
+     * Both branch keywords, because they were broken and fixed a release apart: `oneOf` in 2.15.6-9,
+     * `allOf` only in 2.15.11, where it had been skipped on the rule that its `$ref` gets a class —
+     * true on a property, false under a container.
+     *
      * @param string $invalidJson a payload violating the chain at ONE level
+     * @param string $branchKeyword `oneOf` or `allOf`, the two spellings of the same chain
      */
     #[DataProvider('unionChainDepthProvider')]
     public function testARefChainUnderAUnionBranchIsEnforcedAtEveryHopInEveryMode(
         string $key,
         string $invalidJson,
+        string $branchKeyword,
     ): void {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
@@ -852,7 +858,7 @@ final class ValidationParityTest extends TestCase
                         'type' => 'object',
                         'required' => ['f'],
                         'properties' => [
-                            'f' => ['type' => 'array', 'items' => ['oneOf' => [
+                            'f' => ['type' => 'array', 'items' => [$branchKeyword => [
                                 ['$ref' => '#/components/schemas/ChainMiddle'],
                             ]]],
                         ],
@@ -865,14 +871,23 @@ final class ValidationParityTest extends TestCase
 
         $this->assertEveryModeYields(
             ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'chain ' . $key, $valid, $invalidJson),
+            // The branch keyword belongs in the namespace key: without it both spellings generate into
+            // one namespace, PHP keeps the classes it loaded first, and the second spelling silently
+            // re-tests the first one's classes — green and proving nothing.
+            fn(GenerationMode $mode): array => $this->verdict(
+                $mode,
+                $spec,
+                'chain ' . $branchKeyword . ' ' . $key,
+                $valid,
+                $invalidJson,
+            ),
             self::declaredUnionChainDivergences()[$key] ?? [],
-            context: 'union chain ' . $key,
+            context: $branchKeyword . ' chain ' . $key,
         );
     }
 
     /**
-     * @return array<string, array{0: string, 1: string}>
+     * @return array<string, array{0: string, 1: string, 2: string}>
      */
     public static function unionChainDepthProvider(): array
     {
@@ -882,14 +897,16 @@ final class ValidationParityTest extends TestCase
             // C: reached from 2.15.8.
             'C minLength' => '{"f":[{"links":[{"code":"x"}]}]}',
             'C required' => '{"f":[{"links":[{}]}]}',
-            // D: reached from 2.15.9, and the level this measurement is about.
+            // D: reached from 2.15.9.
             'D minLength' => '{"f":[{"links":[{"code":"abc","tags":[{"label":"z"}]}]}]}',
             'D required' => '{"f":[{"links":[{"code":"abc","tags":[{}]}]}]}',
         ];
 
         $provided = [];
-        foreach ($cases as $key => $invalidJson) {
-            $provided[$key] = [$key, $invalidJson];
+        foreach (['oneOf', 'allOf'] as $branchKeyword) {
+            foreach ($cases as $key => $invalidJson) {
+                $provided[$branchKeyword . ' ' . $key] = [$key, $invalidJson, $branchKeyword];
+            }
         }
 
         return $provided;
