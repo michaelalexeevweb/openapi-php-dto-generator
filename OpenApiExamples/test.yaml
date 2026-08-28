@@ -774,11 +774,37 @@ components:
               - type: object
                 additionalProperties:
                   $ref: '#/components/schemas/Tag'
+    # The NON-recursive chain through a union branch, A -> B -> C, which is what the one-level inline
+    # budget could not reach. B's own rules landed in the emitted constraints; C's did not, and a
+    # violation inside C passed in silence. Nothing materializes anywhere on this path — under a
+    # container the branch type collapses to `array` — so there is no class on the way to catch it.
+    ChainLink:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          minLength: 3
+    ChainMiddle:
+      type: object
+      required:
+        - links
+      properties:
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChainLink'
     UnionUnderContainer:
       type: object
       required:
         - tree
       properties:
+        chain:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/ChainMiddle'
         tree:
           $ref: '#/components/schemas/TreeNode'
         listOfUnions:

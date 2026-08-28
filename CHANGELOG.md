@@ -3,6 +3,24 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.8 — 2026-08-28
+
+- a `$ref` chain under a union branch went unchecked past its first hop
+
+2.15.6 taught the branch of a `oneOf`/`anyOf` below a container to carry its `$ref`'s constraints, one
+level and no further. One level is enough wherever the chain materializes: `items: {$ref: B}` becomes a
+DTO, that DTO runs the same rule for itself, and C is reached the next level down. Under a union branch
+below a container nothing materializes — the property type collapses to `array` — so the chain stopped
+at B. `A -> B -> C` with `minLength: 3` on `C.code` reported nothing at all for
+`{"chain":[{"links":[{"code":"x"}]}]}`, while the same payload through the plain `$ref` chain was
+refused. Validation passing where it should fail, in silence.
+
+The one-level stop was not an oversight: a per-path "already seen" set had exhausted memory on a
+recursive component in 2.15.5, because the extraction re-enters itself per union branch and each entry
+started a fresh set. What replaces it is a BUDGET of two — it counts down along the path and cannot be
+refilled by descending, so a self-referential schema still terminates. Raising it further multiplies
+work per nesting level, so it moves only against a measured miss.
+
 ## 2.15.7 — 2026-08-28
 
 - a container value the schema lets be null was refused

@@ -3539,6 +3539,92 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * The SECOND `$ref` on a path that materializes nothing — A -> B -> C through a union branch.
+     *
+     * A `$ref` chain normally needs no inlining past the first hop: B becomes a class and checks
+     * itself, so C is reached by the rule one level down. Under a `oneOf` below a container there is
+     * no class anywhere on the path — the property type collapses to `array` — and the one-level
+     * inline budget of 2.15.6 stopped exactly one hop short: B's `required` and bounds were emitted,
+     * C's were not, and a violation inside C passed in SILENCE while the same payload through the
+     * plain chain was refused.
+     *
+     * Two levels is the measured need, not a round number: the budget counts DOWN on the path and
+     * cannot be refilled by descending, which is what keeps the recursive forms above from inlining
+     * until memory runs out.
+     */
+    public function testARefChainUnderAUnionBranchIsCheckedBelowItsFirstHop(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Link' => [
+                    'type' => 'object',
+                    'required' => ['code'],
+                    'properties' => ['code' => ['type' => 'string', 'minLength' => 3]],
+                ],
+                'Middle' => [
+                    'type' => 'object',
+                    'required' => ['links'],
+                    'properties' => [
+                        'links' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Link']],
+                    ],
+                ],
+                // The same chain twice: once where every hop materializes, once where none does.
+                'PlainChain' => [
+                    'type' => 'object',
+                    'required' => ['middles'],
+                    'properties' => [
+                        'middles' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Middle']],
+                    ],
+                ],
+                'UnionChain' => [
+                    'type' => 'object',
+                    'required' => ['middles'],
+                    'properties' => [
+                        'middles' => [
+                            'type' => 'array',
+                            'items' => ['oneOf' => [['$ref' => '#/components/schemas/Middle']]],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $plain = $this->generateFromInlineSpec($spec, 'RefChainDepthNs', 'PlainChain');
+        /** @var class-string<GeneratedDtoInterface> $union */
+        $union = '\RefChainDepthNs\UnionChain';
+
+        // The second hop's own rules are in the emitted constraints, not just the first hop's.
+        $source = (string)file_get_contents($this->outputDirectory . '/UnionChain.php');
+        $this->assertStringContainsString("'required' => ['links']", $source);
+        $this->assertStringContainsString("'minLength' => 3", $source, "the C level's bound must be emitted");
+
+        $valid = '{"middles":[{"links":[{"code":"abc"}]}]}';
+        foreach ([$plain, $union] as $fqcn) {
+            $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+            $this->assertSame([], (new DtoNormalizer())->validate($dto), $fqcn);
+        }
+
+        // Level B was caught before this release and must stay caught; level C is what passed.
+        $cases = [
+            '{"middles":[{}]}' => 'links',
+            '{"middles":[{"links":[{"code":"x"}]}]}' => 'must be at least 3 characters',
+            '{"middles":[{"links":[{}]}]}' => 'code',
+        ];
+
+        foreach ([$plain, $union] as $fqcn) {
+            foreach ($cases as $json => $expected) {
+                try {
+                    (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+                    $this->fail(sprintf('%s was accepted by %s', $json, $fqcn));
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString($expected, $exception->getMessage(), $fqcn . ' ' . $json);
+                }
+            }
+        }
+    }
+
+    /**
      * A container inside a container, and the two things that were true of it: the DECLARATION named a
      * type nothing delivered, and the CONSTRAINTS named nothing at all.
      *

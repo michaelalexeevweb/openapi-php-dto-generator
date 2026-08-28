@@ -2486,6 +2486,15 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * How many `$ref`s may be inlined along one path below materialization. Two, because the shape that
+     * needed it is A -> B -> C: the first hop puts B's rules where something can read them, the second
+     * does the same for C. Raising it multiplies work per nesting level rather than adding to it — see
+     * the budget note inside the method — so it is raised only against a measured miss and a re-run of
+     * the recursive corpus forms.
+     */
+    private const int REF_INLINE_BUDGET = 2;
+
+    /**
      * Everything at depth two or deeper inside a container, made validatable.
      *
      * At depth ONE the generator materializes: `items: {$ref: StrEnum}` becomes a PHP enum and
@@ -2504,14 +2513,14 @@ final class GenerateDtoCommand extends Command
      * @param array<string, mixed> $schema
      * @param int $depth how many containers were entered to reach this schema
      * @param bool $belowMaterialization whether no class is generated for anything from here down
-     * @param bool $mayInlineRefs false once a `$ref` has been inlined on this path — see below
+     * @param int $refInlineBudget how many more `$ref`s may be inlined on this path — see below
      * @return array<string, mixed>
      */
     private function inlineNestedContainerValidation(
         array $schema,
         int $depth = 0,
         bool $belowMaterialization = false,
-        bool $mayInlineRefs = true,
+        int $refInlineBudget = self::REF_INLINE_BUDGET,
     ): array {
         // Two containers down, nothing is materialized any more — and that stays true for everything
         // INSIDE what gets inlined here, however many `properties` hops away it is. A depth counter
@@ -2521,20 +2530,22 @@ final class GenerateDtoCommand extends Command
 
         if ($belowMaterialization) {
             $ref = $schema['$ref'] ?? null;
-            if (is_string($ref) && $mayInlineRefs) {
+            if (is_string($ref) && $refInlineBudget > 0) {
                 $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
                     ?? $this->nestedObjectRefDefinition($ref);
                 if ($definition !== null) {
-                    // ONE level, and then no more on this path. A per-path "already seen" set is not
-                    // enough: `extractValidationConstraints()` re-enters itself for every `oneOf`
-                    // branch, for `not`, and once more from the scrubber, and each re-entry starts a
-                    // fresh set — so a self-referential component peeled off one more level per pass
-                    // and a recursive report tree exhausted memory before it finished generating.
+                    // A BUDGET, not a set. A per-path "already seen" set is not enough:
+                    // `extractValidationConstraints()` re-enters itself for every `oneOf` branch, for
+                    // `not`, and once more from the scrubber, and each re-entry starts a fresh set — so
+                    // a self-referential component peeled off one more level per pass and a recursive
+                    // report tree exhausted memory before it finished generating. A budget cannot do
+                    // that: it counts DOWN on the path and cannot be refilled by descending.
                     //
-                    // One level is also all that is worth having: it puts the referenced component's
-                    // own `required`/`properties`/bounds where something can read them, and what sits
-                    // below THAT is reached by the same rule the next level down already applies.
-                    $mayInlineRefs = false;
+                    // It was one level until 2.15.8, on the reasoning that what sits below is reached
+                    // by the same rule the next level down applies. Measured, it is not: that rule
+                    // needs a class to materialize, and under a union branch below a container nothing
+                    // does — so A -> B -> C through a `oneOf` was checked at B and unchecked at C.
+                    $refInlineBudget--;
                     unset($schema['$ref']);
                     $schema += $definition;
                 }
@@ -2551,7 +2562,7 @@ final class GenerateDtoCommand extends Command
                     schema: $schema[$containerKey],
                     depth: $depth + 1,
                     belowMaterialization: $belowMaterialization,
-                    mayInlineRefs: $mayInlineRefs,
+                    refInlineBudget: $refInlineBudget,
                 );
             }
         }
@@ -2580,7 +2591,7 @@ final class GenerateDtoCommand extends Command
                         schema: $branch,
                         depth: $depth,
                         belowMaterialization: $belowMaterialization || $depth >= 1,
-                        mayInlineRefs: $mayInlineRefs,
+                        refInlineBudget: $refInlineBudget,
                     );
                 }
             }
@@ -2596,7 +2607,7 @@ final class GenerateDtoCommand extends Command
                         schema: $propertySchema,
                         depth: 0,
                         belowMaterialization: $belowMaterialization,
-                        mayInlineRefs: $mayInlineRefs,
+                        refInlineBudget: $refInlineBudget,
                     );
                 }
             }
