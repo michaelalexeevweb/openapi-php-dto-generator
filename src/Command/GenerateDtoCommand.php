@@ -2549,6 +2549,10 @@ final class GenerateDtoCommand extends Command
 
         if ($belowMaterialization) {
             $ref = $schema['$ref'] ?? null;
+            if (is_string($ref) && $refInlineBudget <= 0) {
+                $this->reportInlineCeilingReached($ref);
+            }
+
             if (is_string($ref) && $refInlineBudget > 0 && ($seenRefs[$ref] ?? 0) < self::REF_REPEAT_LIMIT) {
                 $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
                     ?? $this->nestedObjectRefDefinition($ref);
@@ -2654,6 +2658,42 @@ final class GenerateDtoCommand extends Command
         }
 
         return $schema;
+    }
+
+    /**
+     * Reports a `$ref` chain cut off by `REF_INLINE_BUDGET`, so the silence has a voice.
+     *
+     * Everything below the ceiling is accepted unchecked. That is a deliberate trade — the alternative
+     * is an emitted file that grows ~2.9x per level on a branching document — but a consumer whose
+     * document is that deep has no way to notice: the generated code simply does not mention those
+     * levels, and a payload violating them passes.
+     *
+     * Only the CEILING is reported. The other stop, `REF_REPEAT_LIMIT` on a self-referential component,
+     * is not a truncation a consumer can act on — a recursive schema has no finite inline form, and
+     * warning about it would fire on every recursive document. Measured before this was written: across
+     * the whole corpus and test suite the ceiling is reached ZERO times and the cycle guard 107, which
+     * is the difference between a warning that means something and noise.
+     */
+    private function reportInlineCeilingReached(string $ref): void
+    {
+        if (($this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
+            ?? $this->nestedObjectRefDefinition($ref)) === null) {
+            return;
+        }
+
+        $warning = sprintf(
+            'A `$ref` chain reached the %d-hop inline limit at "%s". Nothing materializes into a class '
+            . 'on this path — it runs under a union branch or below the second container — so the rules '
+            . 'of that component and of everything under it are NOT in the generated checks, and a '
+            . 'payload violating them is accepted. Shorten the chain, or lift the deep part to a '
+            . 'property of its own, where a class is generated and checks itself.',
+            self::REF_INLINE_BUDGET,
+            $ref,
+        );
+
+        if (!in_array($warning, $this->generationWarnings, true)) {
+            $this->generationWarnings[] = $warning;
+        }
     }
 
     /**

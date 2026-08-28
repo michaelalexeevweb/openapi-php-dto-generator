@@ -3361,6 +3361,11 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      * The document says the same thing; the declaration used to say two different wrong things. The
      * list lost its item type entirely — a bare `array`, whose items `DtoNormalizer::validate()` does
      * not look at — and the map kept `array<string, string>`, forbidding the null the schema allows.
+     *
+     * Both ORDERS of the type array are here, because a permission written two ways is two chances to
+     * diverge: the property level reads either and normalizes to `nullable: true` (the tail of
+     * `extractValidationConstraints()`), and the container level reads either through
+     * `soleTypeBesidesNull()`. Measured 2.15.10: both already agreed everywhere; nothing had pinned it.
      */
     public function testTheThreeOneSpellingOfANullableContainerValueSaysTheSameThing(): void
     {
@@ -3370,12 +3375,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             'components' => ['schemas' => [
                 'Holes31' => [
                     'type' => 'object',
-                    'required' => ['listOfNullable', 'mapOfNullable'],
+                    'required' => ['listOfNullable', 'mapOfNullable', 'listNullFirst', 'mapNullFirst'],
                     'properties' => [
                         'listOfNullable' => ['type' => 'array', 'items' => ['type' => ['string', 'null']]],
                         'mapOfNullable' => [
                             'type' => 'object',
                             'additionalProperties' => ['type' => ['string', 'null']],
+                        ],
+                        // `null` FIRST. A JSON array has an order and a document may write either, so
+                        // the two orders are two spellings of one permission — and this generator has
+                        // been bitten four times by spellings of one permission diverging.
+                        'listNullFirst' => ['type' => 'array', 'items' => ['type' => ['null', 'string']]],
+                        'mapNullFirst' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => ['null', 'string']],
                         ],
                     ],
                 ],
@@ -3386,8 +3399,11 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $source = (string)file_get_contents($this->outputDirectory . '/Holes31.php');
         $this->assertStringContainsString('@param array<?string> $listOfNullable', $source);
         $this->assertStringContainsString('@param array<string, ?string> $mapOfNullable', $source);
+        $this->assertStringContainsString('@param array<?string> $listNullFirst', $source);
+        $this->assertStringContainsString('@param array<string, ?string> $mapNullFirst', $source);
 
-        $json = '{"listOfNullable":["a",null],"mapOfNullable":{"k":null,"j":"b"}}';
+        $json = '{"listOfNullable":["a",null],"mapOfNullable":{"k":null,"j":"b"},'
+            . '"listNullFirst":[null,"a"],"mapNullFirst":{"k":null,"j":"b"}}';
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
         $this->assertSame($json, (string)json_encode((new DtoNormalizer())->toArray($dto)));
         $this->assertSame([], (new DtoNormalizer())->validate($dto));

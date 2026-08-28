@@ -564,6 +564,79 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * The inline ceiling is reported, and the cycle guard deliberately is not.
+     *
+     * Everything past the ceiling is accepted unchecked, and the generated code does not mention those
+     * levels at all — so without a word at generation time a consumer whose document is that deep has
+     * nothing to notice. Measured before the warning was written: across the corpus and the whole test
+     * suite the ceiling is reached ZERO times and the cycle guard 107, so this fires only where it says
+     * something, and a recursive schema — which has no finite inline form and nothing to act on —
+     * generates as silently as it did.
+     */
+    public function testTheInlineCeilingIsWarnedAboutAndTheCycleGuardIsNot(): void
+    {
+        $chain = [];
+        for ($level = 0; $level <= 7; $level++) {
+            $properties = ['code' => ['type' => 'string', 'minLength' => 10 + $level]];
+            if ($level < 7) {
+                $properties['next'] = ['type' => 'array', 'items' => ['oneOf' => [
+                    ['$ref' => '#/components/schemas/L' . ($level + 1)],
+                ]]];
+            }
+            $chain['L' . $level] = ['type' => 'object', 'required' => ['code'], 'properties' => $properties];
+        }
+        $chain['Root'] = ['type' => 'object', 'required' => ['chain'], 'properties' => [
+            'chain' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/L0']]]],
+        ]];
+
+        $this->generator->generateFromArray(
+            ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $chain]],
+            $this->outputDirectory,
+            'CeilingWarned',
+        );
+
+        $warnings = $this->generator->getGenerationWarnings();
+        $joined = implode("\n", $warnings);
+
+        // One per CUT POINT, not one per document. Every component here is also a class of its own, and
+        // each one re-enters the chain from itself — so the ceiling falls on L5 counting from `Root`,
+        // on L6 counting from `L1`, and on L7 counting from `L2`. Each is a real place where checks
+        // stop, and naming only the first would hide the other two.
+        $this->assertCount(3, $warnings);
+        $this->assertStringContainsString('reached the 5-hop inline limit', $joined);
+        $this->assertStringContainsString('is accepted', $joined, 'what it costs the consumer');
+        foreach (['L5', 'L6', 'L7'] as $cut) {
+            $this->assertStringContainsString('#/components/schemas/' . $cut, $joined, 'the level that was cut');
+        }
+        $this->assertStringNotContainsString(
+            '#/components/schemas/L4',
+            $joined,
+            'a level still within the ceiling is not a cut point',
+        );
+
+        // The same shape, self-referential: stopped by the repeat limit, and that is not news.
+        $this->generator->generateFromArray(
+            [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Loop' => ['type' => 'object', 'required' => ['code'], 'properties' => [
+                        'code' => ['type' => 'string', 'minLength' => 2],
+                        'kids' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+                    ]],
+                    'LoopRoot' => ['type' => 'object', 'required' => ['loops'], 'properties' => [
+                        'loops' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+                    ]],
+                ]],
+            ],
+            $this->outputDirectory,
+            'CycleSilent',
+        );
+
+        $this->assertSame([], $this->generator->getGenerationWarnings());
+    }
+
+    /**
      * A schema NAMED like a class the emitted code uses is named at build time, per mode.
      *
      * The generator carries a PHP type as a short name, so `UploadedFile` — what `format: binary`

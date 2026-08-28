@@ -3,6 +3,31 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.10 — 2026-08-28
+
+- the inline ceiling now says so instead of truncating in silence
+- the union chain is pinned in all five modes, not just runtime
+- both orders of the 3.1 nullable type array are pinned
+
+2.15.9 documented a limit: a `$ref` chain below materialization is inlined five hops deep, and anything
+past that is accepted unchecked. Documented is not the same as visible — the generated code does not
+mention those levels at all, so a consumer whose document is that deep had nothing to notice. The
+generator now warns, once per cut point, naming the `$ref` where checking stops and what it costs.
+
+A recursive schema does NOT warn. It is stopped by the other guard, has no finite inline form to ask
+for, and there is nothing for the reader to act on. Measured before the warning was written: across the
+demo corpus and the whole test suite the ceiling is reached ZERO times and the cycle guard 107 — which
+is the difference between a warning that means something and noise on every recursive document.
+
+The chain fixed in 2.15.8 and 2.15.9 had only ever been measured in runtime mode. Measured now in all
+five at the old ceiling, the fourth hop was accepted in silence in every one of them, so neither the gap
+nor the fix was ever runtime-specific. `ValidationParityTest` carries a case per level of the chain.
+
+No behaviour changed for `type: ["null", "string"]` — it was already read exactly like
+`["string", "null"]`, at the property level and inside a container. It had simply never been pinned:
+every test in the repository wrote `null` last. A permission a document may spell two ways is two
+chances to diverge later, so both orders now carry a case, in all five modes.
+
 ## 2.15.9 — 2026-08-28
 
 - a `$ref` chain under a union branch is checked at every hop, not the first two

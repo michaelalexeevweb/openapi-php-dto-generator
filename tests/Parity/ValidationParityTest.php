@@ -113,6 +113,8 @@ final class ValidationParityTest extends TestCase
             'type string' => [['type' => 'string'], '{"f":"a"}', '{"f":5}'],
             'type integer' => [['type' => 'integer'], '{"f":5}', '{"f":"a"}'],
             'type union with null' => [['type' => ['string', 'null']], '{"f":null}', '{"f":5}'],
+            // The same permission with `null` written FIRST — one document, two spellings.
+            'type union null first' => [['type' => ['null', 'string']], '{"f":null}', '{"f":5}'],
             'enum' => [['type' => 'string', 'enum' => ['a', 'b']], '{"f":"a"}', '{"f":"z"}'],
             'const' => [['type' => 'string', 'const' => 'a'], '{"f":"a"}', '{"f":"b"}'],
             'minLength' => [['type' => 'string', 'minLength' => 3], '{"f":"abc"}', '{"f":"ab"}'],
@@ -798,6 +800,110 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A `$ref` chain under a UNION BRANCH below a container, enforced at every hop in every mode.
+     *
+     * The recursive case above is the other shape: there the chain repeats, a class materializes at the
+     * first hop, and each mode's own cascade carries the rest. Here nothing materializes anywhere —
+     * under a container the branch type collapses to `array` — so every level of the chain reaches the
+     * consumer ONLY through the constraints the generator inlines, and each mode then has to read those
+     * constraints with a different machine: Symfony builds `Assert` specs from them, Laravel a flat rule
+     * map, laravel-data its own, runtime walks the schema it holds.
+     *
+     * 2.15.8 and 2.15.9 were measured on runtime alone, which is exactly the gap that let a recursive
+     * schema go unchecked in Laravel mode once before. This is the same question asked of all five.
+     *
+     * @param string $invalidJson a payload violating the chain at ONE level
+     */
+    #[DataProvider('unionChainDepthProvider')]
+    public function testARefChainUnderAUnionBranchIsEnforcedAtEveryHopInEveryMode(
+        string $key,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'ChainTag' => [
+                        'type' => 'object',
+                        'required' => ['label'],
+                        'properties' => ['label' => ['type' => 'string', 'minLength' => 2]],
+                    ],
+                    'ChainLink' => [
+                        'type' => 'object',
+                        'required' => ['code'],
+                        'properties' => [
+                            'code' => ['type' => 'string', 'minLength' => 3],
+                            'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/ChainTag']],
+                        ],
+                    ],
+                    'ChainMiddle' => [
+                        'type' => 'object',
+                        'required' => ['links'],
+                        'properties' => [
+                            'links' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/ChainLink']],
+                        ],
+                    ],
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => [
+                            'f' => ['type' => 'array', 'items' => ['oneOf' => [
+                                ['$ref' => '#/components/schemas/ChainMiddle'],
+                            ]]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $valid = '{"f":[{"links":[{"code":"abc","tags":[{"label":"ok"}]}]}]}';
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'chain ' . $key, $valid, $invalidJson),
+            self::declaredUnionChainDivergences()[$key] ?? [],
+            context: 'union chain ' . $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function unionChainDepthProvider(): array
+    {
+        $cases = [
+            // B: the hop every version of the inlining reached.
+            'B required' => '{"f":[{}]}',
+            // C: reached from 2.15.8.
+            'C minLength' => '{"f":[{"links":[{"code":"x"}]}]}',
+            'C required' => '{"f":[{"links":[{}]}]}',
+            // D: reached from 2.15.9, and the level this measurement is about.
+            'D minLength' => '{"f":[{"links":[{"code":"abc","tags":[{"label":"z"}]}]}]}',
+            'D required' => '{"f":[{"links":[{"code":"abc","tags":[{}]}]}]}',
+        ];
+
+        $provided = [];
+        foreach ($cases as $key => $invalidJson) {
+            $provided[$key] = [$key, $invalidJson];
+        }
+
+        return $provided;
+    }
+
+    /**
+     * @return array<string, array<string, array{expected: array{valid: bool, invalid: bool}, reason: string}>>
+     */
+    private static function declaredUnionChainDivergences(): array
+    {
+        return [];
+    }
+
+    /**
      * The same cycle, entered from the class that IS the cycle: `Probe.children` is a list of `Probe`.
      *
      * The case above always reaches the recursive schema through a non-recursive root, and that is the
@@ -1050,6 +1156,7 @@ final class ValidationParityTest extends TestCase
             'type string' => $coerced,
             'type integer' => $coerced,
             'type union with null' => $coerced,
+            'type union null first' => $coerced,
             'format date-time in a list' => $lenientDateTime,
         ];
     }
