@@ -735,6 +735,14 @@ trait RendersRuntimeDto
             // A LIST of maps must keep its items objects too, otherwise an empty item encodes as
             // [] while the very same map at property level encodes as {}.
             'itemsAreMaps' => $this->describesListOfMaps($docReturnType ?? $property['type']),
+            // A LIST is reindexed on the way out. `type: array` says the wire form is a JSON ARRAY, and
+            // its keys are not part of that contract — but PHP's are: hand the constructor the result of
+            // `array_filter()` and the property holds [0 => …, 2 => …], which `json_encode()` writes as
+            // `{"0":…,"2":…}`, an object where the document promised a list. `validate()` reports it
+            // (and still does — it reads the property, not this view), but a consumer who skips
+            // validation had no way to notice. A MAP is deliberately excluded: there the keys ARE the
+            // data.
+            'isList' => str_starts_with($property['type'], 'array') && ($property['isMap'] ?? false) !== true,
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),

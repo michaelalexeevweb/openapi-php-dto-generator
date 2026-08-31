@@ -1204,8 +1204,8 @@ trait RendersLaravelDto
             $mapper = 'static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item)';
 
             return $nullable
-                ? sprintf('%s === null ? null : array_map(%s, %s)', $property_access, $mapper, $property_access)
-                : sprintf('array_map(%s, %s)', $mapper, $property_access);
+                ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $property_access, $mapper, $property_access)
+                : sprintf('array_map(%s, array_values(%s))', $mapper, $property_access);
         }
 
         $itemClass = $this->laravelDtoItemClass($property);
@@ -1213,11 +1213,32 @@ trait RendersLaravelDto
             $mapper = $this->laravelItemToWireMapper($itemClass);
 
             return $nullable
-                ? sprintf('%s === null ? null : array_map(%s, %s)', $property_access, $mapper, $property_access)
-                : sprintf('array_map(%s, %s)', $mapper, $property_access);
+                ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $property_access, $mapper, $property_access)
+                : sprintf('array_map(%s, array_values(%s))', $mapper, $property_access);
+        }
+
+        // A LIST is reindexed on the way out, for the reason spelled out in `RendersRuntimeDto`: the
+        // document promised a JSON array, PHP keys are not part of that promise, and the result of an
+        // `array_filter()` handed to the constructor would otherwise be written as `{"0":…,"2":…}`. A
+        // MAP never reaches here — it returned above, where its keys ARE the data.
+        if ($this->laravelDescribesList($property)) {
+            return $nullable
+                ? sprintf('%s === null ? null : array_values(%s)', $property_access, $property_access)
+                : sprintf('array_values(%s)', $property_access);
         }
 
         return $property_access;
+    }
+
+    /**
+     * Whether this property is a LIST — an array whose keys the wire form does not carry.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelDescribesList(array $property): bool
+    {
+        return str_starts_with($property['type'], 'array')
+            && ($property['isMap'] ?? null) !== true;
     }
 
     /**

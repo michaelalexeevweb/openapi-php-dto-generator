@@ -3831,6 +3831,56 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A LIST goes out as a JSON array even when the PHP array it holds has gaps in its keys.
+     *
+     * `type: array` promises an array on the wire, and PHP keys are not part of that promise — but
+     * `json_encode()` makes them part of it: hand the constructor the result of an `array_filter()` and
+     * `[0 => "a", 2 => "c"]` is written `{"0":"a","2":"c"}`, an object where the document said list.
+     * `validate()` has always reported it, and still does — it reads the property, not this view — but a
+     * consumer who serializes without validating had no way to notice.
+     *
+     * A MAP is excluded on purpose: `additionalProperties` makes the keys the data, and reindexing them
+     * would destroy the value. That is the whole distinction, so both are asserted here.
+     */
+    public function testAListIsWrittenAsAJsonArrayEvenWithGapsInItsKeys(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Reindex' => [
+                    'type' => 'object',
+                    'required' => ['tags', 'byKey'],
+                    'properties' => [
+                        'tags' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        'byKey' => ['type' => 'object', 'additionalProperties' => ['type' => 'string']],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'ReindexListNs', 'Reindex');
+
+        /** @var array<int|string, string> $filtered */
+        $filtered = array_filter(['a', '', 'c'], static fn(string $value): bool => $value !== '');
+        $this->assertSame([0, 2], array_keys($filtered), 'array_filter keeps the holes — the premise');
+
+        $dto = new $fqcn(tags: $filtered, byKey: ['second' => 'b', 'first' => 'a']);
+        $payload = (new DtoNormalizer())->toArray($dto);
+
+        $this->assertSame(
+            '{"tags":["a","c"],"byKey":{"second":"b","first":"a"}}',
+            (string)json_encode($payload),
+            'the list is reindexed, the map keeps its keys and their order',
+        );
+
+        // The report is not silenced by the fix: it reads the property, which still has the gap.
+        $this->assertSame(
+            ['field "tags" must be a JSON array (list with sequential keys), got an associative array.'],
+            (new DtoNormalizer())->validate($dto),
+        );
+    }
+
+    /**
      * A container inside a container, and the two things that were true of it: the DECLARATION named a
      * type nothing delivered, and the CONSTRAINTS named nothing at all.
      *

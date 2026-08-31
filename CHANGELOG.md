@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.13 — 2026-08-31
+
+- a list with gaps in its PHP keys was written as a JSON object
+
+`type: array` promises an array on the wire and says nothing about PHP keys — but `json_encode()` does:
+hand the constructor the result of an `array_filter()` and `[0 => "a", 2 => "c"]` goes out as
+`{"0":"a","2":"c"}`, an object where the document said list. `validate()` has always reported this
+(`field "tags" must be a JSON array (list with sequential keys)…`), so a consumer who validates was
+never in the dark — but one who only serializes had nothing to notice.
+
+The emitted `toArray()` now reindexes a property declared as a LIST. It is unconditional rather than
+opt-in, because for `type: array` the keys are never part of the contract, and an opt-in keyword would
+have left every document that does not know about it emitting the broken form. A MAP is untouched:
+`additionalProperties` makes the keys the data, and both halves are asserted side by side.
+
+Nothing is silenced. `validate()` reads the property, not this view, so a payload assembled with holes
+is still reported — the wire form is corrected, the mistake is still named.
+
+Two modes emit their own `toArray()` and both got it: runtime and laravel. Symfony, laravel-data and
+yii3 serialize through their framework or library, which this generator does not emit, so the same
+document in those modes still depends on what that serializer does with a keyed array.
+
 ## 2.15.12 — 2026-08-31
 
 - yii3: a class written as `allOf` asserted nothing at all

@@ -1,4 +1,4 @@
-# laravel mode — 62 files, 8890 lines
+# laravel mode — 62 files, 8898 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2135,6 +2135,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function in_array;
@@ -2419,7 +2420,7 @@ final class ChainLink
         $result['code'] = $this->code;
 
         if ($this->isTagsProvided()) {
-            $result['tags'] = $this->tags === null ? null : array_map(static fn(ChainTag $item): array|object => $item->toArray() ?: (object)[], $this->tags);
+            $result['tags'] = $this->tags === null ? null : array_map(static fn(ChainTag $item): array|object => $item->toArray() ?: (object)[], array_values($this->tags));
         }
 
         return $result;
@@ -2441,6 +2442,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function is_array;
@@ -2722,7 +2724,7 @@ final class ChainMiddle
     public function toArray(): array
     {
         $result = [];
-        $result['links'] = array_map(static fn(ChainLink $item): array|object => $item->toArray() ?: (object)[], $this->links);
+        $result['links'] = array_map(static fn(ChainLink $item): array|object => $item->toArray() ?: (object)[], array_values($this->links));
 
         return $result;
     }
@@ -2912,6 +2914,7 @@ use function array_is_list;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function in_array;
@@ -3162,10 +3165,10 @@ final class ContainerAliases
     public function toArray(): array
     {
         $result = [];
-        $result['listOfLists'] = $this->listOfLists;
+        $result['listOfLists'] = array_values($this->listOfLists);
 
         if ($this->isListOfMapsProvided()) {
-            $result['listOfMaps'] = $this->listOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item), $this->listOfMaps);
+            $result['listOfMaps'] = $this->listOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item), array_values($this->listOfMaps));
         }
 
         if ($this->isMapOfListsProvided()) {
@@ -3173,7 +3176,7 @@ final class ContainerAliases
         }
 
         if ($this->isPlainProvided()) {
-            $result['plain'] = $this->plain;
+            $result['plain'] = $this->plain === null ? null : array_values($this->plain);
         }
 
         return $result;
@@ -3198,6 +3201,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function in_array;
@@ -3623,7 +3627,7 @@ final class Containers
     {
         $result = [];
         $result['dates'] = $this->getDates();
-        $result['shapes'] = array_map(static fn(Shape $item): array|object => $item->toArray() ?: (object)[], $this->shapes);
+        $result['shapes'] = array_map(static fn(Shape $item): array|object => $item->toArray() ?: (object)[], array_values($this->shapes));
 
         if ($this->isDatesByDayProvided()) {
             $result['datesByDay'] = $this->datesByDay === null ? null : self::toJsonObjects($this->getDatesByDay());
@@ -4352,6 +4356,7 @@ use stdClass;
 use function array_is_list;
 use function array_keys;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function in_array;
@@ -4588,14 +4593,14 @@ final class ItemBounds
     public function toArray(): array
     {
         $result = [];
-        $result['scores'] = $this->scores;
+        $result['scores'] = array_values($this->scores);
 
         if ($this->isScoresByKeyProvided()) {
             $result['scoresByKey'] = $this->scoresByKey === null ? null : self::toJsonObjects($this->scoresByKey);
         }
 
         if ($this->isCodesProvided()) {
-            $result['codes'] = $this->codes;
+            $result['codes'] = $this->codes === null ? null : array_values($this->codes);
         }
 
         return $result;
@@ -4619,6 +4624,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function in_array;
@@ -5043,8 +5049,8 @@ final class NestedContainers
     public function toArray(): array
     {
         $result = [];
-        $result['matrix'] = $this->matrix;
-        $result['rowsOfMaps'] = array_map(static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item), $this->rowsOfMaps);
+        $result['matrix'] = array_values($this->matrix);
+        $result['rowsOfMaps'] = array_map(static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item), array_values($this->rowsOfMaps));
 
         if ($this->isListsByKeyProvided()) {
             $result['listsByKey'] = $this->listsByKey === null ? null : self::toJsonObjects($this->listsByKey);
@@ -5055,19 +5061,19 @@ final class NestedContainers
         }
 
         if ($this->isDateRowsProvided()) {
-            $result['dateRows'] = $this->dateRows;
+            $result['dateRows'] = $this->dateRows === null ? null : array_values($this->dateRows);
         }
 
         if ($this->isNumRowsProvided()) {
-            $result['numRows'] = $this->numRows;
+            $result['numRows'] = $this->numRows === null ? null : array_values($this->numRows);
         }
 
         if ($this->isEnumRowsProvided()) {
-            $result['enumRows'] = $this->enumRows;
+            $result['enumRows'] = $this->enumRows === null ? null : array_values($this->enumRows);
         }
 
         if ($this->isTagRowsProvided()) {
-            $result['tagRows'] = $this->tagRows;
+            $result['tagRows'] = $this->tagRows === null ? null : array_values($this->tagRows);
         }
 
         return $result;
@@ -5087,6 +5093,7 @@ use stdClass;
 use function array_is_list;
 use function array_keys;
 use function array_shift;
+use function array_values;
 use function explode;
 use function get_object_vars;
 use function in_array;
@@ -5342,14 +5349,14 @@ final class NullableContainerValues
     public function toArray(): array
     {
         $result = [];
-        $result['listOfNullable'] = $this->listOfNullable;
+        $result['listOfNullable'] = array_values($this->listOfNullable);
 
         if ($this->isMapOfNullableProvided()) {
             $result['mapOfNullable'] = $this->mapOfNullable === null ? null : self::toJsonObjects($this->mapOfNullable);
         }
 
         if ($this->isListOfNullable31Provided()) {
-            $result['listOfNullable31'] = $this->listOfNullable31;
+            $result['listOfNullable31'] = $this->listOfNullable31 === null ? null : array_values($this->listOfNullable31);
         }
 
         if ($this->isMapOfNullable31Provided()) {
@@ -5755,6 +5762,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_values;
 use function explode;
 use function floor;
 use function get_object_vars;
@@ -6115,7 +6123,7 @@ final class Test2
         $result = [];
         $result['id'] = $this->id;
         $result['name'] = $this->name;
-        $result['tags'] = array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], $this->tags);
+        $result['tags'] = array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], array_values($this->tags));
         $result['types'] = $this->types->value;
 
         if ($this->isUserProvided()) {
@@ -8389,15 +8397,15 @@ final class UnionUnderContainer
         $result['tree'] = $this->tree->toArray() ?: (object)[];
 
         if ($this->isChainProvided()) {
-            $result['chain'] = $this->chain;
+            $result['chain'] = $this->chain === null ? null : array_values($this->chain);
         }
 
         if ($this->isChainAllOfProvided()) {
-            $result['chainAllOf'] = $this->chainAllOf;
+            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_values($this->chainAllOf);
         }
 
         if ($this->isListOfUnionsProvided()) {
-            $result['listOfUnions'] = $this->listOfUnions;
+            $result['listOfUnions'] = $this->listOfUnions === null ? null : array_values($this->listOfUnions);
         }
 
         return $result;

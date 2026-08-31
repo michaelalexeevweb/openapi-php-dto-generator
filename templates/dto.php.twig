@@ -393,7 +393,11 @@ interface {{ className }}
 {% elseif property.isMap %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, array_values($this->{{ property.name }}));
+{% elseif property.isList and property.nullableArray %}
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_values($this->{{ property.name }});
+{% elseif property.isList %}
+        $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.name }});
 {% else %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
 {% endif %}
@@ -406,7 +410,11 @@ interface {{ className }}
 {% elseif property.isMap %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, array_values($this->{{ property.name }}));
+{% elseif property.isList and property.nullableArray %}
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_values($this->{{ property.name }});
+{% elseif property.isList %}
+            $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.name }});
 {% else %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
 {% endif %}

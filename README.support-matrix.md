@@ -53,6 +53,7 @@ changes who reports it, not whether it is caught.
 | `allOf` of scalar fragments | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `allOf` of `$ref`s or objects UNDER a container | ✅ | ✅ | ✅ | ✅ | ✅ |
 | a CLASS written as `allOf`: its own `required` and its parent's | ✅ | ✅ | ✅ | ✅ | ✅ |
+| a LIST with gaps in its PHP keys still encodes as a JSON array | ✅ | ➖ framework serializer | ✅ | ➖ library `toArray()` | ➖ framework serializer |
 | `not` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `if` / `then` / `else` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | composition nested inside `items` / `additionalProperties` / `not` | ✅ | ✅ | ✅ | ✅ | ✅ |

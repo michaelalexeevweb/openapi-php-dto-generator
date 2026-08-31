@@ -247,6 +247,63 @@ final class GenerateLaravelDtoTest extends TestCase
     }
 
     /**
+     * A LIST is written as a JSON array even when the PHP array behind it has gaps in its keys.
+     *
+     * `fromValidated()` cannot produce a gap — a decoded JSON array is a list — but a consumer building
+     * the DTO by hand can, and `array_filter()` is the everyday way to do it: `[0 => "a", 2 => "c"]` was
+     * encoded `{"0":"a","2":"c"}`, an object where the schema said array. Runtime mode is pinned for the
+     * same thing in `GeneratedConstraintsIntegrationTest`; this mode emits its own `toArray()`, so it
+     * needs its own case. A MAP is asserted alongside because its keys ARE the data and must survive.
+     */
+    public function testAListIsWrittenAsAJsonArrayEvenWithGapsInItsKeys(): void
+    {
+        $target = $this->outputDirectory . '/LvReindex';
+        if (!is_dir($target)) {
+            mkdir($target, 0o755, true);
+        }
+
+        $this->generator->generateFromArray(
+            [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => [
+                    'schemas' => [
+                        'Bag' => [
+                            'type' => 'object',
+                            'required' => ['tags', 'byKey'],
+                            'properties' => [
+                                'tags' => ['type' => 'array', 'items' => ['type' => 'string']],
+                                'byKey' => [
+                                    'type' => 'object',
+                                    'additionalProperties' => ['type' => 'string'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            $target,
+            'LvReindex',
+            'laravel',
+        );
+        require_once $target . '/Bag.php';
+
+        /** @var array<int|string, string> $filtered */
+        $filtered = array_filter(['a', '', 'c'], static fn(string $value): bool => $value !== '');
+        $this->assertSame([0, 2], array_keys($filtered), 'array_filter keeps the holes — the premise');
+
+        /** @var object $dto */
+        $dto = new ('LvReindex\Bag')(tags: $filtered, byKey: ['second' => 'b', 'first' => 'a']);
+
+        $this->assertSame(
+            '{"tags":["a","c"],"byKey":{"second":"b","first":"a"}}',
+            (string)json_encode($dto->toArray()),
+        );
+
+        $this->assertNull($this->lintError($target . '/Bag.php'));
+    }
+
+    /**
      * `validated()` returns only the keys the payload carried, which is where presence comes from —
      * so "absent" and "sent as null" stay distinguishable without a sentinel.
      */

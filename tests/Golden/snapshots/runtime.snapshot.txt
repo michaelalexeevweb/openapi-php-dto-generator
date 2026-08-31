@@ -1,4 +1,4 @@
-# runtime mode — 50 files, 16480 lines
+# runtime mode — 50 files, 16489 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4840,6 +4840,7 @@ use Stringable;
 use function array_filter;
 use function array_key_exists;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -4973,7 +4974,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
         $result = [];
         $result['code'] = $this->code;
         if ($this->tagsInRequest) {
-            $result['tags'] = $this->tags;
+            $result['tags'] = $this->tags === null ? null : array_values($this->tags);
         }
 
         return $result;
@@ -5195,6 +5196,7 @@ use Stringable;
 use function array_filter;
 use function array_key_exists;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -5278,7 +5280,7 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['links'] = $this->links;
+        $result['links'] = array_values($this->links);
 
         return $result;
     }
@@ -6010,6 +6012,7 @@ use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -6285,15 +6288,15 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['listOfLists'] = $this->listOfLists;
+        $result['listOfLists'] = array_values($this->listOfLists);
         if ($this->listOfMapsInRequest) {
-            $result['listOfMaps'] = $this->listOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->listOfMaps);
+            $result['listOfMaps'] = $this->listOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, array_values($this->listOfMaps));
         }
         if ($this->mapOfListsInRequest) {
             $result['mapOfLists'] = $this->mapOfLists === null ? null : (object)$this->mapOfLists;
         }
         if ($this->plainInRequest) {
-            $result['plain'] = $this->plain;
+            $result['plain'] = $this->plain === null ? null : array_values($this->plain);
         }
 
         return $result;
@@ -6571,6 +6574,7 @@ use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -6963,7 +6967,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
         if ($this->timestampsInRequest) {
             $result['timestamps'] = $this->getTimestamps();
         }
-        $result['shapes'] = $this->shapes;
+        $result['shapes'] = array_values($this->shapes);
         if ($this->tagsByKeyInRequest) {
             $result['tagsByKey'] = $this->tagsByKey === null ? null : (object)$this->tagsByKey;
         }
@@ -9112,6 +9116,7 @@ use Stringable;
 use function array_filter;
 use function array_key_exists;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -9323,12 +9328,12 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['scores'] = $this->scores;
+        $result['scores'] = array_values($this->scores);
         if ($this->scoresByKeyInRequest) {
             $result['scoresByKey'] = $this->scoresByKey === null ? null : (object)$this->scoresByKey;
         }
         if ($this->codesInRequest) {
-            $result['codes'] = $this->codes;
+            $result['codes'] = $this->codes === null ? null : array_values($this->codes);
         }
 
         return $result;
@@ -9579,6 +9584,7 @@ use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -10106,8 +10112,8 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['matrix'] = $this->matrix;
-        $result['rowsOfMaps'] = $this->rowsOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->rowsOfMaps);
+        $result['matrix'] = array_values($this->matrix);
+        $result['rowsOfMaps'] = $this->rowsOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, array_values($this->rowsOfMaps));
         if ($this->listsByKeyInRequest) {
             $result['listsByKey'] = $this->listsByKey === null ? null : (object)$this->listsByKey;
         }
@@ -10115,16 +10121,16 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
             $result['mapsByKey'] = $this->mapsByKey === null ? null : (object)$this->mapsByKey;
         }
         if ($this->dateRowsInRequest) {
-            $result['dateRows'] = $this->dateRows;
+            $result['dateRows'] = $this->dateRows === null ? null : array_values($this->dateRows);
         }
         if ($this->numRowsInRequest) {
-            $result['numRows'] = $this->numRows;
+            $result['numRows'] = $this->numRows === null ? null : array_values($this->numRows);
         }
         if ($this->enumRowsInRequest) {
-            $result['enumRows'] = $this->enumRows;
+            $result['enumRows'] = $this->enumRows === null ? null : array_values($this->enumRows);
         }
         if ($this->tagRowsInRequest) {
-            $result['tagRows'] = $this->tagRows;
+            $result['tagRows'] = $this->tagRows === null ? null : array_values($this->tagRows);
         }
 
         return $result;
@@ -10511,6 +10517,7 @@ use Stringable;
 use function array_filter;
 use function array_key_exists;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -10798,12 +10805,12 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['listOfNullable'] = $this->listOfNullable;
+        $result['listOfNullable'] = array_values($this->listOfNullable);
         if ($this->mapOfNullableInRequest) {
             $result['mapOfNullable'] = $this->mapOfNullable === null ? null : (object)$this->mapOfNullable;
         }
         if ($this->listOfNullable31InRequest) {
-            $result['listOfNullable31'] = $this->listOfNullable31;
+            $result['listOfNullable31'] = $this->listOfNullable31 === null ? null : array_values($this->listOfNullable31);
         }
         if ($this->mapOfNullable31InRequest) {
             $result['mapOfNullable31'] = $this->mapOfNullable31 === null ? null : (object)$this->mapOfNullable31;
@@ -12342,6 +12349,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_values;
 use function is_string;
 use function json_encode;
 
@@ -12646,7 +12654,7 @@ final class Test2 implements GeneratedDtoInterface, Stringable
         $result = [];
         $result['id'] = $this->id;
         $result['name'] = $this->name;
-        $result['tags'] = $this->tags;
+        $result['tags'] = array_values($this->tags);
         if ($this->userInRequest) {
             $result['user'] = $this->getUser();
         }
@@ -14682,6 +14690,7 @@ use Stringable;
 use function array_filter;
 use function array_key_exists;
 use function array_unique;
+use function array_values;
 use function implode;
 use function is_string;
 use function json_encode;
@@ -14917,14 +14926,14 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     {
         $result = [];
         if ($this->chainInRequest) {
-            $result['chain'] = $this->chain;
+            $result['chain'] = $this->chain === null ? null : array_values($this->chain);
         }
         if ($this->chainAllOfInRequest) {
-            $result['chainAllOf'] = $this->chainAllOf;
+            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_values($this->chainAllOf);
         }
         $result['tree'] = $this->tree;
         if ($this->listOfUnionsInRequest) {
-            $result['listOfUnions'] = $this->listOfUnions;
+            $result['listOfUnions'] = $this->listOfUnions === null ? null : array_values($this->listOfUnions);
         }
 
         return $result;
