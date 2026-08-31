@@ -3,6 +3,51 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.17 — 2026-08-31
+
+- `toJson()` no longer escapes slashes — the encoded string changes
+- three limits an external review found are now written down
+- two suspected defects measured and pinned as correct behaviour
+
+Nothing changes about what a payload is accepted or refused for; one thing changes about how an accepted
+one is ENCODED, and it is the first bullet. This release answers a code review by
+checking each of its findings against the code and then writing down what is true, because a limit a
+reader cannot see is indistinguishable from a bug.
+
+**`uri-reference` is no stricter than whitespace.** A reference may be relative, so `not_a_uri` and
+`###` are legal and accepted — any conforming validator accepts them. What the check does not do is
+parse the grammar: `%zz` and `http://[` pass here while the stricter `uri` refuses both. The asymmetry
+was documented for `uri`/`iri` and not for the reference forms; it is documented now, and pinned from
+both sides by `DtoValidatorTest`.
+
+**`toJson()` stopped escaping forward slashes.** A URL now reads `https://example.com/a` where it read
+`https:\/\/example.com\/a`. Both are valid JSON and decode identically, and the first instinct was to
+document the escaping rather than change it — until the codebase answered the question: `DtoValidator`,
+the emitted query-string builders and the generated doc examples all pass `JSON_UNESCAPED_SLASHES`
+already, so this one method was the outlier, not the convention. No test or snapshot depended on the
+escaped spelling. **Anything matching on the encoded STRING from 2.15.16 or earlier needs updating**; the
+decoded value is unchanged, and `validateAndNormalizeToJson()` follows the same rule.
+
+**The static per-class caches are safe without locking**, and the reason is idempotence rather than a
+mutex: every entry is derived from the class alone, so two coroutines racing on the first request for one
+class compute and store the same value. `DtoValidator` said so already; `DtoDeserializer`, which holds
+more of them, did not.
+
+Two smaller notes are answered where the code is, not in a changelog: `contentEncoding: base64` accepts
+the empty string (empty content is validly encoded as nothing — pair it with `minLength: 1` when the
+field must carry something), and the yii3 renderer's namespace field now states its invariant, because
+the review was right that a new caller of `yii3Lib()` forgetting to set it would silently stop finding
+name collisions. Two other findings needed nothing: the Request attribute mirroring already documents
+that it never overwrites an existing attribute, and the narrow `ReflectionException | Error` catch
+already says which failures are artifacts of a constructor-less instance and which propagate.
+
+Two review findings turned out not to be defects, and both are now tests rather than assurances.
+`multipleOf` holds at any scale — the tolerance is on the ratio, so `1e-10` behaves exactly like `0.5`.
+A collection error carries ONE `Element N:` prefix however deep the violation sits, because the inner
+half of the sentence is a dotted path rather than a second prefix. The third, a "dirty generation state"
+risk, was measured across two documents from one Command instance with identical output either way; the
+render state is cleared anyway, as hygiene next to the Symfony reset that already existed.
+
 ## 2.15.16 — 2026-08-31
 
 - a `$ref` under ANY applicator was checked by nothing

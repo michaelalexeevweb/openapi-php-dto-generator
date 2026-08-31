@@ -115,6 +115,13 @@ trait RendersYii3Dto
      * State rather than a parameter because the library short names it answers about are named in a
      * dozen places across this renderer, several of them deep inside string builders that have no
      * business carrying a namespace through.
+     *
+     * THE INVARIANT: `renderYii3DtoClass()` sets it before anything reads it, and every caller of
+     * `yii3Lib()` is reached from there. An empty value therefore means "not rendering", and
+     * `namespaceDeclaresClass()` answers false for it — the short name is used, which is the correct
+     * answer for a document that declares no colliding schema. A review flagged the missing guard as
+     * fragile under refactoring, and that is the right reading: whoever calls `yii3Lib()` from a new
+     * entry point must set this first, or the collision check silently stops finding collisions.
      */
     private string $yii3RenderNamespace = '';
 

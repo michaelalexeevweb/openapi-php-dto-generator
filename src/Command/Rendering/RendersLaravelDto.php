@@ -1313,6 +1313,22 @@ trait RendersLaravelDto
     }
 
     /**
+     * Forgets which classes of the PREVIOUS document carried an interpreter.
+     *
+     * Hygiene, not a fix: the map is keyed by class name and is always written before it is read for
+     * that class, and a class the new document does not declare is never rendered and so never asked
+     * about — measured across two generations from one Command instance, with and without an
+     * interpreter, and the output was identical either way. It is cleared anyway so a second document
+     * cannot inherit a fact about the first, which is the same reason
+     * `resetSymfonyReachabilityCache()` exists next to it.
+     */
+    private function resetLaravelRenderState(): void
+    {
+        $this->laravelClassesWithInterpreter = [];
+        $this->laravelRecursiveFolds = [];
+    }
+
+    /**
      * Rewrites the emitted interpreter into static form.
      *
      * Safe because the emitted code is pure: every method takes what it needs as arguments and reads only

@@ -2013,6 +2013,96 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame([], $deserializer->deserializeCollection($this->jsonPostRequest('[]'), $itemClass));
     }
 
+    /**
+     * `toJson()` leaves slashes alone, so a URL survives the round trip readably.
+     *
+     * `json_encode()` escapes them by default — valid JSON, read back identically — but it made this
+     * the one place in the package that wrote `https:\/\/`, while `DtoValidator`, the emitted
+     * query-string builders and the generated examples all pass `JSON_UNESCAPED_SLASHES`. The decoded
+     * value was never in question; the emitted STRING was, and consistency decided it.
+     */
+    public function testToJsonLeavesSlashesUnescaped(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => [
+                    'type' => 'object',
+                    'required' => ['url'],
+                    'properties' => ['url' => ['type' => 'string']],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'JsonSlashNs', 'Probe');
+
+        $dto = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"url":"https://example.com/a/b"}'),
+            $fqcn,
+        );
+        $normalizer = new DtoNormalizer();
+
+        $this->assertSame('{"url":"https://example.com/a/b"}', $normalizer->toJson($dto));
+        $this->assertSame(
+            '{"url":"https://example.com/a/b"}',
+            $normalizer->validateAndNormalizeToJson($dto),
+            'the validating twin encodes the same way',
+        );
+    }
+
+    /**
+     * One prefix per message from a collection, however deep the violation sits.
+     *
+     * A review suspected a double prefix: `deserializeCollection()` prepends `Element %d:` to whatever
+     * the item's own deserialization reported, and a nested collection could already carry one of its
+     * own. Measured — it cannot: the inner path is a DOTTED path, not another prefix, so the sentence
+     * reads `Element 0: param "0.rows.1.code" …` once. Pinned so a future change to either half is
+     * visible instead of producing `Element 0: Element 1: …`.
+     */
+    public function testACollectionErrorCarriesOnePrefixHoweverDeepTheViolation(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Inner' => [
+                    'type' => 'object',
+                    'required' => ['code'],
+                    'properties' => ['code' => ['type' => 'string', 'minLength' => 3]],
+                ],
+                'Item' => [
+                    'type' => 'object',
+                    'required' => ['inner'],
+                    'properties' => [
+                        'inner' => ['$ref' => '#/components/schemas/Inner'],
+                        'rows' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Inner']],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'CollectionPrefixNs', 'Item');
+        $deserializer = new DtoDeserializer();
+
+        foreach ([
+            'in the item itself' => '[{"inner":{"code":"abc"}},{"inner":{"code":"x"}}]',
+            'in a nested list' => '[{"inner":{"code":"abc"},"rows":[{"code":"abc"},{"code":"x"}]}]',
+        ] as $case => $json) {
+            $message = null;
+            try {
+                $deserializer->deserializeCollection($this->jsonPostRequest($json), $fqcn);
+            } catch (RuntimeException $exception) {
+                $message = $exception->getMessage();
+            }
+
+            $this->assertNotNull($message, $case . ': the violation must be reported');
+            $this->assertSame(
+                1,
+                preg_match_all('/Element \d+:/', $message),
+                $case . ': one prefix, got ' . $message,
+            );
+        }
+    }
+
     public function testDeserializeCollectionOfScalars(): void
     {
         // requestBody: {type: array, items: {type: <scalar>}} → top-level array of scalars.

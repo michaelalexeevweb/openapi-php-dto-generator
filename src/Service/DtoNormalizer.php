@@ -100,11 +100,23 @@ final class DtoNormalizer implements DtoNormalizerInterface
     }
 
     /**
+     * The DTO as a JSON string, with slashes left alone: `https://example.com`, not `https:\/\/…`.
+     *
+     * `json_encode()` escapes them by default, which is valid JSON that every parser reads back the
+     * same — but it made this the ONE place in the package that wrote a URL that way. `DtoValidator`,
+     * the emitted query-string builders and the generated doc examples all pass
+     * `JSON_UNESCAPED_SLASHES` already, so the escaping here was an inconsistency rather than a
+     * decision. A consumer comparing the encoded STRING sees the change; the decoded value is
+     * identical either way.
+     *
      * @throws JsonException
      */
     public function toJson(GeneratedDtoInterface $dto): string
     {
-        return json_encode($this->toArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->toArray($dto),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     /**
@@ -115,7 +127,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $this->validateOrThrow($dto);
 
-        return json_encode($this->toArray($dto), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->toArray($dto),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     /**

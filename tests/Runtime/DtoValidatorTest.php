@@ -314,6 +314,28 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must be a multiple of 0.5', $errors[0]);
     }
 
+    /**
+     * `multipleOf` holds at any scale, because the tolerance is on the RATIO, not on the value.
+     *
+     * A review flagged the `1e-9` epsilon as a false-positive risk for a very small divisor. It is not:
+     * `value / multipleOf` is 3 or 2.5 whether the divisor is 0.5 or 1e-10, so the comparison is
+     * scale-free. Pinned rather than argued.
+     */
+    public function testMultipleOfHoldsForVerySmallDivisors(): void
+    {
+        foreach ([1e-8, 1e-10] as $divisor) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('f', 3 * $divisor, ['type' => 'number', 'multipleOf' => $divisor]),
+                sprintf('3x%s is a multiple', var_export($divisor, true)),
+            );
+            $this->assertNotEmpty(
+                $this->validator->validate('f', 2.5 * $divisor, ['type' => 'number', 'multipleOf' => $divisor]),
+                sprintf('2.5x%s is not', var_export($divisor, true)),
+            );
+        }
+    }
+
     public function testMultipleOfFloatAcceptsExactMultiple(): void
     {
         $errors = $this->validator->validate(subject: 'amount', value: 10.5, constraints: ['multipleOf' => 0.5]);
@@ -3058,6 +3080,29 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty(
             $this->validator->validate('u', "tab\there", ['type' => 'string', 'format' => 'uri-reference']),
         );
+    }
+
+    /**
+     * Where the `uri-reference` check stops, stated as a test so the README line cannot drift from it.
+     *
+     * A reference may be RELATIVE, so most of what reads like garbage is legal and any conforming
+     * validator accepts it. What this check does not do is parse the grammar: a broken percent-escape
+     * or a malformed host passes here while the stricter `uri` refuses both. That asymmetry is the
+     * documented behaviour, not an oversight, and it is pinned from both sides.
+     */
+    public function testFormatUriReferenceIsNoStricterThanWhitespaceAndControlCharacters(): void
+    {
+        foreach (['not_a_uri', '###', '%zz', 'http://['] as $accepted) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('u', $accepted, ['type' => 'string', 'format' => 'uri-reference']),
+                sprintf("'%s' is accepted as a uri-reference", $accepted),
+            );
+            $this->assertNotEmpty(
+                $this->validator->validate('u', $accepted, ['type' => 'string', 'format' => 'uri']),
+                sprintf("'%s' is refused as a uri", $accepted),
+            );
+        }
     }
 
     public function testFormatIriReferenceAcceptsUnicode(): void

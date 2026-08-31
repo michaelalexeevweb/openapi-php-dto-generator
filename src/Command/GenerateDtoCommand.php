@@ -898,6 +898,7 @@ final class GenerateDtoCommand extends Command
         $this->serializationGroupsRequired = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
             && $this->documentNeedsSerializationGroups();
         $this->resetSymfonyReachabilityCache();
+        $this->resetLaravelRenderState();
 
         $this->prepareOutputDirectory($this->baseOutputDirectory);
         $this->warnAboutClassNamesTheEmittedCodeAlsoUses();

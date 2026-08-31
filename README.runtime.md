@@ -332,6 +332,14 @@ class UserController
   application that wants violations should use [Symfony mode](README.symfony.md).
 - A map normalizes to `stdClass` so it always encodes as a JSON object — except a map nested inside
   a list, which stays a PHP array and therefore encodes as `[]` when empty.
+- `toJson()` leaves forward slashes alone, so a URL reads `https://example.com/a` in the encoded
+  string. `json_encode()` escapes them by default; this package does not, here or anywhere else it
+  writes JSON. Anything matching on the escaped spelling from 2.15.16 or earlier needs updating — the
+  DECODED value is unchanged.
+- The per-class caches are static and populated without locking, which is safe in a long-running
+  runtime (Swoole / RoadRunner / FrankenPHP): every entry is derived from the class alone, so two
+  coroutines racing on the first request for one class compute and store the same value. Nothing
+  request-scoped is cached that way — the decoded body lives on the instance.
 
 The schema semantics every mode shares (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in

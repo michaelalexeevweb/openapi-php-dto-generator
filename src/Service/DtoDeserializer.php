@@ -30,6 +30,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
     // instances and requests within the same PHP worker process).
+    //
+    // Safe under a long-running runtime (Swoole / RoadRunner / FrankenPHP), and the
+    // reason is idempotence rather than locking: every entry is derived from the
+    // CLASS alone — reflection, the emitted metadata constants, the schema literals —
+    // so two coroutines racing on the first request for the same class compute the
+    // same value and write the same value. There is no read-modify-write anywhere in
+    // here, so a lost update cannot lose anything. What must NOT move into this block
+    // is anything derived from a REQUEST; that is why the decoded-body cache below is
+    // an instance field with a request-scoped key, not a static one.
     // -----------------------------------------------------------------------
 
     /** @var array<class-string, ReflectionClass<object>> */
