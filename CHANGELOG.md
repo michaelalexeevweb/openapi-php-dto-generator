@@ -3,6 +3,30 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.12 — 2026-08-31
+
+- yii3: a class written as `allOf` asserted nothing at all
+
+`Cat: {allOf: [$ref Pet, {required: [meow], …}]}` is how a document spells a class with a parent, and
+the generator has always read it that way for SHAPE: `analyzeSchema()` merges the inline branches, so
+`Cat` is emitted carrying `$meow` and extending nothing it should not. The CONSTRAINT path read the raw
+schema instead, where the only top-level keyword is `allOf` — which the yii3 interpreter does not read.
+The class came out with no constraints at all, so a payload missing `meow` was accepted, and so was one
+missing the parent's `name`. The other four modes reported each once; this was measured against them.
+
+The constraint path now sees the same object the class is: inline branches merged, and a `$ref` branch
+resolved and merged too, so a parent's `required` is asserted for the child that inherits it. It does
+not double-report, and the reason is the pruning that was already there — `minLength` on an inherited
+property is covered by the emitted native rule and subtracted, so what reaches the interpreter is the
+`required` list no rule expresses. One violation, one message, measured per case.
+
+Only yii3 changed: `runtime`, `symfony`, `laravel` and `laravel-data` snapshots are byte-identical, and
+in yii3 exactly the six `allOf`-shaped classes of the corpus gained their checks.
+
+A WRONG TYPE inside such a class is still accepted in yii3, and that is the framework, not this: the
+hydrator's `PhpNativeTypeCaster` turns `5` into `"5"` before any rule runs. It is declared for every
+scalar case in `ValidationParityTest` and pinned again here.
+
 ## 2.15.11 — 2026-08-28
 
 - `items: {allOf: [...]}` was checked by nothing, in every mode

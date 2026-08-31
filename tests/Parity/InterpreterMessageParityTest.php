@@ -359,6 +359,11 @@ final class InterpreterMessageParityTest extends TestCase
      * it is the opposite failure: where a mode's own rules already cover a keyword, the interpreter
      * would say the same thing a second time. Laravel is the case to watch — its rule map already
      * spells `pet.test` as `['string']` — so both a missing key and a wrong type are asserted here.
+     *
+     * yii3 was the last mode to answer, and it took a second fix (2.15.12): the class synthesized for
+     * an `allOf` property was emitted with the properties merged and the CONSTRAINTS dropped, so
+     * nothing asserted the `required` at all. It reported zero messages, which this test pinned as zero
+     * on purpose — so that the day it changed was a failing test rather than silence. It changed.
      */
     public function testAPropertyLevelAllOfReportsEachViolationOnceInEveryMode(): void
     {
@@ -395,11 +400,12 @@ final class InterpreterMessageParityTest extends TestCase
             foreach (GenerationMode::cases() as $mode) {
                 $messages = $this->messages($mode, $spec, 'allOf once ' . $case, $json);
 
-                // yii3 says NOTHING here, and that is measured, not assumed: its constraints never
-                // carried a property-level `allOf` in the first place, so there was nothing for the
-                // interpreter to start checking. Pinned as it is rather than skipped — the day yii3
-                // starts reporting, this test says so instead of staying quiet.
-                $expected = $mode === GenerationMode::Yii3 ? 0 : 1;
+                // A WRONG TYPE never reaches a rule in yii3: `PhpNativeTypeCaster` turns 5 into "5"
+                // while hydrating, so the value the validator sees is valid. That is the framework's
+                // own behaviour, declared for every scalar case in
+                // `ValidationParityTest::declaredDivergences()`, and it is not what this test is
+                // about — a MISSING key, which no cast can invent, is answered by all five.
+                $expected = ($case === 'wrong type' && $mode === GenerationMode::Yii3) ? 0 : 1;
 
                 $this->assertCount(
                     $expected,

@@ -236,6 +236,59 @@ final class Yii3RuleCoverageTest extends TestCase
     }
 
     /**
+     * A class written as `allOf` asserts what the document says about it — its own keys AND its parent's.
+     *
+     * `analyzeSchema()` merges the inline branches into the class's properties, so `Cat` was emitted
+     * carrying `$meow`; the constraint path read the raw schema, where the only top-level keyword is
+     * `allOf`, which this mode's interpreter does not read. The class came out with no constraints at
+     * all: a payload missing `meow` was accepted, and so was one missing the parent's `name`. Measured
+     * against the other four modes, which report each once.
+     *
+     * The parent's branch is merged as well, and the reason it does not double-report is the pruning:
+     * `minLength` on an inherited property is covered by the emitted native rule and subtracted, so
+     * what survives into the interpreter is the `required` list no rule expresses.
+     */
+    public function testAClassWrittenAsAllOfAssertsItsOwnKeysAndItsParents(): void
+    {
+        $namespace = $this->generate([
+            'Pet' => [
+                'type' => 'object',
+                'required' => ['name'],
+                'properties' => ['name' => ['type' => 'string', 'minLength' => 2]],
+            ],
+            'Cat' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Pet'],
+                [
+                    'type' => 'object',
+                    'required' => ['meow'],
+                    'properties' => ['meow' => ['type' => 'string']],
+                ],
+            ]],
+        ]);
+
+        $container = new Yii3Container();
+        $validate = static fn(array $payload): \Yiisoft\Validator\Result => $container->validate(
+            $container->hydrate($namespace . '\Cat', $payload),
+        );
+
+        self::assertTrue($validate(['name' => 'kitty', 'meow' => 'mew'])->isValid());
+
+        foreach ([
+            'own key missing' => [['name' => 'kitty'], 'field "meow" is required.'],
+            'parent key missing' => [['meow' => 'mew'], 'field "name" is required.'],
+        ] as $case => [$payload, $expected]) {
+            $result = $validate($payload);
+            self::assertFalse($result->isValid(), $case);
+            $messages = array_values($this->messages($result));
+            self::assertSame([$expected], $messages, $case . ': ' . implode(' | ', $messages));
+        }
+
+        // An inherited rule still reports once: the native rule says it, the interpreter does not.
+        $tooShort = $this->messages($validate(['name' => 'k', 'meow' => 'mew']));
+        self::assertCount(1, $tooShort, 'one message for one violation: ' . implode(' | ', $tooShort));
+    }
+
+    /**
      * The same rule for the OTHER way a value can be empty: an explicit `null` the schema does not
      * allow is one mistake, so it gets one message.
      *

@@ -1,4 +1,4 @@
-# yii3 mode — 50 files, 15110 lines
+# yii3 mode — 50 files, 16035 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4571,15 +4571,25 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
+use function get_object_vars;
 use function is_array;
 use function is_object;
+use function is_string;
 use function method_exists;
 use function property_exists;
+use function sprintf;
+use function str_ends_with;
 
+#[Callback(method: 'validateOpenApiConstraints')]
 final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -4591,6 +4601,20 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
     ];
+
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'type' => 'object',
+        'required' => [
+            'name',
+            'meow',
+        ],
+        'properties' => [
+            'name' => [],
+            'meow' => [],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly string $name;
@@ -4703,6 +4727,20 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
     }
 
     /**
+     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * set by the interpreter rather than by a property label.
+     */
+    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $result->addError(str_ends_with($error, '.') ? $error : $error . '.');
+        }
+
+        return $result;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call.
      *
@@ -4721,6 +4759,105 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
         }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
     }
 }
 
@@ -7500,16 +7637,27 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
+use function get_object_vars;
+use function implode;
 use function is_array;
 use function is_object;
+use function is_string;
 use function method_exists;
 use function property_exists;
+use function sprintf;
+use function str_ends_with;
 
+#[Callback(method: 'validateOpenApiConstraints')]
 final class Discriminator1 extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -7522,6 +7670,26 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
     ];
+
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'type' => 'object',
+        'required' => [
+            'type',
+            'name',
+            'id',
+        ],
+        'properties' => [
+            'type' => [
+                'type' => 'string',
+            ],
+            'name' => [
+                'nullable' => true,
+            ],
+            'id' => [],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public readonly DiscriminatorType $type;
 
@@ -7641,6 +7809,20 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
     }
 
     /**
+     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * set by the interpreter rather than by a property label.
+     */
+    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $result->addError(str_ends_with($error, '.') ? $error : $error . '.');
+        }
+
+        return $result;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call.
      *
@@ -7663,6 +7845,144 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
 
         return $payload;
     }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        if ($value === null && ($schema['nullable'] ?? false) === true) {
+            return [];
+        }
+
+        $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            } elseif (is_array($typeConstraint)) {
+                $typeMatched = false;
+                foreach ($typeConstraint as $candidateType) {
+                    if (is_string($candidateType) && $this->matchesOpenApiCallbackType($normalizedValue, $candidateType)) {
+                        $typeMatched = true;
+                        break;
+                    }
+                }
+                if (!$typeMatched) {
+                    $errors[] = sprintf('%s must be of type %s', $path, implode('|', array_filter($typeConstraint, 'is_string')));
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (is_array($type)) {
+            if ($type === []) {
+                return true;
+            }
+            foreach ($type as $candidate) {
+                if (is_string($candidate) && $candidate !== '' && $this->matchesOpenApiCallbackType($value, $candidate)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiCallbackValue(mixed $value, array $_schema): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+        return $value;
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
 }
 
 ===== Discriminator2.php =====
@@ -7680,16 +8000,27 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
+use function get_object_vars;
+use function implode;
 use function is_array;
 use function is_object;
+use function is_string;
 use function method_exists;
 use function property_exists;
+use function sprintf;
+use function str_ends_with;
 
+#[Callback(method: 'validateOpenApiConstraints')]
 final class Discriminator2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -7703,6 +8034,28 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
     ];
+
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'type' => 'object',
+        'required' => [
+            'type',
+            'name',
+            'id',
+            'NAme',
+        ],
+        'properties' => [
+            'type' => [
+                'type' => 'string',
+            ],
+            'name' => [
+                'nullable' => true,
+            ],
+            'id' => [],
+            'NAme' => [],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public readonly DiscriminatorType $type;
 
@@ -7831,6 +8184,20 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
     }
 
     /**
+     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * set by the interpreter rather than by a property label.
+     */
+    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $result->addError(str_ends_with($error, '.') ? $error : $error . '.');
+        }
+
+        return $result;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call.
      *
@@ -7855,6 +8222,144 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
         }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        if ($value === null && ($schema['nullable'] ?? false) === true) {
+            return [];
+        }
+
+        $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            } elseif (is_array($typeConstraint)) {
+                $typeMatched = false;
+                foreach ($typeConstraint as $candidateType) {
+                    if (is_string($candidateType) && $this->matchesOpenApiCallbackType($normalizedValue, $candidateType)) {
+                        $typeMatched = true;
+                        break;
+                    }
+                }
+                if (!$typeMatched) {
+                    $errors[] = sprintf('%s must be of type %s', $path, implode('|', array_filter($typeConstraint, 'is_string')));
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (is_array($type)) {
+            if ($type === []) {
+                return true;
+            }
+            foreach ($type as $candidate) {
+                if (is_string($candidate) && $candidate !== '' && $this->matchesOpenApiCallbackType($value, $candidate)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiCallbackValue(mixed $value, array $_schema): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+        return $value;
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
     }
 }
 
@@ -7891,15 +8396,25 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
+use function get_object_vars;
 use function is_array;
 use function is_object;
+use function is_string;
 use function method_exists;
 use function property_exists;
+use function sprintf;
+use function str_ends_with;
 
+#[Callback(method: 'validateOpenApiConstraints')]
 final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -7911,6 +8426,20 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
     ];
+
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'type' => 'object',
+        'required' => [
+            'name',
+            'bark',
+        ],
+        'properties' => [
+            'name' => [],
+            'bark' => [],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly string $name;
@@ -8023,6 +8552,20 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
     }
 
     /**
+     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * set by the interpreter rather than by a property label.
+     */
+    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $result->addError(str_ends_with($error, '.') ? $error : $error . '.');
+        }
+
+        return $result;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call.
      *
@@ -8041,6 +8584,105 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
         }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
     }
 }
 
@@ -8058,15 +8700,25 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
+use function get_object_vars;
 use function is_array;
 use function is_object;
+use function is_string;
 use function method_exists;
 use function property_exists;
+use function sprintf;
+use function str_ends_with;
 
+#[Callback(method: 'validateOpenApiConstraints')]
 final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -8078,6 +8730,20 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
     ];
+
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'type' => 'object',
+        'required' => [
+            'name',
+            'bark',
+        ],
+        'properties' => [
+            'name' => [],
+            'bark' => [],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly string $name;
@@ -8190,6 +8856,20 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
     }
 
     /**
+     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * set by the interpreter rather than by a property label.
+     */
+    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $result->addError(str_ends_with($error, '.') ? $error : $error . '.');
+        }
+
+        return $result;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call.
      *
@@ -8208,6 +8888,105 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
         }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
     }
 }
 
@@ -15085,15 +15864,25 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
+use Yiisoft\Validator\ValidationContext;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
+use function get_object_vars;
 use function is_array;
 use function is_object;
+use function is_string;
 use function method_exists;
 use function property_exists;
+use function sprintf;
+use function str_ends_with;
 
+#[Callback(method: 'validateOpenApiConstraints')]
 final class User2Pet extends AbstractInput implements DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
@@ -15107,6 +15896,25 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
     /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
     private const array OPENAPI_WRITE_ONLY = [
     ];
+
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'type' => 'object',
+        'nullable' => true,
+        'required' => [
+            'name',
+            'meow',
+            'bark',
+            'test',
+        ],
+        'properties' => [
+            'name' => [],
+            'meow' => [],
+            'bark' => [],
+            'test' => [],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly string $name;
@@ -15235,6 +16043,20 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
     }
 
     /**
+     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
+     * set by the interpreter rather than by a property label.
+     */
+    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $result->addError(str_ends_with($error, '.') ? $error : $error . '.');
+        }
+
+        return $result;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call.
      *
@@ -15259,5 +16081,108 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
         }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        if ($value === null && ($schema['nullable'] ?? false) === true) {
+            return [];
+        }
+
+        $normalizedValue = $value;
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
     }
 }

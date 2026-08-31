@@ -222,7 +222,9 @@ trait RendersYii3Dto
         $interpreter = $this->renderYii3InterpreterBlock(
             constraints: $this->yii3PruneNativelyCovered(
                 $this->filterSymfonyValidationConstraints(
-                    constraints: $this->extractValidationConstraints($this->dtoSchemas[$className] ?? []),
+                    constraints: $this->extractValidationConstraints(
+                        $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? []),
+                    ),
                     allowScalarKeywords: true,
                 ),
                 $properties,
@@ -1069,6 +1071,85 @@ PHP;
         return \$payload;
     }
 PHP;
+    }
+
+    /**
+     * A class schema written as `allOf`, seen as the object the emitted class actually is.
+     *
+     * `analyzeSchema()` merges the INLINE branches of an `allOf` into the class's own properties and
+     * leaves a single `$ref` branch as the parent to extend. The constraint path read the raw schema
+     * instead, so a property written `bag: {allOf: [{type: object, required: [test], …}]}` produced a
+     * synthesized class carrying `$test` and NO constraints at all: `allOf` is not a keyword this
+     * mode's interpreter reads, and nothing else asserted the `required`. Measured 2026-08-31 — the
+     * other four modes report the missing key once, yii3 reported nothing.
+     *
+     * Only the inline branches are merged. A `$ref` branch is inheritance: the parent class carries its
+     * own constraints and enforces them for itself, so merging them here would report every violation
+     * of a parent rule twice.
+     *
+     * @param array<mixed> $schemaDefinition
+     * @return array<mixed>
+     */
+    private function yii3ClassSchemaWithInlineAllOfMerged(array $schemaDefinition): array
+    {
+        $allOf = $schemaDefinition['allOf'] ?? null;
+        if (!is_array($allOf) || $allOf === []) {
+            return $schemaDefinition;
+        }
+
+        $merged = $schemaDefinition;
+        unset($merged['allOf']);
+
+        foreach ($allOf as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            if (array_key_exists('$ref', $branch)) {
+                $branch = is_string($branch['$ref'])
+                    ? $this->yii3ResolvedRefSchema($branch['$ref'])
+                    : [];
+                if ($branch === []) {
+                    continue;
+                }
+            }
+
+            $required = [
+                ...(is_array($merged['required'] ?? null) ? $merged['required'] : []),
+                ...(is_array($branch['required'] ?? null) ? $branch['required'] : []),
+            ];
+            $properties = [
+                ...(is_array($merged['properties'] ?? null) ? $merged['properties'] : []),
+                ...(is_array($branch['properties'] ?? null) ? $branch['properties'] : []),
+            ];
+
+            $merged = [...$merged, ...$branch];
+            if ($required !== []) {
+                $merged['required'] = array_values(array_unique($required));
+            }
+
+            if ($properties !== []) {
+                $merged['properties'] = $properties;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * The object a `$ref` names, as a schema, for merging a parent's own assertions into a child.
+     *
+     * @return array<mixed>
+     */
+    private function yii3ResolvedRefSchema(string $ref): array
+    {
+        $className = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->rootSpecFile);
+        $definition = $this->dtoSchemas[$className] ?? null;
+        if (!is_array($definition)) {
+            return [];
+        }
+
+        return $this->yii3ClassSchemaWithInlineAllOfMerged($definition);
     }
 
     /**
