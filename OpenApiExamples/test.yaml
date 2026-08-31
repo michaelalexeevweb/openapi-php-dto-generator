@@ -809,6 +809,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChainLink'
+    # Keywords a document states about the OBJECT AS A WHOLE, at the top level of a component. Until
+    # 2.15.16 runtime mode emitted none of them and checked none — Symfony and yii3 refused the same
+    # payloads — because its only schema-level slot carried the closed-object flag. Kept in the corpus
+    # because the EMISSION differs per mode.
+    ObjectWideRules:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+        code:
+          type: string
+        extra:
+          type: string
+      minProperties: 2
+      dependentRequired:
+        code:
+          - extra
+      not:
+        required:
+          - forbidden
+      if:
+        required:
+          - kind
+      then:
+        properties:
+          code:
+            type: string
+            minLength: 3
     # A `$ref` under an APPLICATOR — the third spelling of the same loss. Nothing materializes for
     # `contains` / `prefixItems` / `unevaluatedItems`, so a `$ref` there used to be dropped with the
     # whole keyword: the same document written INLINE refused a violating payload, written as a `$ref`
@@ -834,6 +864,27 @@ components:
             - type: string
           unevaluatedItems:
             $ref: '#/components/schemas/ChainTag'
+        # The same loss in the applicators that hold a condition or a MAP of subschemas. Added in
+        # 2.15.16 after the sweep: `if`/`then`/`else`, `dependentSchemas`, `propertyNames` all dropped
+        # the reference and with it the whole keyword.
+        conditional:
+          type: object
+          properties:
+            label:
+              type: string
+          if:
+            $ref: '#/components/schemas/ChainTag'
+          then:
+            required:
+              - label
+        keyed:
+          type: object
+          properties:
+            trigger:
+              type: string
+          dependentSchemas:
+            trigger:
+              $ref: '#/components/schemas/ChainTag'
     UnionUnderContainer:
       type: object
       required:

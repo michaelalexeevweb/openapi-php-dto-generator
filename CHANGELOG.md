@@ -3,6 +3,54 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.16 — 2026-08-31
+
+- a `$ref` under ANY applicator was checked by nothing
+- runtime mode never checked what a document says about the OBJECT
+
+`not` was held back on purpose the release before: an empty subschema matches
+everything, so a dropped `not` accepts what it should reject — while a wrongly inlined one would reject
+what it should accept, and being wrong that way costs valid requests rather than silent passes. Measured
+before it was added: `not: {$ref Forbidden}` accepted the very payload the reference forbids, on a
+property and under a container alike, while the same subschema written inline refused it. The VALID
+payload was accepted in all four cases, which is what said the inlining cannot overshoot here — and an
+unresolvable `$ref` is still left alone, because the inlining only ever replaces a reference it resolved.
+
+Sweeping the rest of the vocabulary then found the same loss in five more keywords: `if`, `then`, `else`,
+`dependentSchemas`, `patternProperties` and `propertyNames` all dropped the reference and the keyword
+with it. They are walked now too, so a `$ref` under ANY applicator carries what it names.
+
+`if` is the one worth reading twice. An empty condition matches EVERYTHING, so before this the choice was
+between `then` applying to every value — a false rejection, which is why the conditional used to be
+dropped outright — and no conditional at all. With the reference resolved the condition is real: `then`
+fires where the document says and nowhere else. The regression test that had codified the old workaround
+by asserting the ABSENCE of the `if` key now asserts the behaviour it was protecting, from both sides.
+
+**Runtime mode had one schema-level slot and it carried the closed-object flag alone.** Everything else a
+document states about the object as a whole — `minProperties` / `maxProperties`, `dependentRequired`,
+`dependentSchemas`, `not`, `propertyNames`, `patternProperties`, a top-level `if` / `then` / `else` — was
+emitted nowhere and checked by nothing, while Symfony and yii3 refused the same payloads. The slot now
+carries them, and both entrances ask: the deserializer of the RAW body, and `validate()` of a DTO built
+by hand, which never passed through the deserializer. `properties` and `required` stay out of that slot
+by construction — the per-property map and the required flags already own them — so one violation is
+still one message.
+
+**All five modes answer now, and the last two took their own shapes.** Laravel and laravel-data enter
+their interpreter per property, so the object's own rules ride in the same map under a reserved key that
+no payload can carry — `withValidator()` skips it in the loop and runs it against the whole payload
+instead. The pass is emitted only where a document states something object-wide, so every other class
+stays byte-identical; the golden diff is one block per mode.
+
+Symfony carried three of the four measured keywords and lost `minProperties`: on a PROPERTY that one
+becomes `#[Assert\Count]`, so the interpreter drops it to avoid doubling — and at the class level there
+is no attribute to take over, because `Assert\Count` measures an array-typed value rather than the DTO.
+It is kept for the class schema alone, which is where nothing else can assert it.
+
+`properties` and `required` stay out of the object-wide set in every mode by construction: the
+per-property map, the required flags and Laravel's rule map already own them. `ValidationParityTest`
+holds one case per keyword across all five modes, so a mode drifting back to silence fails rather than
+passes.
+
 ## 2.15.15 — 2026-08-31
 
 - `then` and `else` carrying `properties` checked nothing

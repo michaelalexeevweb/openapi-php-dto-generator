@@ -1,4 +1,4 @@
-# runtime mode — 51 files, 16944 lines
+# runtime mode — 54 files, 18065 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -17,6 +17,8 @@
 # ApiTestFilePatchQueryParams.php
 # ApiTestFilePostRequest.php
 # ApplicatorRefs.php
+# ApplicatorRefsConditional.php
+# ApplicatorRefsKeyed.php
 # AwkwardNames.php
 # Cat.php
 # ChainLink.php
@@ -36,6 +38,7 @@
 # ItemBounds.php
 # NestedContainers.php
 # NullableContainerValues.php
+# ObjectWideRules.php
 # Pet.php
 # Shape.php
 # Square.php
@@ -4182,21 +4185,39 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     private bool $restInQuery = false;
     private bool $restInHeader = false;
     private bool $restInCookie = false;
+    private bool $conditionalInRequest = false;
+    private bool $conditionalInPath = false;
+    private bool $conditionalInQuery = false;
+    private bool $conditionalInHeader = false;
+    private bool $conditionalInCookie = false;
+    private bool $keyedInRequest = false;
+    private bool $keyedInPath = false;
+    private bool $keyedInQuery = false;
+    private bool $keyedInHeader = false;
+    private bool $keyedInCookie = false;
 
     /**
      * @param array<array<string, mixed>> $mustContain
      * Constraints: contains={"type":"object","required":["label"],"properties":{"label":{"type":"string","minLength":2}}}
+     * @param ApplicatorRefsConditional|UnsetValue|null $conditional
+     * Constraints: if={"type":"object","required":["label"],"properties":{"label":{"type":"string","minLength":2}}}, then={"required":["label"]}
      */
     public function __construct(
         array $mustContain,
         array|UnsetValue|null $positions = UnsetValue::UNSET,
         array|UnsetValue|null $rest = UnsetValue::UNSET,
+        private readonly ApplicatorRefsConditional|UnsetValue|null $conditional = UnsetValue::UNSET,
+        private readonly ApplicatorRefsKeyed|UnsetValue|null $keyed = UnsetValue::UNSET,
     ) {
         $this->mustContainInRequest = true;
         // Track if parameter was explicitly passed
         $this->positionsInRequest = $positions !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->restInRequest = $rest !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->conditionalInRequest = $conditional !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->keyedInRequest = $keyed !== UnsetValue::UNSET;
         $this->mustContain = $mustContain;
         $this->positions = $positions !== UnsetValue::UNSET ? $positions : null;
         $this->rest = $rest !== UnsetValue::UNSET ? $rest : null;
@@ -4343,6 +4364,76 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
     }
 
+    public function getConditional(): ?ApplicatorRefsConditional
+    {
+        return $this->conditional !== UnsetValue::UNSET ? $this->conditional : null;
+    }
+
+    public function isConditionalRequired(): bool
+    {
+        return false;
+    }
+
+    public function isConditionalInPath(): bool
+    {
+        return $this->conditionalInPath;
+    }
+
+    public function isConditionalInQuery(): bool
+    {
+        return $this->conditionalInQuery;
+    }
+
+    public function isConditionalInHeader(): bool
+    {
+        return $this->conditionalInHeader;
+    }
+
+    public function isConditionalInCookie(): bool
+    {
+        return $this->conditionalInCookie;
+    }
+
+    public function isConditionalInRequest(): bool
+    {
+        return $this->conditionalInRequest;
+    }
+
+    public function getKeyed(): ?ApplicatorRefsKeyed
+    {
+        return $this->keyed !== UnsetValue::UNSET ? $this->keyed : null;
+    }
+
+    public function isKeyedRequired(): bool
+    {
+        return false;
+    }
+
+    public function isKeyedInPath(): bool
+    {
+        return $this->keyedInPath;
+    }
+
+    public function isKeyedInQuery(): bool
+    {
+        return $this->keyedInQuery;
+    }
+
+    public function isKeyedInHeader(): bool
+    {
+        return $this->keyedInHeader;
+    }
+
+    public function isKeyedInCookie(): bool
+    {
+        return $this->keyedInCookie;
+    }
+
+    public function isKeyedInRequest(): bool
+    {
+        return $this->keyedInRequest;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -4355,6 +4446,12 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
         if ($this->restInRequest) {
             $result['rest'] = $this->rest === null ? null : array_values($this->rest);
+        }
+        if ($this->conditionalInRequest) {
+            $result['conditional'] = $this->getConditional();
+        }
+        if ($this->keyedInRequest) {
+            $result['keyed'] = $this->getKeyed();
         }
 
         return $result;
@@ -4377,6 +4474,12 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
         if ($this->restInRequest) {
             $result['rest'] = $this->rest;
+        }
+        if ($this->conditionalInRequest) {
+            $result['conditional'] = $this->getConditional();
+        }
+        if ($this->keyedInRequest) {
+            $result['keyed'] = $this->getKeyed();
         }
 
         return $result === [] ? (object)$result : $result;
@@ -4462,6 +4565,44 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['conditional'] = [
+            'getter' => 'getConditional',
+            'type' => 'ApplicatorRefsConditional',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'conditional',
+                'required' => false,
+                'inPathFlagGetter' => 'isConditionalInPath',
+                'inQueryFlagGetter' => 'isConditionalInQuery',
+                'inHeaderFlagGetter' => 'isConditionalInHeader',
+                'inCookieFlagGetter' => 'isConditionalInCookie',
+                'inRequestFlagGetter' => 'isConditionalInRequest',
+                'constraints' => $constraints['conditional'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['keyed'] = [
+            'getter' => 'getKeyed',
+            'type' => 'ApplicatorRefsKeyed',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'keyed',
+                'required' => false,
+                'inPathFlagGetter' => 'isKeyedInPath',
+                'inQueryFlagGetter' => 'isKeyedInQuery',
+                'inHeaderFlagGetter' => 'isKeyedInHeader',
+                'inCookieFlagGetter' => 'isKeyedInCookie',
+                'inRequestFlagGetter' => 'isKeyedInRequest',
+                'constraints' => $constraints['keyed'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
 
         return $map;
     }
@@ -4475,6 +4616,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $aliases['mustContain'] = 'mustContain';
         $aliases['positions'] = 'positions';
         $aliases['rest'] = 'rest';
+        $aliases['conditional'] = 'conditional';
+        $aliases['keyed'] = 'keyed';
 
         return $aliases;
     }
@@ -4488,6 +4631,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $constraints['mustContain'] = ['type' => 'array', 'items' => ['type' => 'object'], 'contains' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
         $constraints['positions'] = ['type' => 'array', 'prefixItems' => [['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
         $constraints['rest'] = ['type' => 'array', 'prefixItems' => [['type' => 'string']], 'unevaluatedItems' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
+        $constraints['conditional'] = ['type' => 'object', 'if' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]], 'then' => ['required' => ['label']], 'properties' => ['label' => ['type' => 'string']]];
+        $constraints['keyed'] = ['type' => 'object', 'properties' => ['trigger' => ['type' => 'string']], 'dependentSchemas' => ['trigger' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
 
         return $constraints;
     }
@@ -4522,6 +4667,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $positions = $positionsGiven ? $cast('positions', $data['positions'], $errors) : null;
         $restGiven = array_key_exists('rest', $data);
         $rest = $restGiven ? $cast('rest', $data['rest'], $errors) : null;
+        $conditionalGiven = array_key_exists('conditional', $data);
+        $conditional = $conditionalGiven ? $cast('conditional', $data['conditional'], $errors) : null;
+        $keyedGiven = array_key_exists('keyed', $data);
+        $keyed = $keyedGiven ? $cast('keyed', $data['keyed'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
@@ -4532,6 +4681,563 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
             mustContain: $mustContain,
             positions: $positionsGiven ? $positions : UnsetValue::UNSET,
             rest: $restGiven ? $rest : UnsetValue::UNSET,
+            conditional: $conditionalGiven ? $conditional : UnsetValue::UNSET,
+            keyed: $keyedGiven ? $keyed : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
+    }
+}
+
+===== ApplicatorRefsConditional.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * From: ApplicatorRefs.conditional
+ */
+final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringable
+{
+    private bool $labelInRequest = false;
+    private bool $labelInPath = false;
+    private bool $labelInQuery = false;
+    private bool $labelInHeader = false;
+    private bool $labelInCookie = false;
+
+    public function __construct(
+        private readonly string|UnsetValue|null $label = UnsetValue::UNSET,
+    ) {
+        // Track if parameter was explicitly passed
+        $this->labelInRequest = $label !== UnsetValue::UNSET;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label !== UnsetValue::UNSET ? $this->label : null;
+    }
+
+    public function isLabelRequired(): bool
+    {
+        return false;
+    }
+
+    public function isLabelInPath(): bool
+    {
+        return $this->labelInPath;
+    }
+
+    public function isLabelInQuery(): bool
+    {
+        return $this->labelInQuery;
+    }
+
+    public function isLabelInHeader(): bool
+    {
+        return $this->labelInHeader;
+    }
+
+    public function isLabelInCookie(): bool
+    {
+        return $this->labelInCookie;
+    }
+
+    public function isLabelInRequest(): bool
+    {
+        return $this->labelInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        if ($this->labelInRequest) {
+            $result['label'] = $this->getLabel();
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = [];
+        if ($this->labelInRequest) {
+            $result['label'] = $this->getLabel();
+        }
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['label'] = [
+            'getter' => 'getLabel',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'label',
+                'required' => false,
+                'inPathFlagGetter' => 'isLabelInPath',
+                'inQueryFlagGetter' => 'isLabelInQuery',
+                'inHeaderFlagGetter' => 'isLabelInHeader',
+                'inCookieFlagGetter' => 'isLabelInCookie',
+                'inRequestFlagGetter' => 'isLabelInRequest',
+                'constraints' => $constraints['label'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['label'] = 'label';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['label'] = ['type' => 'string'];
+
+        return $constraints;
+    }
+
+    /**
+     * Schema-LEVEL keywords, as opposed to the per-property map in `getConstraints()`.
+     *
+     * Emitted only when the document sets one the runtime can act on — a class without it simply
+     * has nothing to enforce, and the deserializer reads an absent method as exactly that.
+     *
+     * @return array<string, mixed>
+     */
+    public static function getObjectConstraints(): array
+    {
+        $constraints = [];
+        $constraints['if'] = ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]];
+        $constraints['then'] = ['required' => ['label']];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $labelGiven = array_key_exists('label', $data);
+        $label = $labelGiven ? $cast('label', $data['label'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        $dto = new self(
+            label: $labelGiven ? $label : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
+    }
+}
+
+===== ApplicatorRefsKeyed.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * From: ApplicatorRefs.keyed
+ */
+final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
+{
+    private bool $triggerInRequest = false;
+    private bool $triggerInPath = false;
+    private bool $triggerInQuery = false;
+    private bool $triggerInHeader = false;
+    private bool $triggerInCookie = false;
+
+    public function __construct(
+        private readonly string|UnsetValue|null $trigger = UnsetValue::UNSET,
+    ) {
+        // Track if parameter was explicitly passed
+        $this->triggerInRequest = $trigger !== UnsetValue::UNSET;
+    }
+
+    public function getTrigger(): ?string
+    {
+        return $this->trigger !== UnsetValue::UNSET ? $this->trigger : null;
+    }
+
+    public function isTriggerRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTriggerInPath(): bool
+    {
+        return $this->triggerInPath;
+    }
+
+    public function isTriggerInQuery(): bool
+    {
+        return $this->triggerInQuery;
+    }
+
+    public function isTriggerInHeader(): bool
+    {
+        return $this->triggerInHeader;
+    }
+
+    public function isTriggerInCookie(): bool
+    {
+        return $this->triggerInCookie;
+    }
+
+    public function isTriggerInRequest(): bool
+    {
+        return $this->triggerInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        if ($this->triggerInRequest) {
+            $result['trigger'] = $this->getTrigger();
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = [];
+        if ($this->triggerInRequest) {
+            $result['trigger'] = $this->getTrigger();
+        }
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['trigger'] = [
+            'getter' => 'getTrigger',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'trigger',
+                'required' => false,
+                'inPathFlagGetter' => 'isTriggerInPath',
+                'inQueryFlagGetter' => 'isTriggerInQuery',
+                'inHeaderFlagGetter' => 'isTriggerInHeader',
+                'inCookieFlagGetter' => 'isTriggerInCookie',
+                'inRequestFlagGetter' => 'isTriggerInRequest',
+                'constraints' => $constraints['trigger'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['trigger'] = 'trigger';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['trigger'] = ['type' => 'string'];
+
+        return $constraints;
+    }
+
+    /**
+     * Schema-LEVEL keywords, as opposed to the per-property map in `getConstraints()`.
+     *
+     * Emitted only when the document sets one the runtime can act on — a class without it simply
+     * has nothing to enforce, and the deserializer reads an absent method as exactly that.
+     *
+     * @return array<string, mixed>
+     */
+    public static function getObjectConstraints(): array
+    {
+        $constraints = [];
+        $constraints['dependentSchemas'] = ['trigger' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $triggerGiven = array_key_exists('trigger', $data);
+        $trigger = $triggerGiven ? $cast('trigger', $data['trigger'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        $dto = new self(
+            trigger: $triggerGiven ? $trigger : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -11476,6 +12182,430 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
             mapOfNullable: $mapOfNullableGiven ? $mapOfNullable : UnsetValue::UNSET,
             listOfNullable31: $listOfNullable31Given ? $listOfNullable31 : UnsetValue::UNSET,
             mapOfNullable31: $mapOfNullable31Given ? $mapOfNullable31 : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        return [];
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        return [];
+    }
+}
+
+===== ObjectWideRules.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ */
+final class ObjectWideRules implements GeneratedDtoInterface, Stringable
+{
+    private bool $kindInRequest = false;
+    private bool $kindInPath = false;
+    private bool $kindInQuery = false;
+    private bool $kindInHeader = false;
+    private bool $kindInCookie = false;
+    private bool $codeInRequest = false;
+    private bool $codeInPath = false;
+    private bool $codeInQuery = false;
+    private bool $codeInHeader = false;
+    private bool $codeInCookie = false;
+    private bool $extraInRequest = false;
+    private bool $extraInPath = false;
+    private bool $extraInQuery = false;
+    private bool $extraInHeader = false;
+    private bool $extraInCookie = false;
+
+    public function __construct(
+        private readonly string $kind,
+        private readonly string|UnsetValue|null $code = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $extra = UnsetValue::UNSET,
+    ) {
+        $this->kindInRequest = true;
+        // Track if parameter was explicitly passed
+        $this->codeInRequest = $code !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->extraInRequest = $extra !== UnsetValue::UNSET;
+    }
+
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function isKindRequired(): bool
+    {
+        return true;
+    }
+
+    public function isKindInPath(): bool
+    {
+        return $this->kindInPath;
+    }
+
+    public function isKindInQuery(): bool
+    {
+        return $this->kindInQuery;
+    }
+
+    public function isKindInHeader(): bool
+    {
+        return $this->kindInHeader;
+    }
+
+    public function isKindInCookie(): bool
+    {
+        return $this->kindInCookie;
+    }
+
+    public function isKindInRequest(): bool
+    {
+        return $this->kindInRequest;
+    }
+
+    public function getCode(): ?string
+    {
+        return $this->code !== UnsetValue::UNSET ? $this->code : null;
+    }
+
+    public function isCodeRequired(): bool
+    {
+        return false;
+    }
+
+    public function isCodeInPath(): bool
+    {
+        return $this->codeInPath;
+    }
+
+    public function isCodeInQuery(): bool
+    {
+        return $this->codeInQuery;
+    }
+
+    public function isCodeInHeader(): bool
+    {
+        return $this->codeInHeader;
+    }
+
+    public function isCodeInCookie(): bool
+    {
+        return $this->codeInCookie;
+    }
+
+    public function isCodeInRequest(): bool
+    {
+        return $this->codeInRequest;
+    }
+
+    public function getExtra(): ?string
+    {
+        return $this->extra !== UnsetValue::UNSET ? $this->extra : null;
+    }
+
+    public function isExtraRequired(): bool
+    {
+        return false;
+    }
+
+    public function isExtraInPath(): bool
+    {
+        return $this->extraInPath;
+    }
+
+    public function isExtraInQuery(): bool
+    {
+        return $this->extraInQuery;
+    }
+
+    public function isExtraInHeader(): bool
+    {
+        return $this->extraInHeader;
+    }
+
+    public function isExtraInCookie(): bool
+    {
+        return $this->extraInCookie;
+    }
+
+    public function isExtraInRequest(): bool
+    {
+        return $this->extraInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        $result['kind'] = $this->kind;
+        if ($this->codeInRequest) {
+            $result['code'] = $this->getCode();
+        }
+        if ($this->extraInRequest) {
+            $result['extra'] = $this->getExtra();
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = [];
+        $result['kind'] = $this->kind;
+        if ($this->codeInRequest) {
+            $result['code'] = $this->getCode();
+        }
+        if ($this->extraInRequest) {
+            $result['extra'] = $this->getExtra();
+        }
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['kind'] = [
+            'getter' => 'getKind',
+            'type' => 'string',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'kind',
+                'required' => true,
+                'inPathFlagGetter' => 'isKindInPath',
+                'inQueryFlagGetter' => 'isKindInQuery',
+                'inHeaderFlagGetter' => 'isKindInHeader',
+                'inCookieFlagGetter' => 'isKindInCookie',
+                'inRequestFlagGetter' => 'isKindInRequest',
+                'constraints' => $constraints['kind'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['code'] = [
+            'getter' => 'getCode',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'code',
+                'required' => false,
+                'inPathFlagGetter' => 'isCodeInPath',
+                'inQueryFlagGetter' => 'isCodeInQuery',
+                'inHeaderFlagGetter' => 'isCodeInHeader',
+                'inCookieFlagGetter' => 'isCodeInCookie',
+                'inRequestFlagGetter' => 'isCodeInRequest',
+                'constraints' => $constraints['code'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['extra'] = [
+            'getter' => 'getExtra',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'extra',
+                'required' => false,
+                'inPathFlagGetter' => 'isExtraInPath',
+                'inQueryFlagGetter' => 'isExtraInQuery',
+                'inHeaderFlagGetter' => 'isExtraInHeader',
+                'inCookieFlagGetter' => 'isExtraInCookie',
+                'inRequestFlagGetter' => 'isExtraInRequest',
+                'constraints' => $constraints['extra'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['kind'] = 'kind';
+        $aliases['code'] = 'code';
+        $aliases['extra'] = 'extra';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['kind'] = ['type' => 'string'];
+        $constraints['code'] = ['type' => 'string'];
+        $constraints['extra'] = ['type' => 'string'];
+
+        return $constraints;
+    }
+
+    /**
+     * Schema-LEVEL keywords, as opposed to the per-property map in `getConstraints()`.
+     *
+     * Emitted only when the document sets one the runtime can act on — a class without it simply
+     * has nothing to enforce, and the deserializer reads an absent method as exactly that.
+     *
+     * @return array<string, mixed>
+     */
+    public static function getObjectConstraints(): array
+    {
+        $constraints = [];
+        $constraints['minProperties'] = 2;
+        $constraints['dependentRequired'] = ['code' => ['extra']];
+        $constraints['not'] = ['required' => ['forbidden']];
+        $constraints['if'] = ['required' => ['kind']];
+        $constraints['then'] = ['properties' => ['code' => ['type' => 'string', 'minLength' => 3]]];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $kindGiven = array_key_exists('kind', $data);
+        if (!$kindGiven) {
+            $errors[] = 'Required parameter "kind" not found in request.';
+        }
+        $kind = $kindGiven ? $cast('kind', $data['kind'], $errors) : null;
+        $codeGiven = array_key_exists('code', $data);
+        $code = $codeGiven ? $cast('code', $data['code'], $errors) : null;
+        $extraGiven = array_key_exists('extra', $data);
+        $extra = $extraGiven ? $cast('extra', $data['extra'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        /** @var string $kind */
+        $dto = new self(
+            kind: $kind,
+            code: $codeGiven ? $code : UnsetValue::UNSET,
+            extra: $extraGiven ? $extra : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its

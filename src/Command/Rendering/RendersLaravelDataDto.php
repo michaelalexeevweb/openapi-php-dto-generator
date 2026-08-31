@@ -125,8 +125,9 @@ trait RendersLaravelDataDto
 
         $objectShapePaths = array_values(array_unique($objectShapePaths));
 
+        $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $interpreter = $this->renderLaravelInterpreterBlock(
-            $this->laravelInterpreterConstraints($properties, $className),
+            $interpreterConstraints,
             array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
         );
         $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [];
@@ -178,6 +179,7 @@ trait RendersLaravelDataDto
             'morphBase' => null,
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],
+            'hasObjectConstraints' => array_key_exists(self::LARAVEL_OBJECT_CONSTRAINTS_KEY, $interpreterConstraints),
             'interpreterMethodsBlock' => $interpreter['methods'],
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),
@@ -271,6 +273,7 @@ trait RendersLaravelDataDto
             ],
             'implementedInterfaces' => [],
             'interpreterConstsBlock' => '',
+            'hasObjectConstraints' => false,
             'interpreterMethodsBlock' => '',
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),

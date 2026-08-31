@@ -1167,8 +1167,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
     public function testIfWithRefConditionDoesNotForceThen(): void
     {
-        // Regression: if:{$ref} extracted to an empty (vacuously-true) schema, so `then`
-        // (discountCode required) was applied to EVERY value. The unvalidatable if/then is dropped.
+        // The rule this test protects is the BEHAVIOUR, and it survived a change of mechanism.
+        //
+        // Originally `if: {$ref}` extracted to an empty schema, which matches EVERYTHING, so `then`
+        // (`discountCode` required) applied to every value — a false rejection. The fix then was to drop
+        // the unvalidatable `if` altogether, and this test asserted the absence of the key.
+        //
+        // Since 2.15.16 the reference is INLINED instead, so `if` is a real condition and `then` fires
+        // only where it matches. The key is present now, which is why the assertions below are about
+        // what the payload gets rather than about which keys the constants hold: a value that does not
+        // match `Premium` must NOT be required to carry `discountCode`, and one that does must.
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/if-ref.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapIfRef');
         $files = glob($this->outputDirectory . '/*.php');
@@ -1177,12 +1185,32 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         $cls = '\GapIfRef\Account';
-        $profile = $cls::getConstraints()['profile'] ?? [];
-        // The $ref `if` extracted to empty and must be dropped — otherwise it is vacuously true
-        // and `then` applies to every value. (`then` may remain but is inert without `if`.)
-        $this->assertArrayNotHasKey('if', $profile);
-        // items:{$ref} likewise extracts to empty and is dropped (would otherwise silently skip).
-        $this->assertArrayNotHasKey('items', $profile);
+
+        // `Premium` requires `tier`; without it the condition does not hold and `then` must stay out.
+        $notPremium = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"profile":{"plan":"free"}}'),
+            $cls,
+        );
+        $this->assertSame([], (new DtoNormalizer())->validate($notPremium));
+
+        // With `tier` present the condition holds, so the conditional requirement applies.
+        $premiumWithout = false;
+        try {
+            (new DtoDeserializer())->deserialize(
+                $this->jsonPostRequest('{"profile":{"tier":"gold"}}'),
+                $cls,
+            );
+        } catch (RuntimeException) {
+            $premiumWithout = true;
+        }
+
+        $this->assertTrue($premiumWithout, 'a matching `if` must make `then` apply');
+
+        $premiumWith = (new DtoDeserializer())->deserialize(
+            $this->jsonPostRequest('{"profile":{"tier":"gold","discountCode":"X"}}'),
+            $cls,
+        );
+        $this->assertSame([], (new DtoNormalizer())->validate($premiumWith));
     }
 
     public function testGeneratedNormalizationMapCarriesArrayItemType(): void
@@ -3831,6 +3859,171 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * What the document says about the OBJECT, at the top level of a component.
+     *
+     * This mode had one schema-level slot and it carried the closed-object flag alone, so
+     * `minProperties`, `dependentRequired`, `not` and a top-level conditional were emitted NOWHERE and
+     * checked by nothing — measured against Symfony and yii3, which refused the same payloads. The slot
+     * now carries them, and both entrances ask: the deserializer of the RAW body, and `validate()` of a
+     * DTO built by hand, which never passed through the deserializer at all.
+     *
+     * `properties` and `required` stay out of that slot by construction — the per-property map and the
+     * required flags already own them — which is what keeps one violation to one message.
+     */
+    public function testObjectWideKeywordsOnTheSchemaItselfAreEnforced(): void
+    {
+        $shape = [
+            'kind' => ['type' => 'string'],
+            'code' => ['type' => 'string'],
+            'extra' => ['type' => 'string'],
+        ];
+
+        $cases = [
+            'minProperties' => [
+                ['minProperties' => 3],
+                '{"kind":"a","code":"b","extra":"c"}',
+                '{"kind":"a","code":"b"}',
+            ],
+            'dependentRequired' => [
+                ['dependentRequired' => ['kind' => ['code']]],
+                '{"kind":"a","code":"b"}',
+                '{"kind":"a"}',
+            ],
+            'not' => [
+                ['not' => ['required' => ['extra']]],
+                '{"kind":"a"}',
+                '{"kind":"a","extra":"c"}',
+            ],
+            'conditional' => [
+                [
+                    'if' => ['required' => ['kind']],
+                    'then' => ['properties' => ['code' => ['type' => 'string', 'minLength' => 7]]],
+                ],
+                '{"kind":"a","code":"loooong"}',
+                '{"kind":"a","code":"short"}',
+            ],
+            // The rest of what the slot claims to carry. Listed here rather than measured once by hand:
+            // the constant names ten keywords, and a claim the tests do not hold is a claim that rots.
+            'maxProperties' => [
+                ['maxProperties' => 2],
+                '{"kind":"a","code":"b"}',
+                '{"kind":"a","code":"b","extra":"c"}',
+            ],
+            'dependentSchemas' => [
+                ['dependentSchemas' => ['kind' => ['properties' => ['code' => ['type' => 'string', 'minLength' => 7]]]]],
+                '{"kind":"a","code":"loooong"}',
+                '{"kind":"a","code":"short"}',
+            ],
+            'propertyNames' => [
+                ['propertyNames' => ['maxLength' => 4]],
+                '{"kind":"a"}',
+                '{"kind":"a","extra":"c"}',
+            ],
+            'patternProperties' => [
+                ['patternProperties' => ['^co' => ['type' => 'string', 'minLength' => 7]]],
+                '{"kind":"a","code":"loooong"}',
+                '{"kind":"a","code":"short"}',
+            ],
+        ];
+
+        foreach ($cases as $keyword => [$extra, $valid, $invalid]) {
+            $spec = [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Probe' => ['type' => 'object', 'properties' => $shape] + $extra,
+                ]],
+            ];
+            $fqcn = $this->generateFromInlineSpec($spec, 'ObjectWide' . ucfirst($keyword) . 'Ns', 'Probe');
+
+            $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+            $this->assertSame([], (new DtoNormalizer())->validate($dto), $keyword . ': valid must pass');
+
+            // The verdict is captured rather than asserted inside the `try`: an assertion that throws
+            // inside a block whose `catch` proves the refusal turns a broken check into a green test.
+            $refused = false;
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($invalid), $fqcn);
+            } catch (RuntimeException) {
+                $refused = true;
+            }
+
+            $this->assertTrue($refused, sprintf('%s stated about the object was not enforced', $keyword));
+        }
+    }
+
+    /**
+     * A `$ref` under the applicators that hold a CONDITION or a MAP of subschemas.
+     *
+     * `contains`, `prefixItems`, `unevaluatedItems` and `not` were walked first; `if`, `then`, `else`,
+     * `propertyNames`, `dependentSchemas` and `patternProperties` lost their references in exactly the
+     * same way and for exactly as long — the sweep that found them came after the first four were
+     * already fixed, which is why they arrive in the same release rather than the one before it.
+     *
+     * `if` is the one worth reading twice: an empty condition matches EVERYTHING, so before the
+     * inlining `then` either applied to every value (the 2.15.x-era false rejection) or the whole
+     * conditional was dropped to avoid that. With the reference resolved the condition is real, so
+     * `then` fires where the document says and nowhere else — asserted here from both sides.
+     */
+    public function testARefUnderAConditionalOrKeyedApplicatorIsChecked(): void
+    {
+        $marked = [
+            'type' => 'object',
+            'required' => ['marker'],
+            'properties' => ['marker' => ['type' => 'string', 'minLength' => 7]],
+        ];
+        $ref = ['$ref' => '#/components/schemas/Marked'];
+        $shape = ['kind' => ['type' => 'string'], 'marker' => ['type' => 'string']];
+
+        $cases = [
+            'then' => [
+                ['type' => 'object', 'properties' => $shape, 'if' => ['type' => 'object'], 'then' => $ref],
+                '{"f":{"marker":"loooong"}}',
+                '{"f":{"marker":"short"}}',
+            ],
+            'else' => [
+                ['type' => 'object', 'properties' => $shape, 'if' => ['type' => 'string'], 'else' => $ref],
+                '{"f":{"marker":"loooong"}}',
+                '{"f":{"marker":"short"}}',
+            ],
+            'dependentSchemas' => [
+                ['type' => 'object', 'properties' => $shape, 'dependentSchemas' => ['kind' => $ref]],
+                '{"f":{"kind":"x","marker":"loooong"}}',
+                '{"f":{"kind":"x","marker":"short"}}',
+            ],
+            'patternProperties' => [
+                ['type' => 'object', 'patternProperties' => ['^ma' => $ref]],
+                '{"f":{"marker":{"marker":"loooong"}}}',
+                '{"f":{"marker":{"marker":"short"}}}',
+            ],
+        ];
+
+        foreach ($cases as $keyword => [$property, $valid, $invalid]) {
+            $spec = [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Marked' => $marked,
+                    'Probe' => ['type' => 'object', 'required' => ['f'], 'properties' => ['f' => $property]],
+                ]],
+            ];
+            $fqcn = $this->generateFromInlineSpec($spec, 'CondApplicator' . ucfirst($keyword) . 'Ns', 'Probe');
+
+            $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+            $this->assertSame([], (new DtoNormalizer())->validate($dto), $keyword . ': valid must pass');
+
+            $refused = false;
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($invalid), $fqcn);
+            } catch (RuntimeException) {
+                $refused = true;
+            }
+
+            $this->assertTrue($refused, sprintf('%s accepted what the reference forbids', $keyword));
+        }
+    }
+
+    /**
      * A conditional branch is NOT owned by the DTO, and its `properties` are checked.
      *
      * A generated DTO validates its own fields against its own constraints, so the enclosing schema
@@ -3919,8 +4112,17 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 ],
                 'Probe' => [
                     'type' => 'object',
-                    'required' => ['mustContain', 'positions', 'rest'],
+                    'required' => ['mustContain', 'positions', 'rest', 'mustNotMatch'],
                     'properties' => [
+                        // `not` joined them in 2.15.16, and it was held back a release on purpose: an
+                        // empty subschema matches everything, so a dropped `not` accepts what it should
+                        // reject while a wrongly inlined one would reject what it should accept. The
+                        // valid payload below is what says the inlining did not overshoot.
+                        'mustNotMatch' => [
+                            'type' => 'object',
+                            'properties' => ['marker' => ['type' => 'string']],
+                            'not' => ['$ref' => '#/components/schemas/Marked'],
+                        ],
                         'mustContain' => [
                             'type' => 'array',
                             'items' => ['type' => 'object'],
@@ -3943,23 +4145,27 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $source = (string)file_get_contents($this->outputDirectory . '/Probe.php');
         $this->assertSame(
-            3,
+            4,
             substr_count($source, "'minLength' => 7"),
-            "the referenced component's bound reaches all three applicators",
+            "the referenced component's bound reaches all four applicators",
         );
 
         $valid = '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"loooong"}],'
-            . '"rest":["x",{"marker":"loooong"}]}';
+            . '"rest":["x",{"marker":"loooong"}],"mustNotMatch":{}}';
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
         $this->assertSame([], (new DtoNormalizer())->validate($dto), 'a valid payload must stay valid');
 
         $cases = [
             'contains' => '{"mustContain":[{"marker":"short"}],"positions":[{"marker":"loooong"}],'
-                . '"rest":["x",{"marker":"loooong"}]}',
+                . '"rest":["x",{"marker":"loooong"}],"mustNotMatch":{}}',
             'prefixItems' => '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"short"}],'
-                . '"rest":["x",{"marker":"loooong"}]}',
+                . '"rest":["x",{"marker":"loooong"}],"mustNotMatch":{}}',
             'unevaluatedItems' => '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"loooong"}],'
-                . '"rest":["x",{"marker":"short"}]}',
+                . '"rest":["x",{"marker":"short"}],"mustNotMatch":{}}',
+            // The value the reference forbids: `marker` present makes it MATCH `Marked`, and `not` says
+            // it must not.
+            'not' => '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"loooong"}],'
+                . '"rest":["x",{"marker":"loooong"}],"mustNotMatch":{"marker":"anything"}}',
         ];
 
         foreach ($cases as $keyword => $json) {

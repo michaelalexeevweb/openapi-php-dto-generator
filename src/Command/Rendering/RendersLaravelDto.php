@@ -217,6 +217,9 @@ trait RendersLaravelDto
             'className' => $className,
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],
+            // Emit the object-level pass only where the document actually states something about the
+            // object: otherwise every class with an interpreter would carry three inert lines.
+            'hasObjectConstraints' => array_key_exists(self::LARAVEL_OBJECT_CONSTRAINTS_KEY, $interpreterConstraints),
             'interpreterMethodsBlock' => $interpreter['methods'],
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),
@@ -264,6 +267,7 @@ trait RendersLaravelDto
             'needsIntCoercionHelper' => false,
             'objectShapePaths' => [],
             'interpreterConstsBlock' => '',
+            'hasObjectConstraints' => false,
             'interpreterMethodsBlock' => '',
             // Rendered as an interface; the discriminator is documented, not enforced here (nothing
             // in Laravel resolves a polymorphic payload on its own).
@@ -1326,6 +1330,31 @@ trait RendersLaravelDto
     }
 
     /**
+     * The key the object's OWN rules live under, inside a map otherwise keyed by property name.
+     *
+     * Chosen so no payload can collide with it: `x-` is reserved for extensions in OpenAPI, and the
+     * emitted loop skips this key explicitly rather than relying on the collision being impossible.
+     */
+    private const string LARAVEL_OBJECT_CONSTRAINTS_KEY = 'x-openapi-object';
+
+    /**
+     * The object-wide keywords this mode carries. `properties` and `required` are excluded: the rule
+     * map owns them, and repeating them here would report every violation twice.
+     */
+    private const array LARAVEL_OBJECT_LEVEL_KEYWORDS = [
+        'minProperties',
+        'maxProperties',
+        'dependentRequired',
+        'dependentSchemas',
+        'propertyNames',
+        'patternProperties',
+        'not',
+        'if',
+        'then',
+        'else',
+    ];
+
+    /**
      * The schema the interpreter enforces: every property that carries a keyword the rules cannot
      * express, with its FULL subschema — a composition branch is only meaningful next to the keywords
      * it composes.
@@ -1358,7 +1387,44 @@ trait RendersLaravelDto
             $constraints[$property['openApiName']] = $folded;
         }
 
+        // What the document says about the OBJECT rather than about one property — `minProperties`,
+        // `dependentRequired`, `not`, a top-level conditional. This map is keyed by PROPERTY and the
+        // emitted loop reads `$payload[$key]`, so the object's own rules live under a reserved key that
+        // no payload can carry; `withValidator()` skips it in the loop and runs it against the whole
+        // payload instead. Until 2.15.16 they were emitted nowhere in this mode and checked by nothing,
+        // while Symfony, yii3 and (from the same release) runtime refused the same payloads.
+        //
+        // `properties` and `required` are not in the set: Laravel's rule map already owns them, and
+        // repeating them here is how one violation becomes two messages.
+        $objectLevel = $this->laravelObjectLevelConstraints($ownerClass);
+        if ($objectLevel !== []) {
+            $constraints[self::LARAVEL_OBJECT_CONSTRAINTS_KEY] = $objectLevel;
+        }
+
         return $constraints;
+    }
+
+    /**
+     * The object-wide keywords of a class schema, pruned of what the rule map already covers.
+     *
+     * @return array<string, mixed>
+     */
+    private function laravelObjectLevelConstraints(string $className): array
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        if ($schema === []) {
+            return [];
+        }
+
+        $extracted = $this->extractValidationConstraints($schema);
+        $objectLevel = [];
+        foreach (self::LARAVEL_OBJECT_LEVEL_KEYWORDS as $keyword) {
+            if (array_key_exists($keyword, $extracted)) {
+                $objectLevel[$keyword] = $extracted[$keyword];
+            }
+        }
+
+        return $objectLevel;
     }
 
     /**

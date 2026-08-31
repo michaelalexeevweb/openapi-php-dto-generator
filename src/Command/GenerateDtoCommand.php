@@ -2512,6 +2512,26 @@ final class GenerateDtoCommand extends Command
     private const int REF_REPEAT_LIMIT = 2;
 
     /**
+     * Applicators holding ONE subschema, walked so a `$ref` inside them is inlined.
+     *
+     * Each of these describes a value nothing materializes for — no property to type, no class to
+     * write — so a reference under them was left for the scrubber, and dropping it dropped the whole
+     * keyword: a subschema that extracts to `[]` matches everything. `contains`, `unevaluatedItems`
+     * and `prefixItems` were added in 2.15.14, `not` in 2.15.16 once it was measured that inlining a
+     * RESOLVED reference cannot turn into a false rejection, and the conditional trio plus
+     * `propertyNames` in the same release after the sweep found them losing references too.
+     */
+    private const array SINGLE_SUBSCHEMA_APPLICATORS = [
+        'contains',
+        'unevaluatedItems',
+        'not',
+        'if',
+        'then',
+        'else',
+        'propertyNames',
+    ];
+
+    /**
      * Everything at depth two or deeper inside a container, made validatable.
      *
      * At depth ONE the generator materializes: `items: {$ref: StrEnum}` becomes a PHP enum and
@@ -2660,10 +2680,16 @@ final class GenerateDtoCommand extends Command
         // these keywords never materialize anything, not even on a property, so there is no level at
         // which the inlining would be redundant.
         //
-        // `not` is deliberately left out. An empty subschema matches EVERYTHING, so a dropped `not`
-        // accepts where it should reject — but an INLINED one would reject where it should accept, and
-        // a wrong fix there costs valid requests rather than silent passes. It gets its own measurement.
-        foreach (['contains', 'unevaluatedItems'] as $applicatorKey) {
+        // `not` was held back until 2.15.16 for a reason worth keeping: an empty subschema matches
+        // EVERYTHING, so a dropped `not` accepts what it should reject, while a WRONGLY inlined one
+        // would reject what it should accept — and that costs valid requests rather than silent passes.
+        // Measured before it was added: `not: {$ref Forbidden}` accepted the very payload the reference
+        // forbids, on a property and under a container alike, while the same subschema written inline
+        // refused it — and the VALID payload was accepted in all four, which is what says inlining the
+        // reference cannot turn into a false rejection here. The empty-subschema danger is unchanged:
+        // an unresolvable `$ref` is left alone and dropped exactly as before, because the inlining only
+        // ever replaces a reference it could resolve.
+        foreach (self::SINGLE_SUBSCHEMA_APPLICATORS as $applicatorKey) {
             if (is_array($schema[$applicatorKey] ?? null)) {
                 $schema[$applicatorKey] = $this->inlineNestedContainerValidation(
                     schema: $schema[$applicatorKey],
@@ -2672,6 +2698,26 @@ final class GenerateDtoCommand extends Command
                     refInlineBudget: $refInlineBudget,
                     seenRefs: $seenRefs,
                 );
+            }
+        }
+
+        // The applicators that hold a MAP of subschemas rather than one. Same loss, same fix: a `$ref`
+        // under `dependentSchemas` or `patternProperties` extracted to `[]` and took its entry with it.
+        foreach (['dependentSchemas', 'patternProperties'] as $mapApplicatorKey) {
+            if (!is_array($schema[$mapApplicatorKey] ?? null)) {
+                continue;
+            }
+
+            foreach ($schema[$mapApplicatorKey] as $entryKey => $entrySchema) {
+                if (is_array($entrySchema)) {
+                    $schema[$mapApplicatorKey][$entryKey] = $this->inlineNestedContainerValidation(
+                        schema: $entrySchema,
+                        depth: $depth,
+                        belowMaterialization: true,
+                        refInlineBudget: $refInlineBudget,
+                        seenRefs: $seenRefs,
+                    );
+                }
             }
         }
 

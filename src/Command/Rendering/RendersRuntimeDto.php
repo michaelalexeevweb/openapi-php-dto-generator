@@ -333,7 +333,14 @@ trait RendersRuntimeDto
             'discriminator' => $discriminatorData,
             'extends' => $extends,
             'constraintAssignments' => $constraintAssignments,
-            'objectConstraints' => $objectConstraints,
+            'objectConstraints' => array_map(
+                fn(string $name, mixed $value): array => [
+                    'name' => $name,
+                    'value' => $this->renderPhpLiteral($value),
+                ],
+                array_keys($objectConstraints),
+                array_values($objectConstraints),
+            ),
             'fastHydrator' => $fastHydrator,
             'unsetValueRef' => $unsetValueRef,
             'closureRef' => $closureRef,
@@ -1019,6 +1026,25 @@ trait RendersRuntimeDto
     }
 
     /**
+     * The object-wide keywords this mode carries in `getObjectConstraints()`.
+     *
+     * Everything here describes the OBJECT, not one of its properties, so no per-property rule can
+     * stand in for it. `properties` and `required` are excluded on purpose — see the method below.
+     */
+    private const array RUNTIME_OBJECT_LEVEL_KEYWORDS = [
+        'minProperties',
+        'maxProperties',
+        'dependentRequired',
+        'dependentSchemas',
+        'propertyNames',
+        'patternProperties',
+        'not',
+        'if',
+        'then',
+        'else',
+    ];
+
+    /**
      * Schema-level keywords the runtime can enforce, emitted only when the document sets them.
      *
      * `additionalProperties: false` closes the object: a key the schema never declared makes the
@@ -1026,6 +1052,10 @@ trait RendersRuntimeDto
      * typed property — but runtime mode holds the raw body, so here it is enforceable. Emitted as
      * its OWN method rather than a reserved key inside `getConstraints()`, which is a per-PROPERTY
      * map and would collide with a property of that name.
+     *
+     * Since 2.15.16 the closed flag has company: everything in
+     * `RUNTIME_OBJECT_LEVEL_KEYWORDS` above, which is what a document states about the object as a
+     * whole and no per-property rule can express.
      *
      * @return array<string, mixed>
      */
@@ -1035,7 +1065,24 @@ trait RendersRuntimeDto
         $closed = ($schema['additionalProperties'] ?? null) === false
             || ($schema['unevaluatedProperties'] ?? null) === false;
 
-        return $closed ? ['additionalProperties' => false] : [];
+        $objectConstraints = $closed ? ['additionalProperties' => false] : [];
+
+        // The keywords a document states about the OBJECT AS A WHOLE. Until 2.15.16 this slot carried
+        // the closed-object flag and nothing else, so `minProperties`, `dependentRequired`, `not` and a
+        // conditional written at the top level of a component were emitted NOWHERE in this mode and
+        // checked by nothing — measured against Symfony and yii3, which refused the same payloads.
+        //
+        // `properties` and `required` are deliberately absent: the per-property map and the required
+        // flags already own them, and repeating them here would report every violation twice. What is
+        // left is exactly what no per-property rule can express.
+        $extracted = $this->extractValidationConstraints($schema);
+        foreach (self::RUNTIME_OBJECT_LEVEL_KEYWORDS as $keyword) {
+            if (array_key_exists($keyword, $extracted)) {
+                $objectConstraints[$keyword] = $extracted[$keyword];
+            }
+        }
+
+        return $objectConstraints;
     }
     /**
      * @param array<int, SchemaProperty> $properties

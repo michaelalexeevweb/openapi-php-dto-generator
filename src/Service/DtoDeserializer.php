@@ -407,6 +407,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
+        // The rest of what the document says about the OBJECT rather than about one property:
+        // `minProperties`, `dependentRequired`, `not`, a top-level conditional. The RAW body is the
+        // only thing these can be asked about — a per-property rule cannot express any of them — and
+        // until 2.15.16 this mode emitted them nowhere and checked none, while Symfony and yii3
+        // refused the same payloads. `properties` and `required` are not among them by construction
+        // (see `RendersRuntimeDto::resolveObjectConstraints()`), so nothing here reports twice.
+        $objectConstraints = $this->resolveOpenApiObjectConstraints($reflection);
+        unset($objectConstraints['additionalProperties']);
+        if ($objectConstraints !== []) {
+            foreach ($this->constraintValidator->validate('', $bodyData, $objectConstraints) as $objectError) {
+                $errors[] = $objectError;
+            }
+        }
+
         // A class whose every property is a plain body field — no bound source, no serialization
         // style, no delimiter, no content/form decoding, no empty-value rule. Computed once per
         // class; see `buildDtoMeta()`.

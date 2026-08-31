@@ -1,4 +1,4 @@
-# laravel mode — 63 files, 9410 lines
+# laravel mode — 66 files, 10524 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -26,6 +26,8 @@
 # ApiTestFilePostRequest.php
 # ApiTestFilePostRequestFormRequest.php
 # ApplicatorRefs.php
+# ApplicatorRefsConditional.php
+# ApplicatorRefsKeyed.php
 # AwkwardNames.php
 # Cat.php
 # ChainLink.php
@@ -46,6 +48,7 @@
 # ItemBounds.php
 # NestedContainers.php
 # NullableContainerValues.php
+# ObjectWideRules.php
 # Pet.php
 # Shape.php
 # Square.php
@@ -1996,6 +1999,41 @@ final class ApplicatorRefs
                 ],
             ],
         ],
+        'conditional' => [
+            'if' => [
+                'type' => 'object',
+                'required' => [
+                    'label',
+                ],
+                'properties' => [
+                    'label' => [
+                        'type' => 'string',
+                        'minLength' => 2,
+                    ],
+                ],
+            ],
+            'then' => [
+                'required' => [
+                    'label',
+                ],
+            ],
+        ],
+        'keyed' => [
+            'dependentSchemas' => [
+                'trigger' => [
+                    'type' => 'object',
+                    'required' => [
+                        'label',
+                    ],
+                    'properties' => [
+                        'label' => [
+                            'type' => 'string',
+                            'minLength' => 2,
+                        ],
+                    ],
+                ],
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -2016,6 +2054,8 @@ final class ApplicatorRefs
         private readonly array $mustContain,
         private readonly ?array $positions = null,
         private readonly ?array $rest = null,
+        private readonly ?ApplicatorRefsConditional $conditional = null,
+        private readonly ?ApplicatorRefsKeyed $keyed = null,
     ) {
     }
 
@@ -2032,6 +2072,10 @@ final class ApplicatorRefs
             'mustContain.*' => ['array'],
             'positions' => ['sometimes', 'array', 'list'],
             'rest' => ['sometimes', 'array', 'list'],
+            'conditional' => ['sometimes', 'array'],
+            'conditional.label' => ['string'],
+            'keyed' => ['sometimes', 'array'],
+            'keyed.trigger' => ['string'],
         ];
     }
 
@@ -2042,6 +2086,8 @@ final class ApplicatorRefs
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'mustContain.*',
+        'conditional',
+        'keyed',
     ];
 
     /**
@@ -2152,6 +2198,8 @@ final class ApplicatorRefs
             mustContain: $data['mustContain'],
             positions: ($data['positions'] ?? null) === null ? null : $data['positions'],
             rest: ($data['rest'] ?? null) === null ? null : $data['rest'],
+            conditional: ($data['conditional'] ?? null) === null ? null : ApplicatorRefsConditional::fromValidated($data['conditional']),
+            keyed: ($data['keyed'] ?? null) === null ? null : ApplicatorRefsKeyed::fromValidated($data['keyed']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -2184,6 +2232,26 @@ final class ApplicatorRefs
     public function isRestProvided(): bool
     {
         return in_array('rest', $this->providedOpenApiKeys, true);
+    }
+
+    public function getConditional(): ?ApplicatorRefsConditional
+    {
+        return $this->conditional;
+    }
+
+    public function isConditionalProvided(): bool
+    {
+        return in_array('conditional', $this->providedOpenApiKeys, true);
+    }
+
+    public function getKeyed(): ?ApplicatorRefsKeyed
+    {
+        return $this->keyed;
+    }
+
+    public function isKeyedProvided(): bool
+    {
+        return in_array('keyed', $this->providedOpenApiKeys, true);
     }
 
     /**
@@ -2237,6 +2305,25 @@ final class ApplicatorRefs
                     ...$errors,
                     ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
                 ];
+            }
+        }
+
+        if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
+                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
+            }
+        }
+
+        if (is_array($schema['if'] ?? null)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+                if (is_array($schema['then'] ?? null)) {
+                    $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['else'], $path, $depth + 1)];
             }
         }
 
@@ -2400,6 +2487,628 @@ final class ApplicatorRefs
 
         if ($this->isRestProvided()) {
             $result['rest'] = $this->rest === null ? null : array_values($this->rest);
+        }
+
+        if ($this->isConditionalProvided()) {
+            $result['conditional'] = $this->conditional === null ? null : ($this->conditional->toArray() ?: (object)[]);
+        }
+
+        if ($this->isKeyedProvided()) {
+            $result['keyed'] = $this->keyed === null ? null : ($this->keyed->toArray() ?: (object)[]);
+        }
+
+        return $result;
+    }
+}
+
+===== ApplicatorRefsConditional.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
+
+use function array_filter;
+use function array_key_exists;
+use function array_keys;
+use function floor;
+use function get_object_vars;
+use function in_array;
+use function is_array;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function mb_strlen;
+use function sprintf;
+use function str_ends_with;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ * From: ApplicatorRefs.conditional
+ *
+ * Laravel mode: the class needs nothing installed — `rules()` is fed to the framework's own
+ * validator, and `fromValidated()` builds this object from `$request->validated()`:
+ *
+ *     final class StoreRequest extends FormRequest
+ *     {
+ *         public function rules(): array
+ *         {
+ *             return ApplicatorRefsConditional::rules();
+ *         }
+ *     }
+ *
+ *     $dto = ApplicatorRefsConditional::fromValidated($request->validated());
+ *
+ * `validated()` returns only the keys the payload carried, which is what `isXxxProvided()` reads —
+ * so an absent optional field and one sent as `null` stay distinguishable (PATCH semantics).
+ */
+final class ApplicatorRefsConditional
+{
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'x-openapi-object' => [
+            'if' => [
+                'type' => 'object',
+                'required' => [
+                    'label',
+                ],
+                'properties' => [
+                    'label' => [
+                        'type' => 'string',
+                        'minLength' => 2,
+                    ],
+                ],
+            ],
+            'then' => [
+                'required' => [
+                    'label',
+                ],
+            ],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
+    /**
+     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
+     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
+     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     *
+     * @var array<int, string>
+     */
+    private array $providedOpenApiKeys = [];
+
+    public function __construct(
+        private readonly ?string $label = null,
+    ) {
+    }
+
+    /**
+     * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
+     * what the request payload carries, not the PHP property names.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'label' => ['sometimes', 'string'],
+        ];
+    }
+
+    /**
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApplicatorRefsConditional::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            /** @var array<string, mixed> $payload */
+            $payload = $validator->getData();
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
+                // The object's own rules share this map under a reserved key — see below.
+                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+                }
+            }
+
+            // What the document states about the OBJECT rather than about one property:
+            // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
+            // whole payload, and the message goes in without a field name because that is what it is
+            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // nothing here is reported twice.
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            }
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $data the output of `$request->validated()`
+     */
+    public static function fromValidated(array $data): self
+    {
+        $dto = new self(
+            label: ($data['label'] ?? null) === null ? null : $data['label'],
+        );
+        $dto->providedOpenApiKeys = array_keys($data);
+
+        return $dto;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label;
+    }
+
+    public function isLabelProvided(): bool
+    {
+        return in_array('label', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_string($normalizedValue) && self::schemaHasAnyOpenApiKey($schema, ['minLength'])) {
+            $length = mb_strlen($normalizedValue);
+            $minLength = self::toIntConstraint($schema['minLength'] ?? null);
+            if ($minLength !== null && $length < $minLength) {
+                $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', self::openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($schema['if'] ?? null)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+                if (is_array($schema['then'] ?? null)) {
+                    $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['else'], $path, $depth + 1)];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+    }
+
+    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private static function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private static function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private static function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+
+        if ($this->isLabelProvided()) {
+            $result['label'] = $this->label;
+        }
+
+        return $result;
+    }
+}
+
+===== ApplicatorRefsKeyed.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
+
+use function array_filter;
+use function array_key_exists;
+use function array_keys;
+use function floor;
+use function get_object_vars;
+use function in_array;
+use function is_array;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function mb_strlen;
+use function sprintf;
+use function str_ends_with;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ * From: ApplicatorRefs.keyed
+ *
+ * Laravel mode: the class needs nothing installed — `rules()` is fed to the framework's own
+ * validator, and `fromValidated()` builds this object from `$request->validated()`:
+ *
+ *     final class StoreRequest extends FormRequest
+ *     {
+ *         public function rules(): array
+ *         {
+ *             return ApplicatorRefsKeyed::rules();
+ *         }
+ *     }
+ *
+ *     $dto = ApplicatorRefsKeyed::fromValidated($request->validated());
+ *
+ * `validated()` returns only the keys the payload carried, which is what `isXxxProvided()` reads —
+ * so an absent optional field and one sent as `null` stay distinguishable (PATCH semantics).
+ */
+final class ApplicatorRefsKeyed
+{
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'x-openapi-object' => [
+            'dependentSchemas' => [
+                'trigger' => [
+                    'type' => 'object',
+                    'required' => [
+                        'label',
+                    ],
+                    'properties' => [
+                        'label' => [
+                            'type' => 'string',
+                            'minLength' => 2,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
+    /**
+     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
+     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
+     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     *
+     * @var array<int, string>
+     */
+    private array $providedOpenApiKeys = [];
+
+    public function __construct(
+        private readonly ?string $trigger = null,
+    ) {
+    }
+
+    /**
+     * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
+     * what the request payload carries, not the PHP property names.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'trigger' => ['sometimes', 'string'],
+        ];
+    }
+
+    /**
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApplicatorRefsKeyed::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            /** @var array<string, mixed> $payload */
+            $payload = $validator->getData();
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
+                // The object's own rules share this map under a reserved key — see below.
+                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+                }
+            }
+
+            // What the document states about the OBJECT rather than about one property:
+            // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
+            // whole payload, and the message goes in without a field name because that is what it is
+            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // nothing here is reported twice.
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            }
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $data the output of `$request->validated()`
+     */
+    public static function fromValidated(array $data): self
+    {
+        $dto = new self(
+            trigger: ($data['trigger'] ?? null) === null ? null : $data['trigger'],
+        );
+        $dto->providedOpenApiKeys = array_keys($data);
+
+        return $dto;
+    }
+
+    public function getTrigger(): ?string
+    {
+        return $this->trigger;
+    }
+
+    public function isTriggerProvided(): bool
+    {
+        return in_array('trigger', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_string($normalizedValue) && self::schemaHasAnyOpenApiKey($schema, ['minLength'])) {
+            $length = mb_strlen($normalizedValue);
+            $minLength = self::toIntConstraint($schema['minLength'] ?? null);
+            if ($minLength !== null && $length < $minLength) {
+                $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', self::openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
+                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
+            }
+        }
+
+        return $errors;
+    }
+
+    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private static function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private static function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private static function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+
+        if ($this->isTriggerProvided()) {
+            $result['trigger'] = $this->trigger;
         }
 
         return $result;
@@ -5876,6 +6585,420 @@ final class NullableContainerValues
 
         if ($this->isMapOfNullable31Provided()) {
             $result['mapOfNullable31'] = $this->mapOfNullable31 === null ? null : self::toJsonObjects($this->mapOfNullable31);
+        }
+
+        return $result;
+    }
+}
+
+===== ObjectWideRules.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
+
+use function array_filter;
+use function array_key_exists;
+use function array_keys;
+use function count;
+use function floor;
+use function get_object_vars;
+use function in_array;
+use function is_array;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_scalar;
+use function is_string;
+use function json_encode;
+use function mb_strlen;
+use function serialize;
+use function sprintf;
+use function str_ends_with;
+use function var_export;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * Laravel mode: the class needs nothing installed — `rules()` is fed to the framework's own
+ * validator, and `fromValidated()` builds this object from `$request->validated()`:
+ *
+ *     final class StoreRequest extends FormRequest
+ *     {
+ *         public function rules(): array
+ *         {
+ *             return ObjectWideRules::rules();
+ *         }
+ *     }
+ *
+ *     $dto = ObjectWideRules::fromValidated($request->validated());
+ *
+ * `validated()` returns only the keys the payload carried, which is what `isXxxProvided()` reads —
+ * so an absent optional field and one sent as `null` stay distinguishable (PATCH semantics).
+ */
+final class ObjectWideRules
+{
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'x-openapi-object' => [
+            'minProperties' => 2,
+            'dependentRequired' => [
+                'code' => [
+                    'extra',
+                ],
+            ],
+            'not' => [
+                'required' => [
+                    'forbidden',
+                ],
+            ],
+            'if' => [
+                'required' => [
+                    'kind',
+                ],
+            ],
+            'then' => [
+                'properties' => [
+                    'code' => [
+                        'type' => 'string',
+                        'minLength' => 3,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
+    /**
+     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
+     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
+     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     *
+     * @var array<int, string>
+     */
+    private array $providedOpenApiKeys = [];
+
+    public function __construct(
+        private readonly string $kind,
+        private readonly ?string $code = null,
+        private readonly ?string $extra = null,
+    ) {
+    }
+
+    /**
+     * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
+     * what the request payload carries, not the PHP property names.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'kind' => ['present', 'string'],
+            'code' => ['sometimes', 'string'],
+            'extra' => ['sometimes', 'string'],
+        ];
+    }
+
+    /**
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ObjectWideRules::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            /** @var array<string, mixed> $payload */
+            $payload = $validator->getData();
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
+                // The object's own rules share this map under a reserved key — see below.
+                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+                }
+            }
+
+            // What the document states about the OBJECT rather than about one property:
+            // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
+            // whole payload, and the message goes in without a field name because that is what it is
+            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // nothing here is reported twice.
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            }
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $data the output of `$request->validated()`
+     */
+    public static function fromValidated(array $data): self
+    {
+        $dto = new self(
+            kind: $data['kind'],
+            code: ($data['code'] ?? null) === null ? null : $data['code'],
+            extra: ($data['extra'] ?? null) === null ? null : $data['extra'],
+        );
+        $dto->providedOpenApiKeys = array_keys($data);
+
+        return $dto;
+    }
+
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function getCode(): ?string
+    {
+        return $this->code;
+    }
+
+    public function isCodeProvided(): bool
+    {
+        return in_array('code', $this->providedOpenApiKeys, true);
+    }
+
+    public function getExtra(): ?string
+    {
+        return $this->extra;
+    }
+
+    public function isExtraProvided(): bool
+    {
+        return in_array('extra', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_string($normalizedValue) && self::schemaHasAnyOpenApiKey($schema, ['minLength'])) {
+            $length = mb_strlen($normalizedValue);
+            $minLength = self::toIntConstraint($schema['minLength'] ?? null);
+            if ($minLength !== null && $length < $minLength) {
+                $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
+            }
+        }
+
+        if (is_array($value) || is_object($value)) {
+            $structural = is_array($value) ? $value : self::normalizeOpenApiStructuralValue($value);
+            $valueArray = is_array($structural) ? array_filter(
+                $structural,
+                static fn(mixed $propertyValue): bool => $propertyValue !== null,
+            ) : [];
+            $count = count($valueArray);
+            $minItems = self::toIntConstraint($schema['minItems'] ?? null);
+            if ($minItems !== null && is_array($value) && $count < $minItems) {
+                $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
+            }
+
+            $maxItems = self::toIntConstraint($schema['maxItems'] ?? null);
+            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+                $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
+            }
+
+            $minProperties = self::toIntConstraint($schema['minProperties'] ?? null);
+            if ($minProperties !== null && $count < $minProperties) {
+                $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
+            }
+
+            $maxProperties = self::toIntConstraint($schema['maxProperties'] ?? null);
+            if ($maxProperties !== null && $count > $maxProperties) {
+                $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
+            }
+
+            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+                $seen = [];
+                foreach ($valueArray as $item) {
+                    if (is_scalar($item) || $item === null) {
+                        $fingerprint = 's:' . var_export($item, true);
+                    } else {
+                        // A generated DTO keeps its state private, so compare the payload it
+                        // reports rather than the object, which would encode as {} every time.
+                        $comparable = self::normalizeOpenApiStructuralValue($item);
+                        $json = json_encode($comparable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        $fingerprint = is_string($json) ? 'j:' . $json : 'j:' . serialize($comparable);
+                    }
+                    if (array_key_exists($fingerprint, $seen)) {
+                        $errors[] = sprintf('%s must contain unique items', $path);
+                        break;
+                    }
+                    $seen[$fingerprint] = true;
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', self::openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($schema['dependentRequired'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['dependentRequired'] as $propertyName => $deps) {
+                if (!is_string($propertyName) || !is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                foreach ($deps as $depProperty) {
+                    if (is_string($depProperty) && !array_key_exists($depProperty, $structuredValue)) {
+                        $errors[] = sprintf('%s is required when %s is present', self::openApiChildPath($path, $depProperty), $propertyName);
+                    }
+                }
+            }
+        }
+
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+        }
+
+        if (is_array($schema['if'] ?? null)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+                if (is_array($schema['then'] ?? null)) {
+                    $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['else'], $path, $depth + 1)];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+    }
+
+    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            default => true,
+        };
+    }
+
+    private static function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
+    }
+
+    private static function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private static function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        $result['kind'] = $this->kind;
+
+        if ($this->isCodeProvided()) {
+            $result['code'] = $this->code;
+        }
+
+        if ($this->isExtraProvided()) {
+            $result['extra'] = $this->extra;
         }
 
         return $result;

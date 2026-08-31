@@ -241,6 +241,20 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $errors = [];
         $meta = $this->getClassMeta($dto);
 
+        // What the document says about the OBJECT rather than about one property — `minProperties`,
+        // `dependentRequired`, `not`, a top-level conditional. The deserializer asks the same question
+        // of the RAW body; a DTO built by hand never passed through it, so it is asked again here of
+        // the payload the object reports. `properties` and `required` are not in this set by
+        // construction, so nothing is reported twice.
+        $objectConstraints = $this->resolveOpenApiObjectConstraintsByClass($dto::class);
+        unset($objectConstraints['additionalProperties']);
+        if ($objectConstraints !== []) {
+            $subject = $pathPrefix === '' ? '' : $pathPrefix;
+            foreach ($this->constraintValidator->validate($subject, $this->toArray($dto), $objectConstraints) as $objectError) {
+                $errors[] = $objectError;
+            }
+        }
+
         foreach ($meta['getters'] as $getterMeta) {
             $methodName = $getterMeta['methodName'];
             $propertyName = $getterMeta['propertyName'];
@@ -873,6 +887,27 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         $constraints = call_user_func($method);
+        return is_array($constraints) ? $constraints : [];
+    }
+
+    /**
+     * The schema-LEVEL constraints a generated class carries, or none.
+     *
+     * Emitted by the runtime renderer only when the document states something about the object as a
+     * whole; an absent method means exactly that there is nothing to enforce.
+     *
+     * @param class-string $className
+     * @return array<string, mixed>
+     */
+    private function resolveOpenApiObjectConstraintsByClass(string $className): array
+    {
+        $method = $this->resolveMetadataMethod($className, ['getObjectConstraints']);
+        if ($method === null) {
+            return [];
+        }
+
+        $constraints = call_user_func($method);
+
         return is_array($constraints) ? $constraints : [];
     }
 

@@ -195,7 +195,12 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             $payload = $validator->getData();
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
+{% if hasObjectConstraints %}
+                // The object's own rules share this map under a reserved key — see below.
+                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
+{% else %}
                 if (!array_key_exists($property, $payload)) {
+{% endif %}
                     continue;
                 }
 
@@ -203,6 +208,17 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
                     $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
                 }
             }
+{% if hasObjectConstraints %}
+
+            // What the document states about the OBJECT rather than about one property:
+            // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
+            // whole payload, and the message goes in without a field name because that is what it is
+            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // nothing here is reported twice.
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            }
+{% endif %}
 {% endif %}
 {% if objectShapePaths is not empty %}
 {% if interpreterMethodsBlock is not empty %}

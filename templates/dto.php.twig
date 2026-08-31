@@ -609,8 +609,8 @@ interface {{ className }}
 {% else %}
         $constraints = [];
 {% endif %}
-{% for name, value in objectConstraints %}
-        $constraints['{{ name }}'] = {{ value ? 'true' : 'false' }};
+{% for entry in objectConstraints %}
+        $constraints['{{ entry.name }}'] = {{ entry.value|raw }};
 {% endfor %}
 
         return $constraints;

@@ -2795,9 +2795,18 @@ PHP,
                 case 'minItems':
                 case 'maxItems':
                 case 'uniqueItems':
+                    if ($allowScalarKeywords) {
+                        $filtered[$key] = $value;
+                    }
+                    break;
                 case 'minProperties':
                 case 'maxProperties':
-                    if ($allowScalarKeywords) {
+                    // On a PROPERTY these two become `#[Assert\Count]`, so the callback must not repeat
+                    // them. On the CLASS ITSELF there is no attribute that counts an object's own keys —
+                    // `Assert\Count` measures an array-typed value, not the DTO — so dropping them left
+                    // the keyword enforced by nothing. Measured 2026-08-31: Symfony was the one mode
+                    // accepting an object with too few properties once the other four refused it.
+                    if ($allowScalarKeywords || (!$isPropertySchema && !$belowContainer)) {
                         $filtered[$key] = $value;
                     }
                     break;

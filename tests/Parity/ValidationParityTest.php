@@ -925,6 +925,88 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * What a document states about the OBJECT ITSELF, enforced in every mode.
+     *
+     * These keywords have no property to hang off, so each mode has to carry them at the class level or
+     * lose them. Measured before 2.15.16: runtime, laravel and laravel-data carried none of them and
+     * accepted every violation; Symfony carried three of four, losing `minProperties` because on a
+     * property that one becomes `#[Assert\Count]` and was dropped from the interpreter to avoid
+     * doubling — with no attribute at the class level to take over.
+     *
+     * @param array<string, mixed> $extra the object-wide keyword under test
+     */
+    #[DataProvider('objectWideProvider')]
+    public function testObjectWideKeywordsAreEnforcedInEveryMode(
+        string $key,
+        array $extra,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'kind' => ['type' => 'string'],
+                            'code' => ['type' => 'string'],
+                            'extra' => ['type' => 'string'],
+                        ],
+                    ] + $extra,
+                ],
+            ],
+        ];
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'objectwide ' . $key, $validJson, $invalidJson),
+            context: 'object-wide ' . $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: string, 3: string}>
+     */
+    public static function objectWideProvider(): array
+    {
+        return [
+            'minProperties' => [
+                'minProperties',
+                ['minProperties' => 3],
+                '{"kind":"a","code":"b","extra":"c"}',
+                '{"kind":"a","code":"b"}',
+            ],
+            'dependentRequired' => [
+                'dependentRequired',
+                ['dependentRequired' => ['kind' => ['code']]],
+                '{"kind":"a","code":"b"}',
+                '{"kind":"a"}',
+            ],
+            'not' => [
+                'not',
+                ['not' => ['required' => ['extra']]],
+                '{"kind":"a","code":"b"}',
+                '{"kind":"a","extra":"c"}',
+            ],
+            'conditional' => [
+                'conditional',
+                [
+                    'if' => ['required' => ['kind']],
+                    'then' => ['properties' => ['code' => ['type' => 'string', 'minLength' => 7]]],
+                ],
+                '{"kind":"a","code":"loooong"}',
+                '{"kind":"a","code":"short"}',
+            ],
+        ];
+    }
+
+    /**
      * A `$ref` under an APPLICATOR, enforced in every mode.
      *
      * The generator's inlining is what makes these keywords work at all — nothing materializes for
@@ -964,6 +1046,9 @@ final class ValidationParityTest extends TestCase
 
         $valid = match ($key) {
             'unevaluatedItems' => '{"f":["x",{"marker":"loooong"}]}',
+            'not' => '{"f":{"other":"y"}}',
+            'then' => '{"f":{"marker":"loooong"}}',
+            'dependentSchemas' => '{"f":{"kind":"x","marker":"loooong"}}',
             default => '{"f":[{"marker":"loooong"}]}',
         };
 
@@ -983,6 +1068,10 @@ final class ValidationParityTest extends TestCase
             'contains' => ['contains', '{"f":[{"marker":"short"}]}'],
             'prefixItems' => ['prefixItems', '{"f":[{"marker":"short"}]}'],
             'unevaluatedItems' => ['unevaluatedItems', '{"f":["x",{"marker":"short"}]}'],
+            // `marker` present makes the value MATCH what the reference describes, which `not` forbids.
+            'not' => ['not', '{"f":{"marker":"anything"}}'],
+            'then' => ['then', '{"f":{"marker":"short"}}'],
+            'dependentSchemas' => ['dependentSchemas', '{"f":{"kind":"x","marker":"short"}}'],
         ];
     }
 
@@ -996,6 +1085,25 @@ final class ValidationParityTest extends TestCase
         return match ($keyword) {
             'contains' => ['type' => 'array', 'items' => ['type' => 'object'], 'contains' => $ref],
             'prefixItems' => ['type' => 'array', 'prefixItems' => [$ref]],
+            // `other` exists so the VALID payload can be non-empty: Laravel's `required` rule fails on
+            // an empty array, so `{"f":{}}` would be rejected there for a reason that has nothing to do
+            // with `not` — the probe, not the code.
+            'not' => [
+                'type' => 'object',
+                'properties' => ['marker' => ['type' => 'string'], 'other' => ['type' => 'string']],
+                'not' => $ref,
+            ],
+            'then' => [
+                'type' => 'object',
+                'properties' => ['marker' => ['type' => 'string']],
+                'if' => ['type' => 'object'],
+                'then' => $ref,
+            ],
+            'dependentSchemas' => [
+                'type' => 'object',
+                'properties' => ['kind' => ['type' => 'string'], 'marker' => ['type' => 'string']],
+                'dependentSchemas' => ['kind' => $ref],
+            ],
             default => [
                 'type' => 'array',
                 'prefixItems' => [['type' => 'string']],

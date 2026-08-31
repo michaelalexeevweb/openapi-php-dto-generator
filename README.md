@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.15
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.16
 ```
 
 ---
