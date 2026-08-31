@@ -3,6 +3,29 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.14 — 2026-08-31
+
+- a `$ref` under `contains` / `prefixItems` / `unevaluatedItems` was checked by nothing
+- `unevaluatedItems` as a schema is enforced, not only as `false`
+
+Three applicators describe a value nothing materializes for: no property to type, no class to write. A
+`$ref` under them was therefore left to the scrubber, and dropping it dropped the whole KEYWORD — a
+subschema that extracts to `[]` matches everything, so `contains` stopped requiring, `prefixItems`
+stopped constraining the position and `unevaluatedItems` stopped guarding the tail. Measured against the
+identical document with the subschema written INLINE, which refused what the `$ref` spelling accepted.
+This is the 2.15.6 union-branch bug and the 2.15.11 `allOf` bug in a third spelling, and unlike `allOf`
+it is not confined to containers: nothing materializes for these keywords at any level.
+
+`not` is deliberately left alone. An empty subschema matches everything, so a dropped `not` accepts
+where it should reject — but an inlined one would reject where it should accept, and being wrong there
+costs valid requests rather than silent passes. It gets its own measurement.
+
+**Symfony, Laravel, laravel-data and yii3 needed a second fix.** The interpreter they share read
+`unevaluatedItems` only in its `false` spelling — "no extra items allowed" — and ignored the SCHEMA
+spelling entirely, which is the one a document uses to type the tail after `prefixItems`. It was carried
+in the emitted constants and read by nothing, so every item past the prefix was accepted whatever it
+held. Runtime had always read both; now all five agree, per keyword, pinned by `ValidationParityTest`.
+
 ## 2.15.13 — 2026-08-31
 
 - a list with gaps in its PHP keys was written as a JSON object

@@ -913,6 +913,86 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A `$ref` under an APPLICATOR, enforced in every mode.
+     *
+     * The generator's inlining is what makes these keywords work at all — nothing materializes for
+     * `contains`, `prefixItems` or `unevaluatedItems`, so each mode reads the same emitted constraints
+     * with its own machine. Runtime was measured first and fixed in 2.15.14; this is the same question
+     * asked of all five, because the last two rounds of this bug answered differently per mode: `allOf`
+     * needed a second fix in Symfony (its interpreter had no such keyword) and a third in Laravel (its
+     * rule map already covered part of it).
+     *
+     * @param string $invalidJson a payload the referenced component forbids
+     */
+    #[DataProvider('applicatorRefProvider')]
+    public function testARefUnderAnApplicatorIsEnforcedInEveryMode(string $key, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Marked' => [
+                        'type' => 'object',
+                        'required' => ['marker'],
+                        'properties' => ['marker' => ['type' => 'string', 'minLength' => 7]],
+                    ],
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => ['f' => self::applicatorProperty($key)],
+                    ],
+                ],
+            ],
+        ];
+
+        $valid = match ($key) {
+            'unevaluatedItems' => '{"f":["x",{"marker":"loooong"}]}',
+            default => '{"f":[{"marker":"loooong"}]}',
+        };
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'applicator ' . $key, $valid, $invalidJson),
+            context: 'applicator ' . $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function applicatorRefProvider(): array
+    {
+        return [
+            'contains' => ['contains', '{"f":[{"marker":"short"}]}'],
+            'prefixItems' => ['prefixItems', '{"f":[{"marker":"short"}]}'],
+            'unevaluatedItems' => ['unevaluatedItems', '{"f":["x",{"marker":"short"}]}'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function applicatorProperty(string $keyword): array
+    {
+        $ref = ['$ref' => '#/components/schemas/Marked'];
+
+        return match ($keyword) {
+            'contains' => ['type' => 'array', 'items' => ['type' => 'object'], 'contains' => $ref],
+            'prefixItems' => ['type' => 'array', 'prefixItems' => [$ref]],
+            default => [
+                'type' => 'array',
+                'prefixItems' => [['type' => 'string']],
+                'unevaluatedItems' => $ref,
+            ],
+        };
+    }
+
+    /**
      * @return array<string, array<string, array{expected: array{valid: bool, invalid: bool}, reason: string}>>
      */
     private static function declaredUnionChainDivergences(): array

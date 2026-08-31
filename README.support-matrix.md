@@ -57,6 +57,8 @@ changes who reports it, not whether it is caught.
 | `not` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `if` / `then` / `else` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | composition nested inside `items` / `additionalProperties` / `not` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| a `$ref` under `contains` / `prefixItems` / `unevaluatedItems` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `unevaluatedItems` as a SCHEMA (not just `false`) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | a self-referential schema, at every depth | ✅ | ✅ | ✅ | ✅ | ✅ |
 | mutually recursive schemas (`A → B → A`) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `contentEncoding` / `contentMediaType` / `contentSchema` | ✅ | ✅ | ✅ | ✅ | ✅ |

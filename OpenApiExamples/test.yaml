@@ -809,6 +809,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChainLink'
+    # A `$ref` under an APPLICATOR — the third spelling of the same loss. Nothing materializes for
+    # `contains` / `prefixItems` / `unevaluatedItems`, so a `$ref` there used to be dropped with the
+    # whole keyword: the same document written INLINE refused a violating payload, written as a `$ref`
+    # accepted it. Kept in the corpus because the EMISSION differs per mode.
+    ApplicatorRefs:
+      type: object
+      required:
+        - mustContain
+      properties:
+        mustContain:
+          type: array
+          items:
+            type: object
+          contains:
+            $ref: '#/components/schemas/ChainTag'
+        positions:
+          type: array
+          prefixItems:
+            - $ref: '#/components/schemas/ChainTag'
+        rest:
+          type: array
+          prefixItems:
+            - type: string
+          unevaluatedItems:
+            $ref: '#/components/schemas/ChainTag'
     UnionUnderContainer:
       type: object
       required:

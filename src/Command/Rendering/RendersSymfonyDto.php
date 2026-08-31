@@ -1484,16 +1484,40 @@ PHP;
         }
 
         if ($hasUnevaluatedItems) {
-            $sections[] = <<<'PHP'
-        if ($listValue && ($schema['unevaluatedItems'] ?? null) === false) {
-            foreach ($value as $index => $_itemValue) {
+            // TWO spellings, and only the first was emitted until 2.15.14. `unevaluatedItems: false`
+            // forbids an item the other keywords did not reach; `unevaluatedItems: {schema}` requires
+            // such an item to MATCH that schema, which is the form a document uses to type the tail
+            // after `prefixItems`. The runtime validator has always read both; here the schema form was
+            // carried in the constants and read by nothing, so every item past the prefix was accepted
+            // whatever it held — measured against runtime, which refused the same payload.
+            $sections[] = sprintf(
+                <<<'PHP'
+        if ($listValue && array_key_exists('unevaluatedItems', $schema)) {
+            $unevaluatedItemsSchema = $schema['unevaluatedItems'];
+            foreach ($value as $index => $itemValue) {
                 if (array_key_exists($index, $evaluatedItemIndices)) {
                     continue;
                 }
-                $errors[] = sprintf('%s has an unevaluated item at index %s which is not allowed', $path, $index);
+
+                if ($unevaluatedItemsSchema === false) {
+                    $errors[] = sprintf('%%s has an unevaluated item at index %%s which is not allowed', $path, $index);
+
+                    continue;
+                }
+
+                if (!is_array($unevaluatedItemsSchema)) {
+                    continue;
+                }
+
+%s                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($itemValue, $unevaluatedItemsSchema, $path . '[' . $index . ']', $depth + 1),
+                ];
             }
         }
-PHP;
+PHP,
+                $skipNestedDto('$itemValue'),
+            );
         }
 
         if ($hasAdditionalProperties || $hasUnevaluatedProperties) {

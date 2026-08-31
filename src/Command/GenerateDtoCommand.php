@@ -2646,6 +2646,49 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        // An APPLICATOR whose subschema is a `$ref`, at ANY level.
+        //
+        // `contains`, `prefixItems` and `unevaluatedItems` each describe a value nothing materializes
+        // for: there is no property to type and no class to write, so a `$ref` under them is left for
+        // `scrubUnvalidatableSubschemas()` to drop — and dropping it drops the whole keyword, because a
+        // subschema that extracts to `[]` is a subschema that matches everything. Measured on one
+        // component and one payload: with the schema written INLINE the violating payload is refused,
+        // written as a `$ref` it is accepted, in silence. That is the 2.15.6 union-branch bug and the
+        // 2.15.11 `allOf` bug in a third spelling.
+        //
+        // `belowMaterialization: true` unconditionally, and that is the whole point: unlike `allOf`,
+        // these keywords never materialize anything, not even on a property, so there is no level at
+        // which the inlining would be redundant.
+        //
+        // `not` is deliberately left out. An empty subschema matches EVERYTHING, so a dropped `not`
+        // accepts where it should reject — but an INLINED one would reject where it should accept, and
+        // a wrong fix there costs valid requests rather than silent passes. It gets its own measurement.
+        foreach (['contains', 'unevaluatedItems'] as $applicatorKey) {
+            if (is_array($schema[$applicatorKey] ?? null)) {
+                $schema[$applicatorKey] = $this->inlineNestedContainerValidation(
+                    schema: $schema[$applicatorKey],
+                    depth: $depth,
+                    belowMaterialization: true,
+                    refInlineBudget: $refInlineBudget,
+                    seenRefs: $seenRefs,
+                );
+            }
+        }
+
+        if (is_array($schema['prefixItems'] ?? null)) {
+            foreach ($schema['prefixItems'] as $index => $positionSchema) {
+                if (is_array($positionSchema)) {
+                    $schema['prefixItems'][$index] = $this->inlineNestedContainerValidation(
+                        schema: $positionSchema,
+                        depth: $depth,
+                        belowMaterialization: true,
+                        refInlineBudget: $refInlineBudget,
+                        seenRefs: $seenRefs,
+                    );
+                }
+            }
+        }
+
         // A PROPERTY restarts the container count — it is a value of its own, and where an item DID
         // become a DTO that class runs this for itself. What it does not restart is
         // `$belowMaterialization`: below the first level of items there is no class to run it.

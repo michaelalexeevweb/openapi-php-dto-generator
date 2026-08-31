@@ -3831,6 +3831,86 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A `$ref` under an APPLICATOR — the third spelling of one loss.
+     *
+     * `contains`, `prefixItems` and `unevaluatedItems` each describe a value nothing materializes for:
+     * no property to type, no class to write. A `$ref` there was therefore left for the scrubber, and
+     * dropping it dropped the whole KEYWORD — a subschema that extracts to `[]` matches everything, so
+     * `contains` stopped requiring, `prefixItems` stopped constraining the position and
+     * `unevaluatedItems` stopped guarding the tail. Measured against the identical document with the
+     * subschema written inline, which refused what the `$ref` spelling accepted.
+     *
+     * `not` is not here on purpose: an empty subschema matches everything, so a dropped `not` accepts
+     * where it should reject, and an inlined one would reject where it should accept. Getting it wrong
+     * costs valid requests, so it waits for its own measurement.
+     */
+    public function testARefUnderAnApplicatorIsCheckedLikeTheInlineSchemaItStandsFor(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Marked' => [
+                    'type' => 'object',
+                    'required' => ['marker'],
+                    'properties' => ['marker' => ['type' => 'string', 'minLength' => 7]],
+                ],
+                'Probe' => [
+                    'type' => 'object',
+                    'required' => ['mustContain', 'positions', 'rest'],
+                    'properties' => [
+                        'mustContain' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'object'],
+                            'contains' => ['$ref' => '#/components/schemas/Marked'],
+                        ],
+                        'positions' => [
+                            'type' => 'array',
+                            'prefixItems' => [['$ref' => '#/components/schemas/Marked']],
+                        ],
+                        'rest' => [
+                            'type' => 'array',
+                            'prefixItems' => [['type' => 'string']],
+                            'unevaluatedItems' => ['$ref' => '#/components/schemas/Marked'],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'ApplicatorRefNs', 'Probe');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Probe.php');
+        $this->assertSame(
+            3,
+            substr_count($source, "'minLength' => 7"),
+            "the referenced component's bound reaches all three applicators",
+        );
+
+        $valid = '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"loooong"}],'
+            . '"rest":["x",{"marker":"loooong"}]}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+        $this->assertSame([], (new DtoNormalizer())->validate($dto), 'a valid payload must stay valid');
+
+        $cases = [
+            'contains' => '{"mustContain":[{"marker":"short"}],"positions":[{"marker":"loooong"}],'
+                . '"rest":["x",{"marker":"loooong"}]}',
+            'prefixItems' => '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"short"}],'
+                . '"rest":["x",{"marker":"loooong"}]}',
+            'unevaluatedItems' => '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"loooong"}],'
+                . '"rest":["x",{"marker":"short"}]}',
+        ];
+
+        foreach ($cases as $keyword => $json) {
+            try {
+                (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+                $this->fail(sprintf('%s accepted a payload the referenced component forbids', $keyword));
+            } catch (RuntimeException $exception) {
+                $this->assertNotSame('', $exception->getMessage(), $keyword);
+            }
+        }
+    }
+
+    /**
      * A LIST goes out as a JSON array even when the PHP array it holds has gaps in its keys.
      *
      * `type: array` promises an array on the wire, and PHP keys are not part of that promise — but
