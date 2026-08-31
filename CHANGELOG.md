@@ -3,6 +3,30 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.15 — 2026-08-31
+
+- `then` and `else` carrying `properties` checked nothing
+
+A generated DTO validates its own fields against its own constraints, so the enclosing schema strips the
+`properties` RULES before re-checking the value — without that, every message arrives twice. The strip
+was applied to a CONDITIONAL branch as well, and there it is wrong: `then` and `else` are rules the
+parent applies on top of the class, and the class has never heard of them. Measured:
+`then: {properties: {code: {minLength: 7}}}` accepted `"short"`, while `then: {required: [code]}` —
+which the strip leaves alone — had been enforced all along, which is why the gap looked like support for
+the keyword rather than the absence of it.
+
+Only runtime mode was affected; the other four already enforced it, and `allOf`, `anyOf`, `oneOf` and
+`dependentSchemas` were right before this change. All six branch kinds are now asserted side by side, so
+a future fix that quietly accepts less shows up as a failure rather than as silence.
+
+**A limit is now documented rather than implied.** A conditional written on a PROPERTY is enforced in
+every mode; written at the TOP LEVEL of a component, `if` / `then` / `else` is carried into the
+constraint map by Symfony and yii3 only — runtime, laravel and laravel-data accept the object unchecked.
+Measured in all five modes. The neighbouring object-wide keywords (`minProperties`, `dependentRequired`,
+`not`) are emitted just as unevenly at that level, only yii3 carrying all of them, and their enforcement
+per mode is not yet measured — so the row says that rather than implying a clean answer. Workaround:
+state the rule on the property, or nest the object one level.
+
 ## 2.15.14 — 2026-08-31
 
 - a `$ref` under `contains` / `prefixItems` / `unevaluatedItems` was checked by nothing

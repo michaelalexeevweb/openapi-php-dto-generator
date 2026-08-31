@@ -113,6 +113,18 @@ final class ValidationParityTest extends TestCase
             'type string' => [['type' => 'string'], '{"f":"a"}', '{"f":5}'],
             'type integer' => [['type' => 'integer'], '{"f":5}', '{"f":"a"}'],
             'type union with null' => [['type' => ['string', 'null']], '{"f":null}', '{"f":5}'],
+            // A conditional branch carrying `properties`: the enclosing schema must not treat those
+            // rules as the DTO's own and strip them — the class has never heard of the condition.
+            'then with properties' => [
+                [
+                    'type' => 'object',
+                    'properties' => ['kind' => ['type' => 'string'], 'code' => ['type' => 'string']],
+                    'if' => ['type' => 'object'],
+                    'then' => ['properties' => ['code' => ['type' => 'string', 'minLength' => 7]]],
+                ],
+                '{"f":{"kind":"long","code":"loooong"}}',
+                '{"f":{"kind":"long","code":"short"}}',
+            ],
             // The same permission with `null` written FIRST — one document, two spellings.
             'type union null first' => [['type' => ['null', 'string']], '{"f":null}', '{"f":5}'],
             'enum' => [['type' => 'string', 'enum' => ['a', 'b']], '{"f":"a"}', '{"f":"z"}'],

@@ -3831,6 +3831,68 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A conditional branch is NOT owned by the DTO, and its `properties` are checked.
+     *
+     * A generated DTO validates its own fields against its own constraints, so the enclosing schema
+     * strips the `properties` RULES before re-checking the value — otherwise every message arrives
+     * twice. The strip was applied to `then`, `else` and a matching `dependentSchemas` entry as well,
+     * and those are rules the parent applies ON TOP of the class: the class has never heard of them, so
+     * stripping them checked nothing. Measured — `then: {properties: {code: {minLength: 7}}}` accepted
+     * `"short"`, while `then: {required: [code]}`, which the strip leaves alone, was enforced all along.
+     *
+     * `allOf`, `anyOf` and `oneOf` are asserted next to them: they are branches of the same kind and
+     * must keep working, which is how a fix here is told apart from a fix that just accepts less.
+     */
+    public function testAConditionalBranchIsNotOwnedByTheDtoAndItsPropertiesAreChecked(): void
+    {
+        $shape = ['kind' => ['type' => 'string'], 'code' => ['type' => 'string']];
+        $deep = ['properties' => ['code' => ['type' => 'string', 'minLength' => 7]]];
+
+        $branches = [
+            'then' => ['if' => ['type' => 'object'], 'then' => $deep],
+            'else' => ['if' => ['type' => 'string'], 'else' => $deep],
+            'dependentSchemas' => ['dependentSchemas' => ['kind' => $deep]],
+            'allOf' => ['allOf' => [$deep]],
+            'anyOf' => ['anyOf' => [$deep, ['type' => 'string']]],
+            'oneOf' => ['oneOf' => [$deep, ['type' => 'string']]],
+        ];
+
+        foreach ($branches as $keyword => $extra) {
+            $spec = [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => ['f' => ['type' => 'object', 'properties' => $shape] + $extra],
+                    ],
+                ]],
+            ];
+            $fqcn = $this->generateFromInlineSpec($spec, 'BranchOwner' . ucfirst($keyword) . 'Ns', 'Probe');
+
+            $valid = '{"f":{"kind":"long","code":"loooong"}}';
+            $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+            $this->assertSame([], (new DtoNormalizer())->validate($dto), $keyword . ': valid must pass');
+
+            // The verdict is captured, not asserted inside the `try`: `fail()` throws, and an assertion
+            // failure caught by the very `catch` that was meant to prove the refusal turns a broken
+            // branch into a green test — which is exactly what happened while this was being written.
+            $refused = false;
+            try {
+                (new DtoDeserializer())->deserialize(
+                    $this->jsonPostRequest('{"f":{"kind":"long","code":"short"}}'),
+                    $fqcn,
+                );
+            } catch (RuntimeException) {
+                $refused = true;
+            }
+
+            $this->assertTrue($refused, sprintf('%s accepted a value its branch forbids', $keyword));
+        }
+    }
+
+    /**
      * A `$ref` under an APPLICATOR — the third spelling of one loss.
      *
      * `contains`, `prefixItems` and `unevaluatedItems` each describe a value nothing materializes for:

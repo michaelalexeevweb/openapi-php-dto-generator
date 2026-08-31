@@ -100,6 +100,7 @@ final class DtoValidator implements DtoValidatorInterface
         array $constraints,
         int $depth,
         ?bool $hasComposition = null,
+        bool $propertyRulesOwnedByDto = true,
     ): array {
         // Guard against pathologically nested schemas exhausting the stack.
         if ($depth >= self::MAX_VALIDATION_DEPTH) {
@@ -219,11 +220,11 @@ final class DtoValidator implements DtoValidatorInterface
             if (array_key_exists('if', $constraints) && is_array($constraints['if'])) {
                 if ($this->validateConstraints($subject, $value, $constraints['if'], $depth + 1) === []) {
                     if (array_key_exists('then', $constraints) && is_array($constraints['then'])) {
-                        $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['then'], $depth + 1)];
+                        $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['then'], $depth + 1, propertyRulesOwnedByDto: false)];
                     }
                 } else {
                     if (array_key_exists('else', $constraints) && is_array($constraints['else'])) {
-                        $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['else'], $depth + 1)];
+                        $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['else'], $depth + 1, propertyRulesOwnedByDto: false)];
                     }
                 }
             }
@@ -335,7 +336,15 @@ final class DtoValidator implements DtoValidatorInterface
                     // nothing: it is the `stdClass` `json_decode()` produced two containers down,
                     // where no class was generated, so its `properties` are checked right here or
                     // nowhere at all.
-                    constraints: $isGeneratedDto ? $this->withPropertyRulesOwnedByTheDto($constraints) : $constraints,
+                    // …but only for the constraints the DTO's own schema HOLDS. A conditional branch is
+                    // not among them: `then`, `else` and a matching `dependentSchemas` entry are rules the
+                    // parent schema applies ON TOP of the class, and the class has never heard of them, so
+                    // stripping them here checked nothing at all. Measured: `then: {properties: {code:
+                    // {minLength: 7}}}` accepted `"short"` — while `then: {required: [code]}`, which this
+                    // helper leaves alone, was enforced all along.
+                    constraints: $isGeneratedDto && $propertyRulesOwnedByDto
+                        ? $this->withPropertyRulesOwnedByTheDto($constraints)
+                        : $constraints,
                     depth: $depth,
                 )];
             }
