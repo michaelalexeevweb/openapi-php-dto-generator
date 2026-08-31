@@ -3,6 +3,97 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.18 — 2026-08-31
+
+- a JSON body under `application/*+json` was never read
+- a `discriminator` without `mapping` refused to generate
+- Laravel reported one duplicate twice
+- a relative `$ref` in `allOf` broke yii3 generation
+- `type: [string, object]` generated a file PHP refuses to load
+- an empty schema (`{}`) was treated as an absent one
+- `uniqueItems` missed a duplicate written in another key order
+- an `integer` bound lost precision past 2^53
+- an uploaded file was shadowed by a query string of the same name
+- `format: uri` refused valid URNs
+
+A second review arrived, and unlike the first one every finding it made held up: eight were checked
+against the code, eight were real. What follows is what each one cost and what it costs now.
+
+**A PATCH endpoint could be entirely dead.** The body was read only when the `Content-Type` contained
+`application/json`, so `application/merge-patch+json` — RFC 7396, what a PATCH usually sends — decoded
+to nothing and every required property came back "not found in request". `application/hal+json` and any
+vendor `+json` type behaved the same. `DtoValidator` already had the right rule for `contentMediaType`;
+the deserializer now shares it rather than carrying a second one.
+
+**`type: [string, object]` emitted a compile error.** It produced `public readonly string|mixed $v`, and
+PHP refuses `mixed` inside a union, so the generated file could not be loaded at all — not a missed
+check, a fatal. A member that maps to nothing narrower now collapses the whole union to `mixed`, which
+already admits every other member. The unions that are legal keep their narrow form.
+
+**`{}` is a schema, not a hole.** It decodes to an empty PHP array, and three guards read that as "the
+keyword is absent": `items: {}` marked no index as evaluated, so `unevaluatedItems: false` cut a valid
+array; `contains: {}` matched nothing, so `minContains` could not be met; `additionalProperties: {}` left
+extra keys unevaluated for `unevaluatedProperties: false` to reject. All three measured, all three fixed,
+including the twins inside the evaluated-set collection.
+
+**`uniqueItems` compares content, not key order.** `[{"a":1,"b":2},{"b":2,"a":1}]` was accepted, because
+the fingerprint was the item encoded as it arrived. Objects are canonicalized before comparison now, at
+any depth; a LIST is left alone, because there order IS the value. The test that had asserted the old
+behaviour — "object fingerprints are order-sensitive" — was codifying an implementation detail, and now
+states the rule with the list case beside it.
+
+**An integer bound is exact again.** Every value was cast to float first, and `9007199254740992` and
+`9007199254740993` are one float, so `maximum: 9007199254740992` accepted the value above it. The
+comparison stays on integers while both sides are integers.
+
+**A query string no longer shadows an upload.** `POST /upload?avatar=ignored` with `avatar` in the
+multipart body handed a `string` to a property typed `UploadedFile`. Files come before query now, and
+only for files — a query value still beats a form field, because for a scalar the document cannot say
+which was meant, while a query string is never an upload. The swap had to be made in two places, the
+resolver and the inlined fast path, and the measurement did not move until both were done.
+
+**`format: uri` accepts URIs that are not URLs.** `urn:isbn:…`, `urn:uuid:…`, `mailto:`, `tel:` were
+refused by the URL filter. A scheme-only branch accepts them; anything with an authority still goes
+through the filter, so `http://[` stays refused rather than slipping in behind the new rule.
+
+**`uniqueItems` is one message again in Laravel mode.** It was emitted as Laravel's `distinct` rule, and
+that rule is right about WHETHER and wrong about HOW MANY: it reports once per offending element, so one
+duplicated pair produced two `validation.distinct` messages where every other mode reports the array's
+single violation once. Measured on scalar, union-valued and object items — the object case already
+belonged to the interpreter, because `distinct` cannot compare objects, so the keyword had two owners
+depending on the item type. It has one now, in every mode, with the same sentence. The cost is the native
+translatable string for the scalar case, and it is the right trade: a rule that miscounts breaks the
+invariant every `InterpreterMessageParityTest` case exists to protect. The test case moved with the
+keyword — out of "the rules alone must reject this" and into "the interpreter enforces what rules
+cannot".
+
+Two more of the review's findings were measured and fixed in the same release. A `discriminator`
+**without** an explicit `mapping` used to stop generation dead — `Discriminator mapping must be a
+non-empty map` — although OAS says the implicit value for each member is the schema NAME its `$ref`
+points at, which is how most documents are written. The implicit map is built from the union's members
+now; an explicit mapping still wins, and a hand-written empty one is still an error.
+
+And the flag that says "nothing materializes here, keep the composition" was lost one hop into
+`contentSchema`, `not`, `if`/`then` and `contains`: the four modes sharing one constraint filter emitted
+`{}` for a branch carrying `required` and a bound, while runtime kept it. Measured per keyword, threaded
+through, pinned by `ValidationParityTest`.
+
+**A relative `$ref` inside an `allOf` now resolves against the file that WROTE it**, in every mode.
+`sub/child.yaml` naming `../common/base.yaml#/…` means a sibling of `sub/`; yii3 mode resolved it from
+the ROOT document and generation died with `Referenced OpenAPI file not found`. That one is a regression
+this project introduced in 2.15.12, in the helper that merges an `allOf` class schema, and it stayed
+invisible because no fixture had three files. It has one now, driven through all five modes.
+
+Two findings did not reproduce and are recorded rather than "fixed": the type-kind cache storing
+`unknown` (a real autoloader is what `class_exists()` triggers, so the entry is never written for a
+loadable class) and two deserializer instances sharing a cached closure (both answered identically).
+Reproducing either needs a setup no application has by accident.
+
+One finding could not be fixed and says so in the code: `uint64` at its own boundary. Its maximum and the
+first value past it are the same double after `json_decode()`, so a guard that refuses the boundary
+refuses a legal value. Both directions were tried; the boundary is accepted, and a field needing the
+exact range belongs in a `type: string` with a `pattern`. `int64` has no such gap.
+
 ## 2.15.17 — 2026-08-31
 
 - `toJson()` no longer escapes slashes — the encoded string changes

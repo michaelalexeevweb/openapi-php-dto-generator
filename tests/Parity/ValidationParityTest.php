@@ -925,6 +925,70 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * An `allOf` under a keyword that materializes nothing is enforced in every mode.
+     *
+     * Symfony, Laravel, laravel-data and yii3 share one constraint filter, and the flag that says
+     * "nothing materializes here, keep the composition" was set for the container keys and lost at the
+     * first hop into `contentSchema`, `not`, `if`/`then` and `contains`. Those four modes emitted `{}`
+     * for a branch carrying `required` and a bound while runtime kept it — measured per key before the
+     * flag was threaded through.
+     *
+     * @param array<string, mixed> $extra the keyword under test, wrapping the same `allOf`
+     */
+    #[DataProvider('allOfUnderKeywordProvider')]
+    public function testAnAllOfUnderANonMaterializingKeywordIsEnforcedInEveryMode(
+        string $key,
+        array $extra,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'required' => ['f'], 'properties' => ['f' => $extra]],
+            ]],
+        ];
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'allofunder ' . $key, $validJson, $invalidJson),
+            context: 'allOf under ' . $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: string, 3: string}>
+     */
+    public static function allOfUnderKeywordProvider(): array
+    {
+        $deep = ['allOf' => [[
+            'type' => 'object',
+            'required' => ['marker'],
+            'properties' => ['marker' => ['type' => 'string', 'minLength' => 7]],
+        ]]];
+
+        return [
+            'then' => [
+                'then',
+                ['type' => 'object', 'properties' => ['marker' => ['type' => 'string']], 'if' => ['type' => 'object']] + ['then' => $deep],
+                '{"f":{"marker":"loooong"}}',
+                '{"f":{"marker":"short"}}',
+            ],
+            'contains' => [
+                'contains',
+                ['type' => 'array', 'items' => ['type' => 'object']] + ['contains' => $deep],
+                '{"f":[{"marker":"loooong"}]}',
+                '{"f":[{"marker":"short"}]}',
+            ],
+        ];
+    }
+
+    /**
      * What a document states about the OBJECT ITSELF, enforced in every mode.
      *
      * These keywords have no property to hang off, so each mode has to carry them at the class level or

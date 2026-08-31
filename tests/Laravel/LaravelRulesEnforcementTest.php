@@ -207,12 +207,6 @@ final class LaravelRulesEnforcementTest extends TestCase
                 ['f' => ['a']],
                 [],
             ],
-            'uniqueItems' => [
-                ['type' => 'array', 'items' => ['type' => 'string'], 'uniqueItems' => true],
-                ['f' => ['a', 'b']],
-                ['f' => ['a', 'a']],
-                [],
-            ],
             // `array` alone accepts an associative array; `list` is what says "JSON array".
             'array rejects an object' => [
                 ['type' => 'array', 'items' => ['type' => 'string']],
@@ -387,6 +381,17 @@ final class LaravelRulesEnforcementTest extends TestCase
     public static function interpreterProvider(): array
     {
         $cases = [
+            // `uniqueItems` used to be emitted as Laravel's `distinct` rule, and `distinct` is right
+            // about WHETHER and wrong about HOW MANY: it reports once per offending element, so one
+            // duplicated pair produced two `validation.distinct` messages where every other mode
+            // reports the array's single violation once. It belongs here — with the interpreter, which
+            // already owned it for object items, since `distinct` cannot compare those.
+            'uniqueItems' => [
+                ['type' => 'array', 'items' => ['type' => 'string'], 'uniqueItems' => true],
+                ['f' => ['a', 'b']],
+                ['f' => ['a', 'a']],
+                'must contain unique items',
+            ],
             'anyOf' => [
                 ['anyOf' => [['type' => 'string', 'minLength' => 3], ['type' => 'integer']]],
                 ['f' => 7],

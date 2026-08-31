@@ -207,6 +207,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * Whether a `Content-Type` names a JSON document.
+     *
+     * `application/json` and every structured-suffix type built on it: `application/merge-patch+json`
+     * (RFC 7396, which is what a PATCH endpoint usually sends), `application/hal+json`,
+     * `application/vnd.acme.v1+json`. Until 2.15.18 the check was `str_contains(…, 'application/json')`,
+     * so all of those read as "not JSON": the body was never decoded and every required property came
+     * back "not found in request" — a whole endpoint dead for a header the document never forbade.
+     * `DtoValidator` already had this rule for `contentMediaType`; this is the same rule, not a second
+     * one.
+     */
+    private function isJsonMediaType(string $contentType): bool
+    {
+        $normalized = strtolower(trim(explode(';', $contentType)[0]));
+
+        return $normalized === 'application/json' || str_ends_with($normalized, '+json');
+    }
+
+    /**
      * Deserializes a top-level JSON array request body (e.g. a bulk endpoint whose
      * `requestBody` schema is `type: array`) into a list of items, one per element.
      *
@@ -244,7 +262,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $contentType = (string)$request->headers->get('Content-Type', '');
-        if (!str_contains($contentType, 'application/json')) {
+        if (!$this->isJsonMediaType($contentType)) {
             throw new RuntimeException('Collection body must be application/json.');
         }
 
@@ -472,14 +490,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $rawWasProvided = true;
                     $rawSource = 'json';
                     $rawValue = $bodyData[$requestFieldName];
+                } elseif ($request !== null && $request->files->has($requestFieldName)) {
+                    // Files before query, for the reason spelled out in `resolveRawRequestValue()`:
+                    // a query string is never an upload, so `?avatar=x` must not stand in for the
+                    // multipart `avatar`. The two routes MUST agree, which is why the same swap is made
+                    // in both — an earlier fix that touched only the resolver left this branch taking
+                    // the query string, and the measurement did not budge.
+                    $rawWasProvided = true;
+                    $rawSource = 'files';
+                    $rawValue = $request->files->get($requestFieldName);
                 } elseif (array_key_exists($requestFieldName, $queryData)) {
                     $rawWasProvided = true;
                     $rawSource = 'query';
                     $rawValue = $queryData[$requestFieldName];
-                } elseif ($request !== null && $request->files->has($requestFieldName)) {
-                    $rawWasProvided = true;
-                    $rawSource = 'files';
-                    $rawValue = $request->files->get($requestFieldName);
                 } elseif (array_key_exists($requestFieldName, $formData)) {
                     $rawWasProvided = true;
                     $rawSource = 'form';
@@ -1458,16 +1481,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $bodyData[$paramName];
         }
 
-        if (array_key_exists($paramName, $queryData)) {
-            $wasProvided = true;
-            $source = 'query';
-            return $queryData[$paramName];
-        }
-
+        // An UPLOADED FILE wins over a query string of the same name, and only for that case is the
+        // waterfall order stepped over. `POST /upload?avatar=ignored` with `avatar` also present in the
+        // multipart body took the query string, handed a `string` to a property typed `UploadedFile` and
+        // died with `expects UploadedFile, got string` — a request the document describes perfectly.
+        // Nothing else changes order: a query value still beats a form field, because for a scalar the
+        // document cannot say which one was meant, while for a file it can — a query string is never a
+        // file.
         if ($request !== null && $request->files->has($paramName)) {
             $wasProvided = true;
             $source = 'files';
             return $request->files->get($paramName);
+        }
+
+        if (array_key_exists($paramName, $queryData)) {
+            $wasProvided = true;
+            $source = 'query';
+            return $queryData[$paramName];
         }
 
         if (array_key_exists($paramName, $formData)) {
@@ -1647,7 +1677,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $this->bodyDataCacheValue;
         }
 
-        if (!str_contains($contentType, 'application/json')) {
+        if (!$this->isJsonMediaType($contentType)) {
             $this->bodyDataCacheKey = $cacheKey;
             $this->bodyDataCacheValue = [];
             return [];
@@ -3111,7 +3141,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $contentType = (string)$request->headers->get('Content-Type', '');
-        if (str_contains($contentType, 'application/json')) {
+        if ($this->isJsonMediaType($contentType)) {
             return $exception;
         }
 

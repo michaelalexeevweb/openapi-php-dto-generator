@@ -230,7 +230,7 @@ trait RendersYii3Dto
             constraints: $this->yii3PruneNativelyCovered(
                 $this->filterSymfonyValidationConstraints(
                     constraints: $this->extractValidationConstraints(
-                        $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? []),
+                        $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
                     ),
                     allowScalarKeywords: true,
                 ),
@@ -1097,7 +1097,7 @@ PHP;
      * @param array<mixed> $schemaDefinition
      * @return array<mixed>
      */
-    private function yii3ClassSchemaWithInlineAllOfMerged(array $schemaDefinition): array
+    private function yii3ClassSchemaWithInlineAllOfMerged(array $schemaDefinition, string $ownerClass): array
     {
         $allOf = $schemaDefinition['allOf'] ?? null;
         if (!is_array($allOf) || $allOf === []) {
@@ -1114,7 +1114,7 @@ PHP;
 
             if (array_key_exists('$ref', $branch)) {
                 $branch = is_string($branch['$ref'])
-                    ? $this->yii3ResolvedRefSchema($branch['$ref'])
+                    ? $this->yii3ResolvedRefSchema($branch['$ref'], $ownerClass)
                     : [];
                 if ($branch === []) {
                     continue;
@@ -1148,15 +1148,23 @@ PHP;
      *
      * @return array<mixed>
      */
-    private function yii3ResolvedRefSchema(string $ref): array
+    private function yii3ResolvedRefSchema(string $ref, string $ownerClass): array
     {
-        $className = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->rootSpecFile);
+        // Resolved against the file the `$ref` was WRITTEN IN, not against the root document. A child
+        // schema in `sub/child.yaml` naming `../common/base.yaml#/…` means a sibling of `sub/`, and
+        // resolving it from the root made generation fail outright with `Referenced OpenAPI file not
+        // found`. Introduced with this helper in 2.15.12, measured with a three-file fixture in 2.15.18;
+        // runtime mode always used the owning file, which is why only yii3 broke.
+        $className = $this->schemaRefToClassName(
+            ref: $ref,
+            currentSourceFile: $this->getSchemaSourceFile($ownerClass),
+        );
         $definition = $this->dtoSchemas[$className] ?? null;
         if (!is_array($definition)) {
             return [];
         }
 
-        return $this->yii3ClassSchemaWithInlineAllOfMerged($definition);
+        return $this->yii3ClassSchemaWithInlineAllOfMerged($definition, $className);
     }
 
     /**

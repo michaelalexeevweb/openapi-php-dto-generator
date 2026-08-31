@@ -1,0 +1,14 @@
+openapi: 3.0.0
+info:
+  title: Root
+  version: 1.0.0
+paths: { }
+components:
+  schemas:
+    Holder:
+      type: object
+      required:
+        - cat
+      properties:
+        cat:
+          $ref: './sub/child.yaml#/components/schemas/Cat'

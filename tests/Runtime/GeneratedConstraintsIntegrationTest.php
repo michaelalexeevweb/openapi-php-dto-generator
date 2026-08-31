@@ -2014,6 +2014,100 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * An uploaded file is not shadowed by a query string of the same name.
+     *
+     * The waterfall read query before files, so `POST /upload?avatar=ignored` with `avatar` also in the
+     * multipart body handed a `string` to a property typed `UploadedFile` and died with
+     * `expects UploadedFile, got string` — for a request the document describes exactly. Files come
+     * first now, and only for files: a query value still beats a form field, because for a scalar the
+     * document cannot say which was meant, while a query string is never an upload.
+     *
+     * The swap had to be made TWICE — the resolver and the inlined fast path both walk the waterfall —
+     * and the measurement did not move until the second one was done.
+     */
+    public function testAnUploadedFileWinsOverAQueryStringOfTheSameName(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/upload' => ['post' => [
+                'operationId' => 'up',
+                'requestBody' => ['required' => true, 'content' => ['multipart/form-data' => ['schema' => [
+                    'type' => 'object',
+                    'required' => ['avatar'],
+                    'properties' => ['avatar' => ['type' => 'string', 'format' => 'binary']],
+                ]]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'UploadWinsNs', 'UploadPostRequest');
+
+        $file = tempnam(sys_get_temp_dir(), 'up');
+        $this->assertIsString($file);
+        file_put_contents($file, 'PNGDATA');
+
+        foreach (['/upload', '/upload?avatar=ignored'] as $uri) {
+            $request = Request::create(
+                $uri,
+                'POST',
+                [],
+                [],
+                ['avatar' => new UploadedFile($file, 'a.png', 'image/png', null, true)],
+                ['CONTENT_TYPE' => 'multipart/form-data'],
+            );
+
+            $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+            $this->assertInstanceOf(UploadedFile::class, $dto->getAvatar(), $uri);
+        }
+    }
+
+    /**
+     * A JSON body is read whatever structured-suffix media type carries it.
+     *
+     * The gate was `str_contains($contentType, 'application/json')`, so `application/merge-patch+json`
+     * — what a PATCH endpoint sends under RFC 7396 — read as "not JSON": the body was never decoded and
+     * every required property came back missing. `application/hal+json` and any `application/vnd.*+json`
+     * behaved the same. Measured before the fix on all four.
+     */
+    public function testAJsonBodyIsReadUnderAnyStructuredSuffixMediaType(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => [
+                    'type' => 'object',
+                    'required' => ['name'],
+                    'properties' => ['name' => ['type' => 'string']],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'JsonSuffixNs', 'Probe');
+
+        foreach ([
+            'application/json',
+            'application/merge-patch+json',
+            'application/hal+json',
+            'application/vnd.acme.v1+json',
+            'application/json; charset=utf-8',
+        ] as $mediaType) {
+            $request = Request::create(
+                '/',
+                'POST',
+                [],
+                [],
+                [],
+                ['CONTENT_TYPE' => $mediaType],
+                '{"name":"Alice"}',
+            );
+
+            $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+            $this->assertSame('Alice', $dto->getName(), $mediaType);
+        }
+    }
+
+    /**
      * `toJson()` leaves slashes alone, so a URL survives the round trip readably.
      *
      * `json_encode()` escapes them by default — valid JSON, read back identically — but it made this

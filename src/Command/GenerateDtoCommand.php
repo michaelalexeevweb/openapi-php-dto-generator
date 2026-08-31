@@ -1567,6 +1567,43 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The mapping a `discriminator` implies when the document does not spell one out.
+     *
+     * OAS: the implicit value for each member is the schema name the `$ref` points at, so
+     * `oneOf: [$ref Cat, $ref Dog]` with `propertyName: kind` means `kind: "Cat"` selects `Cat`. Only
+     * `$ref` members can take part — an inline branch has no name to be selected by, and a document
+     * mixing the two needs an explicit `mapping` for the inline half.
+     *
+     * @param array<mixed> $schemaDefinition
+     * @return array<string, string>
+     */
+    private function implicitDiscriminatorMapping(array $schemaDefinition): array
+    {
+        $mapping = [];
+
+        foreach (['oneOf', 'anyOf', 'allOf'] as $unionKey) {
+            $members = $schemaDefinition[$unionKey] ?? null;
+            if (!is_array($members)) {
+                continue;
+            }
+
+            foreach ($members as $member) {
+                if (!is_array($member) || !is_string($member['$ref'] ?? null)) {
+                    continue;
+                }
+
+                $ref = $member['$ref'];
+                $name = substr($ref, (int)strrpos($ref, '/') + 1);
+                if ($name !== '') {
+                    $mapping[$name] = $ref;
+                }
+            }
+        }
+
+        return $mapping;
+    }
+
+    /**
      * @param array<string, mixed> $schemaDefinition
      */
     private function collectDiscriminatorMetadata(string $className, array $schemaDefinition): void
@@ -1583,6 +1620,15 @@ final class GenerateDtoCommand extends Command
             throw new RuntimeException(
                 sprintf('Discriminator propertyName must be a non-empty string in %s.', $className),
             );
+        }
+
+        // An ABSENT mapping is not an error. OAS says the implicit mapping is the schema NAME behind each
+        // `$ref` of the union, and documents lean on that — writing `mapping` out is the exception, not
+        // the rule. Refusing it stopped generation dead on a document that is perfectly valid; the
+        // implicit map is built here from the union's own members. A mapping that IS written wins, and
+        // an EMPTY one written by hand is still an error, because it says "no member matches anything".
+        if ($mapping === null) {
+            $mapping = $this->implicitDiscriminatorMapping($schemaDefinition);
         }
 
         if (!is_array($mapping) || $mapping === []) {
@@ -3179,6 +3225,15 @@ final class GenerateDtoCommand extends Command
                         ),
                     ),
                 );
+
+                // `mixed` cannot stand in a union — PHP refuses `string|mixed` at COMPILE time, so a
+                // document writing `type: [string, object]` produced a file that could not be loaded at
+                // all. One member that maps to nothing narrower therefore collapses the whole union:
+                // `mixed` already includes every other member, so nothing is lost but the declaration.
+                // It also swallows the nullability, because `?mixed` is a fatal for the same reason.
+                if (in_array('mixed', $phpUnionParts, true)) {
+                    return ['mixed', false];
+                }
 
                 return [implode('|', $phpUnionParts), $nullable];
             }

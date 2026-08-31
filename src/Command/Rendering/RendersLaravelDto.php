@@ -720,11 +720,16 @@ trait RendersLaravelDto
 
         $rules = is_array($itemSchema) ? $this->laravelRulesForSchema($itemSchema) : [];
 
-        // `distinct` belongs on the ITEM path: it compares the sibling values of one array. On the
-        // property path the validator accepts it and enforces nothing (measured).
-        if ($unique) {
-            $rules[] = "'distinct'";
-        }
+        // `uniqueItems` is NOT emitted as `distinct`, and that is measured rather than assumed. The rule
+        // works — but it reports per offending ELEMENT, so one duplicated pair produced TWO
+        // `validation.distinct` messages where every other mode reports the array's single violation
+        // once. The keyword stays with the interpreter, which already owned it for object items because
+        // `distinct` cannot compare those: one owner, one message, the same sentence in all five modes.
+        //
+        // The cost is the native translatable string for the scalar case, and it is the right trade here:
+        // a rule that is right about WHETHER and wrong about HOW MANY breaks the invariant every
+        // `InterpreterMessageParityTest` case exists to protect.
+        unset($unique);
 
         $itemPath = $property['openApiName'] . '.*';
         $paths = $rules === [] ? [] : [$itemPath => $rules];

@@ -813,6 +813,20 @@ components:
     # 2.15.16 runtime mode emitted none of them and checked none — Symfony and yii3 refused the same
     # payloads — because its only schema-level slot carried the closed-object flag. Kept in the corpus
     # because the EMISSION differs per mode.
+    # `uniqueItems` over SCALAR items. Emitted as Laravel's `distinct` rule until 2.15.18, and that rule
+    # reports once per offending element — one duplicated pair produced two messages where every other
+    # mode reports the array's single violation once. The keyword belongs to the interpreter in every
+    # mode now; kept in the corpus because the EMISSION differs.
+    UniqueScalars:
+      type: object
+      required:
+        - tags
+      properties:
+        tags:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
     ObjectWideRules:
       type: object
       required:

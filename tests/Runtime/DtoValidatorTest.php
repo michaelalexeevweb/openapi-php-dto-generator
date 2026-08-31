@@ -2615,14 +2615,41 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($this->validator->validate('v', 0.30000001, ['multipleOf' => 0.1]));
     }
 
-    public function testUniqueItemsTreatsDifferentKeyOrderAsDistinct(): void
+    /**
+     * `uniqueItems` compares objects the way JSON Schema defines equality: by content, not by key order.
+     *
+     * This test asserted the OPPOSITE until 2.15.18 — "object fingerprints are order-sensitive" — and it
+     * was codifying an implementation detail rather than a rule. The fingerprint was `json_encode()` of
+     * the item as it arrived, so `{"a":1,"b":2}` and `{"b":2,"a":1}` produced two different strings and
+     * the duplicate went unreported. Key order is not part of an object's identity; the items are
+     * canonicalized before the comparison now, and the list case below is the half that proves the
+     * canonicalization did not overshoot — for a LIST, order IS the value.
+     */
+    public function testUniqueItemsComparesObjectsByContentNotKeyOrder(): void
     {
-        // Object fingerprints are order-sensitive: {a,b} and {b,a} are considered distinct items.
-        $this->assertSame([], $this->validator->validate(
-            'a',
-            [['a' => 1, 'b' => 2], ['b' => 2, 'a' => 1]],
-            ['type' => 'array', 'uniqueItems' => true],
-        ));
+        $this->assertNotEmpty(
+            $this->validator->validate(
+                'a',
+                [['a' => 1, 'b' => 2], ['b' => 2, 'a' => 1]],
+                ['type' => 'array', 'uniqueItems' => true],
+            ),
+            'the same object written in another key order is the same item',
+        );
+
+        $this->assertNotEmpty(
+            $this->validator->validate(
+                'a',
+                [['o' => ['a' => 1, 'b' => 2]], ['o' => ['b' => 2, 'a' => 1]]],
+                ['type' => 'array', 'uniqueItems' => true],
+            ),
+            'and that holds however deep the object sits',
+        );
+
+        $this->assertSame(
+            [],
+            $this->validator->validate('a', [[1, 2], [2, 1]], ['type' => 'array', 'uniqueItems' => true]),
+            'two lists in different order are two different values',
+        );
     }
 
     public function testContainsWithMinContainsZeroPassesWithoutMatch(): void
@@ -3080,6 +3107,103 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty(
             $this->validator->validate('u', "tab\there", ['type' => 'string', 'format' => 'uri-reference']),
         );
+    }
+
+    /**
+     * An EMPTY schema is not an absent one — `{}` matches every value.
+     *
+     * `{}` decodes to an empty PHP array, and three guards read that as "the keyword is not there":
+     * `items: {}` marked no index as evaluated, so `unevaluatedItems: false` cut a valid array;
+     * `contains: {}` found no match, so `minContains` could not be satisfied; `additionalProperties: {}`
+     * left extra keys unevaluated for `unevaluatedProperties: false` to reject. All three measured
+     * before the guards came out.
+     */
+    public function testAnEmptySchemaMatchesEveryValue(): void
+    {
+        $this->assertSame(
+            [],
+            $this->validator->validate('a', [1, 2], ['type' => 'array', 'items' => [], 'unevaluatedItems' => false]),
+            'items: {} evaluates every index',
+        );
+
+        $this->assertNotEmpty(
+            $this->validator->validate('a', [], ['type' => 'array', 'contains' => [], 'minContains' => 1]),
+            'contains: {} needs an item to match, and an empty array has none',
+        );
+        $this->assertSame(
+            [],
+            $this->validator->validate('a', [1], ['type' => 'array', 'contains' => [], 'minContains' => 1]),
+            'and one item is enough',
+        );
+
+        $this->assertSame(
+            [],
+            $this->validator->validate(
+                'o',
+                ['x' => 1],
+                ['type' => 'object', 'additionalProperties' => [], 'unevaluatedProperties' => false],
+            ),
+            'additionalProperties: {} evaluates every extra key',
+        );
+    }
+
+    /**
+     * An integer bound holds past 2^53, where a float stops telling neighbours apart.
+     *
+     * Every value used to be cast to float before the comparison, and `9007199254740992` and
+     * `9007199254740993` are ONE float — so `maximum: 9007199254740992` accepted the value above it.
+     * The comparison stays on integers while both sides are integers; the float path is unchanged, and
+     * the mixed cases below are what says so.
+     */
+    public function testIntegerBoundsAreExactBeyondFloatPrecision(): void
+    {
+        $this->assertNotEmpty(
+            $this->validator->validate('f', 9007199254740993, ['type' => 'integer', 'maximum' => 9007199254740992]),
+        );
+        $this->assertSame(
+            [],
+            $this->validator->validate('f', 9007199254740992, ['type' => 'integer', 'maximum' => 9007199254740992]),
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('f', 9007199254740992, ['type' => 'integer', 'minimum' => 9007199254740993]),
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate(
+                'f',
+                9007199254740993,
+                ['type' => 'integer', 'exclusiveMaximum' => 9007199254740993],
+            ),
+        );
+
+        // Floats still behave as floats.
+        $this->assertNotEmpty($this->validator->validate('f', 10.5, ['type' => 'number', 'maximum' => 10]));
+        $this->assertSame([], $this->validator->validate('f', 0.5, ['type' => 'number', 'minimum' => 0.5]));
+    }
+
+    /**
+     * `format: uri` accepts a URI, which is more than a URL.
+     *
+     * `FILTER_VALIDATE_URL` knows only the authority-based shapes, so `urn:isbn:0451450523` and
+     * `urn:uuid:…` — valid URIs under RFC 3986 and ordinary identifiers in a real document — were
+     * refused. The scheme-only branch added for them stops at `//`: an authority-based URI is still
+     * judged by the filter, so `http://[` stays refused rather than sneaking in through the new door.
+     */
+    public function testFormatUriAcceptsSchemeOnlyUrisAndStillRefusesBrokenAuthorities(): void
+    {
+        foreach (['urn:isbn:0451450523', 'urn:uuid:12345678-1234-1234-1234-123456789abc', 'mailto:a@b.test', 'tel:+1-816-555-1212'] as $uri) {
+            $this->assertSame(
+                [],
+                $this->validator->validate('u', $uri, ['type' => 'string', 'format' => 'uri']),
+                $uri,
+            );
+        }
+
+        foreach (['http://[', 'not a uri', '/relative/only', 'nocolon'] as $notAUri) {
+            $this->assertNotEmpty(
+                $this->validator->validate('u', $notAUri, ['type' => 'string', 'format' => 'uri']),
+                $notAUri,
+            );
+        }
     }
 
     /**

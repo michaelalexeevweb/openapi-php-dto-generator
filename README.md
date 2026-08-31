@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.17
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.18
 ```
 
 ---
@@ -76,8 +76,23 @@ final class UserPostRequest implements GeneratedDtoInterface, Stringable
 Which you use like this:
 
 ```php
-$dto = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
-$body = (new DtoNormalizer())->validateAndNormalizeToArray($responseDto);
+// IN — the HTTP request becomes a typed DTO, or this throws with every problem at once.
+$input = (new DtoDeserializer())->deserialize($request, UserPostRequest::class);
+$user = $users->find($id);
+
+$user->setEmail($input->getEmail());          // required by the document, so always there
+
+// A PATCH must touch only what the client actually sent, and `null` IS something the client can
+// send — it clears the nickname. `!== null` cannot tell those two apart; the presence check can.
+if ($input->isNicknameInRequest()) {
+    $user->setNickname($input->getNickname()); // may be null, and that is the point
+}
+
+// OUT — the response DTO is checked against its own schema before it is serialized, so a broken
+// response fails here rather than at the client.
+$responseBody = (new DtoNormalizer())->validateAndNormalizeToArray(
+    new UserResponse(email: $user->getEmail(), nickname: $user->getNickname()),
+);
 ```
 
 And which answers like this — the messages below are the real output, not a paraphrase:

@@ -2701,7 +2701,16 @@ PHP,
                 case 'propertyNames':
                 case 'contentSchema':
                     if (is_array($value)) {
-                        $nested = $this->filterSymfonyValidationConstraints($value, allowScalarKeywords: true);
+                        // `belowContainer: true`, and for the same reason the container keys pass it:
+                        // nothing materializes under any of these, so an `allOf` here has no class to
+                        // check it and must reach the interpreter. Without it the flag was lost at the
+                        // first hop and Symfony emitted `{}` for a branch carrying `required` and bounds
+                        // — measured against runtime, which kept them, on all four keys.
+                        $nested = $this->filterSymfonyValidationConstraints(
+                            $value,
+                            allowScalarKeywords: true,
+                            belowContainer: true,
+                        );
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }

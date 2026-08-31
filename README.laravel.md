@@ -15,7 +15,7 @@ with the framework — no `spatie/laravel-data`, and no runtime dependency on th
 
 **Laravel 11 or newer.** The one rule that pins the floor is `list`, added in 11 — it is the only way to
 say "a JSON array, not an associative one", and without it `type: array` has no faithful rule at all.
-Everything else the mode emits (`Rule::enum`, `multiple_of`, `distinct`) is older.
+Everything else the mode emits (`Rule::enum`, `multiple_of`) is older.
 
 Every schema becomes a DTO. A DTO that describes an INCOMING payload also gets a `FormRequest`:
 
@@ -103,7 +103,7 @@ public static function rules(): array
         'summary' => ['sometimes', 'nullable', 'string'],
         'tags' => ['sometimes', 'array', 'list'],
         'tags.*.name' => ['required_with:tags', 'string', 'min:2'],
-        'scores.*' => ['integer', 'min:0', 'distinct'],
+        'scores.*' => ['integer', 'min:0'],
     ];
 }
 ```
@@ -123,7 +123,7 @@ easy to get wrong and are therefore worth knowing:
 | `array` **and** `list` | `array` alone accepts an associative array; `list` is what says "JSON array" |
 | `min:` / `max:` only when the type is pinned | the same rule means length, value or count depending on the type rule beside it, so an unpinned `oneOf` gets no bounds — the interpreter takes them instead |
 | …and never for an EXCLUSIVE bound | `min:` is inclusive and Laravel has no exclusive spelling. A `minimum: 3` carrying `exclusiveMinimum: true` (the OpenAPI 3.0 form) therefore goes to the interpreter WHOLE. Emitting `min:3` for it also took the keyword away from the interpreter, and the boundary value was accepted where every other mode refused it |
-| `distinct` on `field.*` | `distinct` compares the sibling values of an array; on the property path Laravel accepts it and enforces nothing |
+| no `distinct` for `uniqueItems` | the rule is right about WHETHER and wrong about HOW MANY: it reports once per offending ELEMENT, so one duplicated pair produced two `validation.distinct` messages where every other mode reports the array's single violation once. `uniqueItems` belongs to the interpreter in every mode — which already owned it for object items, since `distinct` cannot compare those |
 | an `int` property is hydrated through a coercion | `42.0` IS an integer per JSON Schema 2020-12 §6.1.1, Laravel's `integer` rule agrees, and PHP still decodes it to a float — so `fromValidated()` converts a zero-fraction float rather than dying with a TypeError after a passing validation |
 
 ### What the interpreter enforces
@@ -134,7 +134,7 @@ These keywords are checked by `withValidator()` against the payload the validato
 `oneOf`, `anyOf`, `allOf`, `not`, `if`/`then`/`else`, `contains`, `minContains`/`maxContains`,
 `prefixItems`, `unevaluatedProperties`, `unevaluatedItems`, `propertyNames`, `patternProperties`,
 `dependentSchemas`, `discriminator`, `exclusiveMinimum`/`exclusiveMaximum`, `dependentRequired`,
-`uniqueItems` over object members, and every string format Laravel has no rule for (`hostname`,
+`uniqueItems` (over any member type, see the note above), and every string format Laravel has no rule for (`hostname`,
 `duration`, `json-pointer`, `uri-template`, `idn-*`, `byte`, …).
 
 Two consequences worth stating plainly:

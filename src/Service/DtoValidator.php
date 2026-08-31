@@ -11,6 +11,7 @@ use JsonException;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use stdClass;
 use Symfony\Component\HttpFoundation\File\File;
 
 final class DtoValidator implements DtoValidatorInterface
@@ -267,7 +268,14 @@ final class DtoValidator implements DtoValidatorInterface
                 || array_key_exists('exclusiveMaximum', $constraints)
                 || array_key_exists('multipleOf', $constraints))
         ) {
-            $errors = [...$errors, ...$this->validateNumeric(subject: $subject, value: (float)$value, constraints: $constraints)];
+            // Passed WITHOUT a float cast: an integer beyond 2^53 loses its identity as a float, so
+            // `maximum: 9007199254740992` accepted `9007199254740993` — the two are one float. The
+            // comparisons below stay exact while both sides are integers.
+            $errors = [...$errors, ...$this->validateNumeric(
+                subject: $subject,
+                value: $value,
+                constraints: $constraints,
+            )];
         }
 
         if ($isNumeric && is_string($constraints['format'] ?? null)) {
@@ -548,25 +556,42 @@ final class DtoValidator implements DtoValidatorInterface
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
-    private function validateNumeric(string $subject, float $value, array $constraints): array
+    private function validateNumeric(string $subject, int|float $value, array $constraints): array
     {
         $errors = [];
 
-        $minimum = $this->toFloatOrNull($constraints['minimum'] ?? null);
-        $maximum = $this->toFloatOrNull($constraints['maximum'] ?? null);
+        // The RAW bound is kept beside the float one: when it and the value are both integers the
+        // comparison is done on integers, which is the only way `9007199254740993` can be told from
+        // `9007199254740992`. The float form is still what the message prints.
+        $rawMinimum = $constraints['minimum'] ?? null;
+        $rawMaximum = $constraints['maximum'] ?? null;
+        $minimum = $this->toFloatOrNull($rawMinimum);
+        $maximum = $this->toFloatOrNull($rawMaximum);
+        $atLeast = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
+            ? $value >= $bound
+            : (float)$value >= (float)$bound;
+        $atMost = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
+            ? $value <= $bound
+            : (float)$value <= (float)$bound;
+        $above = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
+            ? $value > $bound
+            : (float)$value > (float)$bound;
+        $below = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
+            ? $value < $bound
+            : (float)$value < (float)$bound;
 
         $exclusiveMinimum = $constraints['exclusiveMinimum'] ?? null;
         if (is_numeric($exclusiveMinimum)) {
             $minExclusive = (float)$exclusiveMinimum;
-            if (!($value > $minExclusive)) {
+            if (!$above(is_int($exclusiveMinimum) ? $exclusiveMinimum : $minExclusive)) {
                 $errors[] = "{$subject} must be greater than {$this->stringifyNumber($minExclusive)}";
             }
         } elseif ($minimum !== null) {
             if (($constraints['exclusiveMinimum'] ?? null) === true) {
-                if (!($value > $minimum)) {
+                if (!$above(is_int($rawMinimum) ? $rawMinimum : $minimum)) {
                     $errors[] = "{$subject} must be greater than {$this->stringifyNumber($minimum)}";
                 }
-            } elseif (!($value >= $minimum)) {
+            } elseif (!$atLeast(is_int($rawMinimum) ? $rawMinimum : $minimum)) {
                 $errors[] = "{$subject} must be greater than or equal to {$this->stringifyNumber($minimum)}";
             }
         }
@@ -574,15 +599,15 @@ final class DtoValidator implements DtoValidatorInterface
         $exclusiveMaximum = $constraints['exclusiveMaximum'] ?? null;
         if (is_numeric($exclusiveMaximum)) {
             $maxExclusive = (float)$exclusiveMaximum;
-            if (!($value < $maxExclusive)) {
+            if (!$below(is_int($exclusiveMaximum) ? $exclusiveMaximum : $maxExclusive)) {
                 $errors[] = "{$subject} must be less than {$this->stringifyNumber($maxExclusive)}";
             }
         } elseif ($maximum !== null) {
             if (($constraints['exclusiveMaximum'] ?? null) === true) {
-                if (!($value < $maximum)) {
+                if (!$below(is_int($rawMaximum) ? $rawMaximum : $maximum)) {
                     $errors[] = "{$subject} must be less than {$this->stringifyNumber($maximum)}";
                 }
-            } elseif (!($value <= $maximum)) {
+            } elseif (!$atMost(is_int($rawMaximum) ? $rawMaximum : $maximum)) {
                 $errors[] = "{$subject} must be less than or equal to {$this->stringifyNumber($maximum)}";
             }
         }
@@ -634,6 +659,14 @@ final class DtoValidator implements DtoValidatorInterface
         if (is_float($value) && $format === 'int64' && $value >= 9223372036854775808.0) {
             return ["{$subject} must be within {$format} range ({$min} to {$maxLabel})"];
         }
+
+        // `uint64` gets no such guard, and that is measured rather than forgotten: its legal maximum
+        // `18446744073709551615` and the first illegal value `18446744073709551616` are THE SAME float
+        // once `json_decode()` is done, so a guard that refuses the boundary refuses a legal value and
+        // one that accepts it lets 2^64 through. Tried both; the boundary float is accepted, because a
+        // false rejection of the documented maximum costs live requests while the other direction costs
+        // one impossible-in-practice value. A document needing exact 64-bit unsigned range should carry
+        // it as `type: string` with a `pattern`, where nothing is rounded.
 
         if ($value < $min) {
             return ["{$subject} must be within {$format} range ({$min} to {$maxLabel})"];
@@ -777,6 +810,34 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * The value as JSON Schema compares it: object keys sorted, list order untouched.
+     *
+     * `uniqueItems` asks whether two items are EQUAL, and two objects are equal when they carry the
+     * same properties with the same values — key order is not part of the identity. Encoding the item
+     * as it arrived made it part of the identity: `[{"a":1,"b":2},{"b":2,"a":1}]` produced two
+     * different strings and passed a check it should have failed. A LIST is left alone, because there
+     * element order IS the value.
+     */
+    private function canonicalizeForEquality(mixed $value): mixed
+    {
+        if ($value instanceof stdClass) {
+            $value = (array)$value;
+        }
+
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $canonical = array_map(fn(mixed $item): mixed => $this->canonicalizeForEquality($item), $value);
+
+        if (!array_is_list($canonical)) {
+            ksort($canonical);
+        }
+
+        return $canonical;
+    }
+
+    /**
      * @param array<array-key, mixed> $value
      * @param array<string, mixed> $constraints
      * @return array<string>
@@ -891,7 +952,7 @@ final class DtoValidator implements DtoValidatorInterface
                     $errors[] = "{$subject} has additional property \"{$key}\" which is not allowed";
                 }
             }
-        } elseif (is_array($additionalProperties) && $additionalProperties !== []) {
+        } elseif (is_array($additionalProperties)) {
             foreach ($value as $key => $itemValue) {
                 if ($isKnownKey((string)$key)) {
                     continue;
@@ -987,7 +1048,7 @@ final class DtoValidator implements DtoValidatorInterface
                 } else {
                     try {
                         $fingerprint = 'j:' . json_encode(
-                            value: $item,
+                            value: $this->canonicalizeForEquality($item),
                             flags: JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
                         );
                     } catch (JsonException) {
@@ -1005,7 +1066,12 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         $itemConstraints = $constraints['items'] ?? null;
-        if (is_array($itemConstraints) && $itemConstraints !== []) {
+        // `!== []` is deliberately absent: `{}` decodes to an empty PHP array, and an EMPTY SCHEMA is
+        // not an absent one — it matches every value. Treating the two alike meant `items: {}` marked
+        // nothing as evaluated, so `unevaluatedItems: false` cut a valid array; `contains: {}` found no
+        // match, so `minContains` could not be satisfied; and `additionalProperties: {}` left extra keys
+        // unevaluated for `unevaluatedProperties: false` to reject. Measured on all three.
+        if (is_array($itemConstraints)) {
             // Per JSON Schema 2020-12, `items` is a suffix validator: when `prefixItems` is
             // also present it applies only to indices ≥ count(prefixItems). The prefix
             // positions are validated by their own `prefixItems` schemas below.
@@ -1043,7 +1109,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         $containsSchema = $constraints['contains'] ?? null;
-        if (is_array($containsSchema) && $containsSchema !== []) {
+        if (is_array($containsSchema)) {
             // Same reasoning as `items` above: one schema, every element, so the question is asked
             // once rather than per element.
             $containsHasComposition = array_key_exists('allOf', $containsSchema)
@@ -1167,7 +1233,7 @@ final class DtoValidator implements DtoValidatorInterface
 
         // additionalProperties as a schema (or `true`) evaluates every remaining key.
         $additional = $constraints['additionalProperties'] ?? null;
-        if ($additional === true || (is_array($additional) && $additional !== [])) {
+        if ($additional === true || is_array($additional)) {
             foreach (array_keys($value) as $key) {
                 $evaluated[(string)$key] = true;
             }
@@ -1248,7 +1314,7 @@ final class DtoValidator implements DtoValidatorInterface
         // `items` (a schema, not `false`) is a suffix validator covering every index at or
         // beyond the prefix length → all such positions are evaluated.
         $items = $constraints['items'] ?? null;
-        if (is_array($items) && $items !== []) {
+        if (is_array($items)) {
             foreach (array_keys($value) as $key) {
                 if (is_int($key) && $key >= $prefixCount) {
                     $evaluated[$key] = true;
@@ -1258,7 +1324,7 @@ final class DtoValidator implements DtoValidatorInterface
 
         // `contains` evaluates each index whose item matches the contains schema.
         $contains = $constraints['contains'] ?? null;
-        if (is_array($contains) && $contains !== []) {
+        if (is_array($contains)) {
             foreach ($value as $key => $itemValue) {
                 if (is_int($key) && $this->validateConstraints('', $itemValue, $contains, $depth + 1) === []) {
                     $evaluated[$key] = true;
@@ -1313,7 +1379,7 @@ final class DtoValidator implements DtoValidatorInterface
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
             'idn-email' => filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false,
             'uuid' => $this->isValidUuid(value: $value),
-            'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
+            'uri' => $this->isValidUri(value: $value),
             'iri' => $this->isValidIri(value: $value),
             'uri-reference', 'iri-reference' => $this->isValidUriReference(value: $value),
             'uri-template' => $this->isValidUriTemplate(value: $value),
@@ -1342,6 +1408,29 @@ final class DtoValidator implements DtoValidatorInterface
         } finally {
             restore_error_handler();
         }
+    }
+
+    /**
+     * An absolute URI, which is not the same thing as a URL.
+     *
+     * `FILTER_VALIDATE_URL` only knows the authority-based shapes — `http://`, `ftp://` and friends —
+     * so it refused `urn:isbn:0451450523` and `urn:uuid:…`, both perfectly valid URIs under RFC 3986
+     * and both things a real document uses as an identifier. A URI needs a scheme and something after
+     * the colon; whether that something starts with `//` is the difference between a URL and a URN, not
+     * between valid and invalid. The URL filter still answers for the authority-based forms, so nothing
+     * that passed before stops passing.
+     */
+    private function isValidUri(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_URL) !== false) {
+            return true;
+        }
+
+        // scheme ":" then a non-empty, space-free remainder, and NOT starting with `//`: an
+        // authority-based URI is exactly what the URL filter above already judged, and letting it in
+        // here would accept `http://[` — a malformed host — as valid. This branch is for the
+        // scheme-only shapes: `urn:`, `mailto:`, `tel:`.
+        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/', $value) === 1;
     }
 
     private function isValidTimeFormat(string $value): bool

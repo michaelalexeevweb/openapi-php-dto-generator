@@ -564,6 +564,159 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * A relative `$ref` inside an `allOf` resolves against the file that WROTE it, in every mode.
+     *
+     * `sub/child.yaml` naming `../common/base.yaml#/…` means a sibling of `sub/`. yii3 mode resolved it
+     * from the ROOT document instead and generation died with `Referenced OpenAPI file not found` — a
+     * regression introduced in 2.15.12 with the helper that merges an `allOf` class schema, and invisible
+     * until a three-file fixture existed to show it. Runtime always used the owning file, which is why
+     * only one mode broke.
+     *
+     * @param string $mode the generation mode under test
+     */
+    #[DataProvider('modeProvider')]
+    public function testARelativeRefInsideAllOfResolvesAgainstItsOwnFile(string $mode): void
+    {
+        $target = $this->outputDirectory . '/ExtAllOf' . ucfirst(str_replace('-', '', $mode));
+        if (!is_dir($target)) {
+            mkdir($target, 0o755, true);
+        }
+
+        $count = $this->generator->generateFromFile(
+            __DIR__ . '/../fixtures/external-ref-allof/root.yaml',
+            $target,
+            'ExtAllOf' . ucfirst(str_replace('-', '', $mode)),
+            $mode,
+        );
+
+        $this->assertGreaterThan(0, $count, $mode . ': generation must produce classes');
+
+        $holder = (string)file_get_contents($target . '/Holder.php');
+        $this->assertMatchesRegularExpression('/readonly \??Cat \$cat/', $holder, $mode);
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function modeProvider(): array
+    {
+        return [
+            'runtime' => ['runtime'],
+            'symfony' => ['symfony'],
+            'laravel' => ['laravel'],
+            'laravel-data' => ['laravel-data'],
+            'yii3' => ['yii3'],
+        ];
+    }
+
+    /**
+     * A `discriminator` without an explicit `mapping` builds the implicit one instead of refusing.
+     *
+     * OAS says the implicit value for each member is the schema NAME the `$ref` points at, and documents
+     * lean on that — spelling `mapping` out is the exception. Refusing an absent mapping stopped
+     * generation dead with `Discriminator mapping must be a non-empty map`, on a document that is valid.
+     * An explicit mapping still wins, and a hand-written EMPTY one is still an error: it says no member
+     * matches anything.
+     */
+    public function testADiscriminatorWithoutMappingUsesTheSchemaNames(): void
+    {
+        $target = $this->outputDirectory . '/ImplicitDisc';
+        if (!is_dir($target)) {
+            mkdir($target, 0o755, true);
+        }
+
+        $this->generator->generateFromArray(
+            [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Cat' => [
+                        'type' => 'object',
+                        'required' => ['kind'],
+                        'properties' => ['kind' => ['type' => 'string'], 'meow' => ['type' => 'string']],
+                    ],
+                    'Dog' => [
+                        'type' => 'object',
+                        'required' => ['kind'],
+                        'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'string']],
+                    ],
+                    'Pet' => [
+                        'oneOf' => [
+                            ['$ref' => '#/components/schemas/Cat'],
+                            ['$ref' => '#/components/schemas/Dog'],
+                        ],
+                        'discriminator' => ['propertyName' => 'kind'],
+                    ],
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['pet'],
+                        'properties' => ['pet' => ['$ref' => '#/components/schemas/Pet']],
+                    ],
+                ]],
+            ],
+            $target,
+            'ImplicitDisc',
+        );
+
+        $this->assertFileExists($target . '/Cat.php');
+        $this->assertFileExists($target . '/Dog.php');
+        $this->assertNull($this->lintError($target . '/Pet.php'));
+
+        // The members are selectable by their own schema names, which is what the implicit mapping is.
+        $pet = (string)file_get_contents($target . '/Pet.php');
+        $this->assertStringContainsString('kind', $pet);
+        $holder = (string)file_get_contents($target . '/Holder.php');
+        $this->assertStringContainsString('Pet', $holder);
+    }
+
+    /**
+     * A 3.1 multi-type that includes a non-scalar collapses to `mixed`, because `string|mixed` is a
+     * COMPILE error.
+     *
+     * `type: [string, object]` produced `public readonly string|mixed $v` — PHP refuses `mixed` inside a
+     * union, so the generated file could not be loaded at all. Not a wrong check: a fatal. `mixed`
+     * already admits every member, so nothing is lost but the narrower declaration, and the unions that
+     * ARE legal keep it — which is the half that says the collapse did not overshoot.
+     */
+    public function testAMultiTypeWithANonScalarCollapsesToMixedRatherThanEmittingAFatal(): void
+    {
+        foreach ([
+            'object member' => [['string', 'object'], 'mixed'],
+            'array member' => [['string', 'array'], 'string|array'],
+            'scalars only' => [['string', 'integer'], 'string|int'],
+        ] as $case => [$type, $expectedDeclaration]) {
+            $target = $this->outputDirectory . '/MultiType' . preg_replace('/\W/', '', $case);
+            if (!is_dir($target)) {
+                mkdir($target, 0o755, true);
+            }
+
+            $this->generator->generateFromArray(
+                [
+                    'openapi' => '3.1.0',
+                    'info' => ['title' => 'T', 'version' => '1.0.0'],
+                    'components' => ['schemas' => [
+                        'Probe' => [
+                            'type' => 'object',
+                            'required' => ['v'],
+                            'properties' => ['v' => ['type' => $type]],
+                        ],
+                    ]],
+                ],
+                $target,
+                'MultiType' . preg_replace('/\W/', '', $case),
+            );
+
+            $source = (string)file_get_contents($target . '/Probe.php');
+            $this->assertMatchesRegularExpression(
+                '/readonly ' . preg_quote($expectedDeclaration, '/') . ' \$v/',
+                $source,
+                $case,
+            );
+            $this->assertNull($this->lintError($target . '/Probe.php'), $case . ': the file must parse');
+        }
+    }
+
+    /**
      * The inline ceiling is reported, and the cycle guard deliberately is not.
      *
      * Everything past the ceiling is accepted unchecked, and the generated code does not mention those

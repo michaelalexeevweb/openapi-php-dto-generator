@@ -332,6 +332,10 @@ class UserController
   application that wants violations should use [Symfony mode](README.symfony.md).
 - A map normalizes to `stdClass` so it always encodes as a JSON object — except a map nested inside
   a list, which stays a PHP array and therefore encodes as `[]` when empty.
+- A JSON body is read under `application/json` and any structured-suffix type built on it —
+  `application/merge-patch+json`, `application/hal+json`, `application/vnd.acme.v1+json`.
+- An uploaded file beats a query string of the same name; everywhere else the source order is
+  path → body → query → files → form.
 - `toJson()` leaves forward slashes alone, so a URL reads `https://example.com/a` in the encoded
   string. `json_encode()` escapes them by default; this package does not, here or anywhere else it
   writes JSON. Anything matching on the escaped spelling from 2.15.16 or earlier needs updating — the
