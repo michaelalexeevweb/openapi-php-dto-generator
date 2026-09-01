@@ -51,7 +51,8 @@ use Twig\TwigFilter;
  *   readOnly?: bool,
  *   writeOnly?: bool,
  *   deprecated?: bool,
- *   isMap?: bool
+ *   isMap?: bool,
+ *   isShapeUnion?: bool
  * }
  * @phpstan-type SchemaMetadata array{
  *   properties: array<int, SchemaProperty>,
@@ -2264,6 +2265,7 @@ final class GenerateDtoCommand extends Command
                 'writeOnly' => (bool)($propertySchema['writeOnly'] ?? false),
                 'deprecated' => (bool)($propertySchema['deprecated'] ?? false),
                 'isMap' => $this->isMapType($type),
+                'isShapeUnion' => $this->unionAdmitsNonListShape($propertySchema),
             ];
         }
 
@@ -2279,6 +2281,168 @@ final class GenerateDtoCommand extends Command
     private function isMapType(string $type): bool
     {
         return str_starts_with($type, 'array<string, ');
+    }
+
+    /**
+     * True when a `oneOf`/`anyOf` property admits a wire shape that is NOT a JSON array — a map, an
+     * object or a scalar. The PHP type cannot answer this: a union of `type: array` and
+     * `type: object` collapses to a bare `array` (every generic branch is widened to `array` and the
+     * duplicates fold into one), which is indistinguishable from a plain list, while `isMap` only
+     * recognises `array<string, V>`. Such a property therefore fell through to "list" and was
+     * reindexed on the way out, which destroys a map's keys. It must be serialized RAW instead:
+     * `array_values()` breaks the map branch, `(object)` breaks the list branch, and only the value
+     * itself knows which branch it is.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    private function unionAdmitsNonListShape(array $propertySchema): bool
+    {
+        $propertySchema = $this->unwrapSingleUnionAllOf($propertySchema);
+
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $variants = $propertySchema[$keyword] ?? null;
+            if (!is_array($variants)) {
+                continue;
+            }
+
+            foreach ($variants as $variant) {
+                if (!is_array($variant) || $this->isNullUnionBranch($variant)) {
+                    continue;
+                }
+
+                if (!$this->unionBranchIsList($variant, [])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether ONE union branch promises a JSON array. Unknown shapes (an external `$ref`, a
+     * `$ref` cycle) answer false: raw pass-through is the safe side — it can only lose a
+     * reindex, never a key.
+     *
+     * @param array<string, mixed> $branch
+     * @param array<int, string> $visitedRefs
+     */
+    private function unionBranchIsList(array $branch, array $visitedRefs): bool
+    {
+        $branch = $this->unwrapSingleUnionAllOf($branch);
+
+        $isNestedUnion = false;
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $variants = $branch[$keyword] ?? null;
+            if (!is_array($variants)) {
+                continue;
+            }
+
+            $isNestedUnion = true;
+            foreach ($variants as $variant) {
+                if (!is_array($variant) || $this->isNullUnionBranch($variant)) {
+                    continue;
+                }
+
+                if (!$this->unionBranchIsList($variant, $visitedRefs)) {
+                    return false;
+                }
+            }
+        }
+
+        if ($isNestedUnion) {
+            return true;
+        }
+
+        $ref = $branch['$ref'] ?? null;
+        if (is_string($ref)) {
+            $definition = $this->localSchemaDefinitionForRef($ref);
+            if ($definition === null || in_array($ref, $visitedRefs, true)) {
+                return false;
+            }
+
+            $visitedRefs[] = $ref;
+
+            return $this->unionBranchIsList($definition, $visitedRefs);
+        }
+
+        $type = $branch['type'] ?? null;
+        if (is_array($type)) {
+            // OAS 3.1 type union (`type: [array, object]`): a list only when every member says so.
+            $sawArray = false;
+            foreach ($type as $member) {
+                if ($member === 'null') {
+                    continue;
+                }
+
+                if ($member !== 'array') {
+                    return false;
+                }
+
+                $sawArray = true;
+            }
+
+            return $sawArray;
+        }
+
+        return $type === 'array';
+    }
+
+    /**
+     * A branch that only adds null to the union: `type: null`, or the OpenAPI 3.0 `{nullable: true}`
+     * idiom. It says nothing about the wire shape of the other branches.
+     *
+     * @param array<string, mixed> $variant
+     */
+    private function isNullUnionBranch(array $variant): bool
+    {
+        if (($variant['type'] ?? null) === 'null') {
+            return true;
+        }
+
+        return ($variant['nullable'] ?? false) === true && $this->isNullOnlyBranch($variant);
+    }
+
+    /**
+     * `allOf: [{oneOf: [...]}]` is the union itself, wrapped — the same unwrapping
+     * `resolvePropertyType()` does before it resolves the composed type.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function unwrapSingleUnionAllOf(array $schema): array
+    {
+        $allOf = $schema['allOf'] ?? null;
+        if (!is_array($allOf) || count($allOf) !== 1 || !is_array($allOf[0] ?? null)) {
+            return $schema;
+        }
+
+        $only = $allOf[0];
+        if (is_array($only['oneOf'] ?? null) || is_array($only['anyOf'] ?? null)) {
+            return $only;
+        }
+
+        return $schema;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function localSchemaDefinitionForRef(string $ref): ?array
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        $schemaName = substr($ref, strlen($prefix));
+        if ($schemaName === '') {
+            return null;
+        }
+
+        $definition = $this->dtoSchemas[$this->schemaClassName($schemaName)] ?? null;
+
+        return is_array($definition) ? $definition : null;
     }
 
     /**

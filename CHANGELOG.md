@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.22 — 2026-09-01
+
+- a `oneOf`/`anyOf` whose branches disagree about the wire shape is no longer reindexed
+
+`toArray()` decided "this is a list" from the PHP type, and the PHP type cannot carry that decision for
+a union: every generic branch widens to `array` before the branches fold into one, so
+`anyOf: [{type: array}, {type: object}]` comes out a bare `array` — the same spelling a plain list has,
+while `isMap` only recognises `array<string, V>`. Such a property fell through to the list branch and
+was written with `array_values()`, which erased the keys of the map form: `{"a":"Alpha"}` went out as
+`["Alpha"]`.
+
+Neither cast is right for both branches — `array_values()` breaks the map, `(object)` breaks the list,
+and only the value knows which one it is — so a union that admits a non-array branch is now written RAW,
+and `json_encode()` reads the shape off the value: string keys make a JSON object, sequential keys a
+JSON array. A union whose branches ALL say `type: array` is still a list and is still reindexed;
+`type: array` and `additionalProperties` maps are untouched.
+
+The branch shapes are read off the SCHEMA, not the resolved type: `type: [array, object]` (OAS 3.1),
+`allOf: [{oneOf: […]}]`, a nested union and a local `$ref` to an array alias all resolve. A branch whose
+shape cannot be established — an external `$ref`, a `$ref` cycle — counts as non-array, which is the
+safe side: pass-through can only lose a reindex, never a key.
+
 ## 2.15.21 — 2026-09-01
 
 - a temporal-item list is reindexed on the way out, matching every other list

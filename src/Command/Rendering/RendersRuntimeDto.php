@@ -754,7 +754,12 @@ trait RendersRuntimeDto
             // (and still does — it reads the property, not this view), but a consumer who skips
             // validation had no way to notice. A MAP is deliberately excluded: there the keys ARE the
             // data.
-            'isList' => str_starts_with($property['type'], 'array') && ($property['isMap'] ?? false) !== true,
+            // A `oneOf`/`anyOf` that admits a non-array branch is excluded too: its PHP type is a
+            // bare `array` (the generic branches widen and fold into one), so the type says "list"
+            // for a value that may well be a map. Only the value knows, so it goes out RAW.
+            'isList' => str_starts_with($property['type'], 'array')
+                && ($property['isMap'] ?? false) !== true
+                && ($property['isShapeUnion'] ?? false) !== true,
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),

@@ -4509,6 +4509,157 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A `oneOf`/`anyOf` whose branches disagree about the WIRE SHAPE goes out untouched.
+     *
+     * The PHP type cannot carry the distinction: every generic branch widens to `array` and the
+     * duplicates fold into one, so `anyOf: [{type: array}, {type: object}]` is a bare `array` —
+     * the same spelling a plain list has, and `isMap` only recognises `array<string, V>`. The
+     * property therefore fell through to "list" and was reindexed, which erased the keys of the
+     * map branch. Neither cast is right for both branches, so the union is written RAW and the
+     * value decides: string keys encode as a JSON object, sequential ones as a JSON array.
+     *
+     * A union whose branches ALL say `type: array` is still a list, and still reindexed.
+     */
+    public function testAUnionOfDisagreeingWireShapesIsWrittenWithoutReindexing(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Shapes' => [
+                    'type' => 'object',
+                    'required' => ['values', 'listOnly'],
+                    'properties' => [
+                        'values' => ['anyOf' => [
+                            ['type' => 'array', 'items' => ['type' => 'string']],
+                            ['type' => 'object', 'additionalProperties' => ['type' => 'string']],
+                        ]],
+                        'listOnly' => ['anyOf' => [
+                            ['type' => 'array', 'items' => ['type' => 'string']],
+                            ['type' => 'array', 'items' => ['type' => 'integer']],
+                        ]],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'UnionWireShapeNs', 'Shapes');
+
+        /** @var array<int|string, string> $filtered */
+        $filtered = array_filter(['a', '', 'c'], static fn(string $value): bool => $value !== '');
+
+        $map = new $fqcn(values: ['second' => 'b', 'first' => 'a'], listOnly: $filtered);
+        $this->assertSame(
+            '{"values":{"second":"b","first":"a"},"listOnly":["a","c"]}',
+            (string)json_encode((new DtoNormalizer())->toArray($map)),
+            'the map branch keeps its keys, the all-array union is still reindexed',
+        );
+
+        $list = new $fqcn(values: ['a', 'c'], listOnly: []);
+        $this->assertSame(
+            '{"values":["a","c"],"listOnly":[]}',
+            (string)json_encode((new DtoNormalizer())->toArray($list)),
+            'the list branch of the same property still goes out as a JSON array',
+        );
+    }
+
+    /**
+     * The shape of a union branch is read off the SCHEMA, and a schema nests: a branch can be another
+     * union, an `allOf` wrapping one, or a `$ref` to either. Every one of these resolves to the same
+     * answer the flat case gives — all branches say `type: array` and the property is reindexed as a
+     * list, one branch says otherwise and it goes out raw.
+     *
+     * Each property below is a bare `?array` in PHP, so the PHP type says "list" for all of them: the
+     * schema walk is the only thing that separates them, and a map value proves which way it went —
+     * reindexing turns `{"second":"b"}` into `["b"]` and the keys are gone.
+     *
+     * `Cyclic` is the one that cannot be answered: it is a union that names itself. The walk stops on
+     * the repeat, and the property falls to raw — the safe side. Without that stop the generator does
+     * not produce a wrong file, it never produces one at all (the recursion exhausts memory), so this
+     * schema is here as much for the generation as for the assertion.
+     */
+    public function testUnionWireShapeIsResolvedThroughNestedUnionsAllOfAndRefs(): void
+    {
+        $listBranch = ['type' => 'array', 'items' => ['type' => 'string']];
+        $mapBranch = ['type' => 'object', 'additionalProperties' => ['type' => 'string']];
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'ArrayAlias' => ['type' => 'array', 'items' => ['type' => 'string']],
+                'FreeForm' => ['type' => 'object', 'additionalProperties' => true],
+                // A union that names itself: the walk must stop instead of following it forever.
+                'Cyclic' => ['anyOf' => [['$ref' => '#/components/schemas/Cyclic'], $listBranch]],
+                'Shapes' => [
+                    'type' => 'object',
+                    'properties' => [
+                        // Raw: the nested union admits an object.
+                        'nestedMixed' => ['anyOf' => [$listBranch, ['anyOf' => [$listBranch, $mapBranch]]]],
+                        // List: every branch, at every level, says `type: array`.
+                        'nestedAllArrays' => ['anyOf' => [$listBranch, ['anyOf' => [$listBranch, $listBranch]]]],
+                        // Raw: `allOf` wrapping a single union IS that union.
+                        'allOfWrapped' => ['allOf' => [['anyOf' => [$listBranch, $mapBranch]]]],
+                        // List: the `$ref` resolves to an array alias.
+                        'refToArrayAlias' => ['anyOf' => [['$ref' => '#/components/schemas/ArrayAlias'], $listBranch]],
+                        // Raw: the `$ref` resolves to a free-form object, which is a map.
+                        'refToFreeForm' => ['anyOf' => [['$ref' => '#/components/schemas/FreeForm'], $listBranch]],
+                        // List: a `type: null` branch adds null, and says nothing about the shape.
+                        'nullBranch' => ['anyOf' => [$listBranch, ['type' => 'null']]],
+                        // List: so does the OpenAPI 3.0 `{nullable: true}` spelling of the same branch.
+                        'nullableIdiom' => ['anyOf' => [$listBranch, ['nullable' => true]]],
+                        // List: an OAS 3.1 type union whose only non-null member is `array`.
+                        'typeListWithNull' => ['anyOf' => [
+                            ['type' => ['array', 'null'], 'items' => ['type' => 'string']],
+                            $listBranch,
+                        ]],
+                        // Raw: the same spelling next to a map branch.
+                        'typeListMixed' => ['anyOf' => [
+                            ['type' => ['array'], 'items' => ['type' => 'string']],
+                            $mapBranch,
+                        ]],
+                        // Raw: the branch is a union that names itself, so its shape is unknowable.
+                        'cyclicRef' => ['anyOf' => [['$ref' => '#/components/schemas/Cyclic'], $listBranch]],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'UnionWireShapeRecursionNs', 'Shapes');
+
+        /** @var array<int|string, string> $holes */
+        $holes = array_filter(['a', '', 'c'], static fn(string $value): bool => $value !== '');
+        $map = ['second' => 'b', 'first' => 'a'];
+
+        $dto = new $fqcn(
+            nestedMixed: $map,
+            nestedAllArrays: $holes,
+            allOfWrapped: $map,
+            refToArrayAlias: $holes,
+            refToFreeForm: $map,
+            nullBranch: $holes,
+            nullableIdiom: $holes,
+            typeListWithNull: $holes,
+            typeListMixed: $map,
+        );
+
+        $this->assertSame(
+            '{"nestedMixed":{"second":"b","first":"a"},"nestedAllArrays":["a","c"],'
+            . '"allOfWrapped":{"second":"b","first":"a"},"refToArrayAlias":["a","c"],'
+            . '"refToFreeForm":{"second":"b","first":"a"},"nullBranch":["a","c"],'
+            . '"nullableIdiom":["a","c"],"typeListWithNull":["a","c"],'
+            . '"typeListMixed":{"second":"b","first":"a"}}',
+            (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            'nested unions, allOf wrappers and $refs resolve to the same answer the flat case gives',
+        );
+
+        // The self-referential union generated at all, and its property is raw.
+        $cyclic = new $fqcn(cyclicRef: $map);
+        $this->assertSame(
+            '{"cyclicRef":{"second":"b","first":"a"}}',
+            (string)json_encode((new DtoNormalizer())->toArray($cyclic)),
+        );
+    }
+
+    /**
      * A container inside a container, and the two things that were true of it: the DECLARATION named a
      * type nothing delivered, and the CONSTRAINTS named nothing at all.
      *
