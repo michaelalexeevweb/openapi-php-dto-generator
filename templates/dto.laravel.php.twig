@@ -92,6 +92,11 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% endfor %}
      */
 {% endif %}
+{% if requiredParams is empty and optionalParams is empty %}
+    public function __construct()
+    {
+    }
+{% else %}
     public function __construct(
 {% for param in requiredParams %}
         private readonly {{ param.declaredType }} ${{ param.name }},
@@ -101,6 +106,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% endfor %}
     ) {
     }
+{% endif %}
 
     /**
      * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is

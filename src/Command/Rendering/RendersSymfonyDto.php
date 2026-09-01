@@ -1569,9 +1569,12 @@ PHP;
 PHP;
             }
 
-            $sections[] = <<<'PHP'
-        }
-PHP;
+            // Appended to the PREVIOUS section rather than pushed as its own: the sections are joined
+            // with a blank line between them, and a section that is nothing but a closing brace put
+            // that blank line INSIDE the block it closes — `Blank line found at end of control
+            // structure`, in every mode that carries this interpreter. Measured with PSR-12 over the
+            // emitted corpus, which is the only thing that reads this code's style.
+            $sections[array_key_last($sections)] .= "\n        }";
         }
 
         $sections[] = <<<'PHP'

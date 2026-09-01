@@ -148,11 +148,17 @@ final class GlobalFunctionImports
             $group .= 'use function ' . $function . ";\n";
         }
 
+        // The blank line AFTER the group is put back, because inserting the group consumes the one the
+        // template had written under its class imports. Without it the group ran straight into the
+        // class docblock — `Header blocks must be separated by a single blank line`, on every Laravel
+        // file that imported a function. Measured with PSR-12 over the emitted corpus; nothing else
+        // reads the style of the code this generator writes.
         return (string)preg_replace_callback(
-            '/^(namespace [^;]+;\n\n)((?:use [^;]+;\n)*)/m',
+            '/^(namespace [^;]+;\n\n)((?:use [^;]+;\n)*)\n*/m',
             static fn(array $match): string => $match[1]
                 . ($match[2] === '' ? '' : $match[2] . "\n")
-                . $group,
+                . $group
+                . "\n",
             $php,
             1,
         );

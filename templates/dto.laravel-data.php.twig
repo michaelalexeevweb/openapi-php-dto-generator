@@ -105,6 +105,11 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endfor %}
      */
 {% endif %}
+{% if requiredParams is empty and optionalParams is empty and parentArguments is empty %}
+    public function __construct()
+    {
+    }
+{% else %}
     public function __construct(
 {% for param in requiredParams %}
 {% for attribute in param.attributes %}
@@ -134,6 +139,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% else %}
     ) {
     }
+{% endif %}
 {% endif %}
 
     /**

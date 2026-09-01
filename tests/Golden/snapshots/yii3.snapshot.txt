@@ -1,4 +1,4 @@
-# yii3 mode — 55 files, 18242 lines
+# yii3 mode — 55 files, 18236 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8190,7 +8190,6 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -8539,7 +8538,6 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -11042,7 +11040,6 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -11671,7 +11668,6 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -12166,7 +12162,6 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -16075,7 +16070,6 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;

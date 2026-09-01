@@ -1,4 +1,4 @@
-# runtime mode — 55 files, 18344 lines
+# runtime mode — 55 files, 18345 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -12942,6 +12942,7 @@ abstract class Shape implements GeneratedDtoInterface, Stringable
     public function __construct()
     {
     }
+
     public static function getDiscriminatorPropertyName(): string
     {
         return 'kind';

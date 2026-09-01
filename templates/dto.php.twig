@@ -345,9 +345,7 @@ interface {{ className }}
 {% endif %}
 {% endfor %}
 {% if discriminator is not null %}
-{% if methodProperties is not empty %}
 
-{% endif %}
     public static function getDiscriminatorPropertyName(): string
     {
         return '{{ discriminator.propertyName }}';

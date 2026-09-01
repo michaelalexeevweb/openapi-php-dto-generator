@@ -1,4 +1,4 @@
-# laravel-data mode — 55 files, 7364 lines
+# laravel-data mode — 55 files, 7361 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -3004,7 +3004,6 @@ final class Containers extends Data
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -3056,8 +3055,8 @@ use Spatie\LaravelData\Data;
  */
 final class CountMap extends Data
 {
-    public function __construct(
-    ) {
+    public function __construct()
+    {
     }
 
     /**
@@ -5916,7 +5915,6 @@ final class TreeNode extends Data
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -6685,7 +6683,6 @@ final class UnionUnderContainer extends Data
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;

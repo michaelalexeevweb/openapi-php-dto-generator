@@ -3,6 +3,41 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.19 — 2026-09-01
+
+- the emitted code had four spacing defects, none of which any build could see
+
+`public function __construct() {}` was followed immediately by
+`public static function getDiscriminatorPropertyName()`, with nothing between them. The separating line
+was emitted only when the class had properties to declare, and an abstract base whose members all live
+in its variants has none — so exactly the class that needs the least code came out misformatted.
+
+It shipped in the golden snapshots from the day the feature landed, and no build ever objected: `composer
+cs` reads `src/` and `tests/`, and nothing at all reads the code this generator WRITES.
+
+That absence is the real defect, so the corpus was put through PSR-12 to see what else it had been
+hiding. Three more, in four modes:
+
+- **a blank line before a closing brace inside a method**, in every mode carrying the shared interpreter
+  (Symfony, Laravel, laravel-data, yii3): its sections are joined with a blank line between them, and one
+  section was nothing but the brace closing the block above it, so the separator landed inside the block.
+  Six occurrences in yii3 alone.
+- **a `use function` group running straight into the class docblock**, on every Laravel file importing a
+  function — thirteen of them. Inserting the group consumed the blank line the template had written and
+  never put one back.
+- **an empty constructor spread over three lines** — `__construct(\n) {` — in Laravel and laravel-data,
+  where PSR-12 wants `__construct()`.
+
+With those fixed the emitted corpus reports **zero** PSR-12 errors in runtime, Symfony, laravel-data and
+yii3, and one in Laravel: a `match` expression written on a single line inside a closure, which is a
+formatting choice about generated expressions rather than a stray character, and is left alone.
+
+The rules that were actually broken are now checked on every run. The snapshots ARE the emitted code,
+byte for byte, so the checks read them — no generation, no fixtures, no sniff configuration, all five
+modes at once: no member may follow a closing brace without a blank line, no blank line may sit before a
+brace closing something inside a method, and no import group may touch what follows it. Run against the
+snapshots as they were before this release, they report 6 and 13 offences respectively.
+
 ## 2.15.18 — 2026-08-31
 
 - a JSON body under `application/*+json` was never read

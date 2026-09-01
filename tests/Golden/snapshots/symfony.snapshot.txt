@@ -1,4 +1,4 @@
-# symfony mode — 55 files, 7402 lines
+# symfony mode — 55 files, 7396 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2701,7 +2701,6 @@ final class Containers
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -2967,7 +2966,6 @@ final class CountMap
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -3609,7 +3607,6 @@ final class ItemBounds
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -4203,7 +4200,6 @@ final class NestedContainers
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -4626,7 +4622,6 @@ final class NullableContainerValues
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
@@ -6371,7 +6366,6 @@ final class TreeNode
                     $evaluatedProperties[$propertyName] = true;
                 }
             }
-
         }
 
         return $errors;
