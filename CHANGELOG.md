@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.21 — 2026-09-01
+
+- a temporal-item list is reindexed on the way out, matching every other list
+
+`toArray()` has reindexed list properties with `array_values()` since 2.15.13, so a list with holes
+never encodes as a JSON object. An array of dates or date-times was the exception: the value goes
+through the formatting getter (`getDates()`, `getTimestamps()`, …), and `toArray()` used that result
+directly — `array_map` preserves keys, so holes survived.
+
+The getter still returns the array as `array_map` produces it; `toArray()` applies `array_values()`
+to the result before putting it in the payload, the same way it handles every other list.
+
 ## 2.15.20 — 2026-09-01
 
 - a body-only class no longer carries four empty parameter maps

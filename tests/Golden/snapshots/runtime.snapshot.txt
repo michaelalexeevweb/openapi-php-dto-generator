@@ -7172,12 +7172,12 @@ final class Containers implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['dates'] = $this->getDates();
+        $result['dates'] = array_values($this->getDates());
         if ($this->datesByDayInRequest) {
             $result['datesByDay'] = $this->datesByDay === null ? null : (object)$this->getDatesByDay();
         }
         if ($this->timestampsInRequest) {
-            $result['timestamps'] = $this->getTimestamps();
+            $result['timestamps'] = $this->timestamps !== null ? array_values($this->getTimestamps()) : null;
         }
         $result['shapes'] = array_values($this->shapes);
         if ($this->tagsByKeyInRequest) {

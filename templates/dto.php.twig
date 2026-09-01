@@ -386,7 +386,11 @@ interface {{ className }}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporalArray' and property.isMap %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
-{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
+{% elseif property.returnKind == 'temporalArray' and property.temporalArrayNullable %}
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.methodName }}()) : null;
+{% elseif property.returnKind == 'temporalArray' %}
+        $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.methodName }}());
+{% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
@@ -403,7 +407,11 @@ interface {{ className }}
         if ($this->{{ property.inRequestFlagName }}) {
 {% if property.returnKind == 'temporalArray' and property.isMap %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
-{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
+{% elseif property.returnKind == 'temporalArray' and property.temporalArrayNullable %}
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.methodName }}()) : null;
+{% elseif property.returnKind == 'temporalArray' %}
+            $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.methodName }}());
+{% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
