@@ -432,53 +432,15 @@ interface {{ className }}
      *
      * @return array<string, mixed>|object
      */
+{# One builder, not two. `toArray()` already applies every per-property wire rule — the map-to-object
+   casts, the `array_values()` reindexing, the `inRequest` gate — and the second copy that used to live
+   here had fallen behind it on reindexing: a list with holes went out of `toJson()` as a JSON object
+   while `toArray()` had it right. Delegating fixes that divergence and cannot grow another. #}
     public function jsonSerialize(): array|object
     {
-{% if serializableProperties is empty %}
-{% if extends is not null %}
-        return parent::jsonSerialize();
-{% else %}
-        return (object)[];
-{% endif %}
-{% else %}
-{% if extends is not null %}
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-{% else %}
-        $result = [];
-{% endif %}
-{% for property in serializableProperties %}
-{% if property.requiredLiteral == 'true' %}
-{% if property.returnKind == 'temporalArray' and property.isMap %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
-{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
-{% elseif property.isMap %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
-{% elseif property.itemsAreMaps %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
-{% else %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
-{% endif %}
-{% else %}
-        if ($this->{{ property.inRequestFlagName }}) {
-{% if property.returnKind == 'temporalArray' and property.isMap %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
-{% elseif property.returnKind == 'temporal' or property.returnKind == 'temporalArray' or property.getterUsesSentinel %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
-{% elseif property.isMap %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
-{% elseif property.itemsAreMaps %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
-{% else %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }};
-{% endif %}
-        }
-{% endif %}
-{% endfor %}
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
-{% endif %}
     }
 
     /**
@@ -671,8 +633,9 @@ interface {{ className }}
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
     }
-
 {% endif %}
+{% if parameterSourceAssignments is not empty or extends is not null or isExtendedByAnother %}
+
     /**
      * Maps each parameter-bound property to its OpenAPI request source
      * (path/query/header/cookie). Properties absent from this map are request-body
@@ -701,6 +664,10 @@ interface {{ className }}
         return $sources;
 {% endif %}
     }
+{% else %}
+{# Absent rather than empty: the deserializer reads a missing method as an empty map, so emitting one is fifteen lines that say nothing. #}
+{% endif %}
+{% if parameterStyleAssignments is not empty or extends is not null or isExtendedByAnother %}
 
     /**
      * Maps each parameter-bound property to its OpenAPI serialization style and
@@ -731,6 +698,10 @@ interface {{ className }}
         return $styles;
 {% endif %}
     }
+{% else %}
+{# Absent rather than empty: the deserializer reads a missing method as an empty map, so emitting one is fifteen lines that say nothing. #}
+{% endif %}
+{% if parameterAllowReservedAssignments is not empty or extends is not null or isExtendedByAnother %}
 
     /**
      * Maps each query-bound property that should preserve literal plus signs in the
@@ -759,6 +730,10 @@ interface {{ className }}
         return $allowReserved;
 {% endif %}
     }
+{% else %}
+{# Absent rather than empty: the deserializer reads a missing method as an empty map, so emitting one is fifteen lines that say nothing. #}
+{% endif %}
+{% if parameterAllowEmptyValueAssignments is not empty or extends is not null or isExtendedByAnother %}
 
     /**
      * Maps each query-bound property that allows empty values.
@@ -786,5 +761,8 @@ interface {{ className }}
         return $allowEmptyValue;
 {% endif %}
     }
+{% else %}
+{# Absent rather than empty: the deserializer reads a missing method as an empty map, so emitting one is fifteen lines that say nothing. #}
+{% endif %}
 }
 {% endif %}

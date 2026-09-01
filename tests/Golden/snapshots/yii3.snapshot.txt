@@ -1,4 +1,4 @@
-# yii3 mode — 55 files, 18236 lines
+# yii3 mode — 55 files, 18234 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8355,7 +8355,6 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
-
     /**
      * Rules come from the attributes above; this only re-exposes them. A class that provides a
      * data set has its own attribute parsing skipped by the validator, so without this method
@@ -8475,7 +8474,6 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
     public function toOpenApiValidationPayload(): array
     {
         $payload = [];
-
 
         return $payload;
     }

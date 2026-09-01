@@ -98,8 +98,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /** @var array<class-string, array<string, array<string, mixed>>> */
     private static array $constraintsCache = [];
 
-    /** @var array<class-string, Closure|null> Casting closure per class, or null when it has no hydrator. */
-    private static array $fastCastCache = [];
+    /**
+     * What the fast path can work out ONCE per class: whether the class has its own hydrator, and the
+     * parameter metadata keyed by request field name. Deliberately not the casting closure — that one
+     * is bound to a DtoDeserializer, and a process-wide cache handed the second instance's work to the
+     * first instance's validator.
+     *
+     * @var array<class-string, array{byName: array<string, mixed>}|null>
+     */
+    private static array $fastCastMetaCache = [];
 
     /** @var array<class-string, array<string, mixed>> Schema-level keywords, per class. */
     private static array $objectConstraintsCache = [];
@@ -2986,16 +2993,21 @@ final class DtoDeserializer implements DtoDeserializerInterface
     ): ?callable {
         $className = $reflection->getName();
 
-        // Built once per class: the reflection check, the name map and the casting closure. Doing
-        // this per CALL was measured to eat more than half the win — the point of the fast path is
-        // that nothing is rediscovered on the hot path.
-        if (!array_key_exists($className, self::$fastCastCache)) {
-            self::$fastCastCache[$className] = $this->buildFastCast($reflection, $classMeta);
+        // Built once per class: the reflection check and the name map. Doing this per CALL was
+        // measured to eat more than half the win — the point of the fast path is that nothing is
+        // rediscovered on the hot path. The closure itself is NOT cached: it casts through THIS
+        // deserializer and validates with THIS instance's validator, and a per-class cache would
+        // hand every later instance the first one's validator. Allocating a closure is not what
+        // the measurement was about.
+        if (!array_key_exists($className, self::$fastCastMetaCache)) {
+            self::$fastCastMetaCache[$className] = self::resolveFastCastMeta($reflection, $classMeta);
         }
-        $cast = self::$fastCastCache[$className];
-        if ($cast === null) {
+        $meta = self::$fastCastMetaCache[$className];
+        if ($meta === null) {
             return null;
         }
+
+        $cast = $this->buildFastCast($reflection, $meta['byName']);
 
         // Anything but the body could supply a value: an uploaded file, or a router-verified
         // request attribute carrying one of the declared names. Both outrank or join the body in
@@ -3021,16 +3033,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * The casting closure for one class, or null when the class has no usable generated hydrator.
-     *
-     * Everything the general loop decides about one value lives here: the cast, its failure wording,
-     * and the OpenAPI field constraints. The generated method never inspects a value, so the two
-     * routes have nothing to disagree about.
+     * The per-class half of the fast path: null when the class has no usable generated hydrator,
+     * otherwise the parameter metadata keyed by the name the request uses. Nothing here depends on a
+     * DtoDeserializer instance, which is what makes it safe to cache for the whole process.
      *
      * @param ReflectionClass<object> $reflection
      * @param array<string, mixed> $classMeta
+     * @return array{byName: array<string, mixed>}|null
      */
-    private function buildFastCast(ReflectionClass $reflection, array $classMeta): ?Closure
+    private static function resolveFastCastMeta(ReflectionClass $reflection, array $classMeta): ?array
     {
         // Declared ON this class, not inherited. A subclass inherits its parent's `hydrateFast()`,
         // whose `new self(...)` builds the PARENT — a silently wrong object type, caught by
@@ -3047,6 +3058,21 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $byName[$paramMeta['requestFieldName']] = $paramMeta;
         }
 
+        return ['byName' => $byName];
+    }
+
+    /**
+     * The casting closure for one class, bound to THIS deserializer.
+     *
+     * Everything the general loop decides about one value lives here: the cast, its failure wording,
+     * and the OpenAPI field constraints. The generated method never inspects a value, so the two
+     * routes have nothing to disagree about.
+     *
+     * @param ReflectionClass<object> $reflection
+     * @param array<string, mixed> $byName
+     */
+    private function buildFastCast(ReflectionClass $reflection, array $byName): Closure
+    {
         return function (string $name, mixed $value, array &$errors) use ($byName, $reflection): mixed {
             $paramMeta = $byName[$name];
             try {

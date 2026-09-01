@@ -1,4 +1,4 @@
-# runtime mode — 55 files, 18345 lines
+# runtime mode — 55 files, 16276 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -185,8 +185,7 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['test2'] = $this->test2;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -242,10 +241,7 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['test2'] = 'test2';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -299,52 +295,6 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -442,8 +392,7 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['test'] = $this->test;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -499,10 +448,7 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['test'] = 'test';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -556,52 +502,6 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -695,8 +595,7 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['message'] = $this->message;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -752,10 +651,7 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['message'] = 'message';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -767,52 +663,6 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
         $constraints['message'] = ['type' => 'string'];
 
         return $constraints;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -955,9 +805,7 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['idPatchTest2'] = $this->idPatchTest2;
-        $result['namePatchTest2'] = $this->namePatchTest2;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -1032,11 +880,7 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['idPatchTest2'] = 'idPatchTest2';
-        $aliases['namePatchTest2'] = 'namePatchTest2';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -1098,52 +942,6 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -1329,10 +1127,7 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['idPostTest2'] = $this->idPostTest2;
-        $result['namePostTest2'] = $this->namePostTest2;
-        $result['surnamePostTest2'] = $this->surnamePostTest2;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -1426,12 +1221,7 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['idPostTest2'] = 'idPostTest2';
-        $aliases['namePostTest2'] = 'namePostTest2';
-        $aliases['surnamePostTest2'] = 'surnamePostTest2';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -1501,52 +1291,6 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -1640,8 +1384,7 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['message'] = $this->message;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -1697,10 +1440,7 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['message'] = 'message';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -1712,52 +1452,6 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
         $constraints['message'] = ['type' => 'string'];
 
         return $constraints;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -1988,7 +1682,9 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -2099,13 +1795,7 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['actionId'] = 'actionId';
-        $aliases['page'] = 'page';
-        $aliases['limit'] = 'limit';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -2157,27 +1847,6 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
         $styles['limit'] = ['style' => 'form', 'explode' => true];
 
         return $styles;
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -2408,7 +2077,9 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -2519,13 +2190,7 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['actionId'] = 'actionId';
-        $aliases['page'] = 'page';
-        $aliases['limit'] = 'limit';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -2577,27 +2242,6 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
         $styles['limit'] = ['style' => 'form', 'explode' => true];
 
         return $styles;
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -2828,7 +2472,9 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -2939,13 +2585,7 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['tagId'] = 'tagId';
-        $aliases['page'] = 'page';
-        $aliases['limit'] = 'limit';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -2997,27 +2637,6 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
         $styles['limit'] = ['style' => 'form', 'explode' => true];
 
         return $styles;
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -3248,7 +2867,9 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -3359,13 +2980,7 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['tagId'] = 'tagId';
-        $aliases['page'] = 'page';
-        $aliases['limit'] = 'limit';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -3417,27 +3032,6 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
         $styles['limit'] = ['style' => 'form', 'explode' => true];
 
         return $styles;
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -3535,7 +3129,9 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -3589,10 +3185,7 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -3635,27 +3228,6 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
         $styles['id'] = ['style' => 'simple', 'explode' => false];
 
         return $styles;
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -3753,7 +3325,9 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -3807,10 +3381,7 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -3853,27 +3424,6 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
         $styles['id'] = ['style' => 'simple', 'explode' => false];
 
         return $styles;
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -3974,8 +3524,7 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['file'] = $this->file;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -4031,10 +3580,7 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['file'] = 'file';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -4085,52 +3631,6 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -4468,20 +3968,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['mustContain'] = $this->mustContain === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->mustContain);
-        if ($this->positionsInRequest) {
-            $result['positions'] = $this->positions;
-        }
-        if ($this->restInRequest) {
-            $result['rest'] = $this->rest;
-        }
-        if ($this->conditionalInRequest) {
-            $result['conditional'] = $this->getConditional();
-        }
-        if ($this->keyedInRequest) {
-            $result['keyed'] = $this->getKeyed();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -4613,14 +4100,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['mustContain'] = 'mustContain';
-        $aliases['positions'] = 'positions';
-        $aliases['rest'] = 'rest';
-        $aliases['conditional'] = 'conditional';
-        $aliases['keyed'] = 'keyed';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -4690,52 +4170,6 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -4839,10 +4273,7 @@ final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringab
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        if ($this->labelInRequest) {
-            $result['label'] = $this->getLabel();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -4898,10 +4329,7 @@ final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringab
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['label'] = 'label';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -4968,52 +4396,6 @@ final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringab
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -5117,10 +4499,7 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        if ($this->triggerInRequest) {
-            $result['trigger'] = $this->getTrigger();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -5176,10 +4555,7 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['trigger'] = 'trigger';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -5245,52 +4621,6 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -5530,15 +4860,7 @@ final class AwkwardNames implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['plain'] = $this->plain;
-        $result['it\'s'] = $this->itS;
-        if ($this->backSlashInRequest) {
-            $result['back\slash'] = $this->getBackSlash();
-        }
-        if ($this->bothSInRequest) {
-            $result['both\\\'s'] = $this->getBothS();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -5652,7 +4974,6 @@ final class AwkwardNames implements GeneratedDtoInterface, Stringable
     public static function getAliases(): array
     {
         $aliases = [];
-        $aliases['plain'] = 'plain';
         $aliases['itS'] = 'it\'s';
         $aliases['backSlash'] = 'back\slash';
         $aliases['bothS'] = 'both\\\'s';
@@ -5727,52 +5048,6 @@ final class AwkwardNames implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -5866,9 +5141,7 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['meow'] = $this->meow;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -5924,10 +5197,7 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public static function getAliases(): array
     {
-        $aliases = parent::getAliases();
-        $aliases['meow'] = 'meow';
-
-        return $aliases;
+        return parent::getAliases();
     }
 
     /**
@@ -6155,11 +5425,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['code'] = $this->code;
-        if ($this->tagsInRequest) {
-            $result['tags'] = $this->tags;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -6234,11 +5500,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['code'] = 'code';
-        $aliases['tags'] = 'tags';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -6296,52 +5558,6 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -6460,8 +5676,7 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['links'] = $this->links;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -6517,10 +5732,7 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['links'] = 'links';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -6574,52 +5786,6 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -6721,8 +5887,7 @@ final class ChainTag implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['label'] = $this->label;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -6778,10 +5943,7 @@ final class ChainTag implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['label'] = 'label';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -6835,52 +5997,6 @@ final class ChainTag implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -7015,10 +6131,7 @@ final class Circle extends Shape implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['kind'] = $this->kind;
-        $result['radius'] = $this->radius;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -7093,11 +6206,7 @@ final class Circle extends Shape implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = parent::getAliases();
-        $aliases['kind'] = 'kind';
-        $aliases['radius'] = 'radius';
-
-        return $aliases;
+        return parent::getAliases();
     }
 
     /**
@@ -7477,17 +6586,7 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['listOfLists'] = $this->listOfLists;
-        if ($this->listOfMapsInRequest) {
-            $result['listOfMaps'] = $this->listOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->listOfMaps);
-        }
-        if ($this->mapOfListsInRequest) {
-            $result['mapOfLists'] = $this->mapOfLists === null ? null : (object)$this->mapOfLists;
-        }
-        if ($this->plainInRequest) {
-            $result['plain'] = $this->plain;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -7600,13 +6699,7 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['listOfLists'] = 'listOfLists';
-        $aliases['listOfMaps'] = 'listOfMaps';
-        $aliases['mapOfLists'] = 'mapOfLists';
-        $aliases['plain'] = 'plain';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -7671,52 +6764,6 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -8150,18 +7197,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['dates'] = $this->getDates();
-        if ($this->datesByDayInRequest) {
-            $result['datesByDay'] = $this->datesByDay === null ? null : (object)$this->getDatesByDay();
-        }
-        if ($this->timestampsInRequest) {
-            $result['timestamps'] = $this->getTimestamps();
-        }
-        $result['shapes'] = $this->shapes;
-        if ($this->tagsByKeyInRequest) {
-            $result['tagsByKey'] = $this->tagsByKey === null ? null : (object)$this->tagsByKey;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -8293,14 +7329,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['dates'] = 'dates';
-        $aliases['datesByDay'] = 'datesByDay';
-        $aliases['timestamps'] = 'timestamps';
-        $aliases['shapes'] = 'shapes';
-        $aliases['tagsByKey'] = 'tagsByKey';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -8375,52 +7404,6 @@ final class Containers implements GeneratedDtoInterface, Stringable
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
     }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
-    }
 }
 
 ===== CountMap.php =====
@@ -8465,7 +7448,9 @@ final class CountMap implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -8503,52 +7488,6 @@ final class CountMap implements GeneratedDtoInterface, Stringable
      * @return array<string, array<string, mixed>>
      */
     public static function getConstraints(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
     {
         return [];
     }
@@ -8701,9 +7640,7 @@ class Discriminator implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['type'] = $this->type;
-        $result['name'] = $this->name;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -8778,11 +7715,7 @@ class Discriminator implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['type'] = 'type';
-        $aliases['name'] = 'name';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -8938,9 +7871,7 @@ final class Discriminator1 extends Discriminator implements GeneratedDtoInterfac
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['id'] = $this->id;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -8996,10 +7927,7 @@ final class Discriminator1 extends Discriminator implements GeneratedDtoInterfac
      */
     public static function getAliases(): array
     {
-        $aliases = parent::getAliases();
-        $aliases['id'] = 'id';
-
-        return $aliases;
+        return parent::getAliases();
     }
 
     /**
@@ -9197,10 +8125,7 @@ final class Discriminator2 extends Discriminator implements GeneratedDtoInterfac
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['id'] = $this->id;
-        $result['NAme'] = $this->nAme2;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -9276,7 +8201,6 @@ final class Discriminator2 extends Discriminator implements GeneratedDtoInterfac
     public static function getAliases(): array
     {
         $aliases = parent::getAliases();
-        $aliases['id'] = 'id';
         $aliases['nAme2'] = 'NAme';
 
         return $aliases;
@@ -9529,9 +8453,7 @@ class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['bark'] = $this->bark;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -9587,10 +8509,7 @@ class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public static function getAliases(): array
     {
-        $aliases = parent::getAliases();
-        $aliases['bark'] = 'bark';
-
-        return $aliases;
+        return parent::getAliases();
     }
 
     /**
@@ -9741,9 +8660,7 @@ final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringab
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['bark'] = $this->bark;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -9799,10 +8716,7 @@ final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringab
      */
     public static function getAliases(): array
     {
-        $aliases = parent::getAliases();
-        $aliases['bark'] = 'bark';
-
-        return $aliases;
+        return parent::getAliases();
     }
 
     /**
@@ -10044,10 +8958,7 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['file'] = $this->file;
-        $result['name'] = $this->name;
-        $result['surname'] = $this->surname;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -10141,12 +9052,7 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['file'] = 'file';
-        $aliases['name'] = 'name';
-        $aliases['surname'] = 'surname';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -10215,52 +9121,6 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -10514,14 +9374,7 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['scores'] = $this->scores;
-        if ($this->scoresByKeyInRequest) {
-            $result['scoresByKey'] = $this->scoresByKey === null ? null : (object)$this->scoresByKey;
-        }
-        if ($this->codesInRequest) {
-            $result['codes'] = $this->codes;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -10615,12 +9468,7 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['scores'] = 'scores';
-        $aliases['scoresByKey'] = 'scoresByKey';
-        $aliases['codes'] = 'codes';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -10682,52 +9530,6 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -11311,27 +10113,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['matrix'] = $this->matrix;
-        $result['rowsOfMaps'] = $this->rowsOfMaps === null ? null : array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->rowsOfMaps);
-        if ($this->listsByKeyInRequest) {
-            $result['listsByKey'] = $this->listsByKey === null ? null : (object)$this->listsByKey;
-        }
-        if ($this->mapsByKeyInRequest) {
-            $result['mapsByKey'] = $this->mapsByKey === null ? null : (object)$this->mapsByKey;
-        }
-        if ($this->dateRowsInRequest) {
-            $result['dateRows'] = $this->dateRows;
-        }
-        if ($this->numRowsInRequest) {
-            $result['numRows'] = $this->numRows;
-        }
-        if ($this->enumRowsInRequest) {
-            $result['enumRows'] = $this->enumRows;
-        }
-        if ($this->tagRowsInRequest) {
-            $result['tagRows'] = $this->tagRows;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -11520,17 +10302,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['matrix'] = 'matrix';
-        $aliases['rowsOfMaps'] = 'rowsOfMaps';
-        $aliases['listsByKey'] = 'listsByKey';
-        $aliases['mapsByKey'] = 'mapsByKey';
-        $aliases['dateRows'] = 'dateRows';
-        $aliases['numRows'] = 'numRows';
-        $aliases['enumRows'] = 'enumRows';
-        $aliases['tagRows'] = 'tagRows';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -11616,52 +10388,6 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -11994,17 +10720,7 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['listOfNullable'] = $this->listOfNullable;
-        if ($this->mapOfNullableInRequest) {
-            $result['mapOfNullable'] = $this->mapOfNullable === null ? null : (object)$this->mapOfNullable;
-        }
-        if ($this->listOfNullable31InRequest) {
-            $result['listOfNullable31'] = $this->listOfNullable31;
-        }
-        if ($this->mapOfNullable31InRequest) {
-            $result['mapOfNullable31'] = $this->mapOfNullable31 === null ? null : (object)$this->mapOfNullable31;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -12117,13 +10833,7 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['listOfNullable'] = 'listOfNullable';
-        $aliases['mapOfNullable'] = 'mapOfNullable';
-        $aliases['listOfNullable31'] = 'listOfNullable31';
-        $aliases['mapOfNullable31'] = 'mapOfNullable31';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -12189,52 +10899,6 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -12425,14 +11089,7 @@ final class ObjectWideRules implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['kind'] = $this->kind;
-        if ($this->codeInRequest) {
-            $result['code'] = $this->getCode();
-        }
-        if ($this->extraInRequest) {
-            $result['extra'] = $this->getExtra();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -12526,12 +11183,7 @@ final class ObjectWideRules implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['kind'] = 'kind';
-        $aliases['code'] = 'code';
-        $aliases['extra'] = 'extra';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -12613,52 +11265,6 @@ final class ObjectWideRules implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -12756,8 +11362,7 @@ class Pet implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['name'] = $this->name;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -12813,10 +11418,7 @@ class Pet implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['name'] = 'name';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -12977,7 +11579,9 @@ abstract class Shape implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        return (object)[];
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
     }
 
     /**
@@ -13197,10 +11801,7 @@ final class Square extends Shape implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        // Cast back: the parent hands out an object when it has nothing to write.
-        $result = (array)parent::jsonSerialize();
-        $result['kind'] = $this->kind;
-        $result['side'] = $this->side;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -13275,11 +11876,7 @@ final class Square extends Shape implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = parent::getAliases();
-        $aliases['kind'] = 'kind';
-        $aliases['side'] = 'side';
-
-        return $aliases;
+        return parent::getAliases();
     }
 
     /**
@@ -13478,9 +12075,7 @@ final class Tag implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
-        $result['name'] = $this->name;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -13555,11 +12150,7 @@ final class Tag implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['name'] = 'name';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -13621,52 +12212,6 @@ final class Tag implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -13764,8 +12309,7 @@ final class Test implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -13821,10 +12365,7 @@ final class Test implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -13878,52 +12419,6 @@ final class Test implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -14266,17 +12761,7 @@ final class Test2 implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
-        $result['name'] = $this->name;
-        $result['tags'] = $this->tags;
-        if ($this->userInRequest) {
-            $result['user'] = $this->getUser();
-        }
-        if ($this->userTypeInRequest) {
-            $result['userType'] = $this->getUserType();
-        }
-        $result['types'] = $this->types;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -14427,15 +12912,7 @@ final class Test2 implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['name'] = 'name';
-        $aliases['tags'] = 'tags';
-        $aliases['user'] = 'user';
-        $aliases['userType'] = 'userType';
-        $aliases['types'] = 'types';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -14451,52 +12928,6 @@ final class Test2 implements GeneratedDtoInterface, Stringable
         $constraints['types'] = ['type' => 'string'];
 
         return $constraints;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -14698,10 +13129,7 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        if ($this->regionInRequest) {
-            $result['region'] = $this->getRegion();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -14757,10 +13185,7 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['region'] = 'region';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -14810,52 +13235,6 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -15039,10 +13418,7 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
-        $result['name'] = $this->name;
-        $result['surname'] = $this->surname;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -15136,12 +13512,7 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['name'] = 'name';
-        $aliases['surname'] = 'surname';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -15211,52 +13582,6 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -15541,16 +13866,7 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
-        $result['name'] = $this->name;
-        $result['code'] = $this->code;
-        if ($this->homepageInRequest) {
-            $result['homepage'] = $this->getHomepage();
-        }
-        if ($this->endpointInRequest) {
-            $result['endpoint'] = $this->getEndpoint();
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -15682,14 +13998,7 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['name'] = 'name';
-        $aliases['code'] = 'code';
-        $aliases['homepage'] = 'homepage';
-        $aliases['endpoint'] = 'endpoint';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -15767,52 +14076,6 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -15975,9 +14238,7 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['label'] = $this->label;
-        $result['children'] = $this->children === null ? null : (object)$this->children;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -16052,11 +14313,7 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['label'] = 'label';
-        $aliases['children'] = 'children';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -16118,52 +14375,6 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -16539,17 +14750,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        if ($this->chainInRequest) {
-            $result['chain'] = $this->chain;
-        }
-        if ($this->chainAllOfInRequest) {
-            $result['chainAllOf'] = $this->chainAllOf;
-        }
-        $result['tree'] = $this->tree;
-        if ($this->listOfUnionsInRequest) {
-            $result['listOfUnions'] = $this->listOfUnions;
-        }
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -16662,13 +14863,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['chain'] = 'chain';
-        $aliases['chainAllOf'] = 'chainAllOf';
-        $aliases['tree'] = 'tree';
-        $aliases['listOfUnions'] = 'listOfUnions';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -16733,52 +14928,6 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -16900,8 +15049,7 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['tags'] = $this->tags;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -16957,10 +15105,7 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['tags'] = 'tags';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -17014,52 +15159,6 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -17301,11 +15400,7 @@ final class User implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
-        $result['name'] = $this->name;
-        $result['pet'] = $this->pet;
-        $result['createdAt'] = $this->getCreatedAt();
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -17418,13 +15513,7 @@ final class User implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['name'] = 'name';
-        $aliases['pet'] = 'pet';
-        $aliases['createdAt'] = 'createdAt';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -17502,52 +15591,6 @@ final class User implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -17787,11 +15830,7 @@ final class User2 implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['id'] = $this->id;
-        $result['name'] = $this->name;
-        $result['pet'] = $this->pet;
-        $result['createdAt'] = $this->getCreatedAt();
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -17904,13 +15943,7 @@ final class User2 implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['id'] = 'id';
-        $aliases['name'] = 'name';
-        $aliases['pet'] = 'pet';
-        $aliases['createdAt'] = 'createdAt';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -17988,52 +16021,6 @@ final class User2 implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }
 
@@ -18262,11 +16249,7 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
      */
     public function jsonSerialize(): array|object
     {
-        $result = [];
-        $result['meow'] = $this->meow;
-        $result['name'] = $this->name;
-        $result['bark'] = $this->bark;
-        $result['test'] = $this->test;
+        $result = $this->toArray();
 
         return $result === [] ? (object)$result : $result;
     }
@@ -18379,13 +16362,7 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
      */
     public static function getAliases(): array
     {
-        $aliases = [];
-        $aliases['meow'] = 'meow';
-        $aliases['name'] = 'name';
-        $aliases['bark'] = 'bark';
-        $aliases['test'] = 'test';
-
-        return $aliases;
+        return [];
     }
 
     /**
@@ -18463,51 +16440,5 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
         // argument is the sentinel, and for every property this method passes exactly what the
         // caller sent. Assigning them again was dead code in every generated class.
         return $dto;
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI request source
-     * (path/query/header/cookie). Properties absent from this map are request-body
-     * fields. The deserializer reads a listed property ONLY from its declared source.
-     *
-     * @return array<string, string>
-     */
-    public static function getParameterSources(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each parameter-bound property to its OpenAPI serialization style and
-     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
-     * The deserializer uses this to split delimited array values read from a single
-     * query/header/cookie string. Properties absent from this map use no splitting.
-     *
-     * @return array<string, array{style: string, explode: bool}>
-     */
-    public static function getParameterStyles(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that should preserve literal plus signs in the
-     * raw query string when deserialized.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowReserved(): array
-    {
-        return [];
-    }
-
-    /**
-     * Maps each query-bound property that allows empty values.
-     *
-     * @return array<string, bool>
-     */
-    public static function getParameterAllowEmptyValue(): array
-    {
-        return [];
     }
 }

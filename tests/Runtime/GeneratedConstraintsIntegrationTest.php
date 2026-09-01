@@ -8,6 +8,7 @@ use BackedEnum;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
+use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
@@ -854,6 +855,101 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             '{"fieldTypes":{"0":"text","5":"date","label":"number"}}',
             $built->toJson(),
         );
+    }
+
+    public function testAListWithHolesIsReindexedOnEveryOutputPathIncludingToJson(): void
+    {
+        // A `type: array` is a JSON list, and a PHP array with non-contiguous keys does not encode as
+        // one — json_encode falls back to an object and the payload silently stops matching the schema.
+        // `toArray()` reindexes; `jsonSerialize()` used to carry its own copy of the build loop that
+        // did not, so `toJson()` and `__toString()` — the paths that actually reach the wire — emitted
+        // the object form. It delegates now, so there is one answer instead of two.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Holes', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['tags'],
+                        'properties' => [
+                            'tags' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenHoles');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenHoles\Holder';
+        $dto = new $cls([1 => 'a', 3 => 'b']);
+
+        $this->assertSame(['tags' => ['a', 'b']], $dto->toArray());
+        $this->assertSame(['tags' => ['a', 'b']], $dto->jsonSerialize());
+        $this->assertSame('{"tags":["a","b"]}', $dto->toJson());
+        $this->assertSame('{"tags":["a","b"]}', (string)$dto);
+    }
+
+    public function testASecondDeserializerValidatesWithItsOwnValidatorOnTheFastPath(): void
+    {
+        // The fast path caches per class. It used to cache the CASTING CLOSURE, which is bound to the
+        // deserializer that built it — so the second `DtoDeserializer`, constructed with a different
+        // validator, silently validated through the FIRST one's. A host swapping in a stricter
+        // validator got the lenient answer for every class the lenient instance had already seen.
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Validators', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Holder' => [
+                        'type' => 'object',
+                        'required' => ['name'],
+                        'properties' => [
+                            'name' => ['type' => 'string', 'minLength' => 1],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenTwoValidators');
+
+        foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
+            require $file;
+        }
+
+        $permissive = new class implements DtoValidatorInterface {
+            public function validate(string $subject, mixed $value, array $constraints): array
+            {
+                return [];
+            }
+        };
+        $strict = new class implements DtoValidatorInterface {
+            public function validate(string $subject, mixed $value, array $constraints): array
+            {
+                return ['refused by the strict validator: ' . $subject];
+            }
+        };
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenTwoValidators\Holder';
+
+        // First instance warms the per-class cache.
+        (new DtoDeserializer($permissive))->deserialize($this->jsonPostRequest('{"name":"a"}'), $cls);
+
+        $refused = false;
+        try {
+            (new DtoDeserializer($strict))->deserialize($this->jsonPostRequest('{"name":"a"}'), $cls);
+        } catch (Throwable $e) {
+            $refused = true;
+            $this->assertStringContainsString('refused by the strict validator', $e->getMessage());
+        }
+
+        $this->assertTrue($refused, 'the second deserializer used the first one\'s validator');
     }
 
     public function testTemporalFieldExposesObjectGetterAlongsideStringGetter(): void

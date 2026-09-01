@@ -2878,11 +2878,48 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('private readonly string $testProcess', $content);
         $this->assertStringContainsString('$aliases[\'testProcess\'] = \'test-process\';', $content);
         $this->assertStringContainsString('public function isTestProcessRequired(): bool', $content);
+
+        // The sibling renames nothing, so it earns no row: every reader spells the lookup
+        // `$aliases[$name] ?? $name` and an identity entry answers exactly what absence answers.
+        $this->assertStringNotContainsString('$aliases[\'processed\']', $content);
         $this->assertStringContainsString('return true;', $content);
 
         // Getter should not be guarded by inRequest flag.
         $this->assertStringNotContainsString('if (!$this->processedInRequest) {', $content);
         $this->assertStringNotContainsString("Field \"processed\" wasn\\'t provided in request", $content);
+    }
+
+    public function testAClassWhosePropertiesAllKeepTheirOpenApiNamesEmitsAnEmptyAliasMap(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => [
+                'title' => 'Identity aliases',
+                'version' => '1.0.0',
+            ],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'PlainModel' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'string'],
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/PlainModel.php');
+
+        // The method stays — `GeneratedDtoInterface` declares it, and dropping it would leave the class
+        // abstract — but it has nothing to build, so it returns the empty map outright.
+        $this->assertStringContainsString('public static function getAliases(): array', $content);
+        $this->assertStringContainsString("    public static function getAliases(): array\n    {\n        return [];", $content);
+        $this->assertStringNotContainsString('$aliases = [];', $content);
     }
 
     public function testPlaceholderStyleOpenApiNameKeepsAliasAndRequiredMapping(): void
@@ -3733,18 +3770,17 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
 
         $content = (string)file_get_contents($this->outputDirectory . '/WriteOnlyModel.php');
-        // toArray() and jsonSerialize() each build the serialized array independently
-        // (bodies are duplicated, not delegated); neither must include the writeOnly field.
-        // `return $result` without the semicolon: jsonSerialize() ends with a conditional
-        // (`$result === [] ? (object)$result : $result`) because an object with nothing to write is
-        // `{}`, so the old boundary ran past the method and swept in the next one.
-        foreach (['function toArray', 'function jsonSerialize'] as $marker) {
-            $bodyStart = strpos($content, $marker);
-            $bodyEnd = strpos($content, 'return $result', (int)$bodyStart);
-            $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
-            $this->assertStringNotContainsString("'password'", $body);
-            $this->assertStringContainsString("'name'", $body);
-        }
+        // `toArray()` is the only place the serialized array is built — `jsonSerialize()` delegates to
+        // it — so the writeOnly field has exactly one gate to escape through, and that is the one this
+        // checks. `return $result` without the semicolon is the body boundary.
+        $bodyStart = strpos($content, 'function toArray');
+        $bodyEnd = strpos($content, 'return $result', (int)$bodyStart);
+        $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
+        $this->assertStringNotContainsString("'password'", $body);
+        $this->assertStringContainsString("'name'", $body);
+
+        // And nothing rebuilds it alongside: a second copy would be a second chance to leak.
+        $this->assertStringContainsString('$result = $this->toArray();', $content);
         // writeOnly=true must appear in normalization map metadata
         $this->assertStringContainsString("'writeOnly' => true", $content);
     }
@@ -3851,18 +3887,16 @@ final class GenerateDtoCommandTest extends TestCase
         // No-property DTO: collection methods must return the literal directly (no
         // "$x = []; return $x;" that trips the return_assignment rule, and no multi-line
         // empty array that trips no_whitespace_in_empty_array).
-        // `jsonSerialize()` is the WIRE form and the DTO is a `type: object`, so with nothing to
-        // write it returns `(object)[]` — `[]` would encode as a JSON array and contradict the
-        // schema. Everything else here is a PHP array by contract and returns `[]`.
+        // Everything here is a PHP array by contract and returns `[]`. `jsonSerialize()` is absent from
+        // the list on purpose: it builds nothing of its own any more, it delegates to `toArray()` and
+        // then casts, because it is the WIRE form of a `type: object` and with nothing to write that is
+        // `{}`, not the `[]` a JSON array would give. Asserted separately below.
         foreach (
             [
                 'function toArray' => 'return [];',
-                'function jsonSerialize' => 'return (object)[];',
                 'function getNormalizationMap' => 'return [];',
                 'function getAliases' => 'return [];',
                 'function getConstraints' => 'return [];',
-                'function getParameterSources' => 'return [];',
-                'function getParameterStyles' => 'return [];',
             ] as $marker => $expectedReturn
         ) {
             $start = strpos($content, $marker);
@@ -3872,6 +3906,35 @@ final class GenerateDtoCommandTest extends TestCase
             $body = substr($content, (int)$bodyStart, (int)$bodyEnd - (int)$bodyStart);
             $this->assertStringContainsString($expectedReturn, $body, "method must return directly: {$marker}");
             $this->assertStringNotContainsString(' = [];', $body, "method must not assign temp array: {$marker}");
+        }
+
+        // The wire form, delegating and then casting the empty case.
+        $this->assertStringContainsString(
+            "    public function jsonSerialize(): array|object\n"
+            . "    {\n"
+            . "        \$result = \$this->toArray();\n"
+            . "\n"
+            . "        return \$result === [] ? (object)\$result : \$result;\n"
+            . '    }',
+            $content,
+        );
+
+        // The four parameter maps went further than "return directly": on a body-only class they are not
+        // emitted at all. The deserializer reads a missing method as an empty map — `is_callable()` says
+        // no, the caller falls back to `[]` — so fifteen lines per method per class said nothing. They
+        // are still emitted on a class that EXTENDS or IS EXTENDED, where a child's `parent::` call
+        // needs something to reach.
+        foreach ([
+            'function getParameterSources',
+            'function getParameterStyles',
+            'function getParameterAllowReserved',
+            'function getParameterAllowEmptyValue',
+        ] as $absent) {
+            $this->assertStringNotContainsString(
+                $absent,
+                $content,
+                sprintf('a body-only class carries no %s', $absent),
+            );
         }
     }
 

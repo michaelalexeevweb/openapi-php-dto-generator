@@ -4563,7 +4563,27 @@ final class GenerateDtoCommand extends Command
     {
         $content = $this->renderTwig($templateName, $context);
 
-        return GlobalFunctionImports::apply(rtrim($content) . "\n");
+        return GlobalFunctionImports::apply(self::normalizeEmittedBlankLines(rtrim($content) . "\n"));
+    }
+
+    /**
+     * The two blank-line rules every emitted file obeys, applied once instead of per template.
+     *
+     * A conditional block that emits nothing still leaves its separator behind, and the templates have
+     * enough of those that chasing the whitespace tag by tag is how one gets fixed and the next four
+     * appear. Both rules are mechanical and neither can change meaning:
+     *
+     *   - never two blank lines in a row;
+     *   - never a blank line right before a closing brace.
+     *
+     * They are exactly what `EmittedCodeSpacingTest` checks, so a template can be edited without also
+     * having to reason about which of its neighbours happened to be skipped.
+     */
+    private static function normalizeEmittedBlankLines(string $php): string
+    {
+        $php = (string)preg_replace("/\n{3,}/", "\n\n", $php);
+
+        return (string)preg_replace("/\n\n(\\s*\\})/", "\n$1", $php);
     }
 
     /**

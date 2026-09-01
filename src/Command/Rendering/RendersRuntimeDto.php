@@ -347,6 +347,11 @@ trait RendersRuntimeDto
             'runtimeExceptionRef' => $runtimeExceptionRef,
             'jsonExceptionRef' => $jsonExceptionRef,
             'aliasAssignments' => $aliasAssignments,
+            // A base keeps the four parameter methods even when its own maps are empty: its children
+            // call `parent::getParameterSources()`, and a parent that skipped the method turns that
+            // into `Call to undefined method`. Measured the hard way — the corpus's discriminated
+            // unions and one plain `allOf` base both blew up before this flag existed.
+            'isExtendedByAnother' => array_key_exists($className, $this->parentClasses),
             'parameterSourceAssignments' => $parameterSourceAssignments,
             'parameterStyleAssignments' => $parameterStyleAssignments,
             'parameterAllowReservedAssignments' => $parameterAllowReservedAssignments,
@@ -1116,6 +1121,17 @@ trait RendersRuntimeDto
         $result = [];
 
         foreach ($properties as $property) {
+            // An alias that renames nothing is a line that says nothing: the readers all spell the
+            // lookup `$aliases[$name] ?? $name`, so `$aliases['id'] = 'id'` and no entry at all are the
+            // same answer. The demo corpus carried 119 of these against ONE real rename.
+            //
+            // The METHOD stays even when the map comes out empty, unlike the four parameter maps: it is
+            // declared on `GeneratedDtoInterface`, so omitting it makes the class abstract and every
+            // generated DTO a fatal. Measured the moment it was tried.
+            if ($property['name'] === $property['openApiName']) {
+                continue;
+            }
+
             $result[] = [
                 'name' => $property['name'],
                 'openApiName' => $property['openApiName'],

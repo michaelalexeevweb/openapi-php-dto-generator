@@ -3,6 +3,53 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.20 — 2026-09-01
+
+- a body-only class no longer carries four empty parameter maps
+- `getAliases()` no longer lists the properties it does not rename
+- `jsonSerialize()` builds nothing of its own, and stops disagreeing with `toArray()`
+- a second `DtoDeserializer` validates with its own validator again
+
+`getParameterSources()`, `getParameterStyles()`, `getParameterAllowReserved()` and
+`getParameterAllowEmptyValue()` were emitted on every class, returning `[]` on the great majority of
+them: a class whose properties all come from the body has nothing to say about query styles. Fifteen
+lines each, four each, fifty classes in the demo corpus alone.
+
+They are simply absent now where they would be empty, and nothing downstream notices: the deserializer
+looks them up through `is_callable()` and falls back to `[]` when the method is not there, which is the
+same value it read before. A class that EXTENDS or IS EXTENDED keeps all four, because a child's
+`parent::getParameterSources()` needs something to reach — that one is measured rather than assumed, the
+corpus's discriminated unions and a plain `allOf` base having failed loudly before the rule accounted
+for them.
+
+`getAliases()` went the same way, one row at a time. An alias that renames nothing is a line that says
+nothing — every reader spells the lookup `$aliases[$name] ?? $name`, so `$aliases['id'] = 'id'` and no
+entry at all are the same answer — and the demo corpus carried 119 of those against a single real
+rename. The identity rows are gone; the METHOD stays even when the map comes out empty, because unlike
+the four above it is declared on `GeneratedDtoInterface` and omitting it leaves every DTO abstract. That
+one is measured too: the first attempt to drop it made the whole corpus fatal on load.
+
+`jsonSerialize()` used to carry its own copy of the property loop, and the copy had fallen behind:
+`toArray()` reindexes a list with `array_values()` and `jsonSerialize()` did not, so a list with holes
+went out of `toJson()` and `__toString()` — the paths that actually reach the wire — as a JSON object
+instead of an array. It calls `toArray()` now and adds only the one fact PHP cannot hold, that an object
+with nothing to write is `{}` and not `[]`. One builder cannot drift from itself.
+
+**Runtime output is 11% smaller**: 18 513 lines to 16 444 for the demo corpus.
+
+Last, the deserializer's fast path cached the wrong thing. It kept the CASTING CLOSURE per class, and
+that closure is bound to the `DtoDeserializer` that built it — so a second instance, constructed with a
+different validator, silently validated through the first one's for every class the first had already
+seen. A host swapping in a stricter validator got the lenient answer. What is genuinely per-class — the
+hydrator check and the parameter-name map — is still cached; the closure is rebuilt per call, which is
+not what the original measurement was about.
+
+Emitted blank lines are also normalized once, centrally, rather than per template. A conditional block
+that emits nothing still leaves its separator behind, and chasing that whitespace tag by tag is how one
+gets fixed and the next four appear — the tail of this change produced three such rounds. Two mechanical
+rules now run over every generated file after rendering: never two blank lines in a row, never a blank
+line before a closing brace. They are exactly what `EmittedCodeSpacingTest` asserts.
+
 ## 2.15.19 — 2026-09-01
 
 - the emitted code had four spacing defects, none of which any build could see
