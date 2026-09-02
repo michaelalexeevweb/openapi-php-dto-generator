@@ -557,6 +557,33 @@ final class DtoNormalizerTest extends TestCase
         $this->assertSame(['name' => 'hello'], $result);
         $this->assertArrayNotHasKey('token', $result);
     }
+
+    /**
+     * Object-level keywords are checked against the payload the NORMALIZER renders, not against
+     * `$dto->toArray()` — so a DTO whose own `toArray()` throws the "wasn't provided" sentinel still
+     * gets `minProperties` / `dependentRequired` reported, as error STRINGS.
+     *
+     * The two spellings look alike and behave differently, which is worth pinning: `$this->toArray()`
+     * inside the normalizer already absorbs that sentinel in `tryFastArray()` and falls back to the
+     * reflection walk, where a field that was never provided is simply skipped. `DtoValidator` calls
+     * `$value->toArray()` DIRECTLY and therefore needs its own try/catch — it has one. A reviewer
+     * reading the object-constraint block as the direct call proposes adding a guard here; it would be
+     * dead code, and in the case it claims to fix it would silently drop the object keywords instead
+     * of reporting them.
+     */
+    public function testObjectConstraintsAreReportedWhenToArrayThrowsTheNotProvidedSentinel(): void
+    {
+        $errors = (new DtoNormalizer())->validate(new NormalizerObjectConstraintsThrowingToArrayDto('present'));
+
+        $this->assertSame(
+            [
+                ' must have at least 2 properties.',
+                '.gamma is required when beta is present.',
+            ],
+            $errors,
+            'the object keywords are answered from the reflection payload, not from the throwing toArray()',
+        );
+    }
 }
 
 enum NormalizerFilterEnum: string implements GeneratedDtoInterface
@@ -2449,5 +2476,74 @@ final class NormalizerWrapsPlainParamObjectDto implements GeneratedDtoInterface
     public static function getConstraints(): array
     {
         return [];
+    }
+}
+
+/**
+ * A DTO in the shape older versions of this generator emitted: its `toArray()` throws the
+ * "wasn't provided in request" sentinel for a required field that was never set, while the getters
+ * still answer. It also carries OBJECT-level constraints, which is what makes the normalizer render
+ * a payload during `validate()`.
+ */
+final class NormalizerObjectConstraintsThrowingToArrayDto implements GeneratedDtoInterface
+{
+    public function __construct(
+        private readonly string $beta,
+    ) {
+    }
+
+    public function getBeta(): string
+    {
+        return $this->beta;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        throw new LogicException('Field "alpha" ' . GeneratedDtoInterface::FIELD_NOT_PROVIDED_MESSAGE);
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'beta' => [
+                'getter' => 'getBeta',
+                'type' => 'string',
+                'nullable' => false,
+                'metadata' => ['openApiName' => 'beta', 'required' => true],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    public static function getObjectConstraints(): array
+    {
+        return [
+            'minProperties' => 2,
+            'dependentRequired' => ['beta' => ['gamma']],
+        ];
     }
 }
