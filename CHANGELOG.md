@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.23 — 2026-09-02
+
+- a generated enum no longer carries the two identity alias rows
+
+DTOs stopped emitting `$aliases['id'] = 'id'` in 2.15.20 — an alias that renames nothing is a line that
+says nothing, every reader spells the lookup `$aliases[$name] ?? $name`. Enums kept theirs: every
+runtime-mode enum declared `['name' => 'name', 'value' => 'value']`, the same two dead lines on each
+one.
+
+`getAliases()` now returns `[]` there too. The METHOD stays — `GeneratedDtoInterface` declares it — and
+the normalized output does not move: `name` and `value` are the keys `getNormalizationMap()` gives, and
+the aliases were never what produced them. Standalone enums (symfony, laravel, laravel-data, yii3) never
+had the method at all.
+
 ## 2.15.22 — 2026-09-01
 
 - a `oneOf`/`anyOf` whose branches disagree about the wire shape is no longer reindexed

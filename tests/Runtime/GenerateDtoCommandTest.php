@@ -1929,6 +1929,40 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('enum ArticleType: int', $typeContent);
     }
 
+    /**
+     * An enum's alias map said `name => name` and `value => value`, which is the same answer no map at
+     * all gives: every reader spells the lookup `$aliases[$name] ?? $name`. DTOs stopped emitting their
+     * identity rows in 2.15.20 and enums kept theirs — the same two dead lines on every generated enum.
+     *
+     * The METHOD stays, `GeneratedDtoInterface` declares it, and the normalized output is unchanged:
+     * `name` and `value` are still the keys, they just come from the normalization map now.
+     */
+    public function testGeneratedEnumEmitsNoIdentityAliases(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'EnumAliasNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/PostStatus.php');
+        $this->assertStringContainsString(
+            "    public static function getAliases(): array\n    {\n        return [];",
+            $content,
+        );
+        $this->assertStringNotContainsString("'name' => 'name'", $content);
+        $this->assertStringNotContainsString("'value' => 'value'", $content);
+
+        require $this->outputDirectory . '/PostStatus.php';
+        /** @var class-string $fqcn */
+        $fqcn = 'EnumAliasNamespace\PostStatus';
+        $this->assertSame([], $fqcn::getAliases());
+
+        $case = $fqcn::from('draft');
+        $this->assertSame(
+            ['name' => 'DRAFT', 'value' => 'draft'],
+            (new DtoNormalizer())->toArray($case),
+            'the normalized keys are unchanged — the aliases were never what produced them',
+        );
+    }
+
     public function testNestedSchemaGeneration(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/test-all-features.yaml');

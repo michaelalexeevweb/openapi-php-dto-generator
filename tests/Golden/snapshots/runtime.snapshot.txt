@@ -1,4 +1,4 @@
-# runtime mode — 55 files, 16276 lines
+# runtime mode — 55 files, 16267 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8348,10 +8348,7 @@ enum DiscriminatorType: string implements GeneratedDtoInterface
      */
     public static function getAliases(): array
     {
-        return [
-            'name' => 'name',
-            'value' => 'value',
-        ];
+        return [];
     }
 
     /**
@@ -13014,10 +13011,7 @@ enum Test2Types: string implements GeneratedDtoInterface
      */
     public static function getAliases(): array
     {
-        return [
-            'name' => 'name',
-            'value' => 'value',
-        ];
+        return [];
     }
 
     /**
@@ -14459,10 +14453,7 @@ enum TypeEnum: string implements GeneratedDtoInterface
      */
     public static function getAliases(): array
     {
-        return [
-            'name' => 'name',
-            'value' => 'value',
-        ];
+        return [];
     }
 
     /**
