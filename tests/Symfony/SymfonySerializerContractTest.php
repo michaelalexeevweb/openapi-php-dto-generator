@@ -268,13 +268,10 @@ final class SymfonySerializerContractTest extends TestCase
             static fn(): null => null,
             [$attribute],
             Request::create(
-                '/',
-                'PATCH',
-                [],
-                [],
-                [],
-                ['CONTENT_TYPE' => 'application/json'],
-                '{"first_name":"Jo","note":null}',
+                uri: '/',
+                method: 'PATCH',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: '{"first_name":"Jo","note":null}',
             ),
             HttpKernelInterface::MAIN_REQUEST,
         );

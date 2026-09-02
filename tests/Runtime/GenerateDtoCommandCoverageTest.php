@@ -1430,7 +1430,7 @@ final class GenerateDtoCommandCoverageTest extends TestCase
             'openapi' => '3.0.3',
             'info' => ['title' => 'route propagation', 'version' => '1.0.0'],
             'paths' => [
-                '/api/pipeline/investors' => [
+                '/api/catalog/widgets' => [
                     'get' => [
                         'parameters' => [
                             [
@@ -1469,19 +1469,19 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsRoute');
 
         // Inline enum off a query parameter → owner's GET route.
-        $scope = (string)file_get_contents($this->outputDirectory . '/ApiPipelineInvestorsGetQueryParamsScope.php');
-        $this->assertStringContainsString(' * Route: GET /api/pipeline/investors', $scope);
-        $this->assertStringContainsString(' * From: ApiPipelineInvestorsGetQueryParams.scope', $scope);
+        $scope = (string)file_get_contents($this->outputDirectory . '/ApiCatalogWidgetsGetQueryParamsScope.php');
+        $this->assertStringContainsString(' * Route: GET /api/catalog/widgets', $scope);
+        $this->assertStringContainsString(' * From: ApiCatalogWidgetsGetQueryParams.scope', $scope);
 
         // Same inheritance for a nested object DTO (not just enums).
-        $filter = (string)file_get_contents($this->outputDirectory . '/ApiPipelineInvestorsPostRequestFilter.php');
-        $this->assertStringContainsString(' * Route: POST /api/pipeline/investors', $filter);
-        $this->assertStringContainsString(' * From: ApiPipelineInvestorsPostRequest.filter', $filter);
+        $filter = (string)file_get_contents($this->outputDirectory . '/ApiCatalogWidgetsPostRequestFilter.php');
+        $this->assertStringContainsString(' * Route: POST /api/catalog/widgets', $filter);
+        $this->assertStringContainsString(' * From: ApiCatalogWidgetsPostRequest.filter', $filter);
 
         // Enum nested two levels under a request body still inherits the POST route (transitive).
-        $kind = (string)file_get_contents($this->outputDirectory . '/ApiPipelineInvestorsPostRequestFilterKind.php');
-        $this->assertStringContainsString(' * Route: POST /api/pipeline/investors', $kind);
-        $this->assertStringContainsString(' * From: ApiPipelineInvestorsPostRequestFilter.kind', $kind);
+        $kind = (string)file_get_contents($this->outputDirectory . '/ApiCatalogWidgetsPostRequestFilterKind.php');
+        $this->assertStringContainsString(' * Route: POST /api/catalog/widgets', $kind);
+        $this->assertStringContainsString(' * From: ApiCatalogWidgetsPostRequestFilter.kind', $kind);
     }
 
     /**

@@ -403,13 +403,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // …and the body still wins over the query when both carry it.
         $both = Request::create(
-            '/?id=from-query',
-            'POST',
-            [],
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            '{"id":"from-body"}',
+            uri: '/?id=from-query',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"id":"from-body"}',
         );
         self::assertSame('from-body', $deserializer->deserialize($both, $fqcn)->getId());
     }
@@ -494,13 +491,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $fast = $outcome($this->jsonPostRequest($json));
             // A stray query key disqualifies the fast route, so this one takes the general loop.
             $general = $outcome(Request::create(
-                '/?__forces_the_general_route=1',
-                'POST',
-                [],
-                [],
-                [],
-                ['CONTENT_TYPE' => 'application/json'],
-                $json,
+                uri: '/?__forces_the_general_route=1',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: $json,
             ));
 
             self::assertSame($general, $fast, sprintf('the two hydration routes disagree on "%s"', $label));
@@ -2145,12 +2139,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         foreach (['/upload', '/upload?avatar=ignored'] as $uri) {
             $request = Request::create(
-                $uri,
-                'POST',
-                [],
-                [],
-                ['avatar' => new UploadedFile($file, 'a.png', 'image/png', null, true)],
-                ['CONTENT_TYPE' => 'multipart/form-data'],
+                uri: $uri,
+                method: 'POST',
+                files: ['avatar' => new UploadedFile($file, 'a.png', 'image/png', null, true)],
+                server: ['CONTENT_TYPE' => 'multipart/form-data'],
             );
 
             $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
@@ -2189,13 +2181,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             'application/json; charset=utf-8',
         ] as $mediaType) {
             $request = Request::create(
-                '/',
-                'POST',
-                [],
-                [],
-                [],
-                ['CONTENT_TYPE' => $mediaType],
-                '{"name":"Alice"}',
+                uri: '/',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => $mediaType],
+                content: '{"name":"Alice"}',
             );
 
             $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
@@ -4657,6 +4646,100 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             '{"cyclicRef":{"second":"b","first":"a"}}',
             (string)json_encode((new DtoNormalizer())->toArray($cyclic)),
         );
+    }
+
+    /**
+     * An `allOf` child hydrates the properties it INHERITS exactly like the base does.
+     *
+     * The child extends the class the composition resolved to, and every generated property is
+     * private, which `ReflectionClass::hasProperty()` does not see through inheritance. The
+     * deserializer reads the item type of an array off the property's docblock, so on a child that
+     * lookup came back empty and the elements were handed to the constructor as `json_decode()`
+     * produced them: a string where the DTO declares an enum, a `stdClass` where it declares a DTO,
+     * a string where it declares a date. The tracking flags failed the same way — the `…InRequest`
+     * property was not found, never reset, and `isXInRequest()` answered true for a field the
+     * payload never carried, which is the more dangerous half: it makes an absent field look sent.
+     *
+     * An empty array hides all of it, which is why this went out on a stand with green tests.
+     */
+    public function testAllOfChildHydratesInheritedArrayItemsAndTrackingFlags(): void
+    {
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Source' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+                'Tag' => [
+                    'type' => 'object',
+                    'required' => ['label'],
+                    'properties' => ['label' => ['type' => 'string']],
+                ],
+                'Base' => [
+                    'type' => 'object',
+                    'required' => ['sources', 'tags', 'stamps', 'matrix'],
+                    'properties' => [
+                        'sources' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Source']],
+                        'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']],
+                        'stamps' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']],
+                        'matrix' => ['type' => 'array', 'items' => [
+                            'type' => 'array',
+                            'items' => ['$ref' => '#/components/schemas/Tag'],
+                        ]],
+                        'optionalFlagField' => ['type' => 'integer'],
+                    ],
+                ],
+                'Child' => ['allOf' => [
+                    ['$ref' => '#/components/schemas/Base'],
+                    [
+                        'type' => 'object',
+                        'required' => ['extra'],
+                        'properties' => ['extra' => ['type' => 'integer']],
+                    ],
+                ]],
+            ]],
+        ];
+        $baseFqcn = $this->generateFromInlineSpec($spec, 'AllOfInheritanceNs', 'Base');
+        $childFqcn = 'AllOfInheritanceNs\Child';
+        $tagFqcn = 'AllOfInheritanceNs\Tag';
+        $sourceFqcn = 'AllOfInheritanceNs\Source';
+
+        $body = [
+            'sources' => ['crimson'],
+            'tags' => [['label' => 'a']],
+            'stamps' => ['2026-01-01T00:00:00+00:00'],
+            'matrix' => [[['label' => 'b']]],
+        ];
+
+        $deserializer = new DtoDeserializer();
+
+        // The base is the control: it always worked, and must keep working.
+        foreach ([$baseFqcn => $body, $childFqcn => $body + ['extra' => 1]] as $fqcn => $payload) {
+            /** @var class-string<GeneratedDtoInterface> $fqcn */
+            $dto = $deserializer->deserialize(
+                $this->jsonPostRequest((string)json_encode($payload)),
+                $fqcn,
+            );
+            $label = (new ReflectionClass($fqcn))->getShortName();
+
+            $this->assertContainsOnlyInstancesOf($sourceFqcn, $dto->getSources(), $label . ': enum items');
+            $this->assertContainsOnlyInstancesOf($tagFqcn, $dto->getTags(), $label . ': DTO items');
+            $this->assertContainsOnlyInstancesOf(
+                DateTimeImmutable::class,
+                $dto->getStampsAsDateTime(),
+                $label . ': date-time items',
+            );
+            $this->assertContainsOnlyInstancesOf($tagFqcn, $dto->getMatrix()[0], $label . ': nested DTO items');
+
+            // Not sent, so the flag must say so — a false true here is an absent field reported as sent.
+            $this->assertFalse($dto->isOptionalFlagFieldInRequest(), $label . ': flag for an absent field');
+
+            $sent = $deserializer->deserialize(
+                $this->jsonPostRequest((string)json_encode($payload + ['optionalFlagField' => 7])),
+                $fqcn,
+            );
+            $this->assertTrue($sent->isOptionalFlagFieldInRequest(), $label . ': flag for a sent field');
+            $this->assertSame(7, $sent->getOptionalFlagField(), $label . ': the sent value');
+        }
     }
 
     /**

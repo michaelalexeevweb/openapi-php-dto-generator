@@ -1871,7 +1871,35 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function resolveReflectionProperty(ReflectionClass $reflection, ?string $propName): ?ReflectionProperty
     {
-        return $propName !== null ? $reflection->getProperty($propName) : null;
+        return $propName !== null ? $this->findPropertyInHierarchy($reflection, $propName) : null;
+    }
+
+    /**
+     * A property of the class OR of any class it extends.
+     *
+     * `ReflectionClass::hasProperty()` and `::getProperty()` do not see a PRIVATE property of a
+     * parent, and every generated property is private — so on an `allOf` child, which extends the
+     * base class the composition resolved to, the base's properties were invisible: the item type
+     * read off their docblock came back null and the elements of an array were handed to the
+     * constructor exactly as `json_decode()` produced them (a string where the DTO declares an enum,
+     * a `stdClass` where it declares a nested DTO). The tracking flags went the same way: the
+     * `…InRequest` property could not be found, so it was never reset and `isXInRequest()` answered
+     * true for a field the payload never carried.
+     *
+     * A `ReflectionProperty` obtained from the DECLARING class reads and writes the value on an
+     * instance of the child perfectly well; it is only the lookup that stops at the class itself.
+     *
+     * @param ReflectionClass<object> $reflection
+     */
+    private function findPropertyInHierarchy(ReflectionClass $reflection, string $name): ?ReflectionProperty
+    {
+        for ($class = $reflection; $class !== false; $class = $class->getParentClass()) {
+            if ($class->hasProperty($name)) {
+                return $class->getProperty($name);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1949,7 +1977,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         foreach ($candidates as $candidate) {
-            if ($reflection->hasProperty($candidate)) {
+            if ($this->findPropertyInHierarchy($reflection, $candidate) !== null) {
                 return $candidate;
             }
         }
@@ -2635,11 +2663,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function resolveArrayItemType(ReflectionClass $reflection, string $paramName): ?string
     {
-        if (!$reflection->hasProperty($paramName)) {
+        $property = $this->findPropertyInHierarchy($reflection, $paramName);
+        if ($property === null) {
             return null;
         }
 
-        $docComment = $reflection->getProperty($paramName)->getDocComment();
+        $docComment = $property->getDocComment();
         if ($docComment === false) {
             return null;
         }
@@ -2649,7 +2678,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        return $this->qualifyDocTypeName($reflection, $rawType);
+        // Qualified against the class that DECLARES the property, not the one being deserialized: a
+        // short name in the docblock is resolved through the imports of the file it was written in,
+        // and an inherited docblock was written in the parent's file. The two are the same file until
+        // the base lives in another namespace (`--ref` output), and then the child's imports answer
+        // for a name it never imported.
+        return $this->qualifyDocTypeName($property->getDeclaringClass(), $rawType);
     }
 
     /**
@@ -2666,11 +2700,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function resolveNestedArrayItemType(ReflectionClass $reflection, string $paramName): ?string
     {
-        if (!$reflection->hasProperty($paramName)) {
+        $property = $this->findPropertyInHierarchy($reflection, $paramName);
+        if ($property === null) {
             return null;
         }
 
-        $docComment = $reflection->getProperty($paramName)->getDocComment();
+        $docComment = $property->getDocComment();
         if ($docComment === false) {
             return null;
         }
@@ -2685,7 +2720,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        $nestedType = $this->qualifyDocTypeName($reflection, $matches[1]);
+        $nestedType = $this->qualifyDocTypeName($property->getDeclaringClass(), $matches[1]);
 
         // A DTO and nothing else. What this hop adds is HYDRATION — turning the `stdClass`
         // `json_decode()` produced into the class the declaration names — and only a generated DTO has

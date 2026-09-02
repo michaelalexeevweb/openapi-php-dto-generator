@@ -3,6 +3,38 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.24 — 2026-09-02
+
+- an `allOf` child hydrates its inherited array items and tracking flags
+
+The deserializer reads the item type of an array off the docblock of the PROPERTY, and looked it up
+with `ReflectionClass::hasProperty()` — which does not see a private property of a parent. Every
+generated property is private, and an `allOf` child extends the class its composition resolved to, so
+on such a child the inherited properties were invisible. Two consequences, both silent:
+
+- the elements of an inherited array were handed to the constructor exactly as `json_decode()`
+  produced them — a `string` where the DTO declares a backed enum, a `stdClass` where it declares a
+  nested DTO, a `string` where it declares a date-time. The declaration promised one thing and the
+  property held another, and the failure surfaced later, in consumer code that trusted the type;
+- the `…InRequest` / `…InPath` / `…InQuery` flag property was not found either, so it was never reset:
+  `isXInRequest()` answered TRUE for a field the payload never carried. That is the more dangerous
+  half — an absent field reported as sent.
+
+An EMPTY array hides all of it, which is how this passed a test suite and failed on a stand.
+
+The lookup now walks the class hierarchy (`findPropertyInHierarchy()`), and the four places that
+needed it use it: `resolveArrayItemType()`, `resolveNestedArrayItemType()` (the second level of
+`array<array<T>>`), `resolveTrackingFlagPropertyName()` and `resolveReflectionProperty()` — the last
+one because `getProperty()` on the child THROWS for an inherited private property, so fixing only the
+flag name would have turned a wrong answer into a `ReflectionException`. A `ReflectionProperty` taken
+from the declaring class reads and writes the value on an instance of the child unchanged.
+
+An inherited docblock is also qualified against the class that DECLARES the property rather than the
+one being deserialized: a short type name resolves through the imports of the file it was written in,
+which is the parent's file when the base came from another namespace.
+
+This is a RUNTIME fix: upgrading the package is enough, the generated DTOs need no regeneration.
+
 ## 2.15.23 — 2026-09-02
 
 - a generated enum no longer carries the two identity alias rows

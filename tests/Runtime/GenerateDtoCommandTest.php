@@ -1025,6 +1025,88 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('ExtAddress $addr', $holder);
     }
 
+    /**
+     * The `allOf` inheritance fix, with the base class in ANOTHER namespace.
+     *
+     * A child of an external-file base extends a class whose file — and whose imports — are not the
+     * child's. The property lookup has to walk the hierarchy to find the inherited `$sources` at all,
+     * and the short name in its docblock has to be resolved against the class that DECLARES it. Get
+     * either wrong and the enum items arrive as the strings `json_decode()` produced.
+     */
+    public function testAllOfChildOfExternalBaseHydratesInheritedEnumItems(): void
+    {
+        $extFile = $this->outputDirectory . '/ext-base.yaml';
+        file_put_contents($extFile, Yaml::dump([
+            'components' => ['schemas' => [
+                'ExtSource' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+                'ExtBase' => [
+                    'type' => 'object',
+                    'required' => ['sources'],
+                    'properties' => [
+                        'sources' => [
+                            'type' => 'array',
+                            'items' => ['$ref' => '#/components/schemas/ExtSource'],
+                        ],
+                    ],
+                ],
+            ]],
+        ]));
+
+        $rootFile = $this->outputDirectory . '/root-allof.yaml';
+        file_put_contents($rootFile, Yaml::dump([
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'XRef allOf', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'ChildOfBase' => ['allOf' => [
+                    ['$ref' => 'ext-base.yaml#/components/schemas/ExtBase'],
+                    [
+                        'type' => 'object',
+                        'required' => ['extra'],
+                        'properties' => ['extra' => ['type' => 'integer']],
+                    ],
+                ]],
+            ]],
+        ]));
+
+        $genDir = $this->outputDirectory . '/gen';
+        $extOutDir = $genDir . '/ext';
+        $commandTester = new CommandTester(new GenerateDtoCommand());
+        $exitCode = $commandTester->execute([
+            '--file' => $rootFile,
+            '--directory' => $genDir,
+            '--namespace' => 'XRefAllOfNs',
+            '--ref' => [$extFile . '=' . $extOutDir],
+            '--ref-namespace' => [$extFile . '=XRefAllOfExtNs'],
+        ]);
+        $this->assertSame(0, $exitCode);
+
+        // Case-SENSITIVE existence check: the generator normalizes a schema name, and a case-folding
+        // filesystem (macOS) would accept `Xchild.php` for an assertion spelled `XChild.php` while
+        // Linux CI would not. Compare against what the directory actually lists.
+        foreach ([$extOutDir => ['ExtSource.php', 'ExtBase.php'], $genDir => ['ChildOfBase.php']] as $dir => $names) {
+            $listed = scandir($dir);
+            $this->assertIsArray($listed);
+            foreach ($names as $name) {
+                $this->assertContains($name, $listed, $dir . ' must list ' . $name);
+                require $dir . '/' . $name;
+            }
+        }
+
+        /** @var class-string $childFqcn */
+        $childFqcn = 'XRefAllOfNs\ChildOfBase';
+        $this->assertSame('XRefAllOfExtNs\ExtBase', get_parent_class($childFqcn));
+
+        $request = Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: (string)json_encode(['sources' => ['crimson'], 'extra' => 1]),
+        );
+        $dto = (new DtoDeserializer())->deserialize($request, $childFqcn);
+
+        $this->assertContainsOnlyInstancesOf('XRefAllOfExtNs\ExtSource', $dto->getSources());
+    }
+
     public function testOptionalArrayGetterOmitsDeadUnsetGuard(): void
     {
         $openApi = [

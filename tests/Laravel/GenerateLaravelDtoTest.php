@@ -529,13 +529,10 @@ final class GenerateLaravelDtoTest extends TestCase
             /** @var array<string, mixed> $payload */
             $payload = (array)json_decode($json, true);
             $formRequest = \LvRawShape\SettingsPostRequestFormRequest::create(
-                '/settings',
-                'POST',
-                [],
-                [],
-                [],
-                ['CONTENT_TYPE' => 'application/json'],
-                $json,
+                uri: '/settings',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: $json,
             );
 
             /** @var array<string, mixed> $rules */

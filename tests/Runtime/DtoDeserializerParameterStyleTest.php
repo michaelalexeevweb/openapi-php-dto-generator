@@ -158,8 +158,8 @@ final class DtoDeserializerParameterStyleTest extends TestCase
     public function testMatrixLabelAndDeepObjectDeserialize(): void
     {
         $request = Request::create(
-            '/styles/;ids=1,2,3/.kind=dog.name=Rex/;matrixFlags=4;matrixFlags=5/.labelTags=a,b?filter[name]=Bob&filter[role]=admin&reserved=a+b',
-            'GET',
+            uri: '/styles/;ids=1,2,3/.kind=dog.name=Rex/;matrixFlags=4;matrixFlags=5/.labelTags=a,b?filter[name]=Bob&filter[role]=admin&reserved=a+b',
+            method: 'GET',
         );
         $request->attributes->set('ids', ';ids=1,2,3');
         $request->attributes->set('meta', '.kind=dog.name=Rex');

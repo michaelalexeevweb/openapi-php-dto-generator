@@ -116,13 +116,10 @@ final class LaravelRequestDeserializerTest extends TestCase
     public function testBodyDtoDeserializesFromLaravelRequest(): void
     {
         $request = LaravelRequest::create(
-            '/items/42',
-            'POST',
-            [],
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            (string)json_encode(['name' => 'Widget', 'tags' => ['a', 'b']]),
+            uri: '/items/42',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: (string)json_encode(['name' => 'Widget', 'tags' => ['a', 'b']]),
         );
 
         $dto = $this->deserializer->deserialize($request, 'LaravelNs\ItemsPostRequest');
