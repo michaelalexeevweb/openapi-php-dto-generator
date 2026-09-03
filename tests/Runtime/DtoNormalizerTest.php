@@ -9,6 +9,7 @@ use LogicException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 use RuntimeException;
@@ -556,6 +557,77 @@ final class DtoNormalizerTest extends TestCase
 
         $this->assertSame(['name' => 'hello'], $result);
         $this->assertArrayNotHasKey('token', $result);
+    }
+
+    /**
+     * The docblock type parser reads the item type of the OUTER generic, at any nesting depth.
+     *
+     * It replaced a regex whose character class could not cross a `>`: that one matched the INNER
+     * generic of `array<array<string, DateTimeImmutable>>` and reported `DateTimeImmutable` as the
+     * outer item type, so every item — itself a map — was reported as the wrong type and a valid
+     * payload came back with one error per element. The items of a nested generic are ARRAYS.
+     *
+     * Pinned through `validate()` rather than on the private method, because the item type is only
+     * observable as the type the elements are checked against. One fixture per case: the class meta
+     * is cached per class name, so a single fixture with a mutable type string would answer from the
+     * first case for all of them.
+     *
+     * @param class-string<GeneratedDtoInterface> $fqcn
+     * @param array<int, mixed> $items
+     */
+    #[DataProvider('nestedItemTypeCases')]
+    public function testItemTypeIsReadFromTheOutermostGeneric(
+        string $fqcn,
+        array $items,
+        ?string $expectedError,
+    ): void {
+        $errors = (new DtoNormalizer())->validate(new $fqcn($items));
+
+        if ($expectedError === null) {
+            $this->assertSame([], $errors);
+
+            return;
+        }
+
+        $this->assertStringContainsString($expectedError, implode(' | ', $errors));
+    }
+
+    /**
+     * @return array<string, array{class-string<GeneratedDtoInterface>, array<int, mixed>, string|null}>
+     */
+    public static function nestedItemTypeCases(): array
+    {
+        return [
+            // `array<array<string, T>>` — a LIST OF MAPS. The item is an array; T belongs to the
+            // level below, which nothing here checks. This is the case the regex got wrong.
+            'list of maps accepts an array item' => [NormalizerListOfMapsItemDto::class, [['a' => 1]], null],
+            'list of maps rejects a scalar item' => [
+                NormalizerListOfMapsItemDto::class,
+                ['x'],
+                'must return array, got string',
+            ],
+            // Three levels deep: still an array at the top.
+            'triple nesting accepts an array item' => [NormalizerTripleNestedItemDto::class, [[[1]]], null],
+            'triple nesting rejects a scalar item' => [
+                NormalizerTripleNestedItemDto::class,
+                [1],
+                'must return array, got int',
+            ],
+            // A generic beside a plain type: the generic still yields the item type.
+            'union with a generic keeps the item type' => [
+                NormalizerUnionGenericItemDto::class,
+                ['x'],
+                'must return int, got string',
+            ],
+            'union with a generic accepts a valid item' => [NormalizerUnionGenericItemDto::class, [7], null],
+            // `?X` inside the generic is `X|null` written short: null is allowed, a wrong type is not.
+            'nullable shorthand allows a null item' => [NormalizerNullableItemDto::class, [null], null],
+            'nullable shorthand still types the item' => [
+                NormalizerNullableItemDto::class,
+                [1],
+                'must return string, got int',
+            ],
+        ];
     }
 
     /**
@@ -2546,4 +2618,114 @@ final class NormalizerObjectConstraintsThrowingToArrayDto implements GeneratedDt
             'dependentRequired' => ['beta' => ['gamma']],
         ];
     }
+}
+
+/**
+ * The four item-type spellings the parser has to read, one fixture each (class meta is cached per
+ * class name). Only `arrayItemType` differs; the payload travels through `validate()`.
+ */
+final class NormalizerListOfMapsItemDto implements GeneratedDtoInterface
+{
+    use NormalizerItemTypeFixture;
+
+    protected static function itemType(): string
+    {
+        return 'array<array<string, DateTimeImmutable>>';
+    }
+}
+
+final class NormalizerTripleNestedItemDto implements GeneratedDtoInterface
+{
+    use NormalizerItemTypeFixture;
+
+    protected static function itemType(): string
+    {
+        return 'array<array<array<int>>>';
+    }
+}
+
+final class NormalizerUnionGenericItemDto implements GeneratedDtoInterface
+{
+    use NormalizerItemTypeFixture;
+
+    protected static function itemType(): string
+    {
+        return 'array<int>|null';
+    }
+}
+
+final class NormalizerNullableItemDto implements GeneratedDtoInterface
+{
+    use NormalizerItemTypeFixture;
+
+    protected static function itemType(): string
+    {
+        return 'array<?string>';
+    }
+}
+
+/**
+ * The body the four fixtures above share: a single `items` field whose declared item type is the
+ * one thing that varies. The getter carries NO docblock, so the map's `arrayItemType` is the only
+ * source the normalizer can read the item type from.
+ */
+trait NormalizerItemTypeFixture
+{
+    /** @param array<int, mixed> $items */
+    public function __construct(
+        private readonly array $items,
+    ) {
+    }
+
+    public function getItems(): array
+    {
+        return $this->items;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        return ['items' => $this->items];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return $this->toArray();
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}> */
+    public static function getNormalizationMap(): array
+    {
+        return [
+            'items' => [
+                'getter' => 'getItems',
+                'type' => 'array',
+                'nullable' => false,
+                'metadata' => [
+                    'openApiName' => 'items',
+                    'required' => true,
+                    'arrayItemType' => static::itemType(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function getConstraints(): array
+    {
+        return [];
+    }
+
+    abstract protected static function itemType(): string;
 }
