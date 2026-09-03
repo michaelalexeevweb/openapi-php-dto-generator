@@ -3,6 +3,50 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.26 — 2026-09-03
+
+- the generated DTO's own `toJson()` and `__toString()` stop escaping slashes — the encoded string changes
+- an array adder no longer re-raises a presence flag the constructor already pinned
+
+2.15.17 stopped `DtoNormalizer::toJson()` escaping forward slashes and called that method "the
+outlier". It was not the only one. The DTO template emits its own `toJson()` and `__toString()`, and
+both kept `json_encode()`'s default, so the same DTO encoded two different strings depending on the
+route out:
+
+```php
+$dto->toJson();                 // {"url":"https:\/\/example.com\/a"}
+(new DtoNormalizer())->toJson($dto);  // {"url":"https://example.com/a"}
+```
+
+Both are valid JSON and decode identically; only the emitted STRING differed, and it differed
+between two methods that a caller reasonably expects to agree. They now pass
+`JSON_UNESCAPED_SLASHES` like everything else in the package — the normalizer, `DtoValidator`, the
+emitted query-string builders, the generated doc examples — and the standalone enum's `toJson()` with
+them. **Anything matching on the escaped spelling of `$dto->toJson()` or `(string)$dto` from 2.15.25 or
+earlier needs updating**; the decoded value is unchanged.
+
+The drift had a cause worth naming: the test written in 2.15.17 covered the normalizer only, so the
+two template methods were free to stay behind. It now asserts all four exits — `toJson()`,
+`validateAndNormalizeToJson()`, `$dto->toJson()` and `(string)$dto` — on one DTO.
+
+**The array adder's flag guard is emitted only where the flag can still be false.** Every array
+property gets `addItemToX()`, and it ended with
+
+```php
+if (!$this->xInRequest) {
+    $this->xInRequest = true;
+}
+```
+
+For a REQUIRED property the constructor assigns that flag `true` unconditionally, so the branch could
+never be taken — dead code in every generated DTO carrying a required array, and a reader has to
+reconstruct the constructor to know it. The template now asks the renderer
+(`presenceAlwaysTrue`, mirroring the three-way branch in `resolveConstructorParameterData()`) and
+emits the guard only for a property whose flag really can still be false at add time: one carrying the
+`UnsetValue` sentinel, or an optional path/query/header/cookie parameter with a default, where the
+deserializer flips the flag. Across the golden corpus that is 12 adders losing the branch and 23
+keeping it. No behaviour changes — the flag ends up true either way.
+
 ## 2.15.25 — 2026-09-03
 
 - seven deserializer messages join the shape the other messages have had since 2.15.6

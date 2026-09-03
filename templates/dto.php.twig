@@ -314,10 +314,12 @@ interface {{ className }}
         }
 {% endif %}
         $this->{{ property.name }}[$key] = $item;
+{% if not property.presenceAlwaysTrue %}
         // Mark as being in request if it wasn't explicitly passed to constructor
         if (!$this->{{ property.presenceFlagName }}) {
             $this->{{ property.presenceFlagName }} = true;
         }
+{% endif %}
     }
 {% else %}
     public function {{ property.arrayAdderMethodName }}({{ property.arrayAdderItemType }} $item): void
@@ -333,10 +335,12 @@ interface {{ className }}
         }
 {% endif %}
         $this->{{ property.name }}[] = $item;
+{% if not property.presenceAlwaysTrue %}
         // Mark as being in request if it wasn't explicitly passed to constructor
         if (!$this->{{ property.presenceFlagName }}) {
             $this->{{ property.presenceFlagName }} = true;
         }
+{% endif %}
     }
 {% endif %}
 {% endif %}
@@ -451,17 +455,26 @@ interface {{ className }}
         return $result === [] ? (object)$result : $result;
     }
 
+{# Slashes are left alone here for the same reason `DtoNormalizer::toJson()` leaves them alone:
+   `json_encode()` escapes them by default, which is valid JSON that decodes identically, but it made
+   these two methods the last places in the package that wrote `https:\/\/`. The normalizer,
+   `DtoValidator`, the emitted query-string builders and the generated doc examples all pass
+   `JSON_UNESCAPED_SLASHES`, so `$dto->toJson()` and `(string)$dto` now agree with them: the same DTO
+   encodes to the same STRING whichever route it takes. #}
     /**
      * @throws {{ jsonExceptionRef }}
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }

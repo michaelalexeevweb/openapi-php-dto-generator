@@ -1,4 +1,4 @@
-# runtime mode — 55 files, 16267 lines
+# runtime mode — 55 files, 16378 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -195,12 +195,15 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -402,12 +405,15 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -605,12 +611,15 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -815,12 +824,15 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -1137,12 +1149,15 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -1394,12 +1409,15 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -1692,12 +1710,15 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -2087,12 +2108,15 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -2482,12 +2506,15 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -2877,12 +2904,15 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3139,12 +3169,15 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3335,12 +3368,15 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3534,12 +3570,15 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -3765,10 +3804,6 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     public function addItemToMustContain(array $item): void
     {
         $this->mustContain[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->mustContainInRequest) {
-            $this->mustContainInRequest = true;
-        }
     }
 
     public function getPositions(): ?array
@@ -3978,12 +4013,15 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4283,12 +4321,15 @@ final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringab
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4509,12 +4550,15 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -4870,12 +4914,15 @@ final class AwkwardNames implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5151,12 +5198,15 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5435,12 +5485,15 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5649,10 +5702,6 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
     public function addItemToLinks(ChainLink $item): void
     {
         $this->links[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->linksInRequest) {
-            $this->linksInRequest = true;
-        }
     }
 
     /**
@@ -5686,12 +5735,15 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -5897,12 +5949,15 @@ final class ChainTag implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -6141,12 +6196,15 @@ final class Circle extends Shape implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -6400,10 +6458,6 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
     public function addItemToListOfLists(array $item): void
     {
         $this->listOfLists[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->listOfListsInRequest) {
-            $this->listOfListsInRequest = true;
-        }
     }
 
     /**
@@ -6596,12 +6650,15 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -6927,10 +6984,6 @@ final class Containers implements GeneratedDtoInterface, Stringable
     public function addItemToDates(DateTimeImmutable $item): void
     {
         $this->dates[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->datesInRequest) {
-            $this->datesInRequest = true;
-        }
     }
 
     /**
@@ -7110,10 +7163,6 @@ final class Containers implements GeneratedDtoInterface, Stringable
     public function addItemToShapes(Shape $item): void
     {
         $this->shapes[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->shapesInRequest) {
-            $this->shapesInRequest = true;
-        }
     }
 
     /**
@@ -7207,12 +7256,15 @@ final class Containers implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -7458,12 +7510,15 @@ final class CountMap implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -7650,12 +7705,15 @@ class Discriminator implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -7881,12 +7939,15 @@ final class Discriminator1 extends Discriminator implements GeneratedDtoInterfac
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -8135,12 +8196,15 @@ final class Discriminator2 extends Discriminator implements GeneratedDtoInterfac
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -8309,7 +8373,10 @@ enum DiscriminatorType: string implements GeneratedDtoInterface
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function getName(): string
@@ -8460,12 +8527,15 @@ class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -8667,12 +8737,15 @@ final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringab
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -8965,12 +9038,15 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -9238,10 +9314,6 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
     public function addItemToScores(int $item): void
     {
         $this->scores[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->scoresInRequest) {
-            $this->scoresInRequest = true;
-        }
     }
 
     /**
@@ -9381,12 +9453,15 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -9717,10 +9792,6 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
     public function addItemToMatrix(array $item): void
     {
         $this->matrix[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->matrixInRequest) {
-            $this->matrixInRequest = true;
-        }
     }
 
     /**
@@ -9764,10 +9835,6 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
     public function addItemToRowsOfMaps(array $item): void
     {
         $this->rowsOfMaps[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->rowsOfMapsInRequest) {
-            $this->rowsOfMapsInRequest = true;
-        }
     }
 
     /**
@@ -10120,12 +10187,15 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -10522,10 +10592,6 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
             return;
         }
         $this->listOfNullable[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->listOfNullableInRequest) {
-            $this->listOfNullableInRequest = true;
-        }
     }
 
     /**
@@ -10727,12 +10793,15 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -11096,12 +11165,15 @@ final class ObjectWideRules implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -11369,12 +11441,15 @@ class Pet implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -11586,12 +11661,15 @@ abstract class Shape implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -11808,12 +11886,15 @@ final class Square extends Shape implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -12082,12 +12163,15 @@ final class Tag implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -12316,12 +12400,15 @@ final class Test implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -12617,10 +12704,6 @@ final class Test2 implements GeneratedDtoInterface, Stringable
     public function addItemToTags(Tag $item): void
     {
         $this->tags[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->tagsInRequest) {
-            $this->tagsInRequest = true;
-        }
     }
 
     public function getUser(): ?User
@@ -12768,12 +12851,15 @@ final class Test2 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -12972,7 +13058,10 @@ enum Test2Types: string implements GeneratedDtoInterface
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function getName(): string
@@ -13133,12 +13222,15 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -13422,12 +13514,15 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -13870,12 +13965,15 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -14204,10 +14302,6 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
     public function addItemToChildren(string $key, mixed $item): void
     {
         $this->children[$key] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->childrenInRequest) {
-            $this->childrenInRequest = true;
-        }
     }
 
     /**
@@ -14242,12 +14336,15 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -14414,7 +14511,10 @@ enum TypeEnum: string implements GeneratedDtoInterface
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function getName(): string
@@ -14751,12 +14851,15 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -15013,10 +15116,6 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
     public function addItemToTags(string $item): void
     {
         $this->tags[] = $item;
-        // Mark as being in request if it wasn't explicitly passed to constructor
-        if (!$this->tagsInRequest) {
-            $this->tagsInRequest = true;
-        }
     }
 
     /**
@@ -15050,12 +15149,15 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -15401,12 +15503,15 @@ final class User implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -15831,12 +15936,15 @@ final class User2 implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }
@@ -16250,12 +16358,15 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
      */
     public function toJson(): string
     {
-        return json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
     }
 
     public function __toString(): string
     {
-        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return is_string($json) ? $json : '{}';
     }

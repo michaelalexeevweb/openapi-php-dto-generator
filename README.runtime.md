@@ -338,8 +338,9 @@ class UserController
   path → body → query → files → form.
 - `toJson()` leaves forward slashes alone, so a URL reads `https://example.com/a` in the encoded
   string. `json_encode()` escapes them by default; this package does not, here or anywhere else it
-  writes JSON. Anything matching on the escaped spelling from 2.15.16 or earlier needs updating — the
-  DECODED value is unchanged.
+  writes JSON. `DtoNormalizer::toJson()` since 2.15.17, the DTO's own `toJson()` and `__toString()`
+  since 2.15.26. Anything matching on the escaped spelling from those releases or earlier needs
+  updating — the DECODED value is unchanged.
 - The per-class caches are static and populated without locking, which is safe in a long-running
   runtime (Swoole / RoadRunner / FrankenPHP): every entry is derived from the class alone, so two
   coroutines racing on the first request for one class compute and store the same value. Nothing

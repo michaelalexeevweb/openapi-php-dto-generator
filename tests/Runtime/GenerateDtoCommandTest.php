@@ -1324,6 +1324,42 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('public function addItemToNames(string $item): void', $content);
     }
 
+    /**
+     * The array adder raises the presence flag only where that flag can still be false.
+     *
+     * For a REQUIRED property the constructor assigns `true` unconditionally, so the adder's
+     * `if (!$this->xInRequest)` could never fire — dead code in every generated DTO carrying a
+     * required array. An OPTIONAL one derives the flag from the UnsetValue sentinel and can genuinely
+     * still be false when an item is added, so its guard stays.
+     */
+    public function testArrayAdderRaisesPresenceFlagOnlyWhenItCanStillBeFalse(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Test', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Container' => [
+                        'type' => 'object',
+                        'required' => ['musts'],
+                        'properties' => [
+                            'musts' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            'maybes' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'TestNamespace');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Container.php');
+
+        $this->assertStringContainsString('$this->mustsInRequest = true;', $content);
+        $this->assertStringNotContainsString('if (!$this->mustsInRequest) {', $content);
+        $this->assertStringContainsString('if (!$this->maybesInRequest) {', $content);
+    }
+
     public function testNonNullableArrayItemsDoNotGenerateNullGuardInAdder(): void
     {
         $openApi = [

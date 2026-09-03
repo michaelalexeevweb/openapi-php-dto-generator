@@ -607,6 +607,7 @@ trait RendersRuntimeDto
      *     inCookieFlagName: string,
      *     inRequestFlagName: string,
      *     presenceFlagName: string,
+     *     presenceAlwaysTrue: bool,
      *     isMap: bool,
      *     hasArrayAdder: bool,
      *     arrayAdderMethodName: string,
@@ -660,6 +661,19 @@ trait RendersRuntimeDto
             && !($property['inQuery'] ?? false)
             && !($property['inHeader'] ?? false)
             && !($property['inCookie'] ?? false);
+
+        // Whether the constructor has already set this property's presence flag to true for good.
+        // Mirrors the three-way branch in {@see resolveConstructorParameterData()}: the sentinel
+        // branch derives the flag from the argument, the parameter-with-a-default branch starts it
+        // false for the deserializer to flip, and everything else assigns a bare `true`. Only method
+        // properties reach here — own properties, never inherited ones — so `tracksArgPresence` is
+        // implied. The array adder reads this to skip a flag-raising guard that can never fire.
+        $isParameterSource = ($property['inPath'] ?? false) === true
+            || ($property['inQuery'] ?? false) === true
+            || ($property['inHeader'] ?? false) === true
+            || ($property['inCookie'] ?? false) === true;
+        $presenceAlwaysTrue = !$usesUnsetSentinel
+            && !($isParameterSource && !$property['required']);
 
         $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
         $arrayItemPhpType = $phpType === 'array' ? $this->resolveArrayItemPhpType($property['type']) : '';
@@ -741,6 +755,7 @@ trait RendersRuntimeDto
             'inCookieFlagName' => $this->normalizeInCookieFlagName($property['name']),
             'inRequestFlagName' => $this->normalizeInRequestFlagName($property['name']),
             'presenceFlagName' => $this->resolvePresenceFlagName($property),
+            'presenceAlwaysTrue' => $presenceAlwaysTrue,
             // A map (array<string, V>) is keyed: its adder takes ($key, $item) and it serializes
             // as a JSON object. A list adder takes ($item) only.
             'isMap' => $property['isMap'] ?? false,

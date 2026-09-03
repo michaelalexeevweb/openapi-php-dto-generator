@@ -2193,12 +2193,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
-     * `toJson()` leaves slashes alone, so a URL survives the round trip readably.
+     * `toJson()` leaves slashes alone, so a URL survives the round trip readably — by EVERY route out.
      *
-     * `json_encode()` escapes them by default — valid JSON, read back identically — but it made this
-     * the one place in the package that wrote `https:\/\/`, while `DtoValidator`, the emitted
+     * `json_encode()` escapes them by default — valid JSON, read back identically — but it made these
+     * the places in the package that wrote `https:\/\/`, while `DtoValidator`, the emitted
      * query-string builders and the generated examples all pass `JSON_UNESCAPED_SLASHES`. The decoded
      * value was never in question; the emitted STRING was, and consistency decided it.
+     *
+     * Both routes are pinned here because they drifted apart once already: this test covered the
+     * normalizer only, so the DTO's own `toJson()`/`__toString()` kept escaping and the same DTO
+     * encoded to two different strings depending on which one the caller reached for.
      */
     public function testToJsonLeavesSlashesUnescaped(): void
     {
@@ -2226,6 +2230,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             '{"url":"https://example.com/a/b"}',
             $normalizer->validateAndNormalizeToJson($dto),
             'the validating twin encodes the same way',
+        );
+        $this->assertSame(
+            '{"url":"https://example.com/a/b"}',
+            $dto->toJson(),
+            'and so does the DTO asked directly',
+        );
+        $this->assertSame(
+            '{"url":"https://example.com/a/b"}',
+            (string)$dto,
+            'and its string cast',
         );
     }
 
