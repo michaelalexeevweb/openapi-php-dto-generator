@@ -560,7 +560,8 @@ final class DtoDeserializerCoverageTest extends TestCase
         $request->headers->set('Content-Type', 'application/json');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('expects string|int discriminator value');
+        // Reads as a phrase now, not as a PHP type union — and it ends in a full stop like the rest.
+        $this->expectExceptionMessage('expects a string or int discriminator value, got object.');
 
         $this->deserializer->deserialize($request, CovGoodDiscriminatorWrapperDto::class);
     }

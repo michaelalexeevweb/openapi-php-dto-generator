@@ -2284,7 +2284,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             }
             throw new RuntimeException(
-                "param \"{$paramPath}\" expects a date string, got {$this->getTypeString($value)}",
+                $this->finalizeParamMessage("param \"{$paramPath}\" expects a date string, got {$this->getTypeString($value)}"),
             );
         }
 
@@ -2332,7 +2332,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
             }
             throw new RuntimeException(
-                "param \"{$paramPath}\": Cannot deserialize nested DTO {$typeName} from non-array value.",
+                $this->finalizeParamMessage(
+                    "param \"{$paramPath}\": Cannot deserialize nested DTO {$typeName} from non-array value",
+                ),
             );
         }
 
@@ -2506,7 +2508,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($value === '') {
             $hint = $this->temporalFormatHint($temporalFormat);
             throw new RuntimeException(
-                "param \"{$paramPath}\" expects a valid date{$hint}, got empty string",
+                $this->finalizeParamMessage("param \"{$paramPath}\" expects a valid date{$hint}, got empty string"),
             );
         }
 
@@ -2515,7 +2517,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value);
             if ($dt === false || $dt->format('Y-m-d') !== $value) {
                 throw new RuntimeException(
-                    "param \"{$paramPath}\" expects a date in Y-m-d format (e.g. 2026-03-10), got \"{$value}\"",
+                    $this->finalizeParamMessage(
+                        "param \"{$paramPath}\" expects a date in Y-m-d format (e.g. 2026-03-10), got \"{$value}\"",
+                    ),
                 );
             }
             return $dt;
@@ -2524,7 +2528,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // Reject structural mismatches before createFromFormat: it silently accepts trailing characters.
         if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1) {
             throw new RuntimeException(
-                "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
+                $this->finalizeParamMessage(
+                    "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
+                ),
             );
         }
 
@@ -2542,7 +2548,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         throw new RuntimeException(
-            "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
+            $this->finalizeParamMessage(
+                "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
+            ),
         );
     }
 
@@ -3338,14 +3346,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if (!array_key_exists($discriminatorProperty, $value)) {
             throw new RuntimeException(
-                "param \"{$fullDiscriminatorPath}\" wasn't provided",
+                $this->finalizeParamMessage("param \"{$fullDiscriminatorPath}\" wasn't provided"),
             );
         }
 
         $discriminatorValue = $value[$discriminatorProperty];
         if (!is_string($discriminatorValue) && !is_int($discriminatorValue)) {
             throw new RuntimeException(
-                "param \"{$fullDiscriminatorPath}\" expects string|int discriminator value, got {$this->getTypeString($discriminatorValue)}",
+                $this->finalizeParamMessage(
+                    "param \"{$fullDiscriminatorPath}\" expects a string or int discriminator value, "
+                    . "got {$this->getTypeString($discriminatorValue)}",
+                ),
             );
         }
 
@@ -3390,6 +3401,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
             "param \"{$paramPath}\" expects {$expectedType}, got {$actualType}",
             'param "',
         );
+    }
+
+    /**
+     * The single exit for a message this class writes about a FIELD.
+     *
+     * `expectsTypeMessage()` above finalises the message it builds, so its `param "x" expects int,
+     * got string.` has always carried the full stop the convention asks for. The messages built at
+     * the other places did not, and they reach the client in the same list: `hydrateFast()` collects
+     * whatever the cast closure threw and rethrows it joined by newlines, without a finalising step
+     * of its own — deliberately, since a generated DTO owes nothing to the validator. So the full
+     * stop is applied where the sentence is WRITTEN, and this is the one place that says how.
+     *
+     * The subject is passed so the leading `param "…"` keeps the spelling the document chose:
+     * `finalizeMessage()` capitalises only a sentence that opens with an English word.
+     */
+    private function finalizeParamMessage(string $message): string
+    {
+        return DtoValidator::finalizeMessage($message, 'param "');
     }
 
     private function isStrictIntValue(mixed $value): bool

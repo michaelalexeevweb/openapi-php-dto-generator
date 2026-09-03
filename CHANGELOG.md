@@ -3,6 +3,39 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.25 — 2026-09-03
+
+- seven deserializer messages join the shape the other messages have had since 2.15.6
+- the discriminator type message reads as a sentence, not as a PHP type union
+
+`DtoValidator::finalizeMessage()` says the full stop is unconditional, and 2.15.6 applied that to
+everything the validator writes. Seven messages built inside the deserializer never passed through it:
+an unparsable date, an unparsable date-time, an empty date, a nested DTO handed a scalar, and the two
+discriminator failures. They are not a separate list — `hydrateFast()` rethrows whatever the cast
+closure collected, joined by newlines — so ONE response could read
+
+```
+param "count" expects int, got string.
+param "begin" expects a date in Y-m-d format (e.g. 2026-03-10), got "nonsense"
+```
+
+with the shape changing between two lines about the same body.
+
+They go through the one exit now. It is applied where the sentence is WRITTEN, next to
+`expectsTypeMessage()` which has always done it, rather than at the throw in `hydrateFast()`: that code
+is emitted into the DTO, and a generated DTO owes nothing to the validator. A message opening with
+`param "` keeps the spelling the document chose — `finalizeMessage()` capitalises only a sentence that
+starts with an English word.
+
+`param "x" expects string|int discriminator value, got array` also became
+`expects a string or int discriminator value, got object.` — the old spelling read as a type union
+lifted out of the code rather than as a phrase, and `array` was the wrong word for a decoded JSON
+object anyway.
+
+A payload-level test pins the shape mechanically: every line of every deserializer message must end in
+a full stop, asserted across seven failure kinds, so the eighth such message cannot slip out
+unfinalised. Nothing else changes — the same failures, the same fields, the same order.
+
 ## 2.15.24 — 2026-09-02
 
 - an `allOf` child hydrates its inherited array items and tracking flags

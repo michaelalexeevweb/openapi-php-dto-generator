@@ -4649,6 +4649,102 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * Every message this package writes about a field ends in a full stop — including the ones the
+     * deserializer builds itself.
+     *
+     * The convention is stated in `DtoValidator::finalizeMessage()` ("the full stop is unconditional")
+     * and was applied to the validator's own output in 2.15.6, but seven messages built inside the
+     * deserializer never passed through it: a date, a date-time, an empty date, a nested DTO given a
+     * scalar, and two discriminator failures. They reach the client in the SAME list as the finalised
+     * ones — `hydrateFast()` rethrows whatever the cast closure collected, joined by newlines — so one
+     * response could read `param "count" expects int, got string.` on one line and
+     * `… got "nonsense"` on the next.
+     *
+     * The assertion is deliberately mechanical: EVERY line of the message must end in a full stop.
+     * The expected fragment is asserted too, so an empty or unrelated message cannot pass the shape
+     * check by accident.
+     *
+     * @param array<string, mixed> $payload
+     * @param string $namespaceSuffix one namespace per case: the classes are require'd into the
+     *        running process, and the same name cannot be declared twice
+     */
+    #[DataProvider('deserializerMessageCases')]
+    public function testEveryDeserializerMessageEndsInAFullStop(
+        array $payload,
+        string $expectedFragment,
+        string $namespaceSuffix,
+    ): void {
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Leaf' => [
+                    'type' => 'object',
+                    'required' => ['title'],
+                    'properties' => ['title' => ['type' => 'string']],
+                ],
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['count', 'day', 'moment', 'leaf', 'rows'],
+                    'properties' => [
+                        'count' => ['type' => 'integer'],
+                        'day' => ['type' => 'string', 'format' => 'date'],
+                        'moment' => ['type' => 'string', 'format' => 'date-time'],
+                        'leaf' => ['$ref' => '#/components/schemas/Leaf'],
+                        'rows' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Leaf']],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'MessageShapeNs' . $namespaceSuffix, 'Holder');
+
+        try {
+            (new DtoDeserializer())->deserialize(
+                $this->jsonPostRequest((string)json_encode($payload)),
+                $fqcn,
+            );
+            $this->fail('the payload was accepted: ' . (string)json_encode($payload));
+        } catch (RuntimeException $exception) {
+            $message = $exception->getMessage();
+            $this->assertStringContainsString($expectedFragment, $message);
+
+            foreach (explode("\n", $message) as $line) {
+                $this->assertStringEndsWith('.', $line, 'unfinalised message: ' . $line);
+            }
+        }
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string, string}>
+     */
+    public static function deserializerMessageCases(): array
+    {
+        $valid = [
+            'count' => 1,
+            'day' => '2026-03-10',
+            'moment' => '2026-03-10T12:00:00+00:00',
+            'leaf' => ['title' => 't'],
+            'rows' => [],
+        ];
+
+        return [
+            // Already finalised before this change — the control.
+            'wrong scalar type' => [['count' => 'x'] + $valid, 'param "count" expects int, got string.', 'Scalar'],
+            'unparsable date' => [['day' => 'nonsense'] + $valid, 'expects a date in Y-m-d format', 'Date'],
+            'empty date' => [['day' => ''] + $valid, 'expects a valid date', 'EmptyDate'],
+            'unparsable date-time' => [['moment' => 'nonsense'] + $valid, 'expects a valid date-time', 'DateTime'],
+            'nested DTO given a scalar' => [['leaf' => 'oops'] + $valid, 'Cannot deserialize nested DTO', 'Nested'],
+            'array item given a scalar' => [['rows' => ['oops']] + $valid, 'param "rows.0" expects object', 'Item'],
+            // Two failures at once: the list is where a missing full stop showed.
+            'two failures in one list' => [
+                ['count' => 'x', 'day' => 'nonsense'] + $valid,
+                'param "count" expects int, got string.',
+                'TwoFailures',
+            ],
+        ];
+    }
+
+    /**
      * An `allOf` child hydrates the properties it INHERITS exactly like the base does.
      *
      * The child extends the class the composition resolved to, and every generated property is
