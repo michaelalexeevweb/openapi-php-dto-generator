@@ -89,6 +89,104 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * Keys whose value is a SUBSCHEMA, and may therefore be the boolean form of one.
+     *
+     * JSON Schema lets `true` and `false` stand where an object schema stands: `true` accepts every
+     * value, `false` accepts none. `additionalProperties` and `unevaluated*` already read the boolean
+     * directly — for them it is the ordinary spelling — so they are deliberately absent here.
+     */
+    private const array BOOLEAN_SUBSCHEMA_KEYS = [
+        'items',
+        'contains',
+        'not',
+        'propertyNames',
+        'if',
+        'then',
+        'else',
+        'contentSchema',
+    ];
+
+    /** Keys holding a MAP of subschemas, any of which may be boolean. */
+    private const array BOOLEAN_SUBSCHEMA_MAP_KEYS = [
+        'properties',
+        'patternProperties',
+        'dependentSchemas',
+    ];
+
+    /** Keys holding a LIST of subschemas, any of which may be boolean. */
+    private const array BOOLEAN_SUBSCHEMA_LIST_KEYS = [
+        'allOf',
+        'anyOf',
+        'oneOf',
+        'prefixItems',
+    ];
+
+    /**
+     * Rewrites boolean subschemas into the object schemas they are shorthand for.
+     *
+     * `true` is the empty schema — it constrains nothing — and `false` is its opposite, which nothing
+     * satisfies. That second one has no direct spelling as an array, but `not` of the empty schema is
+     * exactly it: the inner schema accepts the value, so `not` rejects it, whatever the value is.
+     *
+     * Doing it here, at the one entry every level passes through, is what keeps this from becoming
+     * ten separate fixes: the boolean was previously dropped by every reader that tested
+     * `is_array()` first, so `items: false` did not close a `prefixItems` tuple, `properties: {x:
+     * false}` did not forbid `x`, and `anyOf: [false, true]` refused a value the `true` branch
+     * accepts. One rewrite, and every reader below sees a shape it already understands.
+     *
+     * The scan is shallow — recursion brings each nested level back through here — and it rebuilds
+     * nothing when the schema holds no boolean subschema, which is the ordinary case.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private static function expandBooleanSubschemas(array $constraints): array
+    {
+        foreach (self::BOOLEAN_SUBSCHEMA_KEYS as $key) {
+            $subschema = $constraints[$key] ?? null;
+            if (is_bool($subschema)) {
+                $constraints[$key] = self::booleanSchemaAsArray($subschema);
+            }
+        }
+
+        foreach (self::BOOLEAN_SUBSCHEMA_MAP_KEYS as $key) {
+            $group = $constraints[$key] ?? null;
+            if (!is_array($group)) {
+                continue;
+            }
+
+            foreach ($group as $name => $subschema) {
+                if (is_bool($subschema)) {
+                    $constraints[$key][$name] = self::booleanSchemaAsArray($subschema);
+                }
+            }
+        }
+
+        foreach (self::BOOLEAN_SUBSCHEMA_LIST_KEYS as $key) {
+            $group = $constraints[$key] ?? null;
+            if (!is_array($group)) {
+                continue;
+            }
+
+            foreach ($group as $index => $subschema) {
+                if (is_bool($subschema)) {
+                    $constraints[$key][$index] = self::booleanSchemaAsArray($subschema);
+                }
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function booleanSchemaAsArray(bool $schema): array
+    {
+        return $schema ? [] : ['not' => []];
+    }
+
+    /**
      * Recursion depth is threaded as a parameter (not stored on the instance) so a single
      * shared validator is safe under concurrency (Swoole/RoadRunner/FrankenPHP coroutines).
      *
@@ -111,6 +209,8 @@ final class DtoValidator implements DtoValidatorInterface
         if ($constraints === []) {
             return [];
         }
+
+        $constraints = self::expandBooleanSubschemas($constraints);
 
         if ($value === null) {
             $nullable = ($constraints['nullable'] ?? false) === true;
@@ -213,7 +313,12 @@ final class DtoValidator implements DtoValidatorInterface
             // not: value must NOT satisfy the given schema.
             if (array_key_exists('not', $constraints) && is_array($constraints['not'])) {
                 if ($this->validateConstraints($subject, $value, $constraints['not'], $depth + 1) === []) {
-                    $errors[] = "{$subject} must not match the 'not' schema";
+                    // `not: {}` is how {@see booleanSchemaAsArray()} spells the schema `false`, and a
+                    // document that wrote `false` never mentioned `not` — so the sentence must not
+                    // either. It reads as the refusal it is: nothing is allowed here.
+                    $errors[] = $constraints['not'] === []
+                        ? "{$subject} is not allowed by the schema"
+                        : "{$subject} must not match the 'not' schema";
                 }
             }
 
@@ -1208,6 +1313,10 @@ final class DtoValidator implements DtoValidatorInterface
             return [];
         }
 
+        // The annotation walk reads the same subschema keys the validation walk reads, so it needs
+        // the same rewrite: `items: true` marks every index evaluated, `false` marks none.
+        $constraints = self::expandBooleanSubschemas($constraints);
+
         $evaluated = [];
 
         if (is_array($constraints['properties'] ?? null)) {
@@ -1298,6 +1407,10 @@ final class DtoValidator implements DtoValidatorInterface
         if (!is_array($value) || $depth >= self::MAX_VALIDATION_DEPTH) {
             return [];
         }
+
+        // The annotation walk reads the same subschema keys the validation walk reads, so it needs
+        // the same rewrite: `items: true` marks every index evaluated, `false` marks none.
+        $constraints = self::expandBooleanSubschemas($constraints);
 
         $evaluated = [];
 

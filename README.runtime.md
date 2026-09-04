@@ -179,6 +179,7 @@ serialization rules before casting:
 |---|---|
 | `in: path` / `query` / `header` / `cookie` | the property is read ONLY from that source (`getParameterSources()`) |
 | `style` + `explode` (`form`, `simple`, `matrix`, `label`, `spaceDelimited`, `pipeDelimited`, `deepObject`) | the raw string is split accordingly (`getParameterStyles()`) |
+| an array with `style: form, explode: true` (the DEFAULT for a query array) | the repeated key is collected: `?ids=1&ids=2` is `[1, 2]`, `?ids=1` is `[1]`, `?ids=` is `[]`. PHP's own `?ids[]=1&ids[]=2` keeps working. A SCALAR parameter is not collected — `?page=1&page=2` is 2, as `parse_str()` has it |
 | `allowReserved` | literal `+` and reserved characters are preserved in the raw query string |
 | `allowEmptyValue: false` | an empty value is rejected; `true` and silence both accept it |
 | `in: querystring` (OAS 3.2) | the whole raw query string is decoded per its single `content` media type |
@@ -341,6 +342,10 @@ class UserController
   writes JSON. `DtoNormalizer::toJson()` since 2.15.17, the DTO's own `toJson()` and `__toString()`
   since 2.15.26. Anything matching on the escaped spelling from those releases or earlier needs
   updating — the DECODED value is unchanged.
+- An empty DTO encodes as `{}`, never `[]` — a DTO is a `type: object`, and PHP cannot tell the empty
+  object from the empty array. `toArray()` keeps the honest PHP view and still returns `[]`; every
+  JSON exit casts. `DtoNormalizer::toJson()` and `validateAndNormalizeToJson()` since 2.15.27, the
+  DTO's own exits from the start.
 - The per-class caches are static and populated without locking, which is safe in a long-running
   runtime (Swoole / RoadRunner / FrankenPHP): every entry is derived from the class alone, so two
   coroutines racing on the first request for one class compute and store the same value. Nothing

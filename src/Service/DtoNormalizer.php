@@ -103,20 +103,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
      * The DTO as a JSON string, with slashes left alone: `https://example.com`, not `https:\/\/…`.
      *
      * `json_encode()` escapes them by default, which is valid JSON that every parser reads back the
-     * same — but it made this the ONE place in the package that wrote a URL that way. `DtoValidator`,
-     * the emitted query-string builders and the generated doc examples all pass
-     * `JSON_UNESCAPED_SLASHES` already, so the escaping here was an inconsistency rather than a
-     * decision. A consumer comparing the encoded STRING sees the change; the decoded value is
-     * identical either way.
+     * same — but it made this the ONE place in the package that wrote a URL that way. `DtoValidator`
+     * and the generated doc examples all pass `JSON_UNESCAPED_SLASHES` already, so the escaping here
+     * was an inconsistency rather than a decision. A consumer comparing the encoded STRING sees the
+     * change; the decoded value is identical either way.
      *
      * @throws JsonException
      */
     public function toJson(GeneratedDtoInterface $dto): string
     {
-        return json_encode(
-            $this->toArray($dto),
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
-        );
+        return $this->encode($this->toArray($dto));
     }
 
     /**
@@ -127,8 +123,28 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         $this->validateOrThrow($dto);
 
+        return $this->encode($this->toArray($dto));
+    }
+
+    /**
+     * The one encoder, and the one place that knows a DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`.
+     *
+     * `toArray()` keeps the honest PHP view and stays an `array`, so a DTO whose every property is
+     * optional and absent comes back as the empty array — which `json_encode()` writes as `[]`, an
+     * ARRAY where the schema promised an object. The emitted `jsonSerialize()` has cast that case
+     * since it was written; this path did not, so the same DTO encoded to `{}` through
+     * `$dto->toJson()` and to `[]` through the normalizer — the route decided the wire form. The cast
+     * belongs here rather than in `toArray()`: the array view is not wrong, the ENCODING of an empty
+     * one is.
+     *
+     * @param array<string, mixed> $payload
+     * @throws JsonException
+     */
+    private function encode(array $payload): string
+    {
         return json_encode(
-            $this->toArray($dto),
+            $payload === [] ? (object)$payload : $payload,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
     }

@@ -1931,6 +1931,228 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame(['p', 'q'], $dto->getExploded());
     }
 
+    /**
+     * The repeated-key spelling — OpenAPI's DEFAULT for a query array — reaches the DTO as an array.
+     *
+     * `style: form, explode: true` puts each element under its own copy of the key: `?ids=1&ids=2`.
+     * PHP keeps only the last (`$_GET` is built the way `parse_str()` builds it), so the value
+     * arrived as the string `"2"` and the cast reported `expects array, got string` — the documented
+     * wire form, refused. The repeats are read back off the raw QUERY_STRING now.
+     *
+     * Built from a URI STRING on purpose. The sibling test above hands `['p', 'q']` to the Request
+     * constructor, which is a query array PHP would never have produced from the documented URL, and
+     * that is exactly why it could not see this: it tested the cast, not the parse.
+     */
+    public function testRepeatedQueryKeysReachAnArrayParamThroughGeneratedDto(): void
+    {
+        $cls = $this->generateParameterStyleQueryParams('GenRepeatedKeys');
+
+        $dto = (new DtoDeserializer())->deserialize(
+            Request::create('/search?exploded=p&exploded=q&exploded=p', 'GET'),
+            $cls,
+        );
+
+        /** @var object{getExploded: callable} $dto */
+        $this->assertSame(['p', 'q', 'p'], $dto->getExploded(), 'order kept, duplicate kept');
+    }
+
+    /**
+     * One occurrence is a one-element array, and `?exploded=` is the empty one.
+     *
+     * Both follow from the style rather than from a special case: the key carries one element, so the
+     * array has one. The empty value maps to the empty array for the same reason the delimited branch
+     * maps `''` there — a present-but-empty list is a list, not a one-element list of nothing.
+     */
+    public function testASingleRepeatableQueryKeyIsAOneElementArray(): void
+    {
+        $cls = $this->generateParameterStyleQueryParams('GenSingleKey');
+        $deserializer = new DtoDeserializer();
+
+        /** @var object{getExploded: callable} $one */
+        $one = $deserializer->deserialize(Request::create('/search?exploded=p', 'GET'), $cls);
+        $this->assertSame(['p'], $one->getExploded());
+
+        /** @var object{getExploded: callable} $empty */
+        $empty = $deserializer->deserialize(Request::create('/search?exploded=', 'GET'), $cls);
+        $this->assertSame([], $empty->getExploded());
+    }
+
+    /**
+     * The raw query scan skips what `parse_str()` has already handled, and survives a query it cannot
+     * read.
+     *
+     * Three shapes in one request, because they only occur together in the wild:
+     *
+     * - `ids=1&ids=2` — collected, that is the point;
+     * - `other[]=x` — a bracketed key, skipped: `parse_str()` built that array already and collecting
+     *   it again would double it;
+     * - `&&` — an empty pair, which a hand-written or proxied URL produces and which must not become
+     *   a key.
+     *
+     * And separately: a `Request` built from a query ARRAY has no QUERY_STRING to scan at all (tests
+     * and internal dispatch do that), so the scan finds nothing and the single value it was given
+     * becomes the one-element array the style asks for.
+     */
+    public function testTheRawQueryScanSkipsBracketedKeysAndEmptyPairs(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/mixed' => ['get' => [
+                'parameters' => [
+                    [
+                        'name' => 'ids',
+                        'in' => 'query',
+                        'style' => 'form',
+                        'explode' => true,
+                        'schema' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                    ],
+                    [
+                        'name' => 'other',
+                        'in' => 'query',
+                        'style' => 'form',
+                        'explode' => true,
+                        'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    ],
+                ],
+                'responses' => ['200' => ['description' => 'OK']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenRawScan');
+
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        foreach ($queryParamFiles === false ? [] : $queryParamFiles as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenRawScan\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+        $deserializer = new DtoDeserializer();
+
+        /** @var object{getIds: callable, getOther: callable} $fromString */
+        $fromString = $deserializer->deserialize(
+            Request::create('/mixed?ids=1&&ids=2&other[]=x&other[]=y', 'GET'),
+            $cls,
+        );
+        $this->assertSame([1, 2], $fromString->getIds(), 'the empty pair is not a key');
+        $this->assertSame(['x', 'y'], $fromString->getOther(), 'the bracket spelling is not doubled');
+
+        /** @var object{getIds: callable} $fromArray */
+        $fromArray = $deserializer->deserialize(
+            new Request(query: ['ids' => '7']),
+            $cls,
+        );
+        $this->assertSame([7], $fromArray->getIds(), 'no QUERY_STRING to scan, so the value stands alone');
+    }
+
+    /**
+     * What the repeat recovery must NOT touch, pinned from the other side.
+     *
+     * Reading repeats off the raw query string is right for one shape only — an array parameter with
+     * no delimiter to split on. Everything else keeps the behaviour it had:
+     *
+     * - PHP's own `ids[]=` spelling is already an array by the time it arrives, and collecting it
+     *   again would double it;
+     * - a delimited style carries every element in ONE value: `form`+`explode: false` (comma),
+     *   `spaceDelimited`, `pipeDelimited` are split, not collected.
+     *
+     * The scalar case — `?page=1&page=2` staying 2 — needs a scalar parameter, which this fixture
+     * does not declare; it is pinned by the test below.
+     */
+    public function testTheRepeatRecoveryLeavesBracketsAndDelimitedStylesAlone(): void
+    {
+        $cls = $this->generateParameterStyleQueryParams('GenRepeatUntouched');
+
+        /** @var object{getTags: callable, getCodes: callable, getIds: callable, getExploded: callable} $dto */
+        $dto = (new DtoDeserializer())->deserialize(
+            Request::create('/search?tags=a,b&codes=x%20y&ids=1%7C2&exploded[]=p&exploded[]=q', 'GET'),
+            $cls,
+        );
+
+        $this->assertSame(['a', 'b'], $dto->getTags(), 'form + explode=false stays comma-split');
+        $this->assertSame(['x', 'y'], $dto->getCodes(), 'spaceDelimited stays space-split');
+        $this->assertSame(['1', '2'], $dto->getIds(), 'pipeDelimited stays pipe-split');
+        $this->assertSame(['p', 'q'], $dto->getExploded(), 'the bracket spelling is not doubled');
+    }
+
+    /**
+     * A repeated key on a SCALAR parameter still means "the last one", as `parse_str()` has it.
+     *
+     * `?page=1&page=2` is not a list — the document declared one integer, and nothing in it says
+     * which repeat was meant. Collecting them would hand an array to an `int` cast and turn a
+     * request PHP has always accepted into a type error, so the repeat recovery is gated on the
+     * parameter being array-typed. Pinned because the gate is the whole reason that change is safe.
+     */
+    public function testRepeatedQueryKeysOnAScalarParamKeepTheLastValue(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/page' => [
+                    'get' => [
+                        'parameters' => [
+                            [
+                                'name' => 'page',
+                                'in' => 'query',
+                                'schema' => ['type' => 'integer'],
+                            ],
+                            [
+                                'name' => 'ids',
+                                'in' => 'query',
+                                'style' => 'form',
+                                'explode' => true,
+                                'schema' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                            ],
+                        ],
+                        'responses' => ['200' => ['description' => 'OK']],
+                    ],
+                ],
+            ],
+            'components' => ['schemas' => []],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GenScalarRepeat');
+
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        foreach ($queryParamFiles === false ? [] : $queryParamFiles as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\GenScalarRepeat\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+
+        /** @var object{getPage: callable, getIds: callable} $dto */
+        $dto = (new DtoDeserializer())->deserialize(
+            Request::create('/page?page=1&page=2&ids=7&ids=8', 'GET'),
+            $cls,
+        );
+
+        $this->assertSame(2, $dto->getPage(), 'the scalar keeps the last occurrence');
+        $this->assertSame([7, 8], $dto->getIds(), 'the array beside it still collects both');
+    }
+
+    /**
+     * Generates the parameter-style fixture and returns its `*QueryParams` class.
+     *
+     * @return class-string<GeneratedDtoInterface>
+     */
+    private function generateParameterStyleQueryParams(string $namespace): string
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/parameter-style.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, $namespace);
+
+        $queryParamFiles = glob($this->outputDirectory . '/*QueryParams.php');
+        foreach ($queryParamFiles === false ? [] : $queryParamFiles as $file) {
+            require $file;
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\\' . $namespace . '\\' . basename((string)($queryParamFiles[0] ?? ''), '.php');
+
+        return $cls;
+    }
+
     public function testNullableArrayItemsAreAcceptedThroughGeneratedDto(): void
     {
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/nullable-array-items.yaml');
@@ -2104,6 +2326,55 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A collection body that cannot be a JSON array says which of the two things went wrong.
+     *
+     * `deserializeCollection()` reads the WHOLE body as one document, so it has its own two entry
+     * checks rather than reusing the per-property ones: the media type must be JSON, and the text
+     * must parse. Both were unexecuted by this suite — the happy path above was the only caller —
+     * which left the two sentences a reader sees when a bulk endpoint is called wrongly unpinned.
+     */
+    public function testDeserializeCollectionRejectsANonJsonOrUnparsableBody(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Item' => [
+                    'type' => 'object',
+                    'required' => ['id'],
+                    'properties' => ['id' => ['type' => 'integer']],
+                ],
+            ]],
+        ];
+        $itemClass = $this->generateFromInlineSpec($spec, 'GenBulkErrors', 'Item');
+        $deserializer = new DtoDeserializer();
+
+        $textRequest = Request::create(
+            '/bulk',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'text/plain'],
+            '[{"id":1}]',
+        );
+
+        try {
+            $deserializer->deserializeCollection($textRequest, $itemClass);
+            $this->fail('a text/plain body should not be read as a collection');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Collection body must be application/json.', $e->getMessage());
+        }
+
+        try {
+            $deserializer->deserializeCollection($this->jsonPostRequest('[{'), $itemClass);
+            $this->fail('an unparsable body should not be read as a collection');
+        } catch (RuntimeException $e) {
+            $this->assertStringStartsWith('Json is not valid:', $e->getMessage());
+        }
+    }
+
+    /**
      * An uploaded file is not shadowed by a query string of the same name.
      *
      * The waterfall read query before files, so `POST /upload?avatar=ignored` with `avatar` also in the
@@ -2196,9 +2467,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      * `toJson()` leaves slashes alone, so a URL survives the round trip readably — by EVERY route out.
      *
      * `json_encode()` escapes them by default — valid JSON, read back identically — but it made these
-     * the places in the package that wrote `https:\/\/`, while `DtoValidator`, the emitted
-     * query-string builders and the generated examples all pass `JSON_UNESCAPED_SLASHES`. The decoded
-     * value was never in question; the emitted STRING was, and consistency decided it.
+     * the places in the package that wrote `https:\/\/`, while `DtoValidator` and the generated
+     * examples all pass `JSON_UNESCAPED_SLASHES`. The decoded value was never in question; the
+     * emitted STRING was, and consistency decided it.
      *
      * Both routes are pinned here because they drifted apart once already: this test covered the
      * normalizer only, so the DTO's own `toJson()`/`__toString()` kept escaping and the same DTO
@@ -2241,6 +2512,49 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             (string)$dto,
             'and its string cast',
         );
+    }
+
+    /**
+     * An empty DTO encodes as `{}` by EVERY route out, because `type: object` says so.
+     *
+     * `toArray()` returns the honest PHP view — the empty array — and `json_encode()` writes that as
+     * `[]`, an array where the schema promised an object. The emitted `jsonSerialize()` casts that
+     * case; `DtoNormalizer` did not, so a DTO whose every property was optional and absent went out
+     * as `{}` from `$dto->toJson()` and as `[]` from the normalizer — and the normalizer is the
+     * documented path for a response body. Both are pinned here so neither can drift alone.
+     *
+     * `toArray()` itself is NOT part of this: it stays an array, and an empty one is `[]`.
+     */
+    public function testAnEmptyDtoEncodesAsAnObjectByEveryRoute(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Patch' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['type' => 'string']],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'EmptyObjectNs', 'Patch');
+
+        /** @var GeneratedDtoInterface $dto */
+        $dto = new $fqcn();
+        $normalizer = new DtoNormalizer();
+
+        $this->assertSame('{}', $dto->toJson(), 'the DTO asked directly');
+        $this->assertSame('{}', (string)$dto, 'its string cast');
+        $this->assertSame('{}', json_encode($dto), 'json_encode via jsonSerialize()');
+        $this->assertSame('{}', $normalizer->toJson($dto), 'the normalizer');
+        $this->assertSame(
+            '{}',
+            $normalizer->validateAndNormalizeToJson($dto),
+            'and the validating twin',
+        );
+
+        $this->assertSame([], $dto->toArray(), 'the ARRAY view stays an array');
+        $this->assertSame([], $normalizer->toArray($dto), 'through the normalizer too');
     }
 
     /**

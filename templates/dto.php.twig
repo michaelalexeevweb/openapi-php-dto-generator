@@ -458,9 +458,9 @@ interface {{ className }}
 {# Slashes are left alone here for the same reason `DtoNormalizer::toJson()` leaves them alone:
    `json_encode()` escapes them by default, which is valid JSON that decodes identically, but it made
    these two methods the last places in the package that wrote `https:\/\/`. The normalizer,
-   `DtoValidator`, the emitted query-string builders and the generated doc examples all pass
-   `JSON_UNESCAPED_SLASHES`, so `$dto->toJson()` and `(string)$dto` now agree with them: the same DTO
-   encodes to the same STRING whichever route it takes. #}
+   `DtoValidator` and the generated doc examples all pass `JSON_UNESCAPED_SLASHES`, so
+   `$dto->toJson()` and `(string)$dto` now agree with them: the same DTO encodes to the same STRING
+   whichever route it takes. #}
     /**
      * @throws {{ jsonExceptionRef }}
      */

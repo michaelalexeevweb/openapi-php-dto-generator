@@ -476,6 +476,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
+        // Parsed at most once, and only if some array-typed parameter actually reads the query.
+        /** @var array<string, list<string>>|null $queryValueLists */
+        $queryValueLists = null;
+
         foreach ($classMeta['params'] as $paramMeta) {
             $requestFieldName = $paramMeta['requestFieldName'];
 
@@ -530,6 +534,44 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     wasProvided: $rawWasProvided,
                     source: $rawSource,
                 );
+            }
+
+            // OpenAPI's DEFAULT array serialization in a query string is `style: form,
+            // explode: true` — the key REPEATED: `?ids=1&ids=2`. PHP does not keep the repeats.
+            // `$_GET` — and Symfony's `$request->query`, which reads it — is built the way
+            // `parse_str()` builds it, where the LAST occurrence wins, so `?ids=1&ids=2` arrives as
+            // the string `"2"`. Only PHP's own `?ids[]=1&ids[]=2` spelling arrayifies, and that
+            // spelling is a PHP convention no OpenAPI document can state. So a conformant client —
+            // anything generated from the spec — sent the documented form and got back
+            // `expects array, got string`.
+            //
+            // The repeats are still in the raw QUERY_STRING, so they are read back from there for
+            // exactly this shape: an array-typed parameter, read from the query, with no delimiter
+            // to split on (`form`+`explode: true`, or a class that declares no styles at all).
+            // Excluded on purpose:
+            //   - a SCALAR parameter keeps `parse_str()` semantics (`?page=1&page=2` is 2). The
+            //     document cannot say which repeat was meant, and a list would break its cast;
+            //   - a MAP (`allowsAssociativeArray`) and `deepObject` arrive through the bracket
+            //     spelling, already arrayified — re-reading would double them;
+            //   - a delimited style (`form`+`explode: false`, `spaceDelimited`, `pipeDelimited`,
+            //     `simple`) carries its elements in ONE value and is split below instead.
+            // A single occurrence still yields a one-element list, which is what the style means;
+            // `?ids=` yields the empty array, matching what the delimiter branch does with `''`.
+            if (
+                $request !== null
+                && $rawWasProvided
+                && $rawSource === 'query'
+                && is_string($rawValue)
+                && $paramMeta['arrayItemType'] !== null
+                && !$paramMeta['allowsAssociativeArray']
+                && $paramMeta['arrayDelimiter'] === null
+                && ($paramMeta['parameterStyle'] === null || $paramMeta['parameterStyle'] === 'form')
+            ) {
+                $queryValueLists ??= $this->getQueryValueLists($request);
+                $rawValue = $queryValueLists[$requestFieldName] ?? [$rawValue];
+                if ($rawValue === ['']) {
+                    $rawValue = [];
+                }
             }
 
             // Every branch in here is gated on a parameter source, a serialization style or a
@@ -1710,6 +1752,45 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $this->bodyDataCacheValue = $result;
 
         return $result;
+    }
+
+    /**
+     * Every occurrence of each bare query key, in order: `?ids=1&ids=2` → `['ids' => ['1', '2']]`.
+     *
+     * `parse_str()` — and therefore `$_GET` and `$request->query` — keeps only the last, which
+     * loses OpenAPI's default array serialization entirely. This reads the repeats back off the raw
+     * QUERY_STRING for the one caller that needs them (see the deserialize() loop).
+     *
+     * Bracketed keys are skipped: `ids[]=1&ids[]=2` is PHP's own spelling and `parse_str()` has
+     * already built that array, so collecting it again would double it. Decoding matches
+     * `$request->query`, where `+` is a space — deliberately unlike {@see getRawQueryData()}, which
+     * preserves `+` because `allowReserved` needs the untouched view.
+     *
+     * @return array<string, list<string>>
+     */
+    private function getQueryValueLists(Request $request): array
+    {
+        $queryString = (string)$request->server->get('QUERY_STRING', '');
+        if ($queryString === '') {
+            return [];
+        }
+
+        $lists = [];
+        foreach (explode('&', $queryString) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+
+            $eqPos = strpos($pair, '=');
+            $key = $eqPos === false ? $pair : substr($pair, 0, $eqPos);
+            if (str_contains($key, '[')) {
+                continue;
+            }
+
+            $lists[urldecode($key)][] = $eqPos === false ? '' : urldecode(substr($pair, $eqPos + 1));
+        }
+
+        return $lists;
     }
 
     /**

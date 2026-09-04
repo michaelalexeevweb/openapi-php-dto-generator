@@ -371,6 +371,103 @@ final class DtoDeserializerTest extends TestCase
         $this->assertFalse($dto->isTokenInQuery());
     }
 
+    /**
+     * The source WATERFALL, exercised on the route that actually runs it.
+     *
+     * The five checks — path attribute, JSON body, uploaded file, query, form, in that order — exist
+     * TWICE: inlined in the deserialize loop for a class whose every property is a plain body field,
+     * and in `resolveRawRequestValue()` for everything else. Only the inline copy was ever executed
+     * by this suite, because a GENERATED parameter class binds every one of its properties, so the
+     * resolver returns from its first branch and never reaches the waterfall below it.
+     *
+     * A class with a PARTIAL `getParameterSources()` is the shape that does reach it: the bound
+     * property disqualifies the class from the inline path, and the unbound ones fall through to the
+     * resolver. That is a hand-written DTO — the generator does not emit one — but the deserializer
+     * is a public service and accepts any DTO, so the copy is reachable and now measured.
+     *
+     * `avatar` is deliberately present in BOTH the files and the query: a query string is never an
+     * upload, so the file wins. That precedence was once fixed in the resolver alone and the
+     * measurement did not budge — because nothing ran it.
+     */
+    public function testTheSourceWaterfallRunsForUnboundPropertiesOfAPartiallyBoundDto(): void
+    {
+        $file = new UploadedFile(
+            path: (string)tempnam(sys_get_temp_dir(), 'waterfall'),
+            originalName: 'avatar.txt',
+            mimeType: 'text/plain',
+            error: null,
+            test: true,
+        );
+
+        $request = new Request(
+            query: ['fromQuery' => 'q', 'avatar' => 'a-query-string-is-not-an-upload'],
+            request: ['fromForm' => 'f'],
+            attributes: ['fromPath' => 'p'],
+            cookies: [],
+            files: ['avatar' => $file],
+            server: ['HTTP_TOKEN' => 'tok', 'CONTENT_TYPE' => 'application/json'],
+            content: (string)json_encode(['fromBody' => 'b']),
+        );
+
+        $dto = $this->deserializer->deserialize($request, PartiallyBoundDto::class);
+
+        $this->assertSame('tok', $dto->getToken(), 'the bound property still reads its own source');
+        $this->assertSame('p', $dto->getFromPath(), 'path attributes come first');
+        $this->assertSame('b', $dto->getFromBody(), 'then the JSON body');
+        $this->assertSame($file, $dto->getAvatar(), 'then files — beating the query string');
+        $this->assertSame('q', $dto->getFromQuery(), 'then the query');
+        $this->assertSame('f', $dto->getFromForm(), 'and last the form');
+    }
+
+    /**
+     * An unbound property absent from every source ends the waterfall without an error.
+     *
+     * The tail of `resolveRawRequestValue()` — "not provided, no source" — is what an OPTIONAL body
+     * field of a partially bound class hits, and it is the only exit of that method the other tests
+     * do not reach.
+     */
+    public function testAnAbsentOptionalPropertyFallsOffTheEndOfTheWaterfall(): void
+    {
+        $request = new Request(
+            query: [],
+            request: [],
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: ['HTTP_TOKEN' => 'tok', 'CONTENT_TYPE' => 'application/json'],
+            content: (string)json_encode(['fromBody' => 'b']),
+        );
+
+        $dto = $this->deserializer->deserialize($request, PartiallyBoundOptionalDto::class);
+
+        $this->assertSame('b', $dto->getFromBody());
+        $this->assertNull($dto->getMissing(), 'absent from path, body, files, query and form alike');
+    }
+
+    /**
+     * A path attribute outranks a body field of the same name, on the resolver route too.
+     *
+     * The router verified the path value; a request body did not. Pinned separately from the
+     * ordering test above because this is the one step of the waterfall that exists for a SECURITY
+     * reason rather than a convenience one.
+     */
+    public function testAPathAttributeBeatsABodyFieldOfTheSameNameOnTheResolverRoute(): void
+    {
+        $request = new Request(
+            query: ['fromQuery' => 'q'],
+            request: ['fromForm' => 'f'],
+            attributes: ['fromPath' => 'from-the-router'],
+            cookies: [],
+            files: [],
+            server: ['HTTP_TOKEN' => 'tok', 'CONTENT_TYPE' => 'application/json'],
+            content: (string)json_encode(['fromPath' => 'from-the-body', 'fromBody' => 'b']),
+        );
+
+        $dto = $this->deserializer->deserialize($request, PartiallyBoundNoFileDto::class);
+
+        $this->assertSame('from-the-router', $dto->getFromPath());
+    }
+
     public function testHeaderBoundParamIsNotSatisfiedByBody(): void
     {
         // token is bound to the header source; supplying it in the JSON body must NOT
@@ -2312,6 +2409,113 @@ final class SourceBoundDto
             'session' => 'cookie',
             'page' => 'query',
         ];
+    }
+}
+
+/**
+ * A DTO whose `getParameterSources()` covers only SOME of its properties.
+ *
+ * The generator never emits this shape — it puts every parameter of an operation in one class and
+ * binds all of them — but a hand-written DTO may, and it is the only shape that reaches the source
+ * waterfall inside `resolveRawRequestValue()`.
+ */
+final class PartiallyBoundDto
+{
+    public function __construct(
+        private readonly string $token,
+        private readonly string $fromPath,
+        private readonly string $fromBody,
+        private readonly UploadedFile $avatar,
+        private readonly string $fromQuery,
+        private readonly string $fromForm,
+    ) {
+    }
+
+    public function getToken(): string
+    {
+        return $this->token;
+    }
+
+    public function getFromPath(): string
+    {
+        return $this->fromPath;
+    }
+
+    public function getFromBody(): string
+    {
+        return $this->fromBody;
+    }
+
+    public function getAvatar(): UploadedFile
+    {
+        return $this->avatar;
+    }
+
+    public function getFromQuery(): string
+    {
+        return $this->fromQuery;
+    }
+
+    public function getFromForm(): string
+    {
+        return $this->fromForm;
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return ['token' => 'header'];
+    }
+}
+
+/** {@see PartiallyBoundDto}, with an optional property no source carries. */
+final class PartiallyBoundOptionalDto
+{
+    public function __construct(
+        private readonly string $token,
+        private readonly string $fromBody,
+        private readonly ?string $missing = null,
+    ) {
+    }
+
+    public function getFromBody(): string
+    {
+        return $this->fromBody;
+    }
+
+    public function getMissing(): ?string
+    {
+        return $this->missing;
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return ['token' => 'header'];
+    }
+}
+
+/** {@see PartiallyBoundDto}, without the upload — for the path-beats-body check. */
+final class PartiallyBoundNoFileDto
+{
+    public function __construct(
+        private readonly string $token,
+        private readonly string $fromPath,
+        private readonly string $fromBody,
+        private readonly string $fromQuery,
+        private readonly string $fromForm,
+    ) {
+    }
+
+    public function getFromPath(): string
+    {
+        return $this->fromPath;
+    }
+
+    /** @return array<string, string> */
+    public static function getParameterSources(): array
+    {
+        return ['token' => 'header'];
     }
 }
 

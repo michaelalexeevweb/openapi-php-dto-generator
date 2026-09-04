@@ -3,6 +3,104 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.27 — 2026-09-04
+
+- a query array in OpenAPI's DEFAULT serialization (`?ids=1&ids=2`) is accepted
+- `true` / `false` in a subschema position mean what JSON Schema says they mean
+- an empty DTO encodes as `{}` through `DtoNormalizer`, not `[]`
+- `oneOf` no longer reports two matches as none
+- the source waterfall, the conditional annotation walk and the collection entry checks are measured
+
+Three fixes from one review, all of them the same shape: something the document is allowed to say,
+which this package read and then dropped. None changes a generated class — the emitted output is
+byte-identical in all five modes, and the golden snapshots did not move.
+
+**`?ids=1&ids=2` is a query array again.** `style: form, explode: true` is what OpenAPI applies to a
+query array when the document says nothing else, and it puts each element under its own copy of the
+key. PHP does not keep the repeats: `$_GET` — and `$request->query`, which reads it — is built the way
+`parse_str()` builds it, where the last occurrence wins, so the value arrived as the string `"2"` and
+the cast reported `param "ids" expects array, got string`. Only PHP's own `?ids[]=1&ids[]=2` spelling
+arrayified, and that spelling is a PHP convention no OpenAPI document can state — so a client
+generated from the very same spec sent the documented form and got a 400.
+
+The repeats are still in the raw `QUERY_STRING`, and they are read back from there for exactly one
+shape: an array-typed parameter, read from the query, with no delimiter to split on. Everything else
+keeps the behaviour it had, and each exclusion is a test:
+
+- a SCALAR keeps `parse_str()` semantics — `?page=1&page=2` is 2. The document declared one value and
+  cannot say which repeat was meant; collecting them would hand an array to an `int` cast and turn a
+  request that always worked into a type error;
+- `?ids[]=1&ids[]=2` is already an array by the time it arrives, and is not collected twice;
+- a delimited style carries its elements in ONE value: `form`+`explode: false` (comma),
+  `spaceDelimited`, `pipeDelimited` are split, exactly as before;
+- `deepObject` and maps arrive through the bracket spelling and are left alone.
+
+A single occurrence is a one-element array and `?ids=` is the empty one, both of which follow from the
+style rather than from a special case. Decoding matches `$request->query`, so `+` is a space
+(`?tags=a+b` is one element `a b`) while `%2B` stays a literal plus — deliberately unlike the raw view
+`allowReserved` needs.
+
+**Why no test caught it:** the one test for `explode: true` handed `['p', 'q']` to the `Request`
+constructor — a query array PHP would never have produced from the documented URL. It tested the cast
+and could not see the parse. The new tests build every request from a URI string, and the golden
+corpus's blind spot is recorded in the todo: `OpenApiExamples/test.yaml` declares no `style`,
+`explode`, `deepObject` or `allowEmptyValue` at all.
+
+**A boolean is a schema.** JSON Schema lets `true` and `false` stand where an object schema stands:
+`true` accepts every value, `false` accepts none. Every reader here tested `is_array()` first, so the
+boolean was silently dropped and the keyword carrying it did nothing at all:
+
+```yaml
+tuple:
+  type: array
+  prefixItems: [{ type: string }, { type: integer }]
+  items: false        # closed the tuple in the document, closed nothing in the code
+```
+
+`['a', 1, 'extra']` was accepted. So was a property forbidden with `properties: {x: false}`, and
+`contains: false`, `not: true`, `if: true`, `allOf: [false]`, `patternProperties: {'^x': false}`,
+`propertyNames: false`, `dependentSchemas: {a: false}`. One case failed in the STRICT direction, which
+is the worse half: `anyOf: [false, true]` refused a value its `true` branch accepts.
+
+The fix is one rewrite at the entry every schema level already passes through, rather than ten
+separate ones: `true` becomes the empty schema, and `false` becomes `not` of the empty schema — which
+is exactly "no value satisfies this", since the inner schema accepts the value and `not` then rejects
+it. Every reader below sees a shape it already understood. `additionalProperties` and `unevaluated*`
+are untouched: the boolean is their ordinary spelling and they always read it.
+
+A document that wrote `false` never mentioned `not`, so the sentence does not either — it reads
+`field.1 is not allowed by the schema`, and a real `not` keeps its own wording. **A payload that was
+accepted only because the boolean was dropped is now refused**; that is the point, and it is the same
+kind of tightening as the `uniqueItems` canonicalisation in 2.15.18.
+
+`oneOf` came out of this correct too. `[true, true]` matches twice and used to report `does not match
+any oneOf branch` — the opposite of what happened. It now says `matches more than one allowed oneOf
+branch`.
+
+**An empty DTO encodes as `{}`.** `toArray()` returns the honest PHP view, and an empty one is `[]`,
+which `json_encode()` writes as an ARRAY where the schema promised an object. The emitted
+`jsonSerialize()` has cast that case since it was written; `DtoNormalizer` did not, so a DTO whose
+every property was optional and absent went out as `{}` from `$dto->toJson()` and as `[]` from the
+normalizer — and the normalizer is the documented path for a response body. Both now agree, through
+one private encoder that owns the rule. `toArray()` is unchanged and still returns `[]`: the array
+view is not wrong, the ENCODING of an empty one was.
+
+**Three unmeasured paths, now measured** — no behaviour changed, all three were verified correct
+before the tests were written:
+
+- the source waterfall in `resolveRawRequestValue()` — path, body, files, query, form — had never
+  executed. It exists twice (inlined for a plain-body class, and there for everything else), and a
+  GENERATED parameter class binds every property, so the resolver always returned from its first
+  branch. A hand-written DTO with a PARTIAL `getParameterSources()` is the shape that reaches it, and
+  the files-before-query precedence is pinned on that route too — it was once fixed in the resolver
+  alone and the measurement did not budge, because nothing ran it;
+- `if`/`then`/`else` in the unevaluated bookkeeping: a conditional owns what the branch it took
+  owned, and a FAILED `if` owns nothing. Four combinations, items and properties;
+- `deserializeCollection()`'s two entry checks — the media type must be JSON, the text must parse.
+
+Gates: 1704 tests (up from 1666), phpstan / phpcs / cs-fixer clean, generated output unchanged in all
+five modes.
+
 ## 2.15.26 — 2026-09-03
 
 - the generated DTO's own `toJson()` and `__toString()` stop escaping slashes — the encoded string changes

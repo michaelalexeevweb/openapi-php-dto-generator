@@ -3110,6 +3110,203 @@ final class DtoValidatorTest extends TestCase
     }
 
     /**
+     * `if`/`then`/`else` contribute to the unevaluated bookkeeping, and only when they apply.
+     *
+     * `unevaluatedItems` counts what the schema OWNED, and a conditional owns whatever the branch it
+     * took owned: `if` when it succeeds (a failed `if` produces no annotations at all), then `then`
+     * or `else`. This walk had no test — the whole `if` block of `collectEvaluatedItems()` was
+     * unexecuted — so all four combinations are pinned here.
+     */
+    public function testUnevaluatedItemsCountsWhatIfThenElseEvaluated(): void
+    {
+        $ifThen = [
+            'type' => 'array',
+            'if' => ['prefixItems' => [['const' => 'tag']]],
+            'then' => ['prefixItems' => [['const' => 'tag'], ['type' => 'string']]],
+            'unevaluatedItems' => false,
+        ];
+
+        $this->assertSame(
+            [],
+            $this->validator->validate('a', ['tag', 'x'], $ifThen),
+            'if applies, so both positions its then declared are evaluated',
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('a', ['tag', 'x', 'extra'], $ifThen),
+            'the third position is nobody\'s, so unevaluatedItems refuses it',
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('a', ['other'], $ifThen),
+            'if failed, so it evaluated nothing — not even the position it looked at',
+        );
+
+        $ifElse = [
+            'type' => 'array',
+            'if' => ['prefixItems' => [['const' => 'tag']]],
+            'else' => ['prefixItems' => [['type' => 'integer']]],
+            'unevaluatedItems' => false,
+        ];
+
+        $this->assertSame(
+            [],
+            $this->validator->validate('a', [7], $ifElse),
+            'if failed, so else applies and owns position 0',
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('a', [7, 8], $ifElse),
+            'else declared one position, so the second is unevaluated',
+        );
+    }
+
+    /**
+     * The same bookkeeping for properties, so the object half of the walk is measured too.
+     */
+    public function testUnevaluatedPropertiesCountsWhatIfThenEvaluated(): void
+    {
+        $constraints = [
+            'type' => 'object',
+            'if' => ['properties' => ['kind' => ['const' => 'a']], 'required' => ['kind']],
+            'then' => ['properties' => ['extra' => ['type' => 'string']]],
+            'unevaluatedProperties' => false,
+        ];
+
+        $this->assertSame(
+            [],
+            $this->validator->validate('a', ['kind' => 'a', 'extra' => 's'], $constraints),
+            'if owns kind, then owns extra',
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('a', ['kind' => 'a', 'nope' => 1], $constraints),
+            'a key neither branch declared is unevaluated',
+        );
+    }
+
+    /**
+     * `true` and `false` stand where a schema stands, and both now mean what JSON Schema says.
+     *
+     * `true` is the empty schema and constrains nothing; `false` is satisfied by no value at all.
+     * Every reader here tested `is_array()` first, so a boolean was silently DROPPED and the keyword
+     * carrying it did nothing: `items: false` failed to close a `prefixItems` tuple, `properties: {x:
+     * false}` failed to forbid `x`, and `anyOf: [false, true]` refused a value its `true` branch
+     * accepts — a boolean read in the STRICT direction, which is the worse half.
+     *
+     * `additionalProperties` and `unevaluated*` are absent from this list on purpose: the boolean is
+     * their ordinary spelling and they always read it.
+     *
+     * @param array<string, mixed> $constraints
+     */
+    #[DataProvider('booleanSubschemaProvider')]
+    public function testABooleanStandsForTheSchemaItIsShorthandFor(
+        string $label,
+        array $constraints,
+        mixed $value,
+        bool $expectValid,
+    ): void {
+        $errors = $this->validator->validate('field', $value, $constraints);
+
+        if ($expectValid) {
+            $this->assertSame([], $errors, $label);
+
+            return;
+        }
+
+        $this->assertNotEmpty($errors, $label);
+    }
+
+    /**
+     * @return array<string, array{string, array<string, mixed>, mixed, bool}>
+     */
+    public static function booleanSubschemaProvider(): array
+    {
+        $tuple = ['type' => 'array', 'prefixItems' => [['type' => 'string'], ['type' => 'integer']]];
+
+        return [
+            // items — the one that shows up in real documents: closing a tuple.
+            'items false closes the tuple' => ['an item past prefixItems is refused', $tuple + ['items' => false], ['a', 1, 'extra'], false],
+            'items false at exact arity' => ['the declared positions still pass', $tuple + ['items' => false], ['a', 1], true],
+            'items false short tuple' => ['fewer items than prefixItems is not an extra item', $tuple + ['items' => false], ['a'], true],
+            'items false alone' => ['with no prefixItems the array must be empty', ['type' => 'array', 'items' => false], [1], false],
+            'items false alone, empty' => ['and the empty array satisfies it', ['type' => 'array', 'items' => false], [], true],
+            'items true' => ['items: true constrains nothing', ['type' => 'array', 'items' => true], ['a', 1], true],
+
+            // the other applicators, same rule
+            'contains false' => ['no value can match, so nothing is contained', ['type' => 'array', 'contains' => false], [1], false],
+            'contains true, empty' => ['every value matches, but there is none to match', ['type' => 'array', 'contains' => true], [], false],
+            'contains true, non-empty' => ['and one item is enough', ['type' => 'array', 'contains' => true], [1], true],
+            'not true' => ['not of "everything" leaves nothing', ['not' => true], 1, false],
+            'not false' => ['not of "nothing" leaves everything', ['not' => false], 1, true],
+            'properties false, present' => ['a property forbidden by false is refused', ['type' => 'object', 'properties' => ['x' => false]], ['x' => 1], false],
+            'properties false, absent' => ['and not required to be there', ['type' => 'object', 'properties' => ['x' => false]], ['y' => 1], true],
+            'properties true' => ['properties: {x: true} constrains nothing', ['type' => 'object', 'properties' => ['x' => true]], ['x' => 1], true],
+            'patternProperties false' => ['a matching key is refused', ['type' => 'object', 'patternProperties' => ['^x' => false]], ['xy' => 1], false],
+            'propertyNames false' => ['no key can be valid, so no key may exist', ['type' => 'object', 'propertyNames' => false], ['a' => 1], false],
+            'propertyNames false, empty' => ['the empty object has no key to refuse', ['type' => 'object', 'propertyNames' => false], [], true],
+            'allOf false' => ['one unsatisfiable branch fails the whole', ['allOf' => [false]], 1, false],
+            'allOf true' => ['a true branch adds nothing', ['allOf' => [true]], 1, true],
+            'anyOf false true' => ['the true branch matches, so the value is accepted', ['anyOf' => [false, true]], 1, true],
+            'anyOf all false' => ['no branch can match', ['anyOf' => [false, false]], 1, false],
+            'oneOf one true' => ['exactly one branch matches', ['oneOf' => [false, true]], 1, true],
+            'if true then applies' => ['if: true always applies, so then is enforced', ['type' => 'object', 'if' => true, 'then' => ['required' => ['r']]], [], false],
+            'if false else applies' => ['if: false never applies, so else is enforced', ['type' => 'object', 'if' => false, 'else' => ['required' => ['e']]], [], false],
+            'dependentSchemas false' => ['the trigger key makes an unsatisfiable schema apply', ['type' => 'object', 'dependentSchemas' => ['a' => false]], ['a' => 1], false],
+            'dependentSchemas false, no trigger' => ['without the key it does not apply', ['type' => 'object', 'dependentSchemas' => ['a' => false]], ['b' => 1], true],
+        ];
+    }
+
+    /**
+     * The refusal says what the document said, and the document said `false`, not `not`.
+     *
+     * `false` has no array spelling, so it is rewritten as `not` of the empty schema — an internal
+     * reduction the reader never wrote and must not be told about. Pinned because the obvious
+     * implementation leaks it as "must not match the 'not' schema".
+     */
+    public function testAFalseSchemaRefusesWithoutMentioningNot(): void
+    {
+        $errors = $this->validator->validate(
+            'field',
+            ['x' => 1],
+            ['type' => 'object', 'properties' => ['x' => false]],
+        );
+
+        $this->assertSame(['field.x is not allowed by the schema.'], $errors);
+
+        $this->assertSame(
+            ["field must not match the 'not' schema."],
+            $this->validator->validate('field', 1, ['not' => ['type' => 'integer']]),
+            'a real `not` keeps its own sentence',
+        );
+    }
+
+    /**
+     * `oneOf` says WHICH way it failed, and two matches is not "no match".
+     *
+     * Boolean branches are the shortest way to state the case: `[true, true]` matches twice, and the
+     * message used to read "does not match any oneOf branch" — the opposite of what happened. Fixed
+     * as a side effect of reading the booleans at all, and pinned so it stays fixed.
+     */
+    public function testOneOfDistinguishesTwoMatchesFromNone(): void
+    {
+        $this->assertSame(
+            ['field matches more than one allowed oneOf branch.'],
+            $this->validator->validate('field', 1, ['oneOf' => [true, true]]),
+        );
+
+        // Not the generic sentence: when a branch is applicable and fails, its OWN reason is what
+        // the reader gets, and `false` refuses in its own words. The generic one is reserved for a
+        // value no branch could even apply to.
+        $this->assertSame(
+            ['field is not allowed by the schema.'],
+            $this->validator->validate('field', 1, ['oneOf' => [false, false]]),
+        );
+
+        $this->assertSame(
+            ['field does not match any oneOf branch (expected string or boolean, got integer).'],
+            $this->validator->validate('field', 1, ['oneOf' => [['type' => 'string'], ['type' => 'boolean']]]),
+            'a value outside every declared type gets the no-match sentence, with the types named',
+        );
+    }
+
+    /**
      * An EMPTY schema is not an absent one — `{}` matches every value.
      *
      * `{}` decodes to an empty PHP array, and three guards read that as "the keyword is not there":

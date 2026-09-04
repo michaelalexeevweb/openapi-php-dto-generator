@@ -30,5 +30,14 @@ A few behaviours worth knowing when validating against the schema:
 - **`format: uri` accepts a URI, not only a URL.** `urn:isbn:0451450523`, `urn:uuid:…`, `mailto:` and `tel:` are valid absolute URIs under RFC 3986 and are accepted. An authority-based URI (anything after the scheme starting with `//`) is still judged as a URL, so `http://[` stays refused.
 - **`uint64` cannot be checked at its own boundary.** `18446744073709551615` (the maximum) and `18446744073709551616` (one past it) are the same IEEE-754 double once `json_decode()` is done, so nothing downstream can separate them; the boundary value is accepted rather than refusing a legal maximum. Carry such a field as `type: string` with a `pattern` when the exact range matters. `int64` has no such gap — its boundary is below the float ceiling.
 - **An `integer` bound is exact past 2^53.** `maximum: 9007199254740992` refuses `9007199254740993`: the comparison stays on integers while both the value and the bound are integers, instead of casting through a float that cannot tell the two apart.
+- **A boolean IS a schema.** `true` accepts every value and `false` accepts none, wherever a schema
+  may stand: `items`, `contains`, `not`, `propertyNames`, `if`/`then`/`else`, `contentSchema`, each
+  entry of `properties` / `patternProperties` / `dependentSchemas`, and each branch of `allOf` /
+  `anyOf` / `oneOf` / `prefixItems`. The common one is closing a tuple — `prefixItems: [...]` with
+  `items: false` refuses an item past the declared positions. (`additionalProperties: false` and
+  `unevaluatedItems` / `unevaluatedProperties` have always read the boolean; for them it is the
+  ordinary spelling.) A `false` refusal reads *"is not allowed by the schema"* — the document did not
+  write `not`, so neither does the message. Enforced since 2.15.27; before it, a boolean subschema was
+  dropped and its keyword did nothing.
 - **An empty schema matches everything.** `items: {}`, `contains: {}` and `additionalProperties: {}` apply — and, importantly, mark their targets as evaluated, so a neighbouring `unevaluatedItems: false` or `unevaluatedProperties: false` does not reject a valid payload.
 - **How far `uri-reference`/`iri-reference` go.** A reference may be relative, so most of what looks wrong is legal: `not_a_uri` and `###` are valid relative references and are accepted, as any conforming validator accepts them. The check is deliberately no stricter than whitespace and control characters, which means a broken percent-escape (`%zz`) or a malformed host (`http://[`) passes here while the stricter `uri`/`iri` refuse both. Full RFC 3986 grammar is not worth the emitted code; if a field must be an absolute, well-formed URI, declare `format: uri`.
