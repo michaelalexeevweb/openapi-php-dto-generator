@@ -3,6 +3,75 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.28 — 2026-09-05
+
+- a urlencoded form BODY accepts the repeated-key array the same way a query string does
+- `format: idn-email` accepts an internationalized domain, which is what the format is for
+- the corpus stops advertising a UUID its own validator refuses, and a test keeps it honest
+- the demo corpus declares every parameter style, so their emission is snapshotted at last
+
+2.15.27 fixed `?ids=1&ids=2`. Two of the three fixes here are the rest of that same finding: the
+loss had a second half in the request body, and a format check had the mirror-image gap — Unicode
+allowed on one side of the `@` only. No generated class changes shape; the golden snapshots move by
+36 lines, all of them one example value.
+
+**A form body loses repeated keys exactly like a query string.** `$_POST` is built by the same parser
+as `$_GET`, so `tags=a&tags=b` in an `application/x-www-form-urlencoded` body arrived as the string
+`"b"` and the cast reported `param "tags" expects array, got string`. The Encoding Object gives a
+form-encoded array the same default as a query one — `style: form, explode: true` — so that IS the
+documented spelling, and only PHP's own `tags[]=` worked. The repeats are read back off the raw body
+now, under the same conditions as the query half: an array-typed property, no delimiter to split on,
+scalars left alone (`name=x&name=y` is still `y`).
+
+The parser is now ONE function with two callers rather than two copies. A query string and a form body
+are the same text in the same encoding, and the four decisions it makes — skip empty pairs, skip
+bracketed keys, treat a valueless key as empty, decode `+` as a space — have to agree between them.
+Two copies is how the source waterfall ended up with a half that nothing executed (see 2.15.27).
+
+**A multipart body is deliberately left alone, including its error.** Its parts are not
+`&`-separated pairs; Symfony has already separated what it could. The tempting shortcut — treat "no
+repeats found" as "wrap the single value" — would turn a repeated multipart field into a one-element
+array holding the LAST part, silently, where the reader used to get a loud `expects array, got
+string`. Quiet truncation is worse than the error, so the recovery declines that body outright, and
+the error is pinned by a test that says why.
+
+**`idn-email` accepts an internationalized domain.** PHP's `FILTER_FLAG_EMAIL_UNICODE` permits Unicode
+in the LOCAL part and then validates what follows the `@` as an ASCII host, so `ф@example.com` passed
+while `a@пример.рф` — an address whose whole point is the domain — was refused. The domain now goes
+through the same RFC 5890 check `idn-hostname` uses, which works with or without the intl extension.
+
+Whatever the filter already accepted is accepted first and unchanged, so the address forms the new
+path does not model — a bracketed IP domain, a quoted local part — cannot regress. **This only ever
+accepts more.** Plain `format: email` stays ASCII-only, pinned from the other side: a document that
+writes `email` and gets Unicode has lost the distinction it asked for.
+
+**The corpus advertised a UUID it would itself refuse.** `00000000-1111-2222-3333-444455556666` under
+`format: uuid` has `3` where RFC 4122 allows only 8/9/a/b in the variant nibble, and it appeared six
+times — copied verbatim into the generated docblocks, so the package printed to every reader a value
+`DtoValidator` rejects. Replaced with `00000000-1111-4222-8333-444455556666`.
+
+Rather than fix six lines and move on, a test now walks the corpus and validates every `example`
+against the schema that states it — the corpus grows, and an example is exactly the kind of value
+nobody runs through a validator by hand. It was checked against the old value first: it reports all
+six.
+
+**The corpus now declares the parameter styles.** `OpenApiExamples/test.yaml` carried none of
+`style`, `explode`, `deepObject`, `allowEmptyValue` or `allowReserved`, so what the generator emits
+for them was never snapshotted — and the tests that did cover them handed ready-made arrays to the
+`Request` constructor rather than parsing a URL. Between those two gaps, `?ids=1&ids=2` was refused by
+every release up to 2.15.26 with nothing to notice it.
+
+Two paths were added: one query operation carrying all of it at once (including a `content:
+application/json` parameter and a header array), and one path operation for `matrix` and `label`. The
+corpus grew by three classes in every mode, purely additive — no existing line of any snapshot moved.
+Two request-level tests drive the emitted metadata off one real URL, so the snapshot pins what the
+generator WRITES and the tests pin that it WORKS. Nothing was broken: every style passed on the first
+run.
+
+Gates: 1733 tests (up from 1706 before this release), phpstan / phpcs / cs-fixer clean. The snapshots
+grow by the new corpus paths; apart from that the diff is 36 lines, and every one of them is that
+example value.
+
 ## 2.15.27 — 2026-09-04
 
 - a query array in OpenAPI's DEFAULT serialization (`?ids=1&ids=2`) is accepted

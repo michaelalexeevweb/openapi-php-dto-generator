@@ -3110,6 +3110,78 @@ final class DtoValidatorTest extends TestCase
     }
 
     /**
+     * `idn-email` accepts an internationalized DOMAIN, which is most of what the format is for.
+     *
+     * PHP's `FILTER_FLAG_EMAIL_UNICODE` permits Unicode in the local part and then validates what
+     * follows the `@` as an ASCII host, so `ф@example.com` passed while `a@пример.рф` — an address
+     * whose whole point is the internationalized domain — was refused. The domain now goes to the
+     * same RFC 5890 check `idn-hostname` uses, which works with or without the intl extension.
+     *
+     * Everything the filter already accepted is accepted first and unchanged, so the forms this
+     * method does not model — a bracketed IP domain, a quoted local part — cannot regress.
+     */
+    #[DataProvider('idnEmailProvider')]
+    public function testIdnEmailAcceptsInternationalizedDomains(string $value, bool $expectValid): void
+    {
+        $errors = $this->validator->validate('f', $value, ['type' => 'string', 'format' => 'idn-email']);
+
+        if ($expectValid) {
+            $this->assertSame([], $errors, $value);
+
+            return;
+        }
+
+        $this->assertNotEmpty($errors, $value);
+    }
+
+    /**
+     * @return array<string, array{string, bool}>
+     */
+    public static function idnEmailProvider(): array
+    {
+        return [
+            'ascii' => ['a@b.co', true],
+            'unicode local and domain' => ['ф@пример.рф', true],
+            'unicode domain only' => ['a@пример.рф', true],
+            'unicode local only' => ['ф@example.com', true],
+            'unicode subdomain' => ['a.b+c@sub.пример.рф', true],
+            'already punycode' => ['a@xn--e1afmkfd.xn--p1ai', true],
+            // Not modelled by the IDN path — kept valid by the untouched filter that runs first.
+            'bracketed ip domain' => ['a@[192.168.0.1]', true],
+            'double at' => ['a@@b', false],
+            'no domain' => ['a@', false],
+            'no local part' => ['@b.co', false],
+            'no at sign' => ['nope', false],
+            'domain label with leading hyphen' => ['a@-bad-.рф', false],
+            'space in local part' => ['a b@пример.рф', false],
+            'space in domain' => ['a@пример .рф', false],
+            'empty' => ['', false],
+        ];
+    }
+
+    /**
+     * Plain `email` stays ASCII-only, which is the difference between the two formats.
+     *
+     * A document that writes `format: email` and gets Unicode accepted has lost the distinction it
+     * asked for, so this is pinned from the other side of the same change.
+     */
+    public function testPlainEmailStaysAsciiOnly(): void
+    {
+        $this->assertSame(
+            [],
+            $this->validator->validate('f', 'a@b.co', ['type' => 'string', 'format' => 'email']),
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('f', 'a@пример.рф', ['type' => 'string', 'format' => 'email']),
+            'an internationalized domain is not a plain email',
+        );
+        $this->assertNotEmpty(
+            $this->validator->validate('f', 'ф@example.com', ['type' => 'string', 'format' => 'email']),
+            'nor is a Unicode local part',
+        );
+    }
+
+    /**
      * `if`/`then`/`else` contribute to the unevaluated bookkeeping, and only when they apply.
      *
      * `unevaluatedItems` counts what the schema OWNED, and a conditional owns whatever the branch it

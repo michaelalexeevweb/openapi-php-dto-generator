@@ -476,9 +476,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        // Parsed at most once, and only if some array-typed parameter actually reads the query.
+        // Parsed at most once each, and only if some array-typed parameter actually reads that
+        // source.
         /** @var array<string, list<string>>|null $queryValueLists */
         $queryValueLists = null;
+        // `false` is the memoized "this body cannot be recovered from" — distinct from `null`,
+        // which still means "not looked at yet".
+        /** @var array<string, list<string>>|false|null $formValueLists */
+        $formValueLists = null;
 
         foreach ($classMeta['params'] as $paramMeta) {
             $requestFieldName = $paramMeta['requestFieldName'];
@@ -536,41 +541,53 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             }
 
-            // OpenAPI's DEFAULT array serialization in a query string is `style: form,
-            // explode: true` — the key REPEATED: `?ids=1&ids=2`. PHP does not keep the repeats.
-            // `$_GET` — and Symfony's `$request->query`, which reads it — is built the way
-            // `parse_str()` builds it, where the LAST occurrence wins, so `?ids=1&ids=2` arrives as
-            // the string `"2"`. Only PHP's own `?ids[]=1&ids[]=2` spelling arrayifies, and that
-            // spelling is a PHP convention no OpenAPI document can state. So a conformant client —
-            // anything generated from the spec — sent the documented form and got back
-            // `expects array, got string`.
+            // OpenAPI's DEFAULT array serialization is `style: form, explode: true` — the key
+            // REPEATED: `?ids=1&ids=2` in a query string, `tags=a&tags=b` in a form body. PHP does
+            // not keep the repeats. `$_GET` and `$_POST` — and Symfony's `$request->query` and
+            // `$request->request`, which read them — are built the way `parse_str()` builds them,
+            // where the LAST occurrence wins, so the value arrives as the string `"2"`. Only PHP's
+            // own `ids[]=1&ids[]=2` spelling arrayifies, and that spelling is a PHP convention no
+            // OpenAPI document can state. So a conformant client — anything generated from the
+            // spec — sent the documented form and got back `expects array, got string`.
             //
-            // The repeats are still in the raw QUERY_STRING, so they are read back from there for
-            // exactly this shape: an array-typed parameter, read from the query, with no delimiter
-            // to split on (`form`+`explode: true`, or a class that declares no styles at all).
-            // Excluded on purpose:
+            // The repeats are still in the raw text (the QUERY_STRING, or the body for a urlencoded
+            // form), so they are read back from there for exactly this shape: an array-typed
+            // parameter with no delimiter to split on (`form`+`explode: true`, or a class that
+            // declares no styles at all). Excluded on purpose:
             //   - a SCALAR parameter keeps `parse_str()` semantics (`?page=1&page=2` is 2). The
             //     document cannot say which repeat was meant, and a list would break its cast;
             //   - a MAP (`allowsAssociativeArray`) and `deepObject` arrive through the bracket
             //     spelling, already arrayified — re-reading would double them;
             //   - a delimited style (`form`+`explode: false`, `spaceDelimited`, `pipeDelimited`,
-            //     `simple`) carries its elements in ONE value and is split below instead.
+            //     `simple`) carries its elements in ONE value and is split below instead;
+            //   - a MULTIPART body, whose parts Symfony has already separated — see
+            //     {@see getFormValueLists()}.
             // A single occurrence still yields a one-element list, which is what the style means;
-            // `?ids=` yields the empty array, matching what the delimiter branch does with `''`.
+            // a valueless `?ids=` yields the empty array, matching what the delimiter branch does
+            // with `''`.
             if (
                 $request !== null
                 && $rawWasProvided
-                && $rawSource === 'query'
+                && ($rawSource === 'query' || $rawSource === 'form')
                 && is_string($rawValue)
                 && $paramMeta['arrayItemType'] !== null
                 && !$paramMeta['allowsAssociativeArray']
                 && $paramMeta['arrayDelimiter'] === null
                 && ($paramMeta['parameterStyle'] === null || $paramMeta['parameterStyle'] === 'form')
             ) {
-                $queryValueLists ??= $this->getQueryValueLists($request);
-                $rawValue = $queryValueLists[$requestFieldName] ?? [$rawValue];
-                if ($rawValue === ['']) {
-                    $rawValue = [];
+                if ($rawSource === 'query') {
+                    $queryValueLists ??= $this->getQueryValueLists($request);
+                    $lists = $queryValueLists;
+                } else {
+                    $formValueLists ??= $this->getFormValueLists($request) ?? false;
+                    $lists = $formValueLists === false ? null : $formValueLists;
+                }
+
+                if ($lists !== null) {
+                    $rawValue = $lists[$requestFieldName] ?? [$rawValue];
+                    if ($rawValue === ['']) {
+                        $rawValue = [];
+                    }
                 }
             }
 
@@ -1770,13 +1787,56 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function getQueryValueLists(Request $request): array
     {
-        $queryString = (string)$request->server->get('QUERY_STRING', '');
-        if ($queryString === '') {
+        return self::collectRepeatedValues((string)$request->server->get('QUERY_STRING', ''));
+    }
+
+    /**
+     * The same, for an `application/x-www-form-urlencoded` BODY.
+     *
+     * A form body is the same `key=value&key=value` text as a query string, and PHP loses repeats
+     * there for the same reason — `$_POST` is built by the same parser. The Encoding Object gives a
+     * form-encoded array the same default as a query one, `style: form, explode: true`, so
+     * `tags=a&tags=b` is the documented spelling and was refused with `expects array, got string`.
+     *
+     * Only urlencoded, and NULL for anything else — which the caller reads as "leave the value
+     * alone", not as "no repeats found". A multipart body is not `&`-separated pairs but parts with
+     * boundaries, already separated by Symfony into `$request->request` and `$request->files`;
+     * nothing here would parse it. Returning the empty list for it would be worse than doing
+     * nothing: the caller falls back to wrapping the single value it has, so a multipart field that
+     * really was repeated would come back as a one-element array — the last part, silently, where
+     * the reader used to get a loud `expects array, got string`. Quiet truncation is the one
+     * outcome worth avoiding here.
+     *
+     * @return array<string, list<string>>|null
+     */
+    private function getFormValueLists(Request $request): ?array
+    {
+        $contentType = strtolower(trim(explode(';', (string)$request->headers->get('Content-Type', ''))[0]));
+        if ($contentType !== 'application/x-www-form-urlencoded') {
+            return null;
+        }
+
+        return self::collectRepeatedValues($request->getContent());
+    }
+
+    /**
+     * Every occurrence of each bare key in one `a=1&b=2` string, in order.
+     *
+     * One parser, two callers — the query string and the form body are the same text in the same
+     * encoding, and the four decisions it makes (skip empty pairs, skip bracketed keys, treat a
+     * valueless key as empty, decode `+` as a space) have to agree between them. A second copy is
+     * how the source waterfall above ended up with a half nothing executed.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function collectRepeatedValues(string $encoded): array
+    {
+        if ($encoded === '') {
             return [];
         }
 
         $lists = [];
-        foreach (explode('&', $queryString) as $pair) {
+        foreach (explode('&', $encoded) as $pair) {
             if ($pair === '') {
                 continue;
             }

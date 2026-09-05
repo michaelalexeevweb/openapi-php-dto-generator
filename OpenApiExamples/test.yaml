@@ -127,7 +127,7 @@ paths:
           schema:
             type: string
             format: 'uuid'
-            example: '00000000-1111-2222-3333-444455556666'
+            example: '00000000-1111-4222-8333-444455556666'
           required: true
         - in: path
           name: tagId
@@ -175,7 +175,7 @@ paths:
           schema:
             type: string
             format: 'uuid'
-            example: '00000000-1111-2222-3333-444455556666'
+            example: '00000000-1111-4222-8333-444455556666'
           required: true
         - in: path
           name: actionId
@@ -244,7 +244,7 @@ paths:
           schema:
             type: string
             format: 'uuid'
-            example: '00000000-1111-2222-3333-444455556666'
+            example: '00000000-1111-4222-8333-444455556666'
           required: true
       requestBody:
         required: true
@@ -266,8 +266,127 @@ paths:
           schema:
             type: string
             format: 'uuid'
-            example: '00000000-1111-2222-3333-444455556666'
+            example: '00000000-1111-4222-8333-444455556666'
           required: true
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  # Parameter SERIALIZATION, every style the deserializer implements. The corpus had none of it —
+  # style/explode/deepObject/allowEmptyValue/allowReserved lived only in unit tests with hand-built
+  # Request objects — and that blind spot is how 2.15.27's query-array bug survived: the emitted
+  # metadata was never snapshotted, so nothing pinned what the generator writes for these keywords.
+  /api/test/serialization:
+    get:
+      parameters:
+        # form + explode: true is what OpenAPI applies to a query array when nothing is stated.
+        # On the wire that is the key repeated: ?exploded=1&exploded=2
+        - in: query
+          name: exploded
+          schema:
+            type: array
+            items:
+              type: integer
+        - in: query
+          name: joined
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - in: query
+          name: spaced
+          style: spaceDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: integer
+        - in: query
+          name: piped
+          style: pipeDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - in: query
+          name: nested
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+        - in: query
+          name: flag
+          allowEmptyValue: true
+          schema:
+            type: boolean
+        - in: query
+          name: strict
+          allowEmptyValue: false
+          schema:
+            type: string
+        - in: query
+          name: raw
+          allowReserved: true
+          schema:
+            type: string
+        - in: header
+          name: X-Codes
+          schema:
+            type: array
+            items:
+              type: string
+        - in: cookie
+          name: session
+          schema:
+            type: string
+        # A parameter carrying a JSON document rather than a scalar.
+        - in: query
+          name: filter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  since:
+                    type: string
+                    format: date
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  # matrix and label are the two styles that live in the PATH segment itself.
+  /api/test/serialization/{matrixIds}/{labelIds}:
+    get:
+      parameters:
+        - in: path
+          name: matrixIds
+          style: matrix
+          explode: false
+          required: true
+          schema:
+            type: array
+            items:
+              type: integer
+        - in: path
+          name: labelIds
+          style: label
+          explode: false
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
       responses:
         200:
           description: test
@@ -283,7 +402,7 @@ components:
       schema:
         type: string
         format: 'uuid'
-        example: '00000000-1111-2222-3333-444455556666'
+        example: '00000000-1111-4222-8333-444455556666'
       required: true
     DogTagId:
       in: path
@@ -297,7 +416,7 @@ components:
       schema:
         type: string
         format: 'uuid'
-        example: '00000000-1111-2222-3333-444455556666'
+        example: '00000000-1111-4222-8333-444455556666'
       required: true
     CatActionId:
       in: path

@@ -1932,6 +1932,262 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * Every parameter style the corpus declares, driven through ONE real request.
+     *
+     * The golden snapshots pin what the generator WRITES for `style` / `explode` / `deepObject` /
+     * `allowEmptyValue` / `allowReserved` / `content`. This pins that what it writes then WORKS: the
+     * emitted metadata is read back by the deserializer off a single URL carrying all of it at once,
+     * which is the shape a real client produces and the shape neither half was tested against.
+     *
+     * Both halves were missing until 2.15.27. The corpus declared none of these keywords, so the
+     * emission was unsnapshotted, and the parse tests built their `Request` objects from hand-made
+     * arrays. Between the two gaps a conformant `?exploded=1&exploded=2` was refused by every release
+     * up to 2.15.26.
+     */
+    public function testEveryParameterStyleInTheCorpusSurvivesARealRequest(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../../OpenApiExamples/test.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'CorpusStyles');
+
+        // An autoloader rather than a require loop: the corpus contains inheritance (`Cat extends
+        // Pet`) and glob order is alphabetical, so eager loading hits a child before its parent.
+        $directory = $this->outputDirectory;
+        spl_autoload_register(static function (string $class) use ($directory): void {
+            if (!str_starts_with($class, 'CorpusStyles\\')) {
+                return;
+            }
+
+            $file = $directory . '/' . substr($class, strrpos($class, '\\') + 1) . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        });
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\CorpusStyles\ApiTestSerializationGetQueryParams';
+
+        $request = Request::create(
+            '/api/test/serialization'
+            . '?exploded=1&exploded=2'          // form + explode: true — the repeated key
+            . '&joined=a,b'                     // form + explode: false — comma
+            . '&spaced=3%204'                   // spaceDelimited
+            . '&piped=x%7Cy'                    // pipeDelimited
+            . '&nested[k]=v'                    // deepObject
+            . '&flag='                          // allowEmptyValue: true
+            . '&strict=s'                       // allowEmptyValue: false, so a value is required
+            . '&raw=a+b'                        // allowReserved — the plus stays a plus
+            . '&filter=%7B%22since%22%3A%222026-03-10%22%7D',  // content: application/json
+            'GET',
+        );
+        $request->headers->set('X-Codes', 'p,q');
+        $request->cookies->set('session', 'sess-1');
+
+        /** @var object{
+         *     getExploded: callable, getJoined: callable, getSpaced: callable, getPiped: callable,
+         *     getNested: callable, getFlag: callable, getStrict: callable, getRaw: callable,
+         *     getXCodes: callable, getSession: callable, getFilter: callable
+         * } $dto */
+        $dto = (new DtoDeserializer())->deserialize($request, $cls);
+
+        $this->assertSame([1, 2], $dto->getExploded(), 'form + explode: true collects the repeats');
+        $this->assertSame(['a', 'b'], $dto->getJoined(), 'form + explode: false splits on the comma');
+        $this->assertSame([3, 4], $dto->getSpaced(), 'spaceDelimited splits on the space');
+        $this->assertSame(['x', 'y'], $dto->getPiped(), 'pipeDelimited splits on the pipe');
+        $this->assertSame(['k' => 'v'], $dto->getNested(), 'deepObject arrives as a map');
+        $this->assertFalse($dto->getFlag(), 'an empty value is permitted and casts');
+        $this->assertSame('s', $dto->getStrict());
+        $this->assertSame('a+b', $dto->getRaw(), 'allowReserved keeps the literal plus');
+        $this->assertSame(['p', 'q'], $dto->getXCodes(), 'a header array is comma-separated (simple)');
+        $this->assertSame('sess-1', $dto->getSession());
+
+        $filter = $dto->getFilter();
+        $this->assertIsObject($filter, 'a content: application/json parameter becomes its own DTO');
+        /** @var object{getSince: callable} $filter */
+        $this->assertSame('2026-03-10', $filter->getSince(), 'and its JSON was decoded before casting');
+    }
+
+    /**
+     * A urlencoded form BODY loses repeated keys exactly the way a query string does, and is
+     * recovered the same way.
+     *
+     * `$_POST` is built by the same parser as `$_GET`, so `tags=a&tags=b` in an
+     * `application/x-www-form-urlencoded` body arrived as the string `"b"` — and the Encoding Object
+     * gives a form-encoded array the same default as a query one, `style: form, explode: true`, so
+     * that IS the documented spelling. 2.15.27 fixed the query half; this is the other half of the
+     * same loss.
+     *
+     * Every request here is built with the `$_POST` PHP would really produce (`parse_str()` over the
+     * raw body) plus that raw body, because handing the constructor a ready-made array is what hid
+     * the query half for so long.
+     *
+     * @param array<string, mixed> $expected
+     */
+    #[DataProvider('formBodyRepeatProvider')]
+    public function testRepeatedKeysInAUrlencodedFormBodyReachTheDto(string $rawBody, array $expected): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/form' => ['post' => [
+                'requestBody' => ['required' => true, 'content' => ['application/x-www-form-urlencoded' => ['schema' => [
+                    'type' => 'object',
+                    'required' => ['tags'],
+                    'properties' => [
+                        'tags' => ['type' => 'array', 'items' => ['type' => 'string']],
+                        'name' => ['type' => 'string'],
+                    ],
+                ]]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'FormRepeat' . md5($rawBody), 'FormPostRequest');
+
+        parse_str($rawBody, $post);
+        $request = new Request(
+            query: [],
+            request: $post,
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: ['CONTENT_TYPE' => 'application/x-www-form-urlencoded', 'REQUEST_METHOD' => 'POST'],
+            content: $rawBody,
+        );
+
+        $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+
+        /** @var object{getTags: callable, getName: callable} $dto */
+        $this->assertSame($expected['tags'], $dto->getTags());
+        if (array_key_exists('name', $expected)) {
+            $this->assertSame($expected['name'], $dto->getName());
+        }
+    }
+
+    /**
+     * @return array<string, array{string, array<string, mixed>}>
+     */
+    public static function formBodyRepeatProvider(): array
+    {
+        return [
+            'repeated keys' => ['tags=a&tags=b', ['tags' => ['a', 'b']]],
+            'single occurrence' => ['tags=a', ['tags' => ['a']]],
+            'valueless key' => ['tags=', ['tags' => []]],
+            'php bracket spelling still works' => ['tags[]=a&tags[]=b', ['tags' => ['a', 'b']]],
+            'a scalar beside it keeps last-wins' => ['tags=a&name=x&name=y', ['tags' => ['a'], 'name' => 'y']],
+            'plus is a space, %2B is a plus' => ['tags=a+b&tags=c%2Bd', ['tags' => ['a b', 'c+d']]],
+            'an empty pair is not a key' => ['tags=a&&tags=b', ['tags' => ['a', 'b']]],
+        ];
+    }
+
+    /**
+     * A MULTIPART body is left exactly as it was — including its failure.
+     *
+     * Its parts are not `&`-separated pairs, so nothing here can recover them, and Symfony has
+     * already separated what it could into `$request->request`. The tempting shortcut — treat "no
+     * repeats found" as "wrap the single value" — would turn a repeated multipart field into a
+     * one-element array holding the LAST part, silently, where the reader used to get a loud
+     * `expects array, got string`. Quiet truncation is worse than the error, so the recovery
+     * declines to touch this body at all, and the error is pinned to prove it.
+     */
+    public function testAMultipartBodyIsNotRecoveredFromAndKeepsItsError(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/multi' => ['post' => [
+                'requestBody' => ['required' => true, 'content' => ['multipart/form-data' => ['schema' => [
+                    'type' => 'object',
+                    'required' => ['parts'],
+                    'properties' => ['parts' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                ]]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'MultipartNoRecovery', 'MultiPostRequest');
+
+        $server = ['CONTENT_TYPE' => 'multipart/form-data; boundary=----probe', 'REQUEST_METHOD' => 'POST'];
+        $body = "------probe\r\nContent-Disposition: form-data; name=\"parts\"\r\n\r\np\r\n------probe--\r\n";
+        $deserializer = new DtoDeserializer();
+
+        $parsed = new Request(
+            query: [],
+            request: ['parts' => ['p', 'q']],
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: $server,
+            content: $body,
+        );
+        /** @var object{getParts: callable} $dto */
+        $dto = $deserializer->deserialize($parsed, $fqcn);
+        $this->assertSame(['p', 'q'], $dto->getParts(), 'what Symfony separated is used as-is');
+
+        $collapsed = new Request(
+            query: [],
+            request: ['parts' => 'q'],
+            attributes: [],
+            cookies: [],
+            files: [],
+            server: $server,
+            content: $body,
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('param "parts" expects array, got string');
+        $deserializer->deserialize($collapsed, $fqcn);
+    }
+
+    /**
+     * `matrix` and `label`, the two styles that live in the path segment rather than the query.
+     *
+     * The router hands the segment over as a request attribute, prefix and all, and the deserializer
+     * strips the prefix before splitting: `;matrixIds=1,2` and `.x,y`. With `explode: false` the
+     * elements are comma-separated after ONE prefix, which is what the corpus declares. A segment
+     * that arrives already stripped is accepted too — some routers do that — so both spellings are
+     * pinned.
+     */
+    public function testMatrixAndLabelPathStylesAreDecodedFromTheirSegment(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../../OpenApiExamples/test.yaml');
+        (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'CorpusPathStyles');
+
+        $directory = $this->outputDirectory;
+        spl_autoload_register(static function (string $class) use ($directory): void {
+            if (!str_starts_with($class, 'CorpusPathStyles\\')) {
+                return;
+            }
+
+            $file = $directory . '/' . substr($class, strrpos($class, '\\') + 1) . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        });
+
+        /** @var class-string<GeneratedDtoInterface> $cls */
+        $cls = '\CorpusPathStyles\ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams';
+        $deserializer = new DtoDeserializer();
+
+        $prefixed = Request::create('/api/test/serialization/x/y', 'GET');
+        $prefixed->attributes->set('matrixIds', ';matrixIds=1,2');
+        $prefixed->attributes->set('labelIds', '.x,y');
+
+        /** @var object{getMatrixIds: callable, getLabelIds: callable} $fromPrefixed */
+        $fromPrefixed = $deserializer->deserialize($prefixed, $cls);
+        $this->assertSame([1, 2], $fromPrefixed->getMatrixIds(), 'the ;name= prefix is stripped');
+        $this->assertSame(['x', 'y'], $fromPrefixed->getLabelIds(), 'the leading dot is stripped');
+
+        $bare = Request::create('/api/test/serialization/x/y', 'GET');
+        $bare->attributes->set('matrixIds', '1,2');
+        $bare->attributes->set('labelIds', 'x,y');
+
+        /** @var object{getMatrixIds: callable, getLabelIds: callable} $fromBare */
+        $fromBare = $deserializer->deserialize($bare, $cls);
+        $this->assertSame([1, 2], $fromBare->getMatrixIds(), 'an already-stripped segment still works');
+        $this->assertSame(['x', 'y'], $fromBare->getLabelIds());
+    }
+
+    /**
      * The repeated-key spelling — OpenAPI's DEFAULT for a query array — reaches the DTO as an array.
      *
      * `style: form, explode: true` puts each element under its own copy of the key: `?ids=1&ids=2`.

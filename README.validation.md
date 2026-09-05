@@ -30,6 +30,10 @@ A few behaviours worth knowing when validating against the schema:
 - **`format: uri` accepts a URI, not only a URL.** `urn:isbn:0451450523`, `urn:uuid:…`, `mailto:` and `tel:` are valid absolute URIs under RFC 3986 and are accepted. An authority-based URI (anything after the scheme starting with `//`) is still judged as a URL, so `http://[` stays refused.
 - **`uint64` cannot be checked at its own boundary.** `18446744073709551615` (the maximum) and `18446744073709551616` (one past it) are the same IEEE-754 double once `json_decode()` is done, so nothing downstream can separate them; the boundary value is accepted rather than refusing a legal maximum. Carry such a field as `type: string` with a `pattern` when the exact range matters. `int64` has no such gap — its boundary is below the float ceiling.
 - **An `integer` bound is exact past 2^53.** `maximum: 9007199254740992` refuses `9007199254740993`: the comparison stays on integers while both the value and the bound are integers, instead of casting through a float that cannot tell the two apart.
+- **`idn-email` means the DOMAIN too.** `a@пример.рф` validates, not just `ф@example.com`. PHP's own
+  filter allows Unicode before the `@` and requires ASCII after it, so the domain is checked with the
+  same RFC 5890 rule `idn-hostname` uses (with or without the `intl` extension). Plain `format: email`
+  stays ASCII-only — that is the difference between the two. Since 2.15.28.
 - **A boolean IS a schema.** `true` accepts every value and `false` accepts none, wherever a schema
   may stand: `items`, `contains`, `not`, `propertyNames`, `if`/`then`/`else`, `contentSchema`, each
   entry of `properties` / `patternProperties` / `dependentSchemas`, and each branch of `allOf` /

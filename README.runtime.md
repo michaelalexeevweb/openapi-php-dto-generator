@@ -180,6 +180,7 @@ serialization rules before casting:
 | `in: path` / `query` / `header` / `cookie` | the property is read ONLY from that source (`getParameterSources()`) |
 | `style` + `explode` (`form`, `simple`, `matrix`, `label`, `spaceDelimited`, `pipeDelimited`, `deepObject`) | the raw string is split accordingly (`getParameterStyles()`) |
 | an array with `style: form, explode: true` (the DEFAULT for a query array) | the repeated key is collected: `?ids=1&ids=2` is `[1, 2]`, `?ids=1` is `[1]`, `?ids=` is `[]`. PHP's own `?ids[]=1&ids[]=2` keeps working. A SCALAR parameter is not collected — `?page=1&page=2` is 2, as `parse_str()` has it |
+| the same array in an `application/x-www-form-urlencoded` BODY | collected the same way, from the raw body: `tags=a&tags=b` is `['a', 'b']` (since 2.15.28). A MULTIPART body is not — its parts are not `&`-separated pairs, and a field PHP collapsed there still reports `expects array, got string` rather than silently becoming a one-element array |
 | `allowReserved` | literal `+` and reserved characters are preserved in the raw query string |
 | `allowEmptyValue: false` | an empty value is rejected; `true` and silence both accept it |
 | `in: querystring` (OAS 3.2) | the whole raw query string is decoded per its single `content` media type |

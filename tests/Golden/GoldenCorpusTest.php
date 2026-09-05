@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Golden;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -50,6 +51,63 @@ final class GoldenCorpusTest extends TestCase
 
         $this->deleteRecursively($this->outputDirectory);
         $this->outputDirectory = '';
+    }
+
+    /**
+     * Every `example` the corpus states is valid against the schema that states it.
+     *
+     * The corpus is documentation as much as it is a fixture: each `example` is copied verbatim into
+     * the generated docblocks, so a wrong one is printed to every reader of the generated code. One
+     * was wrong — `00000000-1111-2222-3333-444455556666` under `format: uuid`, whose variant nibble
+     * is `3` where RFC 4122 allows only 8/9/a/b, so the package's own `DtoValidator` refused the
+     * value the package's own corpus advertised. It appeared six times.
+     *
+     * Checking it here rather than fixing the six lines and moving on: the corpus grows, and an
+     * example is exactly the kind of value nobody runs through a validator by hand.
+     */
+    public function testEveryExampleInTheCorpusValidatesAgainstItsOwnSchema(): void
+    {
+        /** @var array<string, mixed> $spec */
+        $spec = Yaml::parseFile(self::SPEC);
+        $validator = new DtoValidator();
+        $failures = [];
+        $checked = 0;
+
+        $walk = static function (mixed $node, string $path) use (&$walk, $validator, &$failures, &$checked): void {
+            if (!is_array($node)) {
+                return;
+            }
+
+            // A schema node that states its own example. `type`/`format` is what separates a schema
+            // from the other places the word "example" appears in an OpenAPI document.
+            if (
+                array_key_exists('example', $node)
+                && (array_key_exists('type', $node) || array_key_exists('format', $node))
+            ) {
+                $schema = $node;
+                unset($schema['example'], $schema['examples'], $schema['description'], $schema['title']);
+
+                $checked++;
+                $errors = $validator->validate('example', $node['example'], $schema);
+                if ($errors !== []) {
+                    $failures[] = sprintf(
+                        '%s: %s — %s',
+                        $path,
+                        json_encode($node['example'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        implode(' | ', $errors),
+                    );
+                }
+            }
+
+            foreach ($node as $key => $child) {
+                $walk($child, $path . '/' . $key);
+            }
+        };
+
+        $walk($spec, '');
+
+        self::assertSame([], $failures, "An example in the corpus fails its own schema:\n" . implode("\n", $failures));
+        self::assertGreaterThan(0, $checked, 'the walk found no examples at all — it stopped matching schemas');
     }
 
     #[DataProvider('modeProvider')]

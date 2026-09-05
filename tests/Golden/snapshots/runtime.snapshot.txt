@@ -1,4 +1,4 @@
-# runtime mode — 55 files, 16378 lines
+# runtime mode — 58 files, 17899 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -16,6 +16,9 @@
 # ApiTestFileDeleteQueryParams.php
 # ApiTestFilePatchQueryParams.php
 # ApiTestFilePostRequest.php
+# ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams.php
+# ApiTestSerializationGetQueryParams.php
+# ApiTestSerializationGetQueryParamsFilter.php
 # ApplicatorRefs.php
 # ApplicatorRefsConditional.php
 # ApplicatorRefsKeyed.php
@@ -1518,7 +1521,7 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
     private bool $limitInCookie = false;
 
     /**
-     * @param string $id Example: 00000000-1111-2222-3333-444455556666
+     * @param string $id Example: 00000000-1111-4222-8333-444455556666
      * Constraints: format=uuid
      * @param int|UnsetValue|null $page
      * Constraints: minimum=1
@@ -1540,7 +1543,7 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
     }
 
     /**
-     * Example: 00000000-1111-2222-3333-444455556666
+     * Example: 00000000-1111-4222-8333-444455556666
      */
     public function getId(): string
     {
@@ -1916,7 +1919,7 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
     private bool $limitInCookie = false;
 
     /**
-     * @param string $id Example: 00000000-1111-2222-3333-444455556666
+     * @param string $id Example: 00000000-1111-4222-8333-444455556666
      * Constraints: format=uuid
      * @param int|UnsetValue|null $page
      * Constraints: minimum=1
@@ -1938,7 +1941,7 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
     }
 
     /**
-     * Example: 00000000-1111-2222-3333-444455556666
+     * Example: 00000000-1111-4222-8333-444455556666
      */
     public function getId(): string
     {
@@ -2314,7 +2317,7 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
     private bool $limitInCookie = false;
 
     /**
-     * @param string $id Example: 00000000-1111-2222-3333-444455556666
+     * @param string $id Example: 00000000-1111-4222-8333-444455556666
      * Constraints: format=uuid
      * @param int|UnsetValue|null $page
      * Constraints: minimum=1
@@ -2336,7 +2339,7 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
     }
 
     /**
-     * Example: 00000000-1111-2222-3333-444455556666
+     * Example: 00000000-1111-4222-8333-444455556666
      */
     public function getId(): string
     {
@@ -2712,7 +2715,7 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
     private bool $limitInCookie = false;
 
     /**
-     * @param string $id Example: 00000000-1111-2222-3333-444455556666
+     * @param string $id Example: 00000000-1111-4222-8333-444455556666
      * Constraints: format=uuid
      * @param int|UnsetValue|null $page
      * Constraints: minimum=1
@@ -2734,7 +2737,7 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
     }
 
     /**
-     * Example: 00000000-1111-2222-3333-444455556666
+     * Example: 00000000-1111-4222-8333-444455556666
      */
     public function getId(): string
     {
@@ -3094,7 +3097,7 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
     private bool $idInCookie = false;
 
     /**
-     * @param string $id Example: 00000000-1111-2222-3333-444455556666
+     * @param string $id Example: 00000000-1111-4222-8333-444455556666
      * Constraints: format=uuid
      */
     public function __construct(
@@ -3104,7 +3107,7 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
     }
 
     /**
-     * Example: 00000000-1111-2222-3333-444455556666
+     * Example: 00000000-1111-4222-8333-444455556666
      */
     public function getId(): string
     {
@@ -3293,7 +3296,7 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
     private bool $idInCookie = false;
 
     /**
-     * @param string $id Example: 00000000-1111-2222-3333-444455556666
+     * @param string $id Example: 00000000-1111-4222-8333-444455556666
      * Constraints: format=uuid
      */
     public function __construct(
@@ -3303,7 +3306,7 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
     }
 
     /**
-     * Example: 00000000-1111-2222-3333-444455556666
+     * Example: 00000000-1111-4222-8333-444455556666
      */
     public function getId(): string
     {
@@ -3664,6 +3667,1533 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
         /** @var UploadedFile $file */
         $dto = new self(
             file: $file,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+}
+
+===== ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use Stringable;
+
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * Route: GET /api/test/serialization/{matrixIds}/{labelIds}
+ */
+final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams implements GeneratedDtoInterface, Stringable
+{
+    /**
+     * @var array<int>
+     */
+    private array $matrixIds;
+    private bool $matrixIdsInRequest = false;
+    private bool $matrixIdsInPath = false;
+    private bool $matrixIdsInQuery = false;
+    private bool $matrixIdsInHeader = false;
+    private bool $matrixIdsInCookie = false;
+    /**
+     * @var array<string>
+     */
+    private array $labelIds;
+    private bool $labelIdsInRequest = false;
+    private bool $labelIdsInPath = false;
+    private bool $labelIdsInQuery = false;
+    private bool $labelIdsInHeader = false;
+    private bool $labelIdsInCookie = false;
+
+    /**
+     * @param array<int> $matrixIds
+     * @param array<string> $labelIds
+     */
+    public function __construct(
+        array $matrixIds,
+        array $labelIds,
+    ) {
+        $this->matrixIdsInPath = true;
+        $this->labelIdsInPath = true;
+        $this->matrixIds = $matrixIds;
+        $this->labelIds = $labelIds;
+    }
+
+    /**
+     * @return array<int>
+     */
+    public function getMatrixIds(): array
+    {
+        return $this->matrixIds;
+    }
+
+    public function isMatrixIdsRequired(): bool
+    {
+        return true;
+    }
+
+    public function isMatrixIdsInPath(): bool
+    {
+        return $this->matrixIdsInPath;
+    }
+
+    public function isMatrixIdsInQuery(): bool
+    {
+        return $this->matrixIdsInQuery;
+    }
+
+    public function isMatrixIdsInHeader(): bool
+    {
+        return $this->matrixIdsInHeader;
+    }
+
+    public function isMatrixIdsInCookie(): bool
+    {
+        return $this->matrixIdsInCookie;
+    }
+
+    public function isMatrixIdsInRequest(): bool
+    {
+        return $this->matrixIdsInRequest;
+    }
+
+    public function addItemToMatrixIds(int $item): void
+    {
+        $this->matrixIds[] = $item;
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getLabelIds(): array
+    {
+        return $this->labelIds;
+    }
+
+    public function isLabelIdsRequired(): bool
+    {
+        return true;
+    }
+
+    public function isLabelIdsInPath(): bool
+    {
+        return $this->labelIdsInPath;
+    }
+
+    public function isLabelIdsInQuery(): bool
+    {
+        return $this->labelIdsInQuery;
+    }
+
+    public function isLabelIdsInHeader(): bool
+    {
+        return $this->labelIdsInHeader;
+    }
+
+    public function isLabelIdsInCookie(): bool
+    {
+        return $this->labelIdsInCookie;
+    }
+
+    public function isLabelIdsInRequest(): bool
+    {
+        return $this->labelIdsInRequest;
+    }
+
+    public function addItemToLabelIds(string $item): void
+    {
+        $this->labelIds[] = $item;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [];
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['matrixIds'] = [
+            'getter' => 'getMatrixIds',
+            'type' => 'array',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'matrixIds',
+                'required' => true,
+                'inPathFlagGetter' => 'isMatrixIdsInPath',
+                'inQueryFlagGetter' => 'isMatrixIdsInQuery',
+                'inHeaderFlagGetter' => 'isMatrixIdsInHeader',
+                'inCookieFlagGetter' => 'isMatrixIdsInCookie',
+                'inRequestFlagGetter' => 'isMatrixIdsInRequest',
+                'constraints' => $constraints['matrixIds'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => 'array<int>',
+            ],
+        ];
+        $map['labelIds'] = [
+            'getter' => 'getLabelIds',
+            'type' => 'array',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'labelIds',
+                'required' => true,
+                'inPathFlagGetter' => 'isLabelIdsInPath',
+                'inQueryFlagGetter' => 'isLabelIdsInQuery',
+                'inHeaderFlagGetter' => 'isLabelIdsInHeader',
+                'inCookieFlagGetter' => 'isLabelIdsInCookie',
+                'inRequestFlagGetter' => 'isLabelIdsInRequest',
+                'constraints' => $constraints['labelIds'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => 'array<string>',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['matrixIds'] = ['type' => 'array', 'items' => ['type' => 'integer']];
+        $constraints['labelIds'] = ['type' => 'array', 'items' => ['type' => 'string']];
+
+        return $constraints;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        $sources = [];
+        $sources['matrixIds'] = 'path';
+        $sources['labelIds'] = 'path';
+
+        return $sources;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        $styles = [];
+        $styles['matrixIds'] = ['style' => 'matrix', 'explode' => false];
+        $styles['labelIds'] = ['style' => 'label', 'explode' => false];
+
+        return $styles;
+    }
+}
+
+===== ApiTestSerializationGetQueryParams.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use Stringable;
+
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * Route: GET /api/test/serialization
+ */
+final class ApiTestSerializationGetQueryParams implements GeneratedDtoInterface, Stringable
+{
+    /**
+     * @var ?array<int>
+     */
+    private ?array $exploded;
+    private bool $explodedInRequest = false;
+    private bool $explodedInPath = false;
+    private bool $explodedInQuery = false;
+    private bool $explodedInHeader = false;
+    private bool $explodedInCookie = false;
+    /**
+     * @var ?array<string>
+     */
+    private ?array $joined;
+    private bool $joinedInRequest = false;
+    private bool $joinedInPath = false;
+    private bool $joinedInQuery = false;
+    private bool $joinedInHeader = false;
+    private bool $joinedInCookie = false;
+    /**
+     * @var ?array<int>
+     */
+    private ?array $spaced;
+    private bool $spacedInRequest = false;
+    private bool $spacedInPath = false;
+    private bool $spacedInQuery = false;
+    private bool $spacedInHeader = false;
+    private bool $spacedInCookie = false;
+    /**
+     * @var ?array<string>
+     */
+    private ?array $piped;
+    private bool $pipedInRequest = false;
+    private bool $pipedInPath = false;
+    private bool $pipedInQuery = false;
+    private bool $pipedInHeader = false;
+    private bool $pipedInCookie = false;
+    /**
+     * @var ?array<string, string>
+     */
+    private ?array $nested;
+    private bool $nestedInRequest = false;
+    private bool $nestedInPath = false;
+    private bool $nestedInQuery = false;
+    private bool $nestedInHeader = false;
+    private bool $nestedInCookie = false;
+    private bool $flagInRequest = false;
+    private bool $flagInPath = false;
+    private bool $flagInQuery = false;
+    private bool $flagInHeader = false;
+    private bool $flagInCookie = false;
+    private bool $strictInRequest = false;
+    private bool $strictInPath = false;
+    private bool $strictInQuery = false;
+    private bool $strictInHeader = false;
+    private bool $strictInCookie = false;
+    private bool $rawInRequest = false;
+    private bool $rawInPath = false;
+    private bool $rawInQuery = false;
+    private bool $rawInHeader = false;
+    private bool $rawInCookie = false;
+    /**
+     * @var ?array<string>
+     */
+    private ?array $xCodes;
+    private bool $xCodesInRequest = false;
+    private bool $xCodesInPath = false;
+    private bool $xCodesInQuery = false;
+    private bool $xCodesInHeader = false;
+    private bool $xCodesInCookie = false;
+    private bool $sessionInRequest = false;
+    private bool $sessionInPath = false;
+    private bool $sessionInQuery = false;
+    private bool $sessionInHeader = false;
+    private bool $sessionInCookie = false;
+    private bool $filterInRequest = false;
+    private bool $filterInPath = false;
+    private bool $filterInQuery = false;
+    private bool $filterInHeader = false;
+    private bool $filterInCookie = false;
+
+    /**
+     * @param ?array<int> $exploded
+     * @param ?array<string> $joined
+     * @param ?array<int> $spaced
+     * @param ?array<string> $piped
+     * @param ?array<string, string> $nested
+     * @param ?array<string> $xCodes
+     */
+    public function __construct(
+        array|UnsetValue|null $exploded = UnsetValue::UNSET,
+        array|UnsetValue|null $joined = UnsetValue::UNSET,
+        array|UnsetValue|null $spaced = UnsetValue::UNSET,
+        array|UnsetValue|null $piped = UnsetValue::UNSET,
+        array|UnsetValue|null $nested = UnsetValue::UNSET,
+        private readonly bool|UnsetValue|null $flag = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $strict = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $raw = UnsetValue::UNSET,
+        array|UnsetValue|null $xCodes = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $session = UnsetValue::UNSET,
+        private readonly ApiTestSerializationGetQueryParamsFilter|UnsetValue|null $filter = UnsetValue::UNSET,
+    ) {
+        // Track if parameter was explicitly passed
+        $this->explodedInQuery = $exploded !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->joinedInQuery = $joined !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->spacedInQuery = $spaced !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->pipedInQuery = $piped !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->nestedInQuery = $nested !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->flagInQuery = $flag !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->strictInQuery = $strict !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->rawInQuery = $raw !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->xCodesInHeader = $xCodes !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->sessionInCookie = $session !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->filterInQuery = $filter !== UnsetValue::UNSET;
+        $this->exploded = $exploded !== UnsetValue::UNSET ? $exploded : null;
+        $this->joined = $joined !== UnsetValue::UNSET ? $joined : null;
+        $this->spaced = $spaced !== UnsetValue::UNSET ? $spaced : null;
+        $this->piped = $piped !== UnsetValue::UNSET ? $piped : null;
+        $this->nested = $nested !== UnsetValue::UNSET ? $nested : null;
+        $this->xCodes = $xCodes !== UnsetValue::UNSET ? $xCodes : null;
+    }
+
+    /**
+     * @return ?array<int>
+     */
+    public function getExploded(): ?array
+    {
+        return $this->exploded;
+    }
+
+    public function isExplodedRequired(): bool
+    {
+        return false;
+    }
+
+    public function isExplodedInPath(): bool
+    {
+        return $this->explodedInPath;
+    }
+
+    public function isExplodedInQuery(): bool
+    {
+        return $this->explodedInQuery;
+    }
+
+    public function isExplodedInHeader(): bool
+    {
+        return $this->explodedInHeader;
+    }
+
+    public function isExplodedInCookie(): bool
+    {
+        return $this->explodedInCookie;
+    }
+
+    public function isExplodedInRequest(): bool
+    {
+        return $this->explodedInRequest;
+    }
+
+    public function addItemToExploded(int $item): void
+    {
+        if ($this->exploded === null) {
+            $this->exploded = [];
+        }
+        $this->exploded[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->explodedInQuery) {
+            $this->explodedInQuery = true;
+        }
+    }
+
+    /**
+     * @return ?array<string>
+     */
+    public function getJoined(): ?array
+    {
+        return $this->joined;
+    }
+
+    public function isJoinedRequired(): bool
+    {
+        return false;
+    }
+
+    public function isJoinedInPath(): bool
+    {
+        return $this->joinedInPath;
+    }
+
+    public function isJoinedInQuery(): bool
+    {
+        return $this->joinedInQuery;
+    }
+
+    public function isJoinedInHeader(): bool
+    {
+        return $this->joinedInHeader;
+    }
+
+    public function isJoinedInCookie(): bool
+    {
+        return $this->joinedInCookie;
+    }
+
+    public function isJoinedInRequest(): bool
+    {
+        return $this->joinedInRequest;
+    }
+
+    public function addItemToJoined(string $item): void
+    {
+        if ($this->joined === null) {
+            $this->joined = [];
+        }
+        $this->joined[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->joinedInQuery) {
+            $this->joinedInQuery = true;
+        }
+    }
+
+    /**
+     * @return ?array<int>
+     */
+    public function getSpaced(): ?array
+    {
+        return $this->spaced;
+    }
+
+    public function isSpacedRequired(): bool
+    {
+        return false;
+    }
+
+    public function isSpacedInPath(): bool
+    {
+        return $this->spacedInPath;
+    }
+
+    public function isSpacedInQuery(): bool
+    {
+        return $this->spacedInQuery;
+    }
+
+    public function isSpacedInHeader(): bool
+    {
+        return $this->spacedInHeader;
+    }
+
+    public function isSpacedInCookie(): bool
+    {
+        return $this->spacedInCookie;
+    }
+
+    public function isSpacedInRequest(): bool
+    {
+        return $this->spacedInRequest;
+    }
+
+    public function addItemToSpaced(int $item): void
+    {
+        if ($this->spaced === null) {
+            $this->spaced = [];
+        }
+        $this->spaced[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->spacedInQuery) {
+            $this->spacedInQuery = true;
+        }
+    }
+
+    /**
+     * @return ?array<string>
+     */
+    public function getPiped(): ?array
+    {
+        return $this->piped;
+    }
+
+    public function isPipedRequired(): bool
+    {
+        return false;
+    }
+
+    public function isPipedInPath(): bool
+    {
+        return $this->pipedInPath;
+    }
+
+    public function isPipedInQuery(): bool
+    {
+        return $this->pipedInQuery;
+    }
+
+    public function isPipedInHeader(): bool
+    {
+        return $this->pipedInHeader;
+    }
+
+    public function isPipedInCookie(): bool
+    {
+        return $this->pipedInCookie;
+    }
+
+    public function isPipedInRequest(): bool
+    {
+        return $this->pipedInRequest;
+    }
+
+    public function addItemToPiped(string $item): void
+    {
+        if ($this->piped === null) {
+            $this->piped = [];
+        }
+        $this->piped[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->pipedInQuery) {
+            $this->pipedInQuery = true;
+        }
+    }
+
+    /**
+     * @return ?array<string, string>
+     */
+    public function getNested(): ?array
+    {
+        return $this->nested;
+    }
+
+    public function isNestedRequired(): bool
+    {
+        return false;
+    }
+
+    public function isNestedInPath(): bool
+    {
+        return $this->nestedInPath;
+    }
+
+    public function isNestedInQuery(): bool
+    {
+        return $this->nestedInQuery;
+    }
+
+    public function isNestedInHeader(): bool
+    {
+        return $this->nestedInHeader;
+    }
+
+    public function isNestedInCookie(): bool
+    {
+        return $this->nestedInCookie;
+    }
+
+    public function isNestedInRequest(): bool
+    {
+        return $this->nestedInRequest;
+    }
+
+    public function addItemToNested(string $key, string $item): void
+    {
+        if ($this->nested === null) {
+            $this->nested = [];
+        }
+        $this->nested[$key] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->nestedInQuery) {
+            $this->nestedInQuery = true;
+        }
+    }
+
+    public function getFlag(): ?bool
+    {
+        return $this->flag !== UnsetValue::UNSET ? $this->flag : null;
+    }
+
+    public function isFlagRequired(): bool
+    {
+        return false;
+    }
+
+    public function isFlagInPath(): bool
+    {
+        return $this->flagInPath;
+    }
+
+    public function isFlagInQuery(): bool
+    {
+        return $this->flagInQuery;
+    }
+
+    public function isFlagInHeader(): bool
+    {
+        return $this->flagInHeader;
+    }
+
+    public function isFlagInCookie(): bool
+    {
+        return $this->flagInCookie;
+    }
+
+    public function isFlagInRequest(): bool
+    {
+        return $this->flagInRequest;
+    }
+
+    public function getStrict(): ?string
+    {
+        return $this->strict !== UnsetValue::UNSET ? $this->strict : null;
+    }
+
+    public function isStrictRequired(): bool
+    {
+        return false;
+    }
+
+    public function isStrictInPath(): bool
+    {
+        return $this->strictInPath;
+    }
+
+    public function isStrictInQuery(): bool
+    {
+        return $this->strictInQuery;
+    }
+
+    public function isStrictInHeader(): bool
+    {
+        return $this->strictInHeader;
+    }
+
+    public function isStrictInCookie(): bool
+    {
+        return $this->strictInCookie;
+    }
+
+    public function isStrictInRequest(): bool
+    {
+        return $this->strictInRequest;
+    }
+
+    public function getRaw(): ?string
+    {
+        return $this->raw !== UnsetValue::UNSET ? $this->raw : null;
+    }
+
+    public function isRawRequired(): bool
+    {
+        return false;
+    }
+
+    public function isRawInPath(): bool
+    {
+        return $this->rawInPath;
+    }
+
+    public function isRawInQuery(): bool
+    {
+        return $this->rawInQuery;
+    }
+
+    public function isRawInHeader(): bool
+    {
+        return $this->rawInHeader;
+    }
+
+    public function isRawInCookie(): bool
+    {
+        return $this->rawInCookie;
+    }
+
+    public function isRawInRequest(): bool
+    {
+        return $this->rawInRequest;
+    }
+
+    /**
+     * @return ?array<string>
+     */
+    public function getXCodes(): ?array
+    {
+        return $this->xCodes;
+    }
+
+    public function isXCodesRequired(): bool
+    {
+        return false;
+    }
+
+    public function isXCodesInPath(): bool
+    {
+        return $this->xCodesInPath;
+    }
+
+    public function isXCodesInQuery(): bool
+    {
+        return $this->xCodesInQuery;
+    }
+
+    public function isXCodesInHeader(): bool
+    {
+        return $this->xCodesInHeader;
+    }
+
+    public function isXCodesInCookie(): bool
+    {
+        return $this->xCodesInCookie;
+    }
+
+    public function isXCodesInRequest(): bool
+    {
+        return $this->xCodesInRequest;
+    }
+
+    public function addItemToXCodes(string $item): void
+    {
+        if ($this->xCodes === null) {
+            $this->xCodes = [];
+        }
+        $this->xCodes[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->xCodesInHeader) {
+            $this->xCodesInHeader = true;
+        }
+    }
+
+    public function getSession(): ?string
+    {
+        return $this->session !== UnsetValue::UNSET ? $this->session : null;
+    }
+
+    public function isSessionRequired(): bool
+    {
+        return false;
+    }
+
+    public function isSessionInPath(): bool
+    {
+        return $this->sessionInPath;
+    }
+
+    public function isSessionInQuery(): bool
+    {
+        return $this->sessionInQuery;
+    }
+
+    public function isSessionInHeader(): bool
+    {
+        return $this->sessionInHeader;
+    }
+
+    public function isSessionInCookie(): bool
+    {
+        return $this->sessionInCookie;
+    }
+
+    public function isSessionInRequest(): bool
+    {
+        return $this->sessionInRequest;
+    }
+
+    public function getFilter(): ?ApiTestSerializationGetQueryParamsFilter
+    {
+        return $this->filter !== UnsetValue::UNSET ? $this->filter : null;
+    }
+
+    public function isFilterRequired(): bool
+    {
+        return false;
+    }
+
+    public function isFilterInPath(): bool
+    {
+        return $this->filterInPath;
+    }
+
+    public function isFilterInQuery(): bool
+    {
+        return $this->filterInQuery;
+    }
+
+    public function isFilterInHeader(): bool
+    {
+        return $this->filterInHeader;
+    }
+
+    public function isFilterInCookie(): bool
+    {
+        return $this->filterInCookie;
+    }
+
+    public function isFilterInRequest(): bool
+    {
+        return $this->filterInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [];
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['exploded'] = [
+            'getter' => 'getExploded',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'exploded',
+                'required' => false,
+                'inPathFlagGetter' => 'isExplodedInPath',
+                'inQueryFlagGetter' => 'isExplodedInQuery',
+                'inHeaderFlagGetter' => 'isExplodedInHeader',
+                'inCookieFlagGetter' => 'isExplodedInCookie',
+                'inRequestFlagGetter' => 'isExplodedInRequest',
+                'constraints' => $constraints['exploded'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '?array<int>',
+            ],
+        ];
+        $map['joined'] = [
+            'getter' => 'getJoined',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'joined',
+                'required' => false,
+                'inPathFlagGetter' => 'isJoinedInPath',
+                'inQueryFlagGetter' => 'isJoinedInQuery',
+                'inHeaderFlagGetter' => 'isJoinedInHeader',
+                'inCookieFlagGetter' => 'isJoinedInCookie',
+                'inRequestFlagGetter' => 'isJoinedInRequest',
+                'constraints' => $constraints['joined'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '?array<string>',
+            ],
+        ];
+        $map['spaced'] = [
+            'getter' => 'getSpaced',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'spaced',
+                'required' => false,
+                'inPathFlagGetter' => 'isSpacedInPath',
+                'inQueryFlagGetter' => 'isSpacedInQuery',
+                'inHeaderFlagGetter' => 'isSpacedInHeader',
+                'inCookieFlagGetter' => 'isSpacedInCookie',
+                'inRequestFlagGetter' => 'isSpacedInRequest',
+                'constraints' => $constraints['spaced'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '?array<int>',
+            ],
+        ];
+        $map['piped'] = [
+            'getter' => 'getPiped',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'piped',
+                'required' => false,
+                'inPathFlagGetter' => 'isPipedInPath',
+                'inQueryFlagGetter' => 'isPipedInQuery',
+                'inHeaderFlagGetter' => 'isPipedInHeader',
+                'inCookieFlagGetter' => 'isPipedInCookie',
+                'inRequestFlagGetter' => 'isPipedInRequest',
+                'constraints' => $constraints['piped'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '?array<string>',
+            ],
+        ];
+        $map['nested'] = [
+            'getter' => 'getNested',
+            'type' => 'object',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'nested',
+                'required' => false,
+                'inPathFlagGetter' => 'isNestedInPath',
+                'inQueryFlagGetter' => 'isNestedInQuery',
+                'inHeaderFlagGetter' => 'isNestedInHeader',
+                'inCookieFlagGetter' => 'isNestedInCookie',
+                'inRequestFlagGetter' => 'isNestedInRequest',
+                'constraints' => $constraints['nested'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '?array<string, string>',
+            ],
+        ];
+        $map['flag'] = [
+            'getter' => 'getFlag',
+            'type' => 'bool',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'flag',
+                'required' => false,
+                'inPathFlagGetter' => 'isFlagInPath',
+                'inQueryFlagGetter' => 'isFlagInQuery',
+                'inHeaderFlagGetter' => 'isFlagInHeader',
+                'inCookieFlagGetter' => 'isFlagInCookie',
+                'inRequestFlagGetter' => 'isFlagInRequest',
+                'constraints' => $constraints['flag'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['strict'] = [
+            'getter' => 'getStrict',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'strict',
+                'required' => false,
+                'inPathFlagGetter' => 'isStrictInPath',
+                'inQueryFlagGetter' => 'isStrictInQuery',
+                'inHeaderFlagGetter' => 'isStrictInHeader',
+                'inCookieFlagGetter' => 'isStrictInCookie',
+                'inRequestFlagGetter' => 'isStrictInRequest',
+                'constraints' => $constraints['strict'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['raw'] = [
+            'getter' => 'getRaw',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'raw',
+                'required' => false,
+                'inPathFlagGetter' => 'isRawInPath',
+                'inQueryFlagGetter' => 'isRawInQuery',
+                'inHeaderFlagGetter' => 'isRawInHeader',
+                'inCookieFlagGetter' => 'isRawInCookie',
+                'inRequestFlagGetter' => 'isRawInRequest',
+                'constraints' => $constraints['raw'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['xCodes'] = [
+            'getter' => 'getXCodes',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'X-Codes',
+                'required' => false,
+                'inPathFlagGetter' => 'isXCodesInPath',
+                'inQueryFlagGetter' => 'isXCodesInQuery',
+                'inHeaderFlagGetter' => 'isXCodesInHeader',
+                'inCookieFlagGetter' => 'isXCodesInCookie',
+                'inRequestFlagGetter' => 'isXCodesInRequest',
+                'constraints' => $constraints['xCodes'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '?array<string>',
+            ],
+        ];
+        $map['session'] = [
+            'getter' => 'getSession',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'session',
+                'required' => false,
+                'inPathFlagGetter' => 'isSessionInPath',
+                'inQueryFlagGetter' => 'isSessionInQuery',
+                'inHeaderFlagGetter' => 'isSessionInHeader',
+                'inCookieFlagGetter' => 'isSessionInCookie',
+                'inRequestFlagGetter' => 'isSessionInRequest',
+                'constraints' => $constraints['session'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['filter'] = [
+            'getter' => 'getFilter',
+            'type' => 'ApiTestSerializationGetQueryParamsFilter',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'filter',
+                'required' => false,
+                'inPathFlagGetter' => 'isFilterInPath',
+                'inQueryFlagGetter' => 'isFilterInQuery',
+                'inHeaderFlagGetter' => 'isFilterInHeader',
+                'inCookieFlagGetter' => 'isFilterInCookie',
+                'inRequestFlagGetter' => 'isFilterInRequest',
+                'constraints' => $constraints['filter'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        $aliases = [];
+        $aliases['xCodes'] = 'X-Codes';
+
+        return $aliases;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['exploded'] = ['type' => 'array', 'items' => ['type' => 'integer']];
+        $constraints['joined'] = ['type' => 'array', 'items' => ['type' => 'string']];
+        $constraints['spaced'] = ['type' => 'array', 'items' => ['type' => 'integer']];
+        $constraints['piped'] = ['type' => 'array', 'items' => ['type' => 'string']];
+        $constraints['nested'] = ['type' => 'object', 'additionalProperties' => ['type' => 'string']];
+        $constraints['flag'] = ['type' => 'boolean'];
+        $constraints['strict'] = ['type' => 'string'];
+        $constraints['raw'] = ['type' => 'string'];
+        $constraints['xCodes'] = ['type' => 'array', 'items' => ['type' => 'string']];
+        $constraints['session'] = ['type' => 'string'];
+        $constraints['filter'] = ['type' => 'object', 'properties' => ['since' => ['type' => 'string', 'format' => 'date']]];
+
+        return $constraints;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI request source
+     * (path/query/header/cookie). Properties absent from this map are request-body
+     * fields. The deserializer reads a listed property ONLY from its declared source.
+     *
+     * @return array<string, string>
+     */
+    public static function getParameterSources(): array
+    {
+        $sources = [];
+        $sources['exploded'] = 'query';
+        $sources['joined'] = 'query';
+        $sources['spaced'] = 'query';
+        $sources['piped'] = 'query';
+        $sources['nested'] = 'query';
+        $sources['flag'] = 'query';
+        $sources['strict'] = 'query';
+        $sources['raw'] = 'query';
+        $sources['xCodes'] = 'header';
+        $sources['session'] = 'cookie';
+        $sources['filter'] = 'query';
+
+        return $sources;
+    }
+
+    /**
+     * Maps each parameter-bound property to its OpenAPI serialization style and
+     * explode flag (`form`/`spaceDelimited`/`pipeDelimited`/`deepObject`/`simple`).
+     * The deserializer uses this to split delimited array values read from a single
+     * query/header/cookie string. Properties absent from this map use no splitting.
+     *
+     * @return array<string, array{style: string, explode: bool}>
+     */
+    public static function getParameterStyles(): array
+    {
+        $styles = [];
+        $styles['exploded'] = ['style' => 'form', 'explode' => true];
+        $styles['joined'] = ['style' => 'form', 'explode' => false];
+        $styles['spaced'] = ['style' => 'spaceDelimited', 'explode' => false];
+        $styles['piped'] = ['style' => 'pipeDelimited', 'explode' => false];
+        $styles['nested'] = ['style' => 'deepObject', 'explode' => true];
+        $styles['flag'] = ['style' => 'form', 'explode' => true];
+        $styles['strict'] = ['style' => 'form', 'explode' => true];
+        $styles['raw'] = ['style' => 'form', 'explode' => true];
+        $styles['xCodes'] = ['style' => 'simple', 'explode' => false];
+        $styles['session'] = ['style' => 'form', 'explode' => true];
+        $styles['filter'] = ['style' => 'json', 'explode' => false];
+
+        return $styles;
+    }
+
+    /**
+     * Maps each query-bound property that should preserve literal plus signs in the
+     * raw query string when deserialized.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowReserved(): array
+    {
+        $allowReserved = [];
+        $allowReserved['raw'] = true;
+
+        return $allowReserved;
+    }
+
+    /**
+     * Maps each query-bound property that allows empty values.
+     *
+     * @return array<string, bool>
+     */
+    public static function getParameterAllowEmptyValue(): array
+    {
+        $allowEmptyValue = [];
+        $allowEmptyValue['flag'] = true;
+        $allowEmptyValue['strict'] = false;
+
+        return $allowEmptyValue;
+    }
+}
+
+===== ApiTestSerializationGetQueryParamsFilter.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use DateTimeImmutable;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * Route: GET /api/test/serialization
+ * From: ApiTestSerializationGetQueryParams.filter
+ */
+final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInterface, Stringable
+{
+    private bool $sinceInRequest = false;
+    private bool $sinceInPath = false;
+    private bool $sinceInQuery = false;
+    private bool $sinceInHeader = false;
+    private bool $sinceInCookie = false;
+
+    /**
+     * @param DateTimeImmutable|UnsetValue|null $since
+     * Constraints: format=date
+     */
+    public function __construct(
+        private readonly DateTimeImmutable|UnsetValue|null $since = UnsetValue::UNSET,
+    ) {
+        // Track if parameter was explicitly passed
+        $this->sinceInRequest = $since !== UnsetValue::UNSET;
+    }
+
+    /**
+     * Expected format: Y-m-d
+     */
+    public function getSince(): ?string
+    {
+        if ($this->since === UnsetValue::UNSET) {
+            return null;
+        }
+
+        if ($this->since === null) {
+            return null;
+        }
+
+        return $this->since->format('Y-m-d');
+    }
+
+    public function getSinceAsDateTime(): ?DateTimeImmutable
+    {
+        if ($this->since === UnsetValue::UNSET) {
+            return null;
+        }
+
+        return $this->since;
+    }
+
+    public function isSinceRequired(): bool
+    {
+        return false;
+    }
+
+    public function isSinceInPath(): bool
+    {
+        return $this->sinceInPath;
+    }
+
+    public function isSinceInQuery(): bool
+    {
+        return $this->sinceInQuery;
+    }
+
+    public function isSinceInHeader(): bool
+    {
+        return $this->sinceInHeader;
+    }
+
+    public function isSinceInCookie(): bool
+    {
+        return $this->sinceInCookie;
+    }
+
+    public function isSinceInRequest(): bool
+    {
+        return $this->sinceInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        if ($this->sinceInRequest) {
+            $result['since'] = $this->getSince();
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['since'] = [
+            'getter' => 'getSince',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'since',
+                'required' => false,
+                'inPathFlagGetter' => 'isSinceInPath',
+                'inQueryFlagGetter' => 'isSinceInQuery',
+                'inHeaderFlagGetter' => 'isSinceInHeader',
+                'inCookieFlagGetter' => 'isSinceInCookie',
+                'inRequestFlagGetter' => 'isSinceInRequest',
+                'constraints' => $constraints['since'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['since'] = ['type' => 'string', 'format' => 'date'];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $sinceGiven = array_key_exists('since', $data);
+        $since = $sinceGiven ? $cast('since', $data['since'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        $dto = new self(
+            since: $sinceGiven ? $since : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its

@@ -1490,7 +1490,7 @@ final class DtoValidator implements DtoValidatorInterface
             'date-time', 'datetime' => $this->isValidDateTimeFormat(value: $value),
             'time' => $this->isValidTimeFormat(value: $value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
-            'idn-email' => filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false,
+            'idn-email' => $this->isValidIdnEmail(value: $value),
             'uuid' => $this->isValidUuid(value: $value),
             'uri' => $this->isValidUri(value: $value),
             'iri' => $this->isValidIri(value: $value),
@@ -1623,6 +1623,39 @@ final class DtoValidator implements DtoValidatorInterface
 
         // No expressions at all: a stray closing brace is malformed.
         return !str_contains($value, '}');
+    }
+
+    private function isValidIdnEmail(string $value): bool
+    {
+        // `idn-email` (RFC 6531) is an address whose local part may be Unicode AND whose domain may
+        // be an internationalized name. PHP's filter covers only the first half:
+        // `FILTER_FLAG_EMAIL_UNICODE` permits Unicode before the `@` and then validates what follows
+        // as an ASCII host, so `a@пример.рф` — the very thing this format exists for — was refused
+        // while `ф@example.com` passed. Measured both ways before this was written.
+        //
+        // Anything the filter accepts is still accepted, unchanged and first: that keeps the address
+        // forms it knows and this method does not model — a bracketed IP domain (`a@[192.168.0.1]`),
+        // a quoted local part — exactly as valid as they were. Only the internationalized-domain
+        // case is ADDED, so no address that validated before can stop validating.
+        if (filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false) {
+            return true;
+        }
+
+        // Split at the LAST `@`: a quoted local part may legally contain one.
+        $at = strrpos($value, '@');
+        if ($at === false || $at === 0 || $at === strlen($value) - 1) {
+            return false;
+        }
+
+        // The local part is re-checked against an ASCII placeholder domain so the filter's own rules
+        // for it still apply, and the domain goes to the internationalized hostname check that
+        // already exists — which handles intl being absent, as it is on some CLI builds.
+        return filter_var(
+            substr($value, 0, $at) . '@example.com',
+            FILTER_VALIDATE_EMAIL,
+            FILTER_FLAG_EMAIL_UNICODE,
+        ) !== false
+            && $this->isValidIdnHostname(value: substr($value, $at + 1));
     }
 
     private function isValidIdnHostname(string $value): bool
