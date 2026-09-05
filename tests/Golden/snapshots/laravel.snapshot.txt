@@ -1,4 +1,4 @@
-# laravel mode — 104 files, 14016 lines
+# laravel mode — 105 files, 14303 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -57,6 +57,7 @@
 # ApplicatorRefs.php
 # ApplicatorRefsConditional.php
 # ApplicatorRefsKeyed.php
+# ApplicatorRefsPoisonedKey.php
 # AwkwardNames.php
 # CallbackJobDonePostRequest.php
 # CallbackJobDonePostRequestFormRequest.php
@@ -4564,6 +4565,25 @@ final class ApplicatorRefs
                 ],
             ],
         ],
+        'forbiddenKey' => [
+            'not' => true,
+        ],
+        'neverMatches' => [
+            'not' => true,
+        ],
+        'closedFirstSlot' => [
+            'prefixItems' => [
+                false,
+                [
+                    'type' => 'integer',
+                ],
+            ],
+        ],
+        'poisonedKey' => [
+            'dependentSchemas' => [
+                'trigger' => false,
+            ],
+        ],
         'conditional' => [
             'if' => [
                 'type' => 'object',
@@ -4622,6 +4642,10 @@ final class ApplicatorRefs
         private readonly ?array $closedPair = null,
         private readonly mixed $impossible = null,
         private readonly ?string $vacuous = null,
+        private readonly mixed $forbiddenKey = null,
+        private readonly mixed $neverMatches = null,
+        private readonly ?array $closedFirstSlot = null,
+        private readonly ?ApplicatorRefsPoisonedKey $poisonedKey = null,
         private readonly ?ApplicatorRefsConditional $conditional = null,
         private readonly ?ApplicatorRefsKeyed $keyed = null,
     ) {
@@ -4643,6 +4667,11 @@ final class ApplicatorRefs
             'closedPair' => ['sometimes', 'array', 'list'],
             'impossible' => ['sometimes'],
             'vacuous' => ['sometimes', 'string', 'min:3'],
+            'forbiddenKey' => ['sometimes'],
+            'neverMatches' => ['sometimes'],
+            'closedFirstSlot' => ['sometimes', 'array', 'list'],
+            'poisonedKey' => ['sometimes', 'array'],
+            'poisonedKey.trigger' => ['string'],
             'conditional' => ['sometimes', 'array'],
             'conditional.label' => ['string'],
             'keyed' => ['sometimes', 'array'],
@@ -4657,6 +4686,7 @@ final class ApplicatorRefs
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'mustContain.*',
+        'poisonedKey',
         'conditional',
         'keyed',
     ];
@@ -4772,6 +4802,10 @@ final class ApplicatorRefs
             closedPair: ($data['closedPair'] ?? null) === null ? null : $data['closedPair'],
             impossible: ($data['impossible'] ?? null) === null ? null : $data['impossible'],
             vacuous: ($data['vacuous'] ?? null) === null ? null : $data['vacuous'],
+            forbiddenKey: ($data['forbiddenKey'] ?? null) === null ? null : $data['forbiddenKey'],
+            neverMatches: ($data['neverMatches'] ?? null) === null ? null : $data['neverMatches'],
+            closedFirstSlot: ($data['closedFirstSlot'] ?? null) === null ? null : $data['closedFirstSlot'],
+            poisonedKey: ($data['poisonedKey'] ?? null) === null ? null : ApplicatorRefsPoisonedKey::fromValidated($data['poisonedKey']),
             conditional: ($data['conditional'] ?? null) === null ? null : ApplicatorRefsConditional::fromValidated($data['conditional']),
             keyed: ($data['keyed'] ?? null) === null ? null : ApplicatorRefsKeyed::fromValidated($data['keyed']),
         );
@@ -4836,6 +4870,46 @@ final class ApplicatorRefs
     public function isVacuousProvided(): bool
     {
         return in_array('vacuous', $this->providedOpenApiKeys, true);
+    }
+
+    public function getForbiddenKey(): mixed
+    {
+        return $this->forbiddenKey;
+    }
+
+    public function isForbiddenKeyProvided(): bool
+    {
+        return in_array('forbiddenKey', $this->providedOpenApiKeys, true);
+    }
+
+    public function getNeverMatches(): mixed
+    {
+        return $this->neverMatches;
+    }
+
+    public function isNeverMatchesProvided(): bool
+    {
+        return in_array('neverMatches', $this->providedOpenApiKeys, true);
+    }
+
+    public function getClosedFirstSlot(): ?array
+    {
+        return $this->closedFirstSlot;
+    }
+
+    public function isClosedFirstSlotProvided(): bool
+    {
+        return in_array('closedFirstSlot', $this->providedOpenApiKeys, true);
+    }
+
+    public function getPoisonedKey(): ?ApplicatorRefsPoisonedKey
+    {
+        return $this->poisonedKey;
+    }
+
+    public function isPoisonedKeyProvided(): bool
+    {
+        return in_array('poisonedKey', $this->providedOpenApiKeys, true);
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -4919,6 +4993,10 @@ final class ApplicatorRefs
                 }
                 $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
             }
+        }
+
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -5128,6 +5206,22 @@ final class ApplicatorRefs
 
         if ($this->isVacuousProvided()) {
             $result['vacuous'] = $this->vacuous;
+        }
+
+        if ($this->isForbiddenKeyProvided()) {
+            $result['forbiddenKey'] = $this->forbiddenKey;
+        }
+
+        if ($this->isNeverMatchesProvided()) {
+            $result['neverMatches'] = $this->neverMatches;
+        }
+
+        if ($this->isClosedFirstSlotProvided()) {
+            $result['closedFirstSlot'] = $this->closedFirstSlot === null ? null : array_values($this->closedFirstSlot);
+        }
+
+        if ($this->isPoisonedKeyProvided()) {
+            $result['poisonedKey'] = $this->poisonedKey === null ? null : ($this->poisonedKey->toArray() ?: (object)[]);
         }
 
         if ($this->isConditionalProvided()) {
@@ -5739,6 +5833,202 @@ final class ApplicatorRefsKeyed
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+
+        if ($this->isTriggerProvided()) {
+            $result['trigger'] = $this->trigger;
+        }
+
+        return $result;
+    }
+}
+
+===== ApplicatorRefsPoisonedKey.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
+
+use function array_filter;
+use function array_key_exists;
+use function array_keys;
+use function get_object_vars;
+use function in_array;
+use function is_array;
+use function is_object;
+use function is_string;
+use function str_ends_with;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ * From: ApplicatorRefs.poisonedKey
+ *
+ * Laravel mode: the class needs nothing installed — `rules()` is fed to the framework's own
+ * validator, and `fromValidated()` builds this object from `$request->validated()`:
+ *
+ *     final class StoreRequest extends FormRequest
+ *     {
+ *         public function rules(): array
+ *         {
+ *             return ApplicatorRefsPoisonedKey::rules();
+ *         }
+ *     }
+ *
+ *     $dto = ApplicatorRefsPoisonedKey::fromValidated($request->validated());
+ *
+ * `validated()` returns only the keys the payload carried, which is what `isXxxProvided()` reads —
+ * so an absent optional field and one sent as `null` stay distinguishable (PATCH semantics).
+ */
+final class ApplicatorRefsPoisonedKey
+{
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'x-openapi-object' => [
+            'dependentSchemas' => [
+                'trigger' => false,
+            ],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
+    /**
+     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
+     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
+     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     *
+     * @var array<int, string>
+     */
+    private array $providedOpenApiKeys = [];
+
+    public function __construct(
+        private readonly ?string $trigger = null,
+    ) {
+    }
+
+    /**
+     * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
+     * what the request payload carries, not the PHP property names.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function rules(): array
+    {
+        return [
+            'trigger' => ['sometimes', 'string'],
+        ];
+    }
+
+    /**
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApplicatorRefsPoisonedKey::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            /** @var array<string, mixed> $payload */
+            $payload = $validator->getData();
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
+                // The object's own rules share this map under a reserved key — see below.
+                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+                }
+            }
+
+            // What the document states about the OBJECT rather than about one property:
+            // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
+            // whole payload, and the message goes in without a field name because that is what it is
+            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // nothing here is reported twice.
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            }
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $data the output of `$request->validated()`
+     */
+    public static function fromValidated(array $data): self
+    {
+        $dto = new self(
+            trigger: ($data['trigger'] ?? null) === null ? null : $data['trigger'],
+        );
+        $dto->providedOpenApiKeys = array_keys($data);
+
+        return $dto;
+    }
+
+    public function getTrigger(): ?string
+    {
+        return $this->trigger;
+    }
+
+    public function isTriggerProvided(): bool
+    {
+        return in_array('trigger', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
+                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
+            }
+        }
+
+        return $errors;
+    }
+
+    private static function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
     }
 
     /**

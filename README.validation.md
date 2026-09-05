@@ -61,12 +61,17 @@ A few behaviours worth knowing when validating against the schema:
   write `not`, so neither does the message. `DtoValidator` has read the boolean in every position
   listed above since 2.15.27.
 
-  **Which positions the GENERATOR carries it into is narrower, and being widened.** A boolean is
-  emitted into the constraints — and so enforced — for `items`, `contains`, `propertyNames`,
-  `if`/`then`/`else`, `contentSchema`, `additionalProperties`, `unevaluatedItems`,
-  `unevaluatedProperties`, `anyOf`, `oneOf`, and, since 2.15.37, `allOf`. It is still dropped for
-  `properties`, `not`, `prefixItems` and `dependentSchemas`, where the keyword currently does nothing
-  — measured, not assumed. A boolean inside `allOf` was worse than dropped before 2.15.37: it stopped
-  generation outright with a PHP `TypeError` and wrote no files at all.
+  **The generator carries it into every one of those positions as of 2.15.38** — runtime mode, and
+  laravel / laravel-data with it. Getting there took two releases: `allOf` was not merely dropped
+  before 2.15.37, it stopped generation outright with a PHP `TypeError` and wrote no files at all;
+  and `properties`, `not`, `prefixItems` and `dependentSchemas` dropped the boolean until 2.15.38.
+  `prefixItems` did the worst of it — a boolean member scrubbed to `[]`, which IS the empty schema, so
+  a document CLOSING a tuple position emitted a class that accepted anything there.
+
+  Symfony and yii3 modes still drop a boolean in `not`, `if`/`then`/`else`, `contains`,
+  `propertyNames`, `contentSchema`, `prefixItems` and `dependentSchemas`: their shared constraint
+  filter reads those keys only when the value is an array, and the interpreter they emit gates the
+  same keys on `is_array()` a second time. `additionalProperties`, `unevaluatedItems` and
+  `unevaluatedProperties` arrive in every mode.
 - **An empty schema matches everything.** `items: {}`, `contains: {}` and `additionalProperties: {}` apply — and, importantly, mark their targets as evaluated, so a neighbouring `unevaluatedItems: false` or `unevaluatedProperties: false` does not reject a valid payload.
 - **How far `uri-reference`/`iri-reference` go.** A reference may be relative, so most of what looks wrong is legal: `not_a_uri` and `###` are valid relative references and are accepted, as any conforming validator accepts them. The check is deliberately no stricter than whitespace and control characters, which means a broken percent-escape (`%zz`) or a malformed host (`http://[`) passes here while the stricter `uri`/`iri` refuse both. Full RFC 3986 grammar is not worth the emitted code; if a field must be an absolute, well-formed URI, declare `format: uri`.

@@ -1,4 +1,4 @@
-# symfony mode — 78 files, 9990 lines
+# symfony mode — 79 files, 10192 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -37,6 +37,7 @@
 # ApplicatorRefs.php
 # ApplicatorRefsConditional.php
 # ApplicatorRefsKeyed.php
+# ApplicatorRefsPoisonedKey.php
 # AwkwardNames.php
 # CallbackJobDonePostRequest.php
 # CallbackJobFailedPostRequest.php
@@ -2769,6 +2770,16 @@ final class ApplicatorRefs
             ],
             'impossible' => [],
             'vacuous' => [],
+            'neverMatches' => [],
+            'closedFirstSlot' => [
+                'prefixItems' => [
+                    [],
+                    [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
+            'poisonedKey' => [],
             'conditional' => [
                 'if' => [
                     'type' => 'object',
@@ -2814,6 +2825,10 @@ final class ApplicatorRefs
         'closedPair' => 'closedPair',
         'impossible' => 'impossible',
         'vacuous' => 'vacuous',
+        'forbiddenKey' => 'forbiddenKey',
+        'neverMatches' => 'neverMatches',
+        'closedFirstSlot' => 'closedFirstSlot',
+        'poisonedKey' => 'poisonedKey',
         'conditional' => 'conditional',
         'keyed' => 'keyed',
     ];
@@ -2824,6 +2839,10 @@ final class ApplicatorRefs
         'closedPair' => 'closedPairProvided',
         'impossible' => 'impossibleProvided',
         'vacuous' => 'vacuousProvided',
+        'forbiddenKey' => 'forbiddenKeyProvided',
+        'neverMatches' => 'neverMatchesProvided',
+        'closedFirstSlot' => 'closedFirstSlotProvided',
+        'poisonedKey' => 'poisonedKeyProvided',
         'conditional' => 'conditionalProvided',
         'keyed' => 'keyedProvided',
     ];
@@ -2860,6 +2879,31 @@ final class ApplicatorRefs
 
     #[Ignore]
     private bool $vacuousProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private mixed $forbiddenKey = null;
+
+    #[Ignore]
+    private bool $forbiddenKeyProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private mixed $neverMatches = null;
+
+    #[Ignore]
+    private bool $neverMatchesProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private ?array $closedFirstSlot = null;
+
+    #[Ignore]
+    private bool $closedFirstSlotProvided = false;
+
+    #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    private ?ApplicatorRefsPoisonedKey $poisonedKey = null;
+
+    #[Ignore]
+    private bool $poisonedKeyProvided = false;
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
@@ -2996,6 +3040,90 @@ final class ApplicatorRefs
     public function isVacuousProvided(): bool
     {
         return $this->vacuousProvided;
+    }
+
+    public function getForbiddenKey(): mixed
+    {
+        return $this->forbiddenKey;
+    }
+
+    public function setForbiddenKey(mixed $forbiddenKey): void
+    {
+        $this->forbiddenKey = $forbiddenKey;
+        $this->forbiddenKeyProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isForbiddenKeyProvided(): bool
+    {
+        return $this->forbiddenKeyProvided;
+    }
+
+    public function getNeverMatches(): mixed
+    {
+        return $this->neverMatches;
+    }
+
+    public function setNeverMatches(mixed $neverMatches): void
+    {
+        $this->neverMatches = $neverMatches;
+        $this->neverMatchesProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isNeverMatchesProvided(): bool
+    {
+        return $this->neverMatchesProvided;
+    }
+
+    public function getClosedFirstSlot(): ?array
+    {
+        return $this->closedFirstSlot;
+    }
+
+    public function setClosedFirstSlot(?array $closedFirstSlot): void
+    {
+        $this->closedFirstSlot = $closedFirstSlot;
+        $this->closedFirstSlotProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isClosedFirstSlotProvided(): bool
+    {
+        return $this->closedFirstSlotProvided;
+    }
+
+    public function getPoisonedKey(): ?ApplicatorRefsPoisonedKey
+    {
+        return $this->poisonedKey;
+    }
+
+    public function setPoisonedKey(?ApplicatorRefsPoisonedKey $poisonedKey): void
+    {
+        $this->poisonedKey = $poisonedKey;
+        $this->poisonedKeyProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isPoisonedKeyProvided(): bool
+    {
+        return $this->poisonedKeyProvided;
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -3889,6 +4017,83 @@ final class ApplicatorRefsKeyed
         }
 
         return null;
+    }
+}
+
+===== ApplicatorRefsPoisonedKey.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Validator\Constraints as Assert;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * From: ApplicatorRefs.poisonedKey
+ *
+ * This document uses readOnly/writeOnly, which Symfony can only honour through serialization
+ * groups — so every property here carries one. Pass the group, or a writeOnly field ends up in
+ * the response:
+ *   $serializer->normalize($dto, null, ['groups' => 'read']);
+ *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
+ */
+final class ApplicatorRefsPoisonedKey
+{
+    #[Groups(['read', 'write'])]
+    private ?string $trigger = null;
+
+    #[Ignore]
+    private bool $triggerProvided = false;
+
+    public function __construct()
+    {
+    }
+
+    public function getTrigger(): ?string
+    {
+        return $this->trigger;
+    }
+
+    public function setTrigger(?string $trigger): void
+    {
+        $this->trigger = $trigger;
+        $this->triggerProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isTriggerProvided(): bool
+    {
+        return $this->triggerProvided;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->triggerProvided) {
+            $payload['trigger'] = $this->trigger;
+        }
+
+        return $payload;
     }
 }
 

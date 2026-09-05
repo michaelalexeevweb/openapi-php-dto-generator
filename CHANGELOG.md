@@ -3,6 +3,57 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.38 — 2026-09-05
+
+- `prefixItems: [false]` closes that position instead of opening it
+- a boolean in `properties`, `not` and `dependentSchemas` is enforced
+- a property whose whole schema is `false` no longer vanishes from the class
+
+**`prefixItems: [false]` meant the opposite of what it says.** A boolean IS a schema: `true` is the
+empty one and `false` the one nothing satisfies. The scrubber turned a non-array member into `[]` —
+and `[]` is the EMPTY schema, the one that accepts everything. So a document closing the first tuple
+position emitted a class that took anything there:
+
+```yaml
+closedFirstSlot:
+  type: array
+  prefixItems:
+    - false            # nothing may stand here
+    - type: integer
+```
+
+```
+["a", 1]      was: accepted      now: refused
+```
+
+That is the one of this release's four that inverted its document rather than ignoring it, which is
+why it is first.
+
+**Three more positions dropped the boolean outright.**
+
+```
+not: true                        forbids every value    was: accepted everything
+dependentSchemas: {a: false}     an object carrying `a` is invalid    was: accepted
+f: false                         the key may never carry a value      was: accepted
+```
+
+The last one is not a constraint on a property — it IS the property, and a boolean there made the
+property vanish from the emitted class entirely. A key the class does not declare is a key nothing
+checks, so the value went through unexamined rather than refused. It is emitted as `not: true` now,
+which is the array spelling of the same thing: `true` matches every value, so "must NOT match it"
+holds for none.
+
+**Nothing here is a new capability in the validator.** `DtoValidator::expandBooleanSubschemas()` has
+read a boolean in all fifteen positions since 2.15.27; it was the generator that never delivered one,
+so the ability sat unreachable and the document said nothing. Each keyword is now emitted in the
+spelling the validator already reads — no expansion, no translation.
+
+**Modes.** Runtime, laravel and laravel-data carry all fifteen. Symfony and yii3 still drop a boolean
+in `not`, `if`/`then`/`else`, `contains`, `propertyNames`, `contentSchema`, `prefixItems` and
+`dependentSchemas` — their shared constraint filter reads those keys only when the value is an array,
+and the interpreter they emit gates the same keys on `is_array()` a second time. Not fixed here; the
+validation guide now says so position by position rather than claiming all of them work.
+
 ## 2.15.37 — 2026-09-05
 
 - a boolean member of `allOf` no longer stops generation

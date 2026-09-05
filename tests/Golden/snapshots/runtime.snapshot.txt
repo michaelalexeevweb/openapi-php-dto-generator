@@ -1,4 +1,4 @@
-# runtime mode — 78 files, 22754 lines
+# runtime mode — 79 files, 23270 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -37,6 +37,7 @@
 # ApplicatorRefs.php
 # ApplicatorRefsConditional.php
 # ApplicatorRefsKeyed.php
+# ApplicatorRefsPoisonedKey.php
 # AwkwardNames.php
 # CallbackJobDonePostRequest.php
 # CallbackJobFailedPostRequest.php
@@ -8734,6 +8735,27 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     private bool $vacuousInQuery = false;
     private bool $vacuousInHeader = false;
     private bool $vacuousInCookie = false;
+    private bool $forbiddenKeyInRequest = false;
+    private bool $forbiddenKeyInPath = false;
+    private bool $forbiddenKeyInQuery = false;
+    private bool $forbiddenKeyInHeader = false;
+    private bool $forbiddenKeyInCookie = false;
+    private bool $neverMatchesInRequest = false;
+    private bool $neverMatchesInPath = false;
+    private bool $neverMatchesInQuery = false;
+    private bool $neverMatchesInHeader = false;
+    private bool $neverMatchesInCookie = false;
+    private ?array $closedFirstSlot;
+    private bool $closedFirstSlotInRequest = false;
+    private bool $closedFirstSlotInPath = false;
+    private bool $closedFirstSlotInQuery = false;
+    private bool $closedFirstSlotInHeader = false;
+    private bool $closedFirstSlotInCookie = false;
+    private bool $poisonedKeyInRequest = false;
+    private bool $poisonedKeyInPath = false;
+    private bool $poisonedKeyInQuery = false;
+    private bool $poisonedKeyInHeader = false;
+    private bool $poisonedKeyInCookie = false;
     private bool $conditionalInRequest = false;
     private bool $conditionalInPath = false;
     private bool $conditionalInQuery = false;
@@ -8758,6 +8780,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         array|UnsetValue|null $closedPair = UnsetValue::UNSET,
         private readonly mixed $impossible = UnsetValue::UNSET,
         private readonly string|UnsetValue|null $vacuous = UnsetValue::UNSET,
+        private readonly mixed $forbiddenKey = UnsetValue::UNSET,
+        private readonly mixed $neverMatches = UnsetValue::UNSET,
+        array|UnsetValue|null $closedFirstSlot = UnsetValue::UNSET,
+        private readonly ApplicatorRefsPoisonedKey|UnsetValue|null $poisonedKey = UnsetValue::UNSET,
         private readonly ApplicatorRefsConditional|UnsetValue|null $conditional = UnsetValue::UNSET,
         private readonly ApplicatorRefsKeyed|UnsetValue|null $keyed = UnsetValue::UNSET,
     ) {
@@ -8773,6 +8799,14 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         // Track if parameter was explicitly passed
         $this->vacuousInRequest = $vacuous !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
+        $this->forbiddenKeyInRequest = $forbiddenKey !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->neverMatchesInRequest = $neverMatches !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->closedFirstSlotInRequest = $closedFirstSlot !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->poisonedKeyInRequest = $poisonedKey !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
         $this->conditionalInRequest = $conditional !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->keyedInRequest = $keyed !== UnsetValue::UNSET;
@@ -8780,6 +8814,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $this->positions = $positions !== UnsetValue::UNSET ? $positions : null;
         $this->rest = $rest !== UnsetValue::UNSET ? $rest : null;
         $this->closedPair = $closedPair !== UnsetValue::UNSET ? $closedPair : null;
+        $this->closedFirstSlot = $closedFirstSlot !== UnsetValue::UNSET ? $closedFirstSlot : null;
     }
 
     /**
@@ -9036,6 +9071,158 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         return $this->vacuousInRequest;
     }
 
+    public function getForbiddenKey(): mixed
+    {
+        return $this->forbiddenKey !== UnsetValue::UNSET ? $this->forbiddenKey : null;
+    }
+
+    public function isForbiddenKeyRequired(): bool
+    {
+        return false;
+    }
+
+    public function isForbiddenKeyInPath(): bool
+    {
+        return $this->forbiddenKeyInPath;
+    }
+
+    public function isForbiddenKeyInQuery(): bool
+    {
+        return $this->forbiddenKeyInQuery;
+    }
+
+    public function isForbiddenKeyInHeader(): bool
+    {
+        return $this->forbiddenKeyInHeader;
+    }
+
+    public function isForbiddenKeyInCookie(): bool
+    {
+        return $this->forbiddenKeyInCookie;
+    }
+
+    public function isForbiddenKeyInRequest(): bool
+    {
+        return $this->forbiddenKeyInRequest;
+    }
+
+    public function getNeverMatches(): mixed
+    {
+        return $this->neverMatches !== UnsetValue::UNSET ? $this->neverMatches : null;
+    }
+
+    public function isNeverMatchesRequired(): bool
+    {
+        return false;
+    }
+
+    public function isNeverMatchesInPath(): bool
+    {
+        return $this->neverMatchesInPath;
+    }
+
+    public function isNeverMatchesInQuery(): bool
+    {
+        return $this->neverMatchesInQuery;
+    }
+
+    public function isNeverMatchesInHeader(): bool
+    {
+        return $this->neverMatchesInHeader;
+    }
+
+    public function isNeverMatchesInCookie(): bool
+    {
+        return $this->neverMatchesInCookie;
+    }
+
+    public function isNeverMatchesInRequest(): bool
+    {
+        return $this->neverMatchesInRequest;
+    }
+
+    public function getClosedFirstSlot(): ?array
+    {
+        return $this->closedFirstSlot;
+    }
+
+    public function isClosedFirstSlotRequired(): bool
+    {
+        return false;
+    }
+
+    public function isClosedFirstSlotInPath(): bool
+    {
+        return $this->closedFirstSlotInPath;
+    }
+
+    public function isClosedFirstSlotInQuery(): bool
+    {
+        return $this->closedFirstSlotInQuery;
+    }
+
+    public function isClosedFirstSlotInHeader(): bool
+    {
+        return $this->closedFirstSlotInHeader;
+    }
+
+    public function isClosedFirstSlotInCookie(): bool
+    {
+        return $this->closedFirstSlotInCookie;
+    }
+
+    public function isClosedFirstSlotInRequest(): bool
+    {
+        return $this->closedFirstSlotInRequest;
+    }
+
+    public function addItemToClosedFirstSlot(mixed $item): void
+    {
+        if ($this->closedFirstSlot === null) {
+            $this->closedFirstSlot = [];
+        }
+        $this->closedFirstSlot[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->closedFirstSlotInRequest) {
+            $this->closedFirstSlotInRequest = true;
+        }
+    }
+
+    public function getPoisonedKey(): ?ApplicatorRefsPoisonedKey
+    {
+        return $this->poisonedKey !== UnsetValue::UNSET ? $this->poisonedKey : null;
+    }
+
+    public function isPoisonedKeyRequired(): bool
+    {
+        return false;
+    }
+
+    public function isPoisonedKeyInPath(): bool
+    {
+        return $this->poisonedKeyInPath;
+    }
+
+    public function isPoisonedKeyInQuery(): bool
+    {
+        return $this->poisonedKeyInQuery;
+    }
+
+    public function isPoisonedKeyInHeader(): bool
+    {
+        return $this->poisonedKeyInHeader;
+    }
+
+    public function isPoisonedKeyInCookie(): bool
+    {
+        return $this->poisonedKeyInCookie;
+    }
+
+    public function isPoisonedKeyInRequest(): bool
+    {
+        return $this->poisonedKeyInRequest;
+    }
+
     public function getConditional(): ?ApplicatorRefsConditional
     {
         return $this->conditional !== UnsetValue::UNSET ? $this->conditional : null;
@@ -9127,6 +9314,18 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
         if ($this->vacuousInRequest) {
             $result['vacuous'] = $this->getVacuous();
+        }
+        if ($this->forbiddenKeyInRequest) {
+            $result['forbiddenKey'] = $this->getForbiddenKey();
+        }
+        if ($this->neverMatchesInRequest) {
+            $result['neverMatches'] = $this->getNeverMatches();
+        }
+        if ($this->closedFirstSlotInRequest) {
+            $result['closedFirstSlot'] = $this->closedFirstSlot === null ? null : array_values($this->closedFirstSlot);
+        }
+        if ($this->poisonedKeyInRequest) {
+            $result['poisonedKey'] = $this->getPoisonedKey();
         }
         if ($this->conditionalInRequest) {
             $result['conditional'] = $this->getConditional();
@@ -9293,6 +9492,82 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['forbiddenKey'] = [
+            'getter' => 'getForbiddenKey',
+            'type' => 'mixed',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'forbiddenKey',
+                'required' => false,
+                'inPathFlagGetter' => 'isForbiddenKeyInPath',
+                'inQueryFlagGetter' => 'isForbiddenKeyInQuery',
+                'inHeaderFlagGetter' => 'isForbiddenKeyInHeader',
+                'inCookieFlagGetter' => 'isForbiddenKeyInCookie',
+                'inRequestFlagGetter' => 'isForbiddenKeyInRequest',
+                'constraints' => $constraints['forbiddenKey'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['neverMatches'] = [
+            'getter' => 'getNeverMatches',
+            'type' => 'mixed',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'neverMatches',
+                'required' => false,
+                'inPathFlagGetter' => 'isNeverMatchesInPath',
+                'inQueryFlagGetter' => 'isNeverMatchesInQuery',
+                'inHeaderFlagGetter' => 'isNeverMatchesInHeader',
+                'inCookieFlagGetter' => 'isNeverMatchesInCookie',
+                'inRequestFlagGetter' => 'isNeverMatchesInRequest',
+                'constraints' => $constraints['neverMatches'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['closedFirstSlot'] = [
+            'getter' => 'getClosedFirstSlot',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'closedFirstSlot',
+                'required' => false,
+                'inPathFlagGetter' => 'isClosedFirstSlotInPath',
+                'inQueryFlagGetter' => 'isClosedFirstSlotInQuery',
+                'inHeaderFlagGetter' => 'isClosedFirstSlotInHeader',
+                'inCookieFlagGetter' => 'isClosedFirstSlotInCookie',
+                'inRequestFlagGetter' => 'isClosedFirstSlotInRequest',
+                'constraints' => $constraints['closedFirstSlot'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['poisonedKey'] = [
+            'getter' => 'getPoisonedKey',
+            'type' => 'ApplicatorRefsPoisonedKey',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'poisonedKey',
+                'required' => false,
+                'inPathFlagGetter' => 'isPoisonedKeyInPath',
+                'inQueryFlagGetter' => 'isPoisonedKeyInQuery',
+                'inHeaderFlagGetter' => 'isPoisonedKeyInHeader',
+                'inCookieFlagGetter' => 'isPoisonedKeyInCookie',
+                'inRequestFlagGetter' => 'isPoisonedKeyInRequest',
+                'constraints' => $constraints['poisonedKey'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
         $map['conditional'] = [
             'getter' => 'getConditional',
             'type' => 'ApplicatorRefsConditional',
@@ -9355,6 +9630,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $constraints['closedPair'] = ['type' => 'array', 'items' => false, 'prefixItems' => [['type' => 'string'], ['type' => 'integer']]];
         $constraints['impossible'] = ['allOf' => [false]];
         $constraints['vacuous'] = ['allOf' => [['type' => 'string', 'minLength' => 3]]];
+        $constraints['forbiddenKey'] = ['not' => true];
+        $constraints['neverMatches'] = ['not' => true];
+        $constraints['closedFirstSlot'] = ['type' => 'array', 'prefixItems' => [false, ['type' => 'integer']]];
+        $constraints['poisonedKey'] = ['type' => 'object', 'properties' => ['trigger' => ['type' => 'string']], 'dependentSchemas' => ['trigger' => false]];
         $constraints['conditional'] = ['type' => 'object', 'if' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]], 'then' => ['required' => ['label']], 'properties' => ['label' => ['type' => 'string']]];
         $constraints['keyed'] = ['type' => 'object', 'properties' => ['trigger' => ['type' => 'string']], 'dependentSchemas' => ['trigger' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
 
@@ -9397,6 +9676,14 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $impossible = $impossibleGiven ? $cast('impossible', $data['impossible'], $errors) : null;
         $vacuousGiven = array_key_exists('vacuous', $data);
         $vacuous = $vacuousGiven ? $cast('vacuous', $data['vacuous'], $errors) : null;
+        $forbiddenKeyGiven = array_key_exists('forbiddenKey', $data);
+        $forbiddenKey = $forbiddenKeyGiven ? $cast('forbiddenKey', $data['forbiddenKey'], $errors) : null;
+        $neverMatchesGiven = array_key_exists('neverMatches', $data);
+        $neverMatches = $neverMatchesGiven ? $cast('neverMatches', $data['neverMatches'], $errors) : null;
+        $closedFirstSlotGiven = array_key_exists('closedFirstSlot', $data);
+        $closedFirstSlot = $closedFirstSlotGiven ? $cast('closedFirstSlot', $data['closedFirstSlot'], $errors) : null;
+        $poisonedKeyGiven = array_key_exists('poisonedKey', $data);
+        $poisonedKey = $poisonedKeyGiven ? $cast('poisonedKey', $data['poisonedKey'], $errors) : null;
         $conditionalGiven = array_key_exists('conditional', $data);
         $conditional = $conditionalGiven ? $cast('conditional', $data['conditional'], $errors) : null;
         $keyedGiven = array_key_exists('keyed', $data);
@@ -9414,6 +9701,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
             closedPair: $closedPairGiven ? $closedPair : UnsetValue::UNSET,
             impossible: $impossibleGiven ? $impossible : UnsetValue::UNSET,
             vacuous: $vacuousGiven ? $vacuous : UnsetValue::UNSET,
+            forbiddenKey: $forbiddenKeyGiven ? $forbiddenKey : UnsetValue::UNSET,
+            neverMatches: $neverMatchesGiven ? $neverMatches : UnsetValue::UNSET,
+            closedFirstSlot: $closedFirstSlotGiven ? $closedFirstSlot : UnsetValue::UNSET,
+            poisonedKey: $poisonedKeyGiven ? $poisonedKey : UnsetValue::UNSET,
             conditional: $conditionalGiven ? $conditional : UnsetValue::UNSET,
             keyed: $keyedGiven ? $keyed : UnsetValue::UNSET,
         );
@@ -9839,6 +10130,234 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
     {
         $constraints = [];
         $constraints['dependentSchemas'] = ['trigger' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
+
+        return $constraints;
+    }
+
+    /**
+     * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
+     * call yourself.
+     *
+     * This method holds STRUCTURE only: which keys to look for, which are required, what to pass
+     * the constructor, which presence flags to raise. Every decision ABOUT A VALUE — casting, the
+     * OpenAPI field constraints, the wording of an error — stays in the deserializer and arrives
+     * through `$cast`. That is deliberate: the general loop and this method cannot answer
+     * differently about a value, because only one of them has an opinion.
+     *
+     * Emitted only for a schema this shape covers: every property a plain body field, no parameter
+     * source, no default, no `readOnly`, no inheritance, no discriminator.
+     *
+     * @internal
+     *
+     * @param array<string, mixed> $data
+     * @param Closure(string, mixed, array<int, string>): mixed $cast casts, and appends any problem to $errors
+     * @param array<int, string> $errors
+     */
+    public static function hydrateFast(array $data, Closure $cast, array &$errors): self
+    {
+        $triggerGiven = array_key_exists('trigger', $data);
+        $trigger = $triggerGiven ? $cast('trigger', $data['trigger'], $errors) : null;
+
+        if ($errors !== []) {
+            throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
+        }
+
+        $dto = new self(
+            trigger: $triggerGiven ? $trigger : UnsetValue::UNSET,
+        );
+
+        // No presence flags to raise here: the constructor already derives each one from whether its
+        // argument is the sentinel, and for every property this method passes exactly what the
+        // caller sent. Assigning them again was dead code in every generated class.
+        return $dto;
+    }
+}
+
+===== ApplicatorRefsPoisonedKey.php =====
+<?php
+
+declare(strict_types=1);
+
+namespace GoldenCorpus;
+
+use Closure;
+use JsonException;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
+use RuntimeException;
+use Stringable;
+
+use function array_filter;
+use function array_key_exists;
+use function array_unique;
+use function implode;
+use function is_string;
+use function json_encode;
+
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * From: ApplicatorRefs.poisonedKey
+ */
+final class ApplicatorRefsPoisonedKey implements GeneratedDtoInterface, Stringable
+{
+    private bool $triggerInRequest = false;
+    private bool $triggerInPath = false;
+    private bool $triggerInQuery = false;
+    private bool $triggerInHeader = false;
+    private bool $triggerInCookie = false;
+
+    public function __construct(
+        private readonly string|UnsetValue|null $trigger = UnsetValue::UNSET,
+    ) {
+        // Track if parameter was explicitly passed
+        $this->triggerInRequest = $trigger !== UnsetValue::UNSET;
+    }
+
+    public function getTrigger(): ?string
+    {
+        return $this->trigger !== UnsetValue::UNSET ? $this->trigger : null;
+    }
+
+    public function isTriggerRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTriggerInPath(): bool
+    {
+        return $this->triggerInPath;
+    }
+
+    public function isTriggerInQuery(): bool
+    {
+        return $this->triggerInQuery;
+    }
+
+    public function isTriggerInHeader(): bool
+    {
+        return $this->triggerInHeader;
+    }
+
+    public function isTriggerInCookie(): bool
+    {
+        return $this->triggerInCookie;
+    }
+
+    public function isTriggerInRequest(): bool
+    {
+        return $this->triggerInRequest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        $result = [];
+        if ($this->triggerInRequest) {
+            $result['trigger'] = $this->getTrigger();
+        }
+
+        return $result;
+    }
+
+    /**
+     * The WIRE form, and the one place that knows this DTO is a `type: object`: an object with no
+     * value to write is `{}`, never `[]`. PHP cannot tell those apart — both are the empty array —
+     * so the empty case is cast here, where the schema is still known. `toArray()` keeps the honest
+     * PHP view and stays an array.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        $result = $this->toArray();
+
+        return $result === [] ? (object)$result : $result;
+    }
+
+    /**
+     * @throws JsonException
+     */
+    public function toJson(): string
+    {
+        return json_encode(
+            $this->jsonSerialize(),
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+    }
+
+    public function __toString(): string
+    {
+        $json = json_encode($this->jsonSerialize(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return is_string($json) ? $json : '{}';
+    }
+
+    /**
+     * @return array<string, array{getter: string, type: string, nullable: bool, metadata: array<string, mixed>}>
+     */
+    public static function getNormalizationMap(): array
+    {
+        $constraints = self::getConstraints();
+
+        $map = [];
+        $map['trigger'] = [
+            'getter' => 'getTrigger',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'trigger',
+                'required' => false,
+                'inPathFlagGetter' => 'isTriggerInPath',
+                'inQueryFlagGetter' => 'isTriggerInQuery',
+                'inHeaderFlagGetter' => 'isTriggerInHeader',
+                'inCookieFlagGetter' => 'isTriggerInCookie',
+                'inRequestFlagGetter' => 'isTriggerInRequest',
+                'constraints' => $constraints['trigger'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function getConstraints(): array
+    {
+        $constraints = [];
+        $constraints['trigger'] = ['type' => 'string'];
+
+        return $constraints;
+    }
+
+    /**
+     * Schema-LEVEL keywords, as opposed to the per-property map in `getConstraints()`.
+     *
+     * Emitted only when the document sets one the runtime can act on — a class without it simply
+     * has nothing to enforce, and the deserializer reads an absent method as exactly that.
+     *
+     * @return array<string, mixed>
+     */
+    public static function getObjectConstraints(): array
+    {
+        $constraints = [];
+        $constraints['dependentSchemas'] = ['trigger' => false];
 
         return $constraints;
     }

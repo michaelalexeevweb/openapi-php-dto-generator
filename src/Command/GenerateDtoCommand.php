@@ -2405,6 +2405,16 @@ final class GenerateDtoCommand extends Command
         $normalizedToOpenApiName = [];
 
         foreach ($properties as $propertyName => $propertySchema) {
+            // A property whose WHOLE schema is a boolean. `true` is the empty schema and constrains
+            // nothing; `false` admits no value at all, so the document is saying the key may never
+            // carry one. Both were skipped here, which dropped the property from the emitted class
+            // altogether — and a key the class does not declare is a key nothing checks, so
+            // `{"f": "x"}` against `f: false` was accepted. `not: true` is the array spelling of
+            // `false`: `true` matches every value, so "must NOT match it" holds for none.
+            if (is_bool($propertySchema)) {
+                $propertySchema = $propertySchema ? [] : ['not' => true];
+            }
+
             if (!is_array($propertySchema)) {
                 continue;
             }
@@ -2942,7 +2952,13 @@ final class GenerateDtoCommand extends Command
         // extract to an empty schema that every value vacuously satisfies, making the
         // validator's "must not match" check fire a false positive on every value.
         $not = $propertySchema['not'] ?? null;
-        if (is_array($not)) {
+        // `not: true` forbids every value: `true` is the schema everything matches, so "must NOT
+        // match it" can never hold. It was dropped, and the property accepted anything. `not: false`
+        // is the mirror — nothing matches `false`, so the keyword constrains nothing — and it stays
+        // dropped, which is the same answer the empty-extraction guard below gives.
+        if ($not === true) {
+            $constraints['not'] = true;
+        } elseif (is_array($not)) {
             $extractedNot = $this->extractValidationConstraints($not);
             if ($extractedNot !== []) {
                 $constraints['not'] = $extractedNot;
@@ -3431,6 +3447,15 @@ final class GenerateDtoCommand extends Command
             }
             $scrubbed = [];
             foreach ($constraints[$key] as $name => $subSchema) {
+                // `false` admits nothing, which makes that entry the entire point of the keyword —
+                // `dependentSchemas: {a: false}` says "an object carrying `a` is invalid". Skipped
+                // with the unvalidatable subschemas, it said nothing at all. `true` constrains
+                // nothing and is dropped like any subschema that scrubs to empty.
+                if ($subSchema === false) {
+                    $scrubbed[$name] = false;
+
+                    continue;
+                }
                 if (!is_array($subSchema)) {
                     continue;
                 }
@@ -3451,6 +3476,16 @@ final class GenerateDtoCommand extends Command
         if (array_key_exists('prefixItems', $constraints) && is_array($constraints['prefixItems'])) {
             $scrubbed = [];
             foreach ($constraints['prefixItems'] as $subSchema) {
+                // A BOOLEAN member turned into `[]` here, and for `false` that is its exact opposite:
+                // `[]` is the empty schema and the empty schema accepts everything, so a document
+                // closing a tuple position emitted a class that took anything there. `true` really is
+                // the empty schema, so only `false` needs saying — kept in the spelling
+                // `DtoValidator::expandBooleanSubschemas()` already reads.
+                if (is_bool($subSchema)) {
+                    $scrubbed[] = $subSchema === false ? false : [];
+
+                    continue;
+                }
                 $scrubbed[] = is_array($subSchema) ? $this->extractValidationConstraints($subSchema) : [];
             }
             $constraints['prefixItems'] = $scrubbed;

@@ -230,6 +230,107 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A boolean subschema means something in EVERY position a subschema may stand in.
+     *
+     * `DtoValidator` has read all fifteen of them since 2.15.27 — `expandBooleanSubschemas()` rewrites
+     * `true` into the empty schema and `false` into `not` of it. The generator was the half that never
+     * delivered: four positions dropped the boolean on the way into `getConstraints()`, so the
+     * validator's ability was unreachable and the document said nothing.
+     *
+     * One of the four did worse than drop it. `prefixItems` scrubbed a non-array member to `[]` — and
+     * `[]` IS the empty schema, the one that accepts everything. A document closing a tuple position
+     * emitted a class that took anything there, which is the exact opposite of what was written.
+     *
+     * Every case carries its own control, because "refuses everything" is as wrong as "refuses
+     * nothing": `true` in the same position must leave the value alone.
+     *
+     * @param array<string, mixed>|bool $propertySchema
+     */
+    #[DataProvider('booleanSubschemaPositionProvider')]
+    public function testABooleanSubschemaIsEnforcedWhereverItMayStand(
+        string $key,
+        array|bool $propertySchema,
+        string $json,
+        bool $expectedAccepted,
+    ): void {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => ['P' => ['type' => 'object', 'properties' => ['f' => $propertySchema]]],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'BoolPos' . str_replace(' ', '', ucwords($key)), 'P');
+        $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+
+        try {
+            $accepted = (new DtoNormalizer())->validate(
+                (new DtoDeserializer())->deserialize($request, $fqcn),
+            ) === [];
+        } catch (Throwable) {
+            $accepted = false;
+        }
+
+        $this->assertSame($expectedAccepted, $accepted, $key . ' on ' . $json);
+    }
+
+    /**
+     * The four positions the generator dropped, each with the `true` control that must NOT refuse.
+     *
+     * The other eleven positions already arrived and are covered by the parity matrix and by the
+     * `allOf` tests below; these are the ones that were measured accepting a payload their document
+     * forbids.
+     *
+     * @return array<string, array{0: string, 1: array<string, mixed>|bool, 2: string, 3: bool}>
+     */
+    public static function booleanSubschemaPositionProvider(): array
+    {
+        $dependent = static fn(bool|array $branch): array => [
+            'type' => 'object',
+            'properties' => ['a' => ['type' => 'string']],
+            'dependentSchemas' => ['a' => $branch],
+        ];
+
+        return [
+            // The property's WHOLE schema is a boolean — the property used to vanish from the class,
+            // which is why the key went unchecked rather than refused.
+            'property schema false' => ['property schema false', false, '{"f":"x"}', false],
+            'property schema true' => ['property schema true', true, '{"f":"x"}', true],
+
+            // `not: true` forbids every value; `not: false` forbids none.
+            'not true' => ['not true', ['not' => true], '{"f":"x"}', false],
+            'not false' => ['not false', ['not' => false], '{"f":"x"}', true],
+
+            // The inverted one. `[false]` closes position 0; `[true]` leaves it open.
+            'prefixItems false' => [
+                'prefixItems false',
+                ['type' => 'array', 'prefixItems' => [false]],
+                '{"f":["a"]}',
+                false,
+            ],
+            'prefixItems true' => [
+                'prefixItems true',
+                ['type' => 'array', 'prefixItems' => [true]],
+                '{"f":["a"]}',
+                true,
+            ],
+
+            // A dependent schema of `false` makes the triggering key itself fatal.
+            'dependentSchemas false' => ['dependentSchemas false', $dependent(false), '{"f":{"a":"x"}}', false],
+            'dependentSchemas true' => ['dependentSchemas true', $dependent(true), '{"f":{"a":"x"}}', true],
+
+            // And the key that does NOT trigger it stays valid, so the keyword is not a blanket refusal.
+            'dependentSchemas false untriggered' => [
+                'dependentSchemas false untriggered',
+                $dependent(false),
+                '{"f":{}}',
+                true,
+            ],
+        ];
+    }
+
+    /**
      * A BOOLEAN member of `allOf` is a legal subschema, and it used to take the whole run down.
      *
      * `true` is the empty schema and `false` is the one nothing satisfies — JSON Schema 2020-12 §4.3.2

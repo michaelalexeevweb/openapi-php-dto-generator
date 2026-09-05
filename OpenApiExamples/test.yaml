@@ -1288,6 +1288,25 @@ components:
             - true
             - type: string
               minLength: 3
+        # The four positions the GENERATOR dropped the boolean in until 2.15.38, while the validator
+        # had read all fifteen since 2.15.27. `prefixItems` was the worst of them: a non-array member
+        # scrubbed to `[]`, and `[]` is the EMPTY schema — the one that accepts everything — so a
+        # closed position became an open one.
+        forbiddenKey: false
+        neverMatches:
+          not: true
+        closedFirstSlot:
+          type: array
+          prefixItems:
+            - false
+            - type: integer
+        poisonedKey:
+          type: object
+          properties:
+            trigger:
+              type: string
+          dependentSchemas:
+            trigger: false
         # The same loss in the applicators that hold a condition or a MAP of subschemas. Added in
         # 2.15.16 after the sweep: `if`/`then`/`else`, `dependentSchemas`, `propertyNames` all dropped
         # the reference and with it the whole keyword.
