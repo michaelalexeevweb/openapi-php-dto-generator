@@ -1267,6 +1267,16 @@ components:
             - type: string
           unevaluatedItems:
             $ref: '#/components/schemas/ChainTag'
+        # A CLOSED tuple — `prefixItems` names the members, `items: false` says there are no others.
+        # The corpus carried `unevaluatedItems` and never this, its boolean neighbour, which is how
+        # the 2.15.27 fix could land in the runtime validator alone: symfony and yii3 dropped the
+        # keyword on the way into their constants and then had no branch to read it with either.
+        closedPair:
+          type: array
+          prefixItems:
+            - type: string
+            - type: integer
+          items: false
         # The same loss in the applicators that hold a condition or a MAP of subschemas. Added in
         # 2.15.16 after the sweep: `if`/`then`/`else`, `dependentSchemas`, `propertyNames` all dropped
         # the reference and with it the whole keyword.

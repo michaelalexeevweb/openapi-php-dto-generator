@@ -1379,6 +1379,18 @@ PHP;
                 ? "                \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
             $skipNestedDtoItem = $skipNestedDto('$itemValue');
+            // `items: false` is the BOOLEAN spelling, and it is what closes a tuple: `prefixItems`
+            // names the members, `items: false` says there are no others. Only the schema spelling was
+            // read here, so a closed tuple accepted any tail — and the constants did not even carry the
+            // keyword until the filter learned to keep a boolean. Two modes went with it: yii3 emits
+            // this same interpreter. Measured against runtime, which refused the identical payload.
+            $sections[] = <<<PHP
+        if (\$listValue && (\$schema['items'] ?? null) === false) {
+            foreach (array_keys(\$value) as \$index) {
+{$skipPrefixItems}                \$errors[] = sprintf('%s has an item at index %s which the schema does not allow', \$path, \$index);
+            }
+        }
+PHP;
             $sections[] = <<<PHP
         if (\$listValue && is_array(\$schema['items'] ?? null)) {
             foreach (\$value as \$index => \$itemValue) {
@@ -2676,6 +2688,14 @@ PHP,
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
+                    } elseif (is_bool($value)) {
+                        // A BOOLEAN subschema, which is what closes a tuple: `prefixItems` names the
+                        // members and `items: false` says there are no others. Only the array arm
+                        // existed, so `false` fell through and was dropped — the emitted constraints
+                        // carried `prefixItems` and nothing else, and both modes that read this filter
+                        // accepted a tuple with extra elements while runtime mode rejected it. The
+                        // three keys below have had this arm all along, for the same reason.
+                        $filtered[$key] = $value;
                     }
                     break;
                 case 'additionalProperties':
@@ -2945,7 +2965,11 @@ PHP,
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
         }
 
-        $required = $property['required'];
+        // NOT `$property['required']`: a readOnly property is required of a RESPONSE only. Emitted
+        // as a required constructor parameter it made the class undeserializable outright —
+        // `MissingConstructorArgumentsException` for any payload that omitted the server-owned field,
+        // under every combination of serialization groups.
+        $required = $this->propertyIsRequiredOnInput($property);
         $default = $property['default'] ?? null;
 
         // An optional property is nullable with a default (null unless the schema declares one).
@@ -3034,7 +3058,7 @@ PHP,
             return null;
         }
 
-        $nullable = $property['nullable'] || $property['required'] !== true;
+        $nullable = $property['nullable'] || !$this->propertyIsRequiredOnInput($property);
         $name = $property['name'];
         $guard = $nullable ? sprintf('$this->%s === null ? null : ', $name) : '';
 
@@ -3093,7 +3117,7 @@ PHP,
         // because the key is optional in the shape.
         $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
         $name = $property['name'];
-        $nullable = $property['nullable'] || $property['required'] !== true;
+        $nullable = $property['nullable'] || !$this->propertyIsRequiredOnInput($property);
         $guard = $nullable ? sprintf('$this->%s === null ? null : ', $name) : '';
 
         // `mixed`, and an `instanceof` test rather than a parameter type — the same rule runtime
@@ -3167,7 +3191,7 @@ PHP,
         );
         $attributes = [];
 
-        if ($property['required'] && !$property['nullable']) {
+        if ($this->propertyIsRequiredOnInput($property) && !$property['nullable']) {
             $attributes[] = '#[Assert\NotNull]';
         }
 

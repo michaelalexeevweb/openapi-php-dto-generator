@@ -1,4 +1,4 @@
-# yii3 mode — 78 files, 25580 lines
+# yii3 mode — 78 files, 25688 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7749,6 +7749,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function floor;
 use function get_object_vars;
@@ -8003,6 +8004,12 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -8098,6 +8105,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function floor;
 use function get_object_vars;
@@ -8591,6 +8599,12 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -10088,11 +10102,13 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function count;
 use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
@@ -10111,6 +10127,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         'mustContain' => 'mustContain',
         'positions' => 'positions',
         'rest' => 'rest',
+        'closedPair' => 'closedPair',
         'conditional' => 'conditional',
         'keyed' => 'keyed',
     ];
@@ -10180,6 +10197,18 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                     ],
                 ],
             ],
+            'closedPair' => [
+                'type' => 'array',
+                'items' => false,
+                'prefixItems' => [
+                    [
+                        'type' => 'string',
+                    ],
+                    [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
             'conditional' => [
                 'type' => 'object',
                 'if' => [
@@ -10239,6 +10268,8 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     public readonly ?array $rest;
 
+    public readonly ?array $closedPair;
+
     #[Nested(skipOnEmpty: new WhenNull())]
     public readonly ?ApplicatorRefsConditional $conditional;
 
@@ -10271,6 +10302,17 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     public function isRestProvided(): bool
     {
         return $this->hasProperty('rest');
+    }
+
+    public function getClosedPair(): ?array
+    {
+        return $this->hasProperty('closedPair') ? $this->closedPair : null;
+    }
+
+    /** Whether the payload carried `closedPair` at all. */
+    public function isClosedPairProvided(): bool
+    {
+        return $this->hasProperty('closedPair');
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -10423,6 +10465,9 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         if ($this->hasProperty('rest')) {
             $payload['rest'] = $this->rest;
         }
+        if ($this->hasProperty('closedPair')) {
+            $payload['closedPair'] = $this->closedPair;
+        }
         if ($this->hasProperty('conditional')) {
             $payload['conditional'] = $this->conditional;
         }
@@ -10532,6 +10577,15 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
             }
         }
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                if ($index < $prefixCount) {
+                    continue;
+                }
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($index < $prefixCount) {
@@ -10608,6 +10662,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'array' => is_array($value) && array_is_list($value),
             'object' => is_array($value) || is_object($value),
@@ -14257,6 +14312,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function get_object_vars;
 use function is_array;
@@ -14600,6 +14656,12 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -17119,6 +17181,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function floor;
 use function get_object_vars;
@@ -17449,6 +17512,12 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -17601,6 +17670,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function floor;
 use function get_object_vars;
@@ -18077,6 +18147,12 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -18234,6 +18310,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function floor;
 use function get_object_vars;
@@ -18570,6 +18647,12 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -19501,8 +19584,12 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_key_exists;
 use function array_map;
+use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
@@ -19536,11 +19623,12 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
-            'serverId',
             'title',
         ],
         'properties' => [
-            'serverId' => [],
+            'serverId' => [
+                'type' => 'integer',
+            ],
             'title' => [],
             'writtenAt' => [
                 'type' => 'string',
@@ -19554,7 +19642,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    public readonly int $serverId;
+    public readonly ?int $serverId;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly string $title;
@@ -19569,9 +19657,15 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly ?string $secret;
 
-    public function getServerId(): int
+    public function getServerId(): ?int
     {
-        return $this->serverId;
+        return $this->hasProperty('serverId') ? $this->serverId : null;
+    }
+
+    /** Whether the payload carried `serverId` at all. */
+    public function isServerIdProvided(): bool
+    {
+        return $this->hasProperty('serverId');
     }
 
     public function getTitle(): string
@@ -19800,6 +19894,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'object' => is_array($value) || is_object($value),
             default => true,
@@ -23856,6 +23951,12 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -24061,6 +24162,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function count;
 use function floor;
@@ -24344,6 +24446,12 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {

@@ -203,6 +203,12 @@ request.
 - `writeOnly` properties are dropped, and a `readOnly` key sent by the client is ignored on the way in
   and absent on the way out.
 
+A `readOnly` property listed under `required` is typed nullable with a `null` default, and its rule is
+`sometimes` rather than `present`. OpenAPI puts that requirement on the response alone, so demanding
+it of a request was wrong twice over: the rule asked the client for a field it does not own, and
+`fromValidated()` then fed `null` to a `readonly int` parameter — a `TypeError` on every hydration,
+valid payload or not (fixed in 2.15.36).
+
 ## What this mode does not do
 
 | | Why |

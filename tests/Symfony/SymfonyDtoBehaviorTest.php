@@ -888,7 +888,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $serializer = new Serializer([new ObjectNormalizer($classMetadataFactory)]);
 
-        $object = new $fqcn(id: 'u1', password: 'secret');
+        $object = new $fqcn(password: 'secret');
+        $object->setId('u1');
 
         // 'write' group exposes the write-only password and hides the read-only id.
         $writeView = $serializer->normalize($object, null, ['groups' => ['write']]);

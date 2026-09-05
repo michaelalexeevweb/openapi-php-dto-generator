@@ -212,6 +212,12 @@ moves behind it, and positional code binds different arguments than it used to (
 it, such a class could not be deserialized at all). `isXRequired()`, the key in `toArray()` and the
 `validate()` verdict are unchanged: the requirement still holds, on the response.
 
+Since 2.15.36 **every mode reads it this way.** Until then the rule was runtime-only, and the other
+four emitted the property as plainly required — which made laravel throw a `TypeError` on every
+hydration and left symfony unable to denormalize the class at all. Each expresses "absent from a
+request" the way it already expresses an optional key: symfony fills the property through its setter,
+laravel and yii3 type it nullable, laravel-data types it `int|Optional`.
+
 ### Dates, and containers of dates
 
 `format: date` / `date-time` becomes a `DateTimeImmutable` property, and the reader gets two getters:

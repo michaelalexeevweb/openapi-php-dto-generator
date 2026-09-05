@@ -149,6 +149,12 @@ document that uses neither keyword gets no group attributes at all.
 A property declared both `readOnly` and `writeOnly` is a contradiction; it becomes `#[Ignore]`,
 which is how runtime mode resolves it too (out of both directions).
 
+A `readOnly` property listed under `required` is **not** a constructor argument. OpenAPI puts that
+requirement on the response alone, so a request may omit it — and emitted as required it made the
+class undeserializable outright, `MissingConstructorArgumentsException` under every combination of
+groups. It is an ordinary optional property instead, filled through its setter, and `isXProvided()`
+answers whether the payload carried it (since 2.15.36).
+
 ## Serializer wiring the generated DTOs rely on
 
 In Symfony mode the DTO is inert data — the serializer does the work. Two of the pieces below fail

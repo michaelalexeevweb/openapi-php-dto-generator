@@ -2523,6 +2523,27 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * True when a property must be present in a REQUEST.
+     *
+     * `required` in the document does not answer that. OpenAPI: "If the property is marked as
+     * readOnly being true and is in the required list, the required will take effect on the response
+     * only." A readOnly property is server-owned, so a request that omits it is valid, and every
+     * input-facing decision — constructor optionality, a `present` rule, a NotNull assertion, an
+     * entry in a validation schema's `required` list — has to ask THIS instead.
+     *
+     * Runtime mode expresses the same rule through the `UnsetValue` sentinel; no other mode has one,
+     * so there the property becomes plainly optional and nullable. Emitted as required it was worse
+     * than wrong: laravel mode fed the constructor `serverId: null` for a `readonly int`, which is a
+     * TypeError on every hydration, and symfony mode could not denormalize the class at all.
+     *
+     * @param SchemaProperty $property
+     */
+    private function propertyIsRequiredOnInput(array $property): bool
+    {
+        return $property['required'] === true && ($property['readOnly'] ?? false) !== true;
+    }
+
+    /**
      * A `type: object` + `additionalProperties` schema (a string-keyed map) is represented as the
      * generic type `array<string, V>`. Such a field must serialize as a JSON object, not a JSON
      * array — otherwise dense integer-like keys (0, 1, 2, …) make json_encode emit a list and the

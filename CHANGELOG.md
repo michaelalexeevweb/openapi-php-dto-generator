@@ -3,6 +3,76 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.36 — 2026-09-05
+
+- a `readOnly` property listed in `required` no longer breaks the four non-runtime modes
+- `items: false` is enforced in symfony and yii3 modes instead of being dropped
+- the PSR-7 entry point's REJECTIONS are pinned to match the Symfony one
+
+**A `readOnly` property inside `required` made symfony, laravel, laravel-data and yii3 emit a class
+that could not receive a request.** OpenAPI settles what the combination means: "If the property is
+marked as readOnly being true and is in the required list, the required will take effect on the
+response only." Runtime mode has read it that way since 2.15.29, where the `UnsetValue` sentinel
+carries "required of a response, not of a request" into a constructor signature. That fix was nine
+lines in `RendersRuntimeDto.php` and nothing else — the other four renderers were never asked, and
+each got it wrong in its own way:
+
+```
+runtime       readonly int|UnsetValue|null $serverId = UnsetValue::UNSET   <- 2.15.29
+symfony       readonly int $serverId
+laravel       readonly int $serverId
+laravel-data  readonly int $serverId
+yii3          public readonly int $serverId;
+```
+
+- **laravel** emitted `private readonly int $serverId` while `fromValidated()` fed it `serverId: null`
+  — a `TypeError` on EVERY hydration, valid payload or not;
+- **symfony** emitted it as a required constructor argument, so the serializer could not denormalize
+  the class at all: `MissingConstructorArgumentsException` under `write`, under `read`+`write`, and
+  with no groups;
+- **laravel** and **laravel-data** both emitted `'serverId' => ['present', 'integer']`, a rule
+  demanding that the client send a field the client does not own;
+- **yii3** contradicted itself inside one class: `OPENAPI_WRITE_ONLY` excluded the field from the
+  input while `OPENAPI_VALIDATION_CONSTRAINTS.required` still demanded it.
+
+One shared reading answers all four. `propertyIsRequiredOnInput()` is the question every input-facing
+decision now asks — constructor optionality, a `present` rule, a `NotNull` assertion, an entry in a
+validation schema's `required` list — while `required` itself keeps saying what the document says,
+because the RESPONSE contract is unchanged. Modes with no sentinel express it the way they already
+express an absent key: symfony fills the property through its setter, laravel and yii3 type it
+nullable, laravel-data types it `int|Optional`.
+
+The response half is deliberately untouched. `toArray()` still writes the key, `validate()` still
+refuses a DTO that never received one, and `isServerIdRequired()` still answers `true`.
+
+**One migration note, unchanged from 2.15.29 and now true in four more modes:** a property that gains
+a default moves BEHIND every required parameter, because PHP has no other option. Code constructing
+these DTOs positionally binds different arguments than it used to; named arguments are unaffected,
+which is the migration — `new Dto(title: …, serverId: …)`.
+
+**`items: false` reached neither symfony's nor yii3's emitted constraints.** It is the boolean
+subschema that CLOSES a tuple: `prefixItems` names the members and `items: false` says there are no
+others. 2.15.27 taught the runtime validator to read it. The constraint filter both other modes share
+handled `items` only when it was an array, so `false` fell through and was dropped — and even had it
+survived, the interpreter those modes emit gated its own `items` branch on `is_array()` too. Both
+halves are fixed, so a closed tuple refuses a tail wherever it is written:
+
+```
+["a", 1]           accepted everywhere
+["a", 1, "extra"]  refused everywhere    <- symfony and yii3 accepted this
+```
+
+The keyword's neighbour `unevaluatedItems: false` was in the parity matrix and this one was not,
+which is exactly how a fix could land in one validator and stay green. It is in the matrix now, and
+in the golden corpus, where no closed tuple had ever been written either.
+
+**The PSR-7 entry point had its happy path pinned and its error path pinned by nothing.** A bridge
+that lost the body, the query string or the content type would still deserialize a valid payload
+correctly and diverge only on what it REPORTS — the half a caller builds error handling on. Five
+negative cases now compare the thrown class and message verbatim against the Symfony entry point:
+a missing required property, a violated `minLength`, an array item of the wrong type, a body that is
+not JSON, and a query parameter of the wrong type. No behaviour changed; nothing had been asked.
+
 ## 2.15.35 — 2026-09-05
 
 - a malformed `required` stops generation instead of dropping the requirement

@@ -209,6 +209,67 @@ final class PresenceParityTest extends TestCase
     }
 
     /**
+     * A `readOnly` property listed in `required` is absent from a REQUEST — and every mode has to be
+     * able to build the object without it.
+     *
+     * OpenAPI is explicit: "If the property is marked as readOnly being true and is in the required
+     * list, the required will take effect on the response only." Runtime mode has said so since
+     * 2.15.29, where the `UnsetValue` sentinel carries "required of a response, not of a request"
+     * into a constructor signature. The other four modes had never been asked, and each got it wrong
+     * in its own way — measured, not deduced:
+     *
+     * - laravel emitted `private readonly int $serverId` while `fromValidated()` fed it
+     *   `serverId: null`, a TypeError on EVERY hydration, valid payload or not;
+     * - symfony emitted it as a required constructor argument, so the serializer could not
+     *   denormalize the class at all — `MissingConstructorArgumentsException` under `write`, under
+     *   `read`+`write`, and with no groups;
+     * - laravel and laravel-data both emitted `'serverId' => ['present', 'integer']`, a rule
+     *   demanding the client send a field the client does not own;
+     * - yii3 contradicted itself inside one class: `OPENAPI_WRITE_ONLY` excluded the field from the
+     *   input while `OPENAPI_VALIDATION_CONSTRAINTS.required` still demanded it.
+     *
+     * This belongs here rather than in `ValidationParityTest`: that suite's verdict is hydration AND
+     * normalization, and normalization is the RESPONSE, where the same property genuinely IS
+     * required. The question this pins is the request half.
+     */
+    public function testEveryModeHydratesARequestThatOmitsAReadOnlyRequiredProperty(): void
+    {
+        $json = '{"title":"t"}';
+
+        $this->assertEveryModeYields(
+            ['serverId' => false],
+            fn(GenerationMode $mode): array => $this->readOnlyPresence($mode, $json),
+            context: 'readOnly property listed in required, ' . $json,
+        );
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function readOnlyPresence(GenerationMode $mode, string $json): array
+    {
+        $spec = self::readOnlyRequiredSpec();
+
+        return match ($mode) {
+            GenerationMode::Runtime => [
+                'serverId' => $this->runtimeDto($spec, 'Probe', $json)->isServerIdInRequest(),
+            ],
+            GenerationMode::Symfony => [
+                'serverId' => $this->symfonyDto($spec, 'Probe', $json)->isServerIdProvided(),
+            ],
+            GenerationMode::Laravel => [
+                'serverId' => $this->laravelDto($spec, 'Probe', $json)->isServerIdProvided(),
+            ],
+            GenerationMode::LaravelData => [
+                'serverId' => !$this->laravelDataDto($spec, 'Probe', $json)->serverId instanceof Optional,
+            ],
+            GenerationMode::Yii3 => [
+                'serverId' => $this->yii3Dto($spec, 'Probe', $json)->hasProperty('serverId'),
+            ],
+        };
+    }
+
+    /**
      * Presence in yii3 mode is the framework's own `DataSetInterface::hasProperty()`, and underneath
      * it PHP's own `ReflectionProperty::isInitialized()`: the emitted class has no constructor, so a
      * key the payload did not carry leaves its property uninitialised. No sentinel, no flag array.
@@ -338,6 +399,32 @@ final class PresenceParityTest extends TestCase
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, $json . $rootClass), 'symfony', $rootClass);
 
         return $this->serializer()->deserialize($json, $fqcn, 'json');
+    }
+
+    /**
+     * `serverId` is server-owned: `readOnly` AND listed in `required`. `title` is the ordinary
+     * required field next to it, so the object still has something a request must carry.
+     *
+     * @return array<string, mixed>
+     */
+    private static function readOnlyRequiredSpec(): array
+    {
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['serverId', 'title'],
+                        'properties' => [
+                            'serverId' => ['type' => 'integer', 'readOnly' => true],
+                            'title' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
     }
 
     /**

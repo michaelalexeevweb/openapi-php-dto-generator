@@ -1,4 +1,4 @@
-# laravel mode — 104 files, 13888 lines
+# laravel mode — 104 files, 13982 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4464,11 +4464,13 @@ use function array_keys;
 use function array_map;
 use function array_shift;
 use function array_values;
+use function count;
 use function explode;
 use function floor;
 use function get_object_vars;
 use function in_array;
 use function is_array;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
@@ -4551,6 +4553,17 @@ final class ApplicatorRefs
                 ],
             ],
         ],
+        'closedPair' => [
+            'items' => false,
+            'prefixItems' => [
+                [
+                    'type' => 'string',
+                ],
+                [
+                    'type' => 'integer',
+                ],
+            ],
+        ],
         'conditional' => [
             'if' => [
                 'type' => 'object',
@@ -4606,6 +4619,7 @@ final class ApplicatorRefs
         private readonly array $mustContain,
         private readonly ?array $positions = null,
         private readonly ?array $rest = null,
+        private readonly ?array $closedPair = null,
         private readonly ?ApplicatorRefsConditional $conditional = null,
         private readonly ?ApplicatorRefsKeyed $keyed = null,
     ) {
@@ -4624,6 +4638,7 @@ final class ApplicatorRefs
             'mustContain.*' => ['array'],
             'positions' => ['sometimes', 'array', 'list'],
             'rest' => ['sometimes', 'array', 'list'],
+            'closedPair' => ['sometimes', 'array', 'list'],
             'conditional' => ['sometimes', 'array'],
             'conditional.label' => ['string'],
             'keyed' => ['sometimes', 'array'],
@@ -4750,6 +4765,7 @@ final class ApplicatorRefs
             mustContain: $data['mustContain'],
             positions: ($data['positions'] ?? null) === null ? null : $data['positions'],
             rest: ($data['rest'] ?? null) === null ? null : $data['rest'],
+            closedPair: ($data['closedPair'] ?? null) === null ? null : $data['closedPair'],
             conditional: ($data['conditional'] ?? null) === null ? null : ApplicatorRefsConditional::fromValidated($data['conditional']),
             keyed: ($data['keyed'] ?? null) === null ? null : ApplicatorRefsKeyed::fromValidated($data['keyed']),
         );
@@ -4784,6 +4800,16 @@ final class ApplicatorRefs
     public function isRestProvided(): bool
     {
         return in_array('rest', $this->providedOpenApiKeys, true);
+    }
+
+    public function getClosedPair(): ?array
+    {
+        return $this->closedPair;
+    }
+
+    public function isClosedPairProvided(): bool
+    {
+        return in_array('closedPair', $this->providedOpenApiKeys, true);
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -4881,8 +4907,10 @@ final class ApplicatorRefs
 
         $listValue = is_array($value) && array_is_list($value);
         $evaluatedItemIndices = [];
+        $prefixCount = 0;
 
         if ($listValue && is_array($schema['prefixItems'] ?? null)) {
+            $prefixCount = count($schema['prefixItems']);
             foreach ($schema['prefixItems'] as $index => $itemSchema) {
                 if (!is_array($itemSchema) || !array_key_exists($index, $value)) {
                     continue;
@@ -4891,6 +4919,28 @@ final class ApplicatorRefs
                 $errors = [
                     ...$errors,
                     ...self::validateOpenApiNode($value[$index], $itemSchema, $path . '[' . $index . ']', $depth + 1),
+                ];
+            }
+        }
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                if ($index < $prefixCount) {
+                    continue;
+                }
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
+        if ($listValue && is_array($schema['items'] ?? null)) {
+            foreach ($value as $index => $itemValue) {
+                if ($index < $prefixCount) {
+                    continue;
+                }
+                $evaluatedItemIndices[$index] = true;
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
             }
         }
@@ -4952,6 +5002,7 @@ final class ApplicatorRefs
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'object' => is_array($value) || is_object($value),
             default => true,
@@ -5039,6 +5090,10 @@ final class ApplicatorRefs
 
         if ($this->isRestProvided()) {
             $result['rest'] = $this->rest === null ? null : array_values($this->rest);
+        }
+
+        if ($this->isClosedPairProvided()) {
+            $result['closedPair'] = $this->closedPair === null ? null : array_values($this->closedPair);
         }
 
         if ($this->isConditionalProvided()) {
@@ -6402,6 +6457,12 @@ final class ChainLink
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 $errors = [
@@ -6465,6 +6526,7 @@ use stdClass;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function array_shift;
 use function array_values;
@@ -6708,6 +6770,12 @@ final class ChainMiddle
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -9015,6 +9083,12 @@ final class NestedContainers
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 $errors = [
@@ -9942,8 +10016,8 @@ final class ReadOnlyFields
     private array $providedOpenApiKeys = [];
 
     public function __construct(
-        private readonly int $serverId,
         private readonly string $title,
+        private readonly ?int $serverId = null,
         private readonly ?DateTimeImmutable $writtenAt = null,
         private readonly ?string $secret = null,
     ) {
@@ -9958,7 +10032,7 @@ final class ReadOnlyFields
     public static function rules(): array
     {
         return [
-            'serverId' => ['present', 'integer'],
+            'serverId' => ['sometimes', 'integer'],
             'title' => ['present', 'string'],
             'writtenAt' => ['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'secret' => ['sometimes', 'string'],
@@ -10013,9 +10087,14 @@ final class ReadOnlyFields
         return $dto;
     }
 
-    public function getServerId(): int
+    public function getServerId(): ?int
     {
         return $this->serverId;
+    }
+
+    public function isServerIdProvided(): bool
+    {
+        return in_array('serverId', $this->providedOpenApiKeys, true);
     }
 
     public function getTitle(): string
@@ -10087,7 +10166,10 @@ final class ReadOnlyFields
     public function toArray(): array
     {
         $result = [];
-        $result['serverId'] = $this->serverId;
+
+        if ($this->isServerIdProvided()) {
+            $result['serverId'] = $this->serverId;
+        }
         $result['title'] = $this->title;
 
         if ($this->isWrittenAtProvided()) {
@@ -10818,6 +10900,12 @@ final class Test2
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -12947,6 +13035,12 @@ final class UnionUnderContainer
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {

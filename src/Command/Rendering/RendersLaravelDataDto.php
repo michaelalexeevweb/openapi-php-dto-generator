@@ -451,15 +451,20 @@ trait RendersLaravelDataDto
         // separate union members, so only the document's answer will do.
         $nullable = $this->laravelSchemaDeclaresNullable($property);
 
+        // A readOnly property is required of a RESPONSE only, so on the way IN it is `Optional` like
+        // any other absent key — the `Optional` union member is this mode's answer to what runtime
+        // mode spells `UnsetValue`.
+        $requiredOnInput = $this->propertyIsRequiredOnInput($property);
+
         // Resolved before the type is composed: `Optional` is spelled INTO the union, so a document with
         // a schema of that name has to get the fully qualified spelling in the type itself.
-        $optionalRef = $property['required']
+        $optionalRef = $requiredOnInput
             ? 'Optional'
             : $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $attributeImports);
 
         [$declaredType, $tracksPresence] = $this->laravelDataDeclaredType(
             phpType: $phpType,
-            required: $property['required'],
+            required: $requiredOnInput,
             nullable: $nullable,
             optionalRef: $optionalRef,
         );
@@ -468,9 +473,9 @@ trait RendersLaravelDataDto
             'declaredType' => $declaredType,
             'docType' => $docType === null
                 ? null
-                : $this->laravelDataDeclaredType($docType, $property['required'], $nullable, $optionalRef)[0],
+                : $this->laravelDataDeclaredType($docType, $requiredOnInput, $nullable, $optionalRef)[0],
             'name' => $property['name'],
-            'required' => $property['required'],
+            'required' => $requiredOnInput,
             'openApiName' => $property['openApiName'],
             'docDescription' => $this->resolveSymfonyDocDescription($property),
             'attributes' => $attributes,

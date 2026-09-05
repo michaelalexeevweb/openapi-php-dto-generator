@@ -394,7 +394,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $serializer = new Serializer([new ObjectNormalizer($classMetadataFactory)]);
 
-        $object = new $fqcn(id: 'u1', password: 'secret');
+        $object = new $fqcn(password: 'secret');
+        $object->setId('u1');
 
         // Serializing with the 'read' group must expose the read-only id and hide the write-only password.
         $readView = $serializer->normalize($object, null, ['groups' => ['read']]);
@@ -746,9 +747,13 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $fqcn = $namespace . '\Account';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
-        $this->assertCount(0, $validator->validate(new $fqcn(id: 'abc', password: 'longenough')));
+        $valid = new $fqcn(password: 'longenough');
+        $valid->setId('abc');
+        $this->assertCount(0, $validator->validate($valid));
 
-        $violations = $validator->validate(new $fqcn(id: 'ab', password: 'short'));
+        $invalid = new $fqcn(password: 'short');
+        $invalid->setId('ab');
+        $violations = $validator->validate($invalid);
         $this->assertCount(2, $violations, 'both the read-only and the write-only field are checked');
     }
 

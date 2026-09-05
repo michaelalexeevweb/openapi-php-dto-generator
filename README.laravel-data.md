@@ -87,6 +87,11 @@ explicit null while still allowing the key to be missing.
 `mixed` and its presence is not observable — narrowing it to something `Optional` fits into would refuse
 payloads the schema allows.
 
+A `readOnly` property listed under `required` is `Optional` too, for the same reason: OpenAPI puts that
+requirement on the response alone, so a request may omit it. Until 2.15.36 it was emitted as plainly
+required, and the generated `rules()` said `['present', 'integer']` — a rule asking the client to send
+a field the client does not own.
+
 ### No `#[MergeValidationRules]`
 
 The emitted `rules()` is the whole schema, so laravel-data's own rule inferrers have nothing to add:

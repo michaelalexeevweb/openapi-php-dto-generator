@@ -268,6 +268,14 @@ and then measured: `['a','a']` came back VALID. The rule guards the ITEM TYPES a
 (scalars, `Stringable`, `DateTimeInterface`), not their distinctness, so it enforced nothing the
 keyword asks for and was dropped.
 
+## `readOnly` inside `required`
+
+A `readOnly` property is server-owned: it is already in `OPENAPI_WRITE_ONLY`, the list of names the
+hydrator leaves out of the input. Listing it under `required` puts that requirement on the RESPONSE
+alone — OpenAPI is explicit — so the property is typed nullable and its name is taken out of the
+interpreter's `required` list. Until 2.15.36 the emitted class contradicted itself: it refused to read
+the field from a request and then demanded the field be there.
+
 ## Divergences from the other modes
 
 - **no 422 for free** — the action reads `getValidationResult()`, as above;

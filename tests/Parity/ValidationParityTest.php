@@ -176,6 +176,11 @@ final class ValidationParityTest extends TestCase
             'maxContains' => [['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'hit'], 'maxContains' => 1], '{"f":["hit"]}', '{"f":["hit","hit"]}'],
             'prefixItems' => [['type' => 'array', 'prefixItems' => [['type' => 'string', 'minLength' => 2]]], '{"f":["ab"]}', '{"f":["a"]}'],
             'unevaluatedItems false' => [['type' => 'array', 'prefixItems' => [['type' => 'string']], 'unevaluatedItems' => false], '{"f":["a"]}', '{"f":["a","b"]}'],
+            // The boolean subschema that CLOSES a tuple. The matrix carried its neighbour above and
+            // not this one, which is exactly why the 2.15.27 fix could land in the runtime validator
+            // alone and stay green: symfony and yii3 never even copied the keyword into their
+            // emitted constraints, so nothing enforced it there.
+            'items false closes a tuple' => [['type' => 'array', 'prefixItems' => [['type' => 'string']], 'items' => false], '{"f":["a"]}', '{"f":["a","b"]}'],
             'anyOf' => [['anyOf' => [['type' => 'string', 'minLength' => 3], ['type' => 'integer']]], '{"f":5}', '{"f":"ab"}'],
             'oneOf scalar' => [['oneOf' => [['type' => 'string', 'minLength' => 5], ['type' => 'string', 'pattern' => '^a']]], '{"f":"ab"}', '{"f":"abcdef"}'],
             'allOf of scalars' => [['allOf' => [['type' => 'string'], ['minLength' => 3]]], '{"f":"abc"}', '{"f":"ab"}'],

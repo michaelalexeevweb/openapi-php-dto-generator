@@ -9,10 +9,12 @@ use Nyholm\Psr7\UploadedFile as Psr7UploadedFile;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializerPsr7;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
+use Throwable;
 
 /**
  * PSR-7 support is provided by {@see DtoDeserializerPsr7}, which converts any PSR-7
@@ -174,6 +176,80 @@ final class DtoDeserializerPsr7Test extends TestCase
             $this->deserializer->deserialize($symfony, 'Psr7Ns\ItemsPostRequest'),
             $fromPsr,
         );
+    }
+
+    /**
+     * Parity on the REJECTION path.
+     *
+     * The equivalence test above cannot see it: it compares two DTOs, and a request that is refused
+     * produces no DTO to compare. So the entry point that every non-Symfony application uses had its
+     * happy path pinned and its error path pinned by nothing — a bridge that lost the body, the
+     * query string or the content type would still deserialize a valid payload correctly and only
+     * diverge on what it REPORTS, which is the half a caller builds error handling on.
+     *
+     * The exception class and the message are compared verbatim, both directions of the assertion:
+     * the Symfony arm must actually reject, or the case proves nothing about the PSR-7 arm.
+     */
+    #[DataProvider('rejectedRequestProvider')]
+    public function testPsr7AndSymfonyRejectTheSameRequestIdentically(
+        string $path,
+        string $body,
+        string $dtoClass,
+        array $attributes,
+    ): void {
+        $contentType = 'application/json';
+
+        $psr = new ServerRequest('POST', $path, ['Content-Type' => $contentType], $body);
+        foreach ($attributes as $name => $attributeValue) {
+            $psr = $psr->withAttribute($name, $attributeValue);
+        }
+
+        $symfony = SymfonyRequest::create($path, 'POST', [], [], [], ['CONTENT_TYPE' => $contentType], $body);
+        foreach ($attributes as $name => $attributeValue) {
+            $symfony->attributes->set($name, $attributeValue);
+        }
+
+        $fromSymfony = $this->rejection(fn(): object => $this->deserializer->deserialize($symfony, $dtoClass));
+        $fromPsr = $this->rejection(fn(): object => $this->psr7Deserializer->deserializePsr7($psr, $dtoClass));
+
+        $this->assertNotNull($fromSymfony, 'the case has to be rejected at all, or it pins nothing');
+        $this->assertSame($fromSymfony, $fromPsr);
+    }
+
+    /**
+     * One case per REASON a request is refused: the schema, the value, the container, the body
+     * itself — and one outside the body entirely, because a parameter reaches the deserializer down a
+     * different road through the bridge (query string, and a path value carried as a request
+     * ATTRIBUTE, which is where a PSR-7 router puts it).
+     *
+     * @return array<string, array{0: string, 1: string, 2: string, 3: array<string, string>}>
+     */
+    public static function rejectedRequestProvider(): array
+    {
+        $body = 'Psr7Ns\ItemsPostRequest';
+        $params = 'Psr7Ns\ItemsPostQueryParams';
+
+        return [
+            'required property missing' => ['/items/7', '{"tags":["x"]}', $body, []],
+            'minLength violated' => ['/items/7', '{"name":"a"}', $body, []],
+            'array item of the wrong type' => ['/items/7', '{"name":"Widget","tags":[5]}', $body, []],
+            'body is not JSON at all' => ['/items/7', 'not json', $body, []],
+            'query parameter of the wrong type' => ['/items/42?limit=abc', '', $params, ['id' => '42']],
+        ];
+    }
+
+    /**
+     * The thrown class and message as one comparable string, or null when nothing was thrown.
+     */
+    private function rejection(callable $call): ?string
+    {
+        try {
+            $call();
+        } catch (Throwable $thrown) {
+            return $thrown::class . ': ' . $thrown->getMessage();
+        }
+
+        return null;
     }
 
     public function testDefaultConstructorWorksWithoutInjectedDeserializer(): void

@@ -301,7 +301,9 @@ trait RendersLaravelDto
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
         }
 
-        $required = $property['required'];
+        // NOT `$property['required']`: a readOnly property is absent from a request, `fromValidated()`
+        // hands the constructor `null` for it, and a required parameter has nowhere to put that.
+        $required = $this->propertyIsRequiredOnInput($property);
         $default = $property['default'] ?? null;
         $declaredNullable = $property['nullable'] || (!$required && $default === null);
         $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
@@ -445,7 +447,7 @@ trait RendersLaravelDto
         // the second half is false, so the flag IS the document. This is the only reading that covers a
         // nullable `$ref` — its constraint map carries no `type`, so the keyword check below cannot see
         // it, and a required nullable nested DTO was typed non-nullable until this branch existed.
-        if ($property['required'] === true) {
+        if ($this->propertyIsRequiredOnInput($property)) {
             return $property['nullable'] === true;
         }
 
@@ -478,7 +480,9 @@ trait RendersLaravelDto
         // type rules' business. Measured through the real validator against runtime mode:
         // `{"s":""}`, `{"list":[]}`, `{"map":{}}` and `{"child":null}` were all rejected under
         // `required` while the other two modes accepted them.
-        $rules = [$property['required'] === true ? "'present'" : "'sometimes'"];
+        // A readOnly property is required OF A RESPONSE, never of a request. `present` here demanded
+        // that the client send a server-owned field, so it is `sometimes` like any optional key.
+        $rules = [$this->propertyIsRequiredOnInput($property) ? "'present'" : "'sometimes'"];
         $consumed = ['required'];
 
         // ONLY when the schema says so. Optional is not nullable: `sometimes` already covers the
@@ -1156,7 +1160,7 @@ trait RendersLaravelDto
 
         $name = $property['name'];
         $property_access = '$this->' . $name;
-        $nullable = $property['nullable'] === true || $property['required'] !== true;
+        $nullable = $property['nullable'] === true || !$this->propertyIsRequiredOnInput($property);
         $arrow = $nullable ? '?->' : '->';
 
         if ($this->symfonyTemporalGetterBody($property) !== null) {
@@ -2041,7 +2045,7 @@ trait RendersLaravelDto
 
             // A nullable nested value must survive: `{"child": null}` is legal, and the interpreter
             // skips a null only when the schema says it may be one.
-            if ($property['nullable'] === true || $property['required'] !== true) {
+            if ($property['nullable'] === true || !$this->propertyIsRequiredOnInput($property)) {
                 $merged['nullable'] = true;
             }
 
@@ -2082,7 +2086,7 @@ trait RendersLaravelDto
     private function laravelWithNullableNestedMarker(array $schema, array $property, string $target): array
     {
         $marked = [...$schema, 'x-openapi-recurse' => $target];
-        if ($property['nullable'] === true || $property['required'] !== true) {
+        if ($property['nullable'] === true || !$this->propertyIsRequiredOnInput($property)) {
             $marked['nullable'] = true;
         }
 
@@ -2125,7 +2129,7 @@ trait RendersLaravelDto
         $required = [];
 
         foreach ($this->getSchemaProperties($className) as $property) {
-            if ($property['required'] === true) {
+            if ($this->propertyIsRequiredOnInput($property)) {
                 $required[] = $property['openApiName'];
             }
 

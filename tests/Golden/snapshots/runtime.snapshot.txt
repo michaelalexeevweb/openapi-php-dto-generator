@@ -1,4 +1,4 @@
-# runtime mode — 78 files, 22533 lines
+# runtime mode — 78 files, 22616 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8718,6 +8718,12 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     private bool $restInQuery = false;
     private bool $restInHeader = false;
     private bool $restInCookie = false;
+    private ?array $closedPair;
+    private bool $closedPairInRequest = false;
+    private bool $closedPairInPath = false;
+    private bool $closedPairInQuery = false;
+    private bool $closedPairInHeader = false;
+    private bool $closedPairInCookie = false;
     private bool $conditionalInRequest = false;
     private bool $conditionalInPath = false;
     private bool $conditionalInQuery = false;
@@ -8739,6 +8745,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         array $mustContain,
         array|UnsetValue|null $positions = UnsetValue::UNSET,
         array|UnsetValue|null $rest = UnsetValue::UNSET,
+        array|UnsetValue|null $closedPair = UnsetValue::UNSET,
         private readonly ApplicatorRefsConditional|UnsetValue|null $conditional = UnsetValue::UNSET,
         private readonly ApplicatorRefsKeyed|UnsetValue|null $keyed = UnsetValue::UNSET,
     ) {
@@ -8748,12 +8755,15 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         // Track if parameter was explicitly passed
         $this->restInRequest = $rest !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
+        $this->closedPairInRequest = $closedPair !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
         $this->conditionalInRequest = $conditional !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->keyedInRequest = $keyed !== UnsetValue::UNSET;
         $this->mustContain = $mustContain;
         $this->positions = $positions !== UnsetValue::UNSET ? $positions : null;
         $this->rest = $rest !== UnsetValue::UNSET ? $rest : null;
+        $this->closedPair = $closedPair !== UnsetValue::UNSET ? $closedPair : null;
     }
 
     /**
@@ -8893,6 +8903,53 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
     }
 
+    public function getClosedPair(): ?array
+    {
+        return $this->closedPair;
+    }
+
+    public function isClosedPairRequired(): bool
+    {
+        return false;
+    }
+
+    public function isClosedPairInPath(): bool
+    {
+        return $this->closedPairInPath;
+    }
+
+    public function isClosedPairInQuery(): bool
+    {
+        return $this->closedPairInQuery;
+    }
+
+    public function isClosedPairInHeader(): bool
+    {
+        return $this->closedPairInHeader;
+    }
+
+    public function isClosedPairInCookie(): bool
+    {
+        return $this->closedPairInCookie;
+    }
+
+    public function isClosedPairInRequest(): bool
+    {
+        return $this->closedPairInRequest;
+    }
+
+    public function addItemToClosedPair(mixed $item): void
+    {
+        if ($this->closedPair === null) {
+            $this->closedPair = [];
+        }
+        $this->closedPair[] = $item;
+        // Mark as being in request if it wasn't explicitly passed to constructor
+        if (!$this->closedPairInRequest) {
+            $this->closedPairInRequest = true;
+        }
+    }
+
     public function getConditional(): ?ApplicatorRefsConditional
     {
         return $this->conditional !== UnsetValue::UNSET ? $this->conditional : null;
@@ -8975,6 +9032,9 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
         if ($this->restInRequest) {
             $result['rest'] = $this->rest === null ? null : array_values($this->rest);
+        }
+        if ($this->closedPairInRequest) {
+            $result['closedPair'] = $this->closedPair === null ? null : array_values($this->closedPair);
         }
         if ($this->conditionalInRequest) {
             $result['conditional'] = $this->getConditional();
@@ -9084,6 +9144,25 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['closedPair'] = [
+            'getter' => 'getClosedPair',
+            'type' => 'array',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'closedPair',
+                'required' => false,
+                'inPathFlagGetter' => 'isClosedPairInPath',
+                'inQueryFlagGetter' => 'isClosedPairInQuery',
+                'inHeaderFlagGetter' => 'isClosedPairInHeader',
+                'inCookieFlagGetter' => 'isClosedPairInCookie',
+                'inRequestFlagGetter' => 'isClosedPairInRequest',
+                'constraints' => $constraints['closedPair'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
         $map['conditional'] = [
             'getter' => 'getConditional',
             'type' => 'ApplicatorRefsConditional',
@@ -9143,6 +9222,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $constraints['mustContain'] = ['type' => 'array', 'items' => ['type' => 'object'], 'contains' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
         $constraints['positions'] = ['type' => 'array', 'prefixItems' => [['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
         $constraints['rest'] = ['type' => 'array', 'prefixItems' => [['type' => 'string']], 'unevaluatedItems' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
+        $constraints['closedPair'] = ['type' => 'array', 'items' => false, 'prefixItems' => [['type' => 'string'], ['type' => 'integer']]];
         $constraints['conditional'] = ['type' => 'object', 'if' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]], 'then' => ['required' => ['label']], 'properties' => ['label' => ['type' => 'string']]];
         $constraints['keyed'] = ['type' => 'object', 'properties' => ['trigger' => ['type' => 'string']], 'dependentSchemas' => ['trigger' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
 
@@ -9179,6 +9259,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $positions = $positionsGiven ? $cast('positions', $data['positions'], $errors) : null;
         $restGiven = array_key_exists('rest', $data);
         $rest = $restGiven ? $cast('rest', $data['rest'], $errors) : null;
+        $closedPairGiven = array_key_exists('closedPair', $data);
+        $closedPair = $closedPairGiven ? $cast('closedPair', $data['closedPair'], $errors) : null;
         $conditionalGiven = array_key_exists('conditional', $data);
         $conditional = $conditionalGiven ? $cast('conditional', $data['conditional'], $errors) : null;
         $keyedGiven = array_key_exists('keyed', $data);
@@ -9193,6 +9275,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
             mustContain: $mustContain,
             positions: $positionsGiven ? $positions : UnsetValue::UNSET,
             rest: $restGiven ? $rest : UnsetValue::UNSET,
+            closedPair: $closedPairGiven ? $closedPair : UnsetValue::UNSET,
             conditional: $conditionalGiven ? $conditional : UnsetValue::UNSET,
             keyed: $keyedGiven ? $keyed : UnsetValue::UNSET,
         );

@@ -1,4 +1,4 @@
-# symfony mode — 78 files, 9803 lines
+# symfony mode — 78 files, 9929 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1402,6 +1402,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -1560,6 +1561,12 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -1641,6 +1648,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -2177,6 +2185,12 @@ final class ApiTestSerializationGetQueryParams
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -2661,10 +2675,12 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function count;
 use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
@@ -2740,6 +2756,17 @@ final class ApplicatorRefs
                     ],
                 ],
             ],
+            'closedPair' => [
+                'items' => false,
+                'prefixItems' => [
+                    [
+                        'type' => 'string',
+                    ],
+                    [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
             'conditional' => [
                 'if' => [
                     'type' => 'object',
@@ -2782,6 +2809,7 @@ final class ApplicatorRefs
         'mustContain' => 'mustContain',
         'positions' => 'positions',
         'rest' => 'rest',
+        'closedPair' => 'closedPair',
         'conditional' => 'conditional',
         'keyed' => 'keyed',
     ];
@@ -2789,6 +2817,7 @@ final class ApplicatorRefs
     private const array OPENAPI_PROVIDED_FLAGS = [
         'positions' => 'positionsProvided',
         'rest' => 'restProvided',
+        'closedPair' => 'closedPairProvided',
         'conditional' => 'conditionalProvided',
         'keyed' => 'keyedProvided',
     ];
@@ -2806,6 +2835,12 @@ final class ApplicatorRefs
 
     #[Ignore]
     private bool $restProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private ?array $closedPair = null;
+
+    #[Ignore]
+    private bool $closedPairProvided = false;
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
@@ -2879,6 +2914,27 @@ final class ApplicatorRefs
     public function isRestProvided(): bool
     {
         return $this->restProvided;
+    }
+
+    public function getClosedPair(): ?array
+    {
+        return $this->closedPair;
+    }
+
+    public function setClosedPair(?array $closedPair): void
+    {
+        $this->closedPair = $closedPair;
+        $this->closedPairProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isClosedPairProvided(): bool
+    {
+        return $this->closedPairProvided;
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -3055,6 +3111,15 @@ final class ApplicatorRefs
             }
         }
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                if ($index < $prefixCount) {
+                    continue;
+                }
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($index < $prefixCount) {
@@ -3131,6 +3196,7 @@ final class ApplicatorRefs
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'object' => is_array($value) || is_object($value),
             default => true,
@@ -4367,6 +4433,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function get_object_vars;
 use function is_array;
@@ -4712,6 +4779,12 @@ final class Containers
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -5455,6 +5528,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -5687,6 +5761,12 @@ final class ItemBounds
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -5794,6 +5874,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function floor;
 use function get_object_vars;
@@ -6295,6 +6376,12 @@ final class NestedContainers
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -6446,6 +6533,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -6727,6 +6815,12 @@ final class NullableContainerValues
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -7280,6 +7374,12 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ReadOnlyFields
 {
     #[Groups(['read'])]
+    private ?int $serverId = null;
+
+    #[Ignore]
+    private bool $serverIdProvided = false;
+
+    #[Groups(['read'])]
     private ?DateTimeImmutable $writtenAt = null;
 
     #[Ignore]
@@ -7293,22 +7393,35 @@ final class ReadOnlyFields
 
     public function __construct(
         #[Assert\NotNull]
-        #[Groups(['read'])]
-        private readonly int $serverId,
-        #[Assert\NotNull]
         #[Groups(['read', 'write'])]
         private readonly string $title,
     ) {
     }
 
-    public function getServerId(): int
+    public function getTitle(): string
+    {
+        return $this->title;
+    }
+
+    public function getServerId(): ?int
     {
         return $this->serverId;
     }
 
-    public function getTitle(): string
+    public function setServerId(?int $serverId): void
     {
-        return $this->title;
+        $this->serverId = $serverId;
+        $this->serverIdProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isServerIdProvided(): bool
+    {
+        return $this->serverIdProvided;
     }
 
     /**
@@ -9359,6 +9472,12 @@ final class UnionUnderContainer
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
@@ -9557,6 +9676,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function get_object_vars;
 use function is_array;
 use function is_object;
@@ -9691,6 +9811,12 @@ final class UniqueScalars
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {

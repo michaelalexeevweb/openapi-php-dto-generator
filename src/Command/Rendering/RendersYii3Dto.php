@@ -226,15 +226,20 @@ trait RendersYii3Dto
         // interpreter too and enforced NOWHERE. Measured: `{"f":7}` against `multipleOf: 3` was
         // accepted. What the emitted rules DO cover is pruned below instead, so one mistake is still
         // reported once.
-        $interpreter = $this->renderYii3InterpreterBlock(
-            constraints: $this->yii3PruneNativelyCovered(
-                $this->filterSymfonyValidationConstraints(
-                    constraints: $this->extractValidationConstraints(
-                        $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
-                    ),
-                    allowScalarKeywords: true,
+        $interpreterConstraints = $this->yii3PruneNativelyCovered(
+            $this->filterSymfonyValidationConstraints(
+                constraints: $this->extractValidationConstraints(
+                    $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
                 ),
-                $properties,
+                allowScalarKeywords: true,
+            ),
+            $properties,
+        );
+
+        $interpreter = $this->renderYii3InterpreterBlock(
+            constraints: $this->yii3PruneReadOnlyFromRequired(
+                constraints: $interpreterConstraints,
+                properties: $properties,
             ),
             phpToOpenApiNameMap: $phpToOpenApiNameMap,
             // NOT hardcoded to false. The payload view hands the interpreter what the object HOLDS —
@@ -444,7 +449,7 @@ trait RendersYii3Dto
         //
         // `?` cannot be combined with a union: `?int|string` is a parse error, which a nullable
         // oneOf produced. A union takes an explicit `|null` instead.
-        $nullable = $property['nullable'] || !$property['required'];
+        $nullable = $property['nullable'] || !$this->propertyIsRequiredOnInput($property);
         // A union that already admits null takes nothing: `string|int|null` plus `|null` is
         // "Duplicate type null is redundant", a fatal at load time — which the free-form union hit
         // the moment it was introduced.
@@ -470,7 +475,7 @@ trait RendersYii3Dto
             'attributes' => $attributes,
             'declaration' => 'public readonly ' . $propertyType . ' $' . $property['name'] . ';',
             'docType' => $docType,
-            'tracksPresence' => !$property['required'],
+            'tracksPresence' => !$this->propertyIsRequiredOnInput($property),
             'propertyType' => $propertyType,
             'name' => $property['name'],
             'openApiName' => $property['openApiName'],
@@ -1170,6 +1175,52 @@ PHP;
     }
 
     /**
+     * Takes a `readOnly` property name out of the schema-level `required` list.
+     *
+     * The interpreter runs over `toOpenApiValidationPayload()`, which is what the object HOLDS after
+     * hydration — and a readOnly property is excluded from the input by `OPENAPI_WRITE_ONLY`, so that
+     * payload never carries it. Left in `required`, the class contradicted itself: it both refused to
+     * read the field from a request and then demanded the field be there. OpenAPI settles which half
+     * is wrong — readOnly plus required takes effect on the RESPONSE only.
+     *
+     * Top level only. A nested `required` belongs to a nested schema, whose own properties are not
+     * these.
+     *
+     * @param array<string, mixed> $constraints
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, mixed>
+     */
+    private function yii3PruneReadOnlyFromRequired(array $constraints, array $properties): array
+    {
+        $required = $constraints['required'] ?? null;
+        if (!is_array($required)) {
+            return $constraints;
+        }
+
+        $readOnlyNames = [];
+        foreach ($properties as $property) {
+            if (($property['readOnly'] ?? false) === true) {
+                $readOnlyNames[] = $property['openApiName'];
+            }
+        }
+
+        if ($readOnlyNames === []) {
+            return $constraints;
+        }
+
+        $kept = array_values(array_diff($required, $readOnlyNames));
+        if ($kept === []) {
+            unset($constraints['required']);
+
+            return $constraints;
+        }
+
+        $constraints['required'] = $kept;
+
+        return $constraints;
+    }
+
+    /**
      * Drops the keywords the emitted RULES already enforce, so one mistake is reported once.
      *
      * The mirror of Laravel mode's pruning, and needed for the same reason: the interpreter now
@@ -1257,7 +1308,7 @@ PHP;
         if (
             array_key_exists($schema['type'] ?? '', self::YII3_TYPE_RULES)
             && $this->yii3TypeRuleApplies($property)
-            && ($property['required'] || $this->yii3SchemaAllowsNull($property))
+            && ($this->propertyIsRequiredOnInput($property) || $this->yii3SchemaAllowsNull($property))
         ) {
             $covered[] = 'type';
         }
@@ -1311,7 +1362,7 @@ PHP;
         // For a REQUIRED property the generator's own flag is trustworthy — nothing else can have set
         // it — and it is the only place nullability declared through a `$ref` shows up, since the
         // property's own constraints carry the reference rather than the referenced keywords.
-        return $property['required'] && $property['nullable'];
+        return $this->propertyIsRequiredOnInput($property) && $property['nullable'];
     }
 
     /**

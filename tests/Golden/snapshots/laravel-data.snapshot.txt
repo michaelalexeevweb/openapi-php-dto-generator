@@ -1,4 +1,4 @@
-# laravel-data mode — 78 files, 8705 lines
+# laravel-data mode — 78 files, 8780 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1894,11 +1894,14 @@ use stdClass;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
+use function count;
 use function explode;
 use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
@@ -1979,6 +1982,17 @@ final class ApplicatorRefs extends Data
                 ],
             ],
         ],
+        'closedPair' => [
+            'items' => false,
+            'prefixItems' => [
+                [
+                    'type' => 'string',
+                ],
+                [
+                    'type' => 'integer',
+                ],
+            ],
+        ],
         'conditional' => [
             'if' => [
                 'type' => 'object',
@@ -2025,6 +2039,7 @@ final class ApplicatorRefs extends Data
         public readonly array $mustContain,
         public readonly array|Optional $positions,
         public readonly array|Optional $rest,
+        public readonly array|Optional $closedPair,
         #[WithoutValidation]
         public readonly ApplicatorRefsConditional|Optional $conditional,
         #[WithoutValidation]
@@ -2048,6 +2063,7 @@ final class ApplicatorRefs extends Data
             'mustContain.*' => ['array'],
             'positions' => ['sometimes', 'array', 'list'],
             'rest' => ['sometimes', 'array', 'list'],
+            'closedPair' => ['sometimes', 'array', 'list'],
             'conditional' => ['sometimes', 'array'],
             'conditional.label' => ['string'],
             'keyed' => ['sometimes', 'array'],
@@ -2253,8 +2269,10 @@ final class ApplicatorRefs extends Data
 
         $listValue = is_array($value) && array_is_list($value);
         $evaluatedItemIndices = [];
+        $prefixCount = 0;
 
         if ($listValue && is_array($schema['prefixItems'] ?? null)) {
+            $prefixCount = count($schema['prefixItems']);
             foreach ($schema['prefixItems'] as $index => $itemSchema) {
                 if (!is_array($itemSchema) || !array_key_exists($index, $value)) {
                     continue;
@@ -2263,6 +2281,28 @@ final class ApplicatorRefs extends Data
                 $errors = [
                     ...$errors,
                     ...self::validateOpenApiNode($value[$index], $itemSchema, $path . '[' . $index . ']', $depth + 1),
+                ];
+            }
+        }
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                if ($index < $prefixCount) {
+                    continue;
+                }
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
+        if ($listValue && is_array($schema['items'] ?? null)) {
+            foreach ($value as $index => $itemValue) {
+                if ($index < $prefixCount) {
+                    continue;
+                }
+                $evaluatedItemIndices[$index] = true;
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
             }
         }
@@ -2324,6 +2364,7 @@ final class ApplicatorRefs extends Data
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'object' => is_array($value) || is_object($value),
             default => true,
@@ -3115,6 +3156,7 @@ use stdClass;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -3331,6 +3373,12 @@ final class ChainLink extends Data
 
         $listValue = is_array($value) && array_is_list($value);
 
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 $errors = [
@@ -3384,6 +3432,7 @@ use stdClass;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -3618,6 +3667,12 @@ final class ChainMiddle extends Data
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -4789,6 +4844,7 @@ use stdClass;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -5044,6 +5100,12 @@ final class NestedContainers extends Data
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -5688,7 +5750,7 @@ use function str_ends_with;
  * and is omitted from `toArray()`. That keeps "absent" and "sent as null" apart without any bookkeeping
  * of ours — PATCH semantics as a language-level fact:
  *
- *     if (! $dto->writtenAt instanceof Optional) { … }
+ *     if (! $dto->serverId instanceof Optional) { … }
  */
 final class ReadOnlyFields extends Data
 {
@@ -5704,8 +5766,8 @@ final class ReadOnlyFields extends Data
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public function __construct(
-        public readonly int $serverId,
         public readonly string $title,
+        public readonly int|Optional $serverId,
         #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
         public readonly DateTimeImmutable|Optional $writtenAt,
         #[Hidden]
@@ -5725,7 +5787,7 @@ final class ReadOnlyFields extends Data
     public static function rules(): array
     {
         return [
-            'serverId' => ['present', 'integer'],
+            'serverId' => ['sometimes', 'integer'],
             'title' => ['present', 'string'],
             'writtenAt' => ['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'secret' => ['sometimes', 'string'],
@@ -6025,6 +6087,7 @@ use stdClass;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -6275,6 +6338,12 @@ final class Test2 extends Data
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
@@ -7981,6 +8050,12 @@ final class UnionUnderContainer extends Data
         }
 
         $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
 
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
