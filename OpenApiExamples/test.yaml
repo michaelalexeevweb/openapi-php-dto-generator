@@ -5,6 +5,27 @@ info:
   version: 1.0.0
 servers:
   - url: 'https'
+# A 3.1 webhook: an operation the API CALLS rather than serves. Its body needs a DTO for the same
+# reason any request body does, and the corpus carried none until 2.15.31 — so deleting the support
+# would have left the whole suite green.
+webhooks:
+  orderPlaced:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - orderId
+              properties:
+                orderId:
+                  type: string
+      responses:
+        200:
+          description: test
+
 paths:
   /api/test:
     get:
@@ -447,6 +468,63 @@ paths:
                   - row
                 properties:
                   row:
+                    type: string
+  # A callback (the payload the API posts BACK) and two response statuses on one operation. Both were
+  # emitted all along and pinned by nothing; the status is part of the class name, which is what keeps
+  # a 404 body from overwriting the 200 one.
+  /api/test/jobs:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - callbackUrl
+              properties:
+                callbackUrl:
+                  type: string
+      callbacks:
+        jobDone:
+          '{$request.body#/callbackUrl}':
+            post:
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      required:
+                        - state
+                      properties:
+                        state:
+                          type: string
+              responses:
+                200:
+                  description: test
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - accepted
+                properties:
+                  accepted:
+                    type: boolean
+        404:
+          description: test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - reason
+                properties:
+                  reason:
                     type: string
 components:
   parameters:

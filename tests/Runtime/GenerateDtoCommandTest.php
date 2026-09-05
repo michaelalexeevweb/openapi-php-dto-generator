@@ -1361,6 +1361,118 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * A 3.1 `webhooks` operation gets a request class, like any other operation.
+     *
+     * Webhooks are operations the API CALLS rather than serves, and their bodies need DTOs for
+     * exactly the same reason — something has to deserialize the payload that arrives. It worked and
+     * nothing said so: no test generated a webhook, so deleting the support would have left the suite
+     * green. Found by an audit that had to probe the generator by hand to learn the answer.
+     */
+    public function testAWebhookOperationGeneratesARequestClass(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'webhooks' => ['orderPlaced' => ['post' => [
+                'requestBody' => ['content' => ['application/json' => ['schema' => [
+                    'type' => 'object',
+                    'required' => ['orderId'],
+                    'properties' => ['orderId' => ['type' => 'string']],
+                ]]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'WebhookNs');
+
+        $file = $this->outputDirectory . '/WebhookOrderPlacedPostRequest.php';
+        $this->assertFileExists($file, 'the webhook name and method make the class name');
+        $this->assertStringContainsString('$orderId', (string)file_get_contents($file));
+    }
+
+    /**
+     * A `callbacks` operation gets one too, and does not collide with the operation that declares it.
+     *
+     * The callback body is a different payload from the request that registered it — `/jobs` takes a
+     * URL, the callback delivers a status — so both classes have to exist side by side. Same audit,
+     * same silence: generated all along, pinned by nothing.
+     */
+    public function testACallbackOperationGeneratesItsOwnRequestClass(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/jobs' => ['post' => [
+                'requestBody' => ['content' => ['application/json' => ['schema' => [
+                    'type' => 'object',
+                    'required' => ['url'],
+                    'properties' => ['url' => ['type' => 'string']],
+                ]]]],
+                'callbacks' => ['jobDone' => ['{$request.body#/url}' => ['post' => [
+                    'requestBody' => ['content' => ['application/json' => ['schema' => [
+                        'type' => 'object',
+                        'required' => ['status'],
+                        'properties' => ['status' => ['type' => 'string']],
+                    ]]]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'CallbackNs');
+
+        $callback = $this->outputDirectory . '/CallbackJobDonePostRequest.php';
+        $this->assertFileExists($callback);
+        $this->assertStringContainsString('$status', (string)file_get_contents($callback));
+
+        $owner = $this->outputDirectory . '/JobsPostRequest.php';
+        $this->assertFileExists($owner, 'the declaring operation keeps its own class');
+        $this->assertStringContainsString('$url', (string)file_get_contents($owner));
+    }
+
+    /**
+     * Every response STATUS gets its own class — a 404 body is not a 200 body.
+     *
+     * The status is part of the name, so `200`, `404` and `default` cannot overwrite each other. That
+     * is the same collision the media types had until 2.15.30, avoided here because the status was in
+     * the name all along; pinned now so it stays that way.
+     *
+     * `default` is spelled as the document spells it — lowercase — giving `Jobsdefault` rather than
+     * `JobsDefault`. Pinned as it IS, not as it ought to look: changing it renames a class for every
+     * document that declares a default response, which is a decision, not a tidy-up.
+     */
+    public function testEachResponseStatusGetsItsOwnClass(): void
+    {
+        $object = static fn(string $property, string $type = 'string'): array => [
+            'type' => 'object',
+            'required' => [$property],
+            'properties' => [$property => ['type' => $type]],
+        ];
+
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/jobs' => ['post' => [
+                'responses' => [
+                    '200' => ['description' => 'ok', 'content' => ['application/json' => ['schema' => $object('accepted', 'boolean')]]],
+                    '404' => ['description' => 'gone', 'content' => ['application/json' => ['schema' => $object('reason')]]],
+                    'default' => ['description' => 'other', 'content' => ['application/json' => ['schema' => $object('message')]]],
+                ],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'StatusNs');
+
+        $this->assertStringContainsString('$accepted', (string)file_get_contents($this->outputDirectory . '/Jobs200.php'));
+        $this->assertStringContainsString('$reason', (string)file_get_contents($this->outputDirectory . '/Jobs404.php'));
+        $this->assertStringContainsString('$message', (string)file_get_contents($this->outputDirectory . '/Jobsdefault.php'));
+    }
+
+    /**
      * Several media types on one operation each get their own class, and JSON keeps the plain name.
      *
      * `content` is a MAP keyed by media type, so an operation may legitimately describe several
