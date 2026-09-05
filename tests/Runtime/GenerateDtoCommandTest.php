@@ -1567,6 +1567,88 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * Every OpenAPI object that names no class still must not stop the generator.
+     *
+     * Info, Contact, License, Server, Server Variable, Security Scheme, OAuth Flows, Security
+     * Requirement, Tag, External Documentation, Example, Link, Header and XML describe an API for
+     * humans and for HTTP machinery. None of them produces a DTO — but each of them is something the
+     * parser walks past, and nothing in this suite said they were safe to walk past. The audit that
+     * wrote `tests/fixtures/every-document-object.yaml` had to feed each one through by hand to find
+     * out.
+     *
+     * A tripwire rather than a demonstration: the document must generate, warn about nothing, and
+     * produce exactly the classes its schemas and operations call for. An object that starts
+     * contributing a class of its own fails on the count.
+     */
+    public function testADocumentCarryingEveryNonSchemaObjectStillGenerates(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/every-document-object.yaml');
+
+        $count = $this->generator->generateFromArray($openApi, $this->outputDirectory, 'EveryObjectNs');
+
+        $emitted = glob($this->outputDirectory . '/*.php');
+        $names = array_map('basename', $emitted === false ? [] : $emitted);
+        sort($names);
+
+        $this->assertSame(
+            [
+                // The 3.1 `$ref`-with-a-sibling-description case.
+                'RefSiblings.php',
+                // The operation's response, request, and query parameters.
+                'T200.php',
+                'TpostQueryParams.php',
+                'TpostRequest.php',
+                // An Encoding Object naming a JSON part of the multipart body: its own DTO.
+                'TpostRequestMeta.php',
+                // The schema the XML Object hangs off — the XML itself contributes nothing.
+                'WithXml.php',
+            ],
+            $names,
+            'an object that names no class must not start naming one',
+        );
+        $this->assertSame(count($names), $count);
+
+        $this->assertSame(
+            [],
+            $this->generator->getGenerationWarnings(),
+            'nothing in a document made of documentation is worth warning about',
+        );
+    }
+
+    /**
+     * The three things in that document that DO reach the emitted code.
+     *
+     * They travel with the documentation objects and would otherwise be tested nowhere near them: an
+     * Encoding Object naming a JSON part of a multipart body, a `$ref` carrying a 3.1 sibling
+     * `description`, and a deprecated Parameter. Asserted separately from the tripwire above so a
+     * failure says which of the two questions it answers.
+     */
+    public function testTheDocumentObjectsThatDoReachTheEmittedCode(): void
+    {
+        $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/every-document-object.yaml');
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'EveryObjectReachNs');
+
+        // Encoding: `contentType: application/json` on the `meta` part makes it a nested DTO, while
+        // the `file` part stays an upload.
+        $request = (string)file_get_contents($this->outputDirectory . '/TpostRequest.php');
+        $this->assertStringContainsString('TpostRequestMeta $meta', $request);
+        $this->assertStringContainsString('UploadedFile $file', $request);
+
+        // A 3.1 `$ref` may carry siblings; the reference still resolves to the class.
+        $this->assertStringContainsString(
+            'WithXml $r',
+            (string)file_get_contents($this->outputDirectory . '/RefSiblings.php'),
+        );
+
+        // `deprecated` on the Parameter Object, not on its schema, reaches the getter.
+        $params = (string)file_get_contents($this->outputDirectory . '/TpostQueryParams.php');
+        $this->assertMatchesRegularExpression(
+            '/@deprecated\s+\*\/\s+public function getLegacy/',
+            $params,
+        );
+    }
+
+    /**
      * A parameter described in a media type the runtime cannot decode says so, once.
      *
      * A Parameter Object may carry `content` instead of `schema`, and the runtime decodes exactly

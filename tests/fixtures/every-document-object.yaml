@@ -1,0 +1,105 @@
+# Every OpenAPI object that has NO bearing on a generated DTO, in one document.
+#
+# Info, Contact, License, Server, Server Variable, Security Scheme, OAuth Flows, Security Requirement,
+# Tag, External Documentation, Example, Link, Header and XML describe an API for humans and for HTTP
+# machinery; none of them names a class. What they CAN do is stop the generator, and nothing said so
+# — the audit that produced this file had to feed each one through by hand to learn they were safe.
+#
+# So the fixture is a tripwire rather than a demonstration: it must generate, it must warn about
+# nothing, and it must produce exactly the classes its schemas and operations call for. An object that
+# starts contributing a class of its own shows up as a count that no longer matches.
+#
+# The three objects that DO reach the emitted code are here on purpose, since they travel with the
+# rest and would otherwise be tested nowhere near them: an Encoding Object naming a JSON part of a
+# multipart body (which becomes its own DTO), a `$ref` carrying a 3.1 sibling `description`, and a
+# deprecated Parameter.
+openapi: 3.1.0
+jsonSchemaDialect: 'https://spec.openapis.org/oas/3.1/dialect/base'
+info:
+  title: everything
+  summary: probe
+  description: all documentation-ish objects at once
+  termsOfService: https://example.com/tos
+  contact: { name: A, url: 'https://example.com', email: a@example.com }
+  license: { name: MIT, identifier: MIT }
+  version: 1.0.0
+servers:
+  - url: 'https://{host}/v1'
+    description: main
+    variables:
+      host: { default: api.example.com, enum: [api.example.com, staging.example.com], description: host }
+security:
+  - apiKey: []
+tags:
+  - name: things
+    description: tag
+    externalDocs: { description: more, url: 'https://example.com/docs' }
+externalDocs: { description: root docs, url: 'https://example.com' }
+paths:
+  /t:
+    post:
+      tags: [things]
+      operationId: doThing
+      summary: s
+      description: d
+      deprecated: true
+      externalDocs: { description: op docs, url: 'https://example.com/op' }
+      security: []
+      servers: [{ url: 'https://override.example.com' }]
+      parameters:
+        - name: legacy
+          in: query
+          deprecated: true
+          description: p
+          example: abc
+          examples:
+            one: { summary: s, description: d, value: abc }
+          schema: { type: string }
+      requestBody:
+        description: rb
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [meta, file]
+              properties:
+                meta: { type: object, required: [k], properties: { k: { type: string } } }
+                file: { type: string, format: binary }
+            encoding:
+              meta:
+                contentType: application/json
+                headers:
+                  X-Meta: { description: h, schema: { type: string } }
+              file:
+                contentType: application/octet-stream
+      responses:
+        '200':
+          description: ok
+          headers:
+            X-Rate: { description: rate, schema: { type: integer } }
+          content:
+            application/json:
+              schema: { type: object, required: [ok], properties: { ok: { type: boolean } } }
+              example: { ok: true }
+              examples:
+                yes: { value: { ok: true } }
+          links:
+            next: { operationId: doThing, description: l, parameters: { legacy: '$response.body#/ok' } }
+components:
+  securitySchemes:
+    apiKey: { type: apiKey, name: X-Key, in: header }
+  schemas:
+    WithXml:
+      type: object
+      xml: { name: thing, namespace: 'https://example.com', prefix: t, wrapped: true }
+      required: [v]
+      properties:
+        v: { type: string, xml: { attribute: true, name: val } }
+    RefSiblings:
+      type: object
+      required: [r]
+      properties:
+        r:
+          $ref: '#/components/schemas/WithXml'
+          description: sibling description allowed in 3.1
