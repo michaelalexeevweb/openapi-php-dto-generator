@@ -494,6 +494,11 @@ PHP;
             return ['consts' => '', 'methods' => '', 'imports' => []];
         }
 
+        // Before ANYTHING reads the schema: the emitted constant below and the keyword flags that
+        // decide which branches to emit are both derived from this array, and a boolean left in it
+        // would be invisible to both.
+        $constraints = $this->expandBooleanSubschemasForInterpreter($constraints);
+
         $constraintsLiteral = $this->renderPhpArrayLiteral($constraints, 1);
         $nameMapLiteral = $this->renderPhpArrayLiteral($phpToOpenApiNameMap, 1);
         $providedFlagsLiteral = $this->renderPhpArrayLiteral($providedFlags, 1);
@@ -2559,6 +2564,103 @@ PHP,
     }
 
     /**
+     * Keys whose value may be a boolean subschema the emitted interpreter has no branch for.
+     *
+     * `items`, `additionalProperties`, `unevaluatedItems` and `unevaluatedProperties` are deliberately
+     * absent: a boolean is their ORDINARY spelling and the interpreter reads it directly. They are
+     * recursed into all the same, because a position further down may still hold one.
+     */
+    private const array INTERPRETER_BOOLEAN_KEYS = [
+        'contains',
+        'not',
+        'propertyNames',
+        'if',
+        'then',
+        'else',
+        'contentSchema',
+    ];
+
+    /** Recursed into, but their own boolean value is left alone — see above. */
+    private const array INTERPRETER_RECURSE_ONLY_KEYS = [
+        'items',
+        'additionalProperties',
+        'unevaluatedItems',
+        'unevaluatedProperties',
+    ];
+
+    /** Keys holding a MAP of subschemas, any of which may be boolean. */
+    private const array INTERPRETER_BOOLEAN_MAP_KEYS = [
+        'properties',
+        'patternProperties',
+        'dependentSchemas',
+    ];
+
+    /** Keys holding a LIST of subschemas, any of which may be boolean. */
+    private const array INTERPRETER_BOOLEAN_LIST_KEYS = [
+        'allOf',
+        'anyOf',
+        'oneOf',
+        'prefixItems',
+    ];
+
+    /**
+     * Rewrites a boolean subschema into the object schema it is shorthand for, for the two modes that
+     * read their schema through the interpreter emitted INTO the generated class.
+     *
+     * The interpreter gates every one of those keys on `is_array()`, so a boolean reaching it did
+     * nothing — and until 2.15.38 the constraint filter dropped one before it could even get there.
+     * Fixing only the filter changed no verdict at all: the value arrived and the branch still would
+     * not look at it. That is the second layer, and it is why this is written here rather than as
+     * seven more `elseif (is_bool(...))` arms inside the emitted code — one rewrite at the single
+     * point both the emitted CONSTANT and the section flags are derived from.
+     *
+     * `true` is the empty schema. `false` has no direct spelling as an array, and `not` of the empty
+     * schema is exactly it: the inner schema matches the value, so `not` rejects it, whatever it is.
+     * The same identity `DtoValidator::expandBooleanSubschemas()` uses.
+     *
+     * Recursion is by KEY, never over every array: `enum: [true, false]` is a list of VALUES, and a
+     * walker that could not tell the difference would rewrite a document's enum members into schemas.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function expandBooleanSubschemasForInterpreter(array $constraints): array
+    {
+        foreach (self::INTERPRETER_BOOLEAN_KEYS as $key) {
+            if (!array_key_exists($key, $constraints)) {
+                continue;
+            }
+            $value = $constraints[$key];
+            if (is_bool($value)) {
+                $constraints[$key] = $value ? [] : ['not' => []];
+            } elseif (is_array($value)) {
+                $constraints[$key] = $this->expandBooleanSubschemasForInterpreter($value);
+            }
+        }
+
+        foreach (self::INTERPRETER_RECURSE_ONLY_KEYS as $key) {
+            if (is_array($constraints[$key] ?? null)) {
+                $constraints[$key] = $this->expandBooleanSubschemasForInterpreter($constraints[$key]);
+            }
+        }
+
+        foreach ([...self::INTERPRETER_BOOLEAN_MAP_KEYS, ...self::INTERPRETER_BOOLEAN_LIST_KEYS] as $key) {
+            if (!is_array($constraints[$key] ?? null)) {
+                continue;
+            }
+            foreach ($constraints[$key] as $name => $subSchema) {
+                if (is_bool($subSchema)) {
+                    $constraints[$key][$name] = $subSchema ? [] : ['not' => []];
+                } elseif (is_array($subSchema)) {
+                    $constraints[$key][$name] = $this->expandBooleanSubschemasForInterpreter($subSchema);
+                }
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
      * @param array<string, mixed> $constraints
      */
     private function schemaUsesKeyword(array $constraints, string $keyword): bool
@@ -2648,6 +2750,14 @@ PHP,
                     }
                     $filtered[$key] = [];
                     foreach ($value as $name => $schema) {
+                        // A BOOLEAN entry is that property's entire schema: `false` admits no value,
+                        // `true` constrains nothing. Only the array arm existed, so `false` was
+                        // dropped and the property went unchecked.
+                        if (is_bool($schema) && is_string($name)) {
+                            $filtered[$key][$name] = $schema;
+
+                            continue;
+                        }
                         if (is_string($name) && is_array($schema)) {
                             $filtered[$key][$name] = $this->filterSymfonyValidationConstraints(
                                 constraints: $schema,
@@ -2665,6 +2775,14 @@ PHP,
                     }
                     $filtered[$key] = [];
                     foreach ($value as $schema) {
+                        // `[]` is the EMPTY schema — the one that accepts everything — so collapsing a
+                        // `false` member into it opened the very position the document closed. `true`
+                        // really is the empty schema, which is why only `false` needs saying.
+                        if (is_bool($schema)) {
+                            $filtered[$key][] = $schema === false ? false : [];
+
+                            continue;
+                        }
                         $filtered[$key][] = is_array($schema)
                             ? $this->filterSymfonyValidationConstraints(
                                 $schema,
@@ -2738,6 +2856,12 @@ PHP,
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
+                    } elseif (is_bool($value)) {
+                        // The seven keys above are the direct siblings of `items`, which got this arm
+                        // in 2.15.36 while they were left behind. A boolean is a legal subschema in
+                        // every one of them — `not: true` forbids every value, `then: false` makes a
+                        // matched condition fatal — and dropping it left the keyword doing nothing.
+                        $filtered[$key] = $value;
                     }
                     break;
                 case 'oneOf':
@@ -2763,6 +2887,15 @@ PHP,
                     }
                     $branches = [];
                     foreach ($value as $branch) {
+                        // A boolean branch is not noise. `oneOf: [true, {type: string}]` refuses every
+                        // string — `true` matches it as well, so TWO branches match and `oneOf` wants
+                        // exactly one — and dropping the `true` reversed that verdict. In `allOf` a
+                        // `false` branch makes the whole keyword unsatisfiable.
+                        if (is_bool($branch)) {
+                            $branches[] = $branch;
+
+                            continue;
+                        }
                         if (!is_array($branch)) {
                             continue;
                         }
@@ -2786,6 +2919,13 @@ PHP,
                     }
                     $filtered[$key] = [];
                     foreach ($value as $name => $schema) {
+                        // `dependentSchemas: {a: false}` says an object carrying `a` is invalid — the
+                        // boolean IS the dependent schema, and skipping it said nothing at all.
+                        if (is_bool($schema) && is_string($name)) {
+                            $filtered[$key][$name] = $schema;
+
+                            continue;
+                        }
                         if (is_string($name) && is_array($schema)) {
                             $nested = $this->filterSymfonyValidationConstraints($schema, allowScalarKeywords: true);
                             if ($nested !== []) {

@@ -1,4 +1,4 @@
-# symfony mode — 79 files, 10192 lines
+# symfony mode — 79 files, 10307 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2770,16 +2770,29 @@ final class ApplicatorRefs
             ],
             'impossible' => [],
             'vacuous' => [],
-            'neverMatches' => [],
+            'forbiddenKey' => [
+                'not' => [],
+            ],
+            'neverMatches' => [
+                'not' => [],
+            ],
             'closedFirstSlot' => [
                 'prefixItems' => [
-                    [],
+                    [
+                        'not' => [],
+                    ],
                     [
                         'type' => 'integer',
                     ],
                 ],
             ],
-            'poisonedKey' => [],
+            'poisonedKey' => [
+                'dependentSchemas' => [
+                    'trigger' => [
+                        'not' => [],
+                    ],
+                ],
+            ],
             'conditional' => [
                 'if' => [
                     'type' => 'object',
@@ -3267,6 +3280,10 @@ final class ApplicatorRefs
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
             }
+        }
+
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -4030,6 +4047,17 @@ namespace GoldenCorpus;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
+
+use function array_filter;
+use function array_key_exists;
+use function get_object_vars;
+use function is_array;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function sprintf;
+use function str_ends_with;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4045,6 +4073,24 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApplicatorRefsPoisonedKey
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'dependentSchemas' => [
+            'trigger' => [
+                'not' => [],
+            ],
+        ],
+    ];
+
+    private const array OPENAPI_PHP_TO_NAME_MAP = [
+        'trigger' => 'trigger',
+    ];
+
+    private const array OPENAPI_PROVIDED_FLAGS = [
+        'trigger' => 'triggerProvided',
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
     #[Groups(['read', 'write'])]
     private ?string $trigger = null;
 
@@ -4076,11 +4122,18 @@ final class ApplicatorRefsPoisonedKey
         return $this->triggerProvided;
     }
 
+    #[Assert\Callback]
+    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
+    {
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+        }
+    }
+
     /**
-     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
-     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
-     * one through here, because the properties themselves are private. For output, use the Symfony
-     * serializer.
+     * This DTO as an OpenAPI-named payload — machinery for the generated validation, not an API to
+     * call. It is public only because an enclosing DTO is a different class and needs this view of
+     * a nested one. For output, use the Symfony serializer.
      *
      * @internal
      *
@@ -4089,11 +4142,73 @@ final class ApplicatorRefsPoisonedKey
     public function toOpenApiValidationPayload(): array
     {
         $payload = [];
-        if ($this->triggerProvided) {
-            $payload['trigger'] = $this->trigger;
+        foreach (self::OPENAPI_PHP_TO_NAME_MAP as $phpName => $openApiName) {
+            // A required property always exists. An optional one belongs in the payload only when
+            // it was actually provided — its presence flag says so, which is also what keeps the
+            // flags themselves out of the payload (iterating the object's properties would put
+            // them in and trip `additionalProperties: false`).
+            $flag = self::OPENAPI_PROVIDED_FLAGS[$phpName] ?? null;
+            if ($flag !== null && $this->{$flag} !== true) {
+                continue;
+            }
+            $payload[$openApiName] = $this->{$phpName};
         }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $errors = [];
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
+                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
+            }
+        }
+
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return array_filter(
+            get_object_vars($value),
+            static fn(mixed $propertyValue): bool => $propertyValue !== null,
+        );
     }
 }
 

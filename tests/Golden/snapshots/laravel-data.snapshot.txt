@@ -1,4 +1,4 @@
-# laravel-data mode — 79 files, 8962 lines
+# laravel-data mode — 79 files, 8981 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1995,14 +1995,16 @@ final class ApplicatorRefs extends Data
             ],
         ],
         'forbiddenKey' => [
-            'not' => true,
+            'not' => [],
         ],
         'neverMatches' => [
-            'not' => true,
+            'not' => [],
         ],
         'closedFirstSlot' => [
             'prefixItems' => [
-                false,
+                [
+                    'not' => [],
+                ],
                 [
                     'type' => 'integer',
                 ],
@@ -2010,7 +2012,9 @@ final class ApplicatorRefs extends Data
         ],
         'poisonedKey' => [
             'dependentSchemas' => [
-                'trigger' => false,
+                'trigger' => [
+                    'not' => [],
+                ],
             ],
         ],
         'conditional' => [
@@ -2990,6 +2994,7 @@ use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
+use function sprintf;
 use function str_ends_with;
 
 /**
@@ -3016,7 +3021,9 @@ final class ApplicatorRefsPoisonedKey extends Data
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'x-openapi-object' => [
             'dependentSchemas' => [
-                'trigger' => false,
+                'trigger' => [
+                    'not' => [],
+                ],
             ],
         ],
     ];
@@ -3102,7 +3109,19 @@ final class ApplicatorRefsPoisonedKey extends Data
             }
         }
 
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+        }
+
         return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed

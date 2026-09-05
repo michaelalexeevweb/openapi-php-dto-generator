@@ -181,6 +181,30 @@ final class ValidationParityTest extends TestCase
             // alone and stay green: symfony and yii3 never even copied the keyword into their
             // emitted constraints, so nothing enforced it there.
             'items false closes a tuple' => [['type' => 'array', 'prefixItems' => [['type' => 'string']], 'items' => false], '{"f":["a"]}', '{"f":["a","b"]}'],
+            // The rest of the BOOLEAN spellings. `items: false` above was the first of them and it
+            // reached the matrix only in 2.15.36, after a fix had already landed in one validator and
+            // stayed green everywhere else. Each of these is written so that a valid payload exists —
+            // a position that refuses everything has none, and those are pinned in
+            // `GeneratedConstraintsIntegrationTest` against runtime mode instead.
+            'contains false' => [['contains' => false], '{"f":"s"}', '{"f":["a"]}'],
+            'propertyNames false' => [['type' => 'object', 'propertyNames' => false], '{"f":{}}', '{"f":{"k":"v"}}'],
+            'then false' => [['if' => ['type' => 'string'], 'then' => false], '{"f":5}', '{"f":"s"}'],
+            'else false' => [['if' => ['const' => 'a'], 'else' => false], '{"f":"a"}', '{"f":"b"}'],
+            'prefixItems false' => [['type' => 'array', 'prefixItems' => [false]], '{"f":[]}', '{"f":["a"]}'],
+            // The valid payload carries `b` rather than being `{}`: an EMPTY object for a required
+            // nested property is refused by laravel mode for a reason of its own, unrelated to
+            // booleans, and a case has to fail for the reason it names.
+            'dependentSchemas false' => [
+                [
+                    'type' => 'object',
+                    'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
+                    'dependentSchemas' => ['a' => false],
+                ],
+                '{"f":{"b":"y"}}',
+                '{"f":{"a":"x"}}',
+            ],
+            'anyOf with a false branch' => [['anyOf' => [false, ['type' => 'string']]], '{"f":"s"}', '{"f":5}'],
+            'allOf with a true branch' => [['allOf' => [true, ['type' => 'string', 'minLength' => 3]]], '{"f":"abc"}', '{"f":"ab"}'],
             'anyOf' => [['anyOf' => [['type' => 'string', 'minLength' => 3], ['type' => 'integer']]], '{"f":5}', '{"f":"ab"}'],
             'oneOf scalar' => [['oneOf' => [['type' => 'string', 'minLength' => 5], ['type' => 'string', 'pattern' => '^a']]], '{"f":"ab"}', '{"f":"abcdef"}'],
             'allOf of scalars' => [['allOf' => [['type' => 'string'], ['minLength' => 3]]], '{"f":"abc"}', '{"f":"ab"}'],
@@ -1441,6 +1465,11 @@ final class ValidationParityTest extends TestCase
         return [
             'type string' => $coerced,
             'type integer' => $coerced,
+            // A `false` branch can never match, so this `anyOf` collapses to the single `type: string`
+            // branch and the property is typed `?string` — which puts it back under the caster above.
+            // The boolean is carried into the constraints correctly; what diverges is the same
+            // coercion the two scalar cases record, reached by a different route.
+            'anyOf with a false branch' => $coerced,
             'type union with null' => $coerced,
             'type union null first' => $coerced,
             'format date-time in a list' => $lenientDateTime,

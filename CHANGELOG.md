@@ -3,6 +3,51 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.39 — 2026-09-06
+
+- symfony and yii3 enforce a boolean subschema in every position
+- a required nested object sent as `{}` no longer 500s in laravel mode
+
+**Symfony and yii3 dropped a boolean subschema in seven positions.** `not`, `if`, `then`, `else`,
+`contains`, `propertyNames` and `contentSchema` sit in one `switch` arm of the constraint filter both
+modes share, and it read them only when the value was an array — the direct siblings of `items`, which
+got its boolean arm in 2.15.36 while they were left behind. `properties`, `patternProperties`,
+`dependentSchemas`, `prefixItems` and the `allOf`/`anyOf`/`oneOf` branch lists dropped one too, and
+`prefixItems` inverted it exactly the way the generator did before 2.15.38: a non-array member became
+`[]`, which IS the empty schema, so a CLOSED tuple position emitted a class that accepted anything.
+
+**Fixing the filter changed no verdict at all**, which is the part worth knowing. The interpreter
+emitted INTO the generated class gates the same keys on `is_array()` a second time, so the value
+arrived and the branch still would not look at it. Both layers are fixed, and the second one is a
+single rewrite at the point the emitted constant and the section flags are both derived from, rather
+than seven more `elseif (is_bool(...))` arms inside generated code:
+
+```
+true   ->  []              the empty schema
+false  ->  ['not' => []]   nothing satisfies it — the identity DtoValidator has used since 2.15.27
+```
+
+The parity matrix now carries the boolean spelling of every position that admits a valid payload at
+all — `contains`, `propertyNames`, `then`, `else`, `prefixItems`, `dependentSchemas`, a `false` branch
+in `anyOf` and a `true` branch in `allOf`. The positions that refuse EVERY value have no valid payload
+to pair with and are pinned against runtime mode instead. Before the fix six of those cases failed on
+symfony and, behind it, on laravel; the matrix is what made the two layers visible one after the other.
+
+**A required nested object sent as `{}` was a 500 in laravel mode.** Unrelated to booleans, found
+while writing the matrix case above. Laravel's `validated()` builds its result from the leaves it
+could extract, and an empty object has none, so it drops the parent key — even though the property
+has rules of its own and `present` passed on it. The generated hydrator read `$data['f']` straight:
+
+```
+Warning: Undefined array key "f"
+TypeError: ProbeF::fromValidated(): Argument #1 ($data) must be of type array, null given
+```
+
+A crash AFTER validation had accepted the payload, which is the worst shape this mode has — the rules
+and the hydrator disagreeing about the same request. The key was sent, so the faithful reconstruction
+is an empty array. An empty list and an empty map both survive `validated()` untouched; it is the
+object with declared `properties` that does not, and all three are now pinned side by side.
+
 ## 2.15.38 — 2026-09-05
 
 - `prefixItems: [false]` closes that position instead of opening it

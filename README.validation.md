@@ -68,10 +68,10 @@ A few behaviours worth knowing when validating against the schema:
   `prefixItems` did the worst of it — a boolean member scrubbed to `[]`, which IS the empty schema, so
   a document CLOSING a tuple position emitted a class that accepted anything there.
 
-  Symfony and yii3 modes still drop a boolean in `not`, `if`/`then`/`else`, `contains`,
-  `propertyNames`, `contentSchema`, `prefixItems` and `dependentSchemas`: their shared constraint
-  filter reads those keys only when the value is an array, and the interpreter they emit gates the
-  same keys on `is_array()` a second time. `additionalProperties`, `unevaluatedItems` and
-  `unevaluatedProperties` arrive in every mode.
+  Since 2.15.39 **every mode enforces every one of those positions**, and the parity matrix pins it
+  keyword by keyword. Symfony and yii3 needed two fixes rather than one: their shared constraint
+  filter read those keys only when the value was an array, AND the interpreter emitted into the
+  generated class gated the same keys on `is_array()` a second time — so fixing the filter alone
+  changed no verdict at all.
 - **An empty schema matches everything.** `items: {}`, `contains: {}` and `additionalProperties: {}` apply — and, importantly, mark their targets as evaluated, so a neighbouring `unevaluatedItems: false` or `unevaluatedProperties: false` does not reject a valid payload.
 - **How far `uri-reference`/`iri-reference` go.** A reference may be relative, so most of what looks wrong is legal: `not_a_uri` and `###` are valid relative references and are accepted, as any conforming validator accepts them. The check is deliberately no stricter than whitespace and control characters, which means a broken percent-escape (`%zz`) or a malformed host (`http://[`) passes here while the stricter `uri`/`iri` refuse both. Full RFC 3986 grammar is not worth the emitted code; if a field must be an absolute, well-formed URI, declare `format: uri`.

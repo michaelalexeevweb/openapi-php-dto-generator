@@ -292,6 +292,57 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * A REQUIRED nested object sent as `{}` — the validator says yes and the DTO has to be buildable.
+     *
+     * `validated()` builds its result out of the leaves it could extract, and an empty object has
+     * none, so Laravel drops the parent key entirely — even though the property has rules of its own
+     * and `present` passed on it. The generated hydrator read `$data['f']` straight, so the payload
+     * died AFTER validation had accepted it:
+     *
+     *     Warning: Undefined array key "f"
+     *     TypeError: ProbeF::fromValidated(): Argument #1 ($data) must be of type array, null given
+     *
+     * A 500 on a request the document allows, which is the worst shape this mode has: the rules and
+     * the hydrator disagreeing about the same payload. An empty list and an empty map both survive
+     * `validated()` — it is the object with declared `properties` that does not — so this is pinned
+     * next to them rather than alone.
+     */
+    public function testARequiredNestedObjectSentEmptyStillHydrates(): void
+    {
+        $fqcn = $this->generateProbe('required nested object sent empty', [
+            'type' => 'object',
+            'properties' => ['a' => ['type' => 'string']],
+        ]);
+
+        $validator = $this->validatorFactory()->make(['f' => []], call_user_func([$fqcn, 'rules']));
+        $this->assertFalse($validator->fails(), 'an empty object is a legal value for the property');
+
+        /** @var object{getF: callable} $dto */
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        $this->assertNotNull($dto->getF(), 'the nested DTO is built, empty');
+    }
+
+    /**
+     * The two shapes that always survived `validated()`, kept beside the one that did not — otherwise
+     * the fix above looks like it might have been needed for every container.
+     */
+    public function testARequiredEmptyListAndMapHydrate(): void
+    {
+        $fqcn = $this->generateProbe('required empty list', ['type' => 'array', 'items' => ['type' => 'string']]);
+        $validator = $this->validatorFactory()->make(['f' => []], call_user_func([$fqcn, 'rules']));
+        $this->assertFalse($validator->fails());
+        $this->assertSame([], call_user_func([$fqcn, 'fromValidated'], $validator->validated())->getF());
+
+        $mapFqcn = $this->generateProbe('required empty map', [
+            'type' => 'object',
+            'additionalProperties' => ['type' => 'string'],
+        ]);
+        $mapValidator = $this->validatorFactory()->make(['f' => []], call_user_func([$mapFqcn, 'rules']));
+        $this->assertFalse($mapValidator->fails());
+        $this->assertSame([], call_user_func([$mapFqcn, 'fromValidated'], $mapValidator->validated())->getF());
+    }
+
+    /**
      * The whole point of the mode: what the validator accepts, the DTO can be built from — the rules and
      * `fromValidated()` have to agree on the same payload.
      */

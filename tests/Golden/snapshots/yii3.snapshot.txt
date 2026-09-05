@@ -1,4 +1,4 @@
-# yii3 mode — 79 files, 26100 lines
+# yii3 mode — 79 files, 26142 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10221,11 +10221,18 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                 'type' => 'string',
                 'minLength' => 3,
             ],
-            'neverMatches' => [],
+            'forbiddenKey' => [
+                'not' => [],
+            ],
+            'neverMatches' => [
+                'not' => [],
+            ],
             'closedFirstSlot' => [
                 'type' => 'array',
                 'prefixItems' => [
-                    [],
+                    [
+                        'not' => [],
+                    ],
                     [
                         'type' => 'integer',
                     ],
@@ -10236,6 +10243,11 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                 'properties' => [
                     'trigger' => [
                         'type' => 'string',
+                    ],
+                ],
+                'dependentSchemas' => [
+                    'trigger' => [
+                        'not' => [],
                     ],
                 ],
             ],
@@ -10671,6 +10683,10 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
             }
+        }
+
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -11636,6 +11652,11 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
                 'type' => 'string',
             ],
         ],
+        'dependentSchemas' => [
+            'trigger' => [
+                'not' => [],
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -11821,7 +11842,28 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
             }
         }
 
+        if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
+                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
+            }
+        }
+
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+        }
+
         return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
     }
 
     private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool

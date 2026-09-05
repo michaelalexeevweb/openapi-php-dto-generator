@@ -957,7 +957,20 @@ trait RendersLaravelDto
                 $raw,
             ),
             $enumClass !== null => sprintf('%s::from(%s)', $this->shortClassName($enumClass), $raw),
-            $dtoClass !== null => $this->laravelNestedDtoExpression($dtoClass, $raw, $property['openApiName']),
+            $dtoClass !== null => $this->laravelNestedDtoExpression(
+                $dtoClass,
+                // `validated()` DROPS a key whose value is an empty OBJECT when the property has
+                // nested rules: Laravel builds its result from the leaves it could extract, and `{}`
+                // has none. The key WAS sent — `present` passed — so the faithful reconstruction is
+                // an empty array. Without it `Child::fromValidated(null)` was a TypeError on a
+                // payload the document allows, after the validator had already said yes. Only the
+                // required non-nullable path needs it; every other one is wrapped in an
+                // `($data[...] ?? null) === null` guard below, where absent must stay absent.
+                $property['required'] === true && $property['nullable'] !== true
+                    ? sprintf('(%s ?? [])', $raw)
+                    : $raw,
+                $property['openApiName'],
+            ),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) => sprintf(
                 'array_map(static fn(int|string $item): %1$s => %1$s::from($item), %2$s)',
                 $this->shortClassName($itemClass),
@@ -1298,6 +1311,16 @@ trait RendersLaravelDto
     {
         if ($constraints === []) {
             return ['consts' => '', 'methods' => '', 'imports' => []];
+        }
+
+        // This mode's literal is keyed by PROPERTY NAME — one schema per property, walked one at a
+        // time by `withValidator()` — where the other two hand the interpreter a single schema with a
+        // `properties` map inside it. So the boolean expansion has to be applied per entry: the
+        // shared one below descends by schema KEY and would read `containsFalse` as an unknown one.
+        foreach ($constraints as $property => $schema) {
+            if (is_array($schema)) {
+                $constraints[$property] = $this->expandBooleanSubschemasForInterpreter($schema);
+            }
         }
 
         // No enum/temporal normalization: the validator runs on the raw request payload, where those
