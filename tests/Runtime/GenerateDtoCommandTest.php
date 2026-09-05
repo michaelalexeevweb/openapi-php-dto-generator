@@ -1440,9 +1440,11 @@ final class GenerateDtoCommandTest extends TestCase
      * is the same collision the media types had until 2.15.30, avoided here because the status was in
      * the name all along; pinned now so it stays that way.
      *
-     * `default` is spelled as the document spells it — lowercase — giving `Jobsdefault` rather than
-     * `JobsDefault`. Pinned as it IS, not as it ought to look: changing it renames a class for every
-     * document that declares a default response, which is a decision, not a tidy-up.
+     * `default` reads as `JobsDefault` since 2.15.31; it used to read `Jobsdefault`, alone among its
+     * siblings, because the name normaliser finds segment boundaries at non-alphanumerics or a
+     * lower-to-upper camel step and `Jobsdefault` has neither. A wildcard range keeps the spelling it
+     * always had — `4XX` already carries a digit for the normaliser to split on — so only `default`,
+     * the one purely alphabetic status OpenAPI defines, moved.
      */
     public function testEachResponseStatusGetsItsOwnClass(): void
     {
@@ -1469,7 +1471,46 @@ final class GenerateDtoCommandTest extends TestCase
 
         $this->assertStringContainsString('$accepted', (string)file_get_contents($this->outputDirectory . '/Jobs200.php'));
         $this->assertStringContainsString('$reason', (string)file_get_contents($this->outputDirectory . '/Jobs404.php'));
-        $this->assertStringContainsString('$message', (string)file_get_contents($this->outputDirectory . '/Jobsdefault.php'));
+        // Asserted on the CLASS DECLARATION, not the file name: macOS is case-insensitive, so
+        // `Jobsdefault.php` and `JobsDefault.php` are the same file there and a filename assertion
+        // would pass on CI and prove nothing locally.
+        $defaultClass = (string)file_get_contents($this->outputDirectory . '/JobsDefault.php');
+        $this->assertStringContainsString('$message', $defaultClass);
+        $this->assertStringContainsString('final class JobsDefault ', $defaultClass);
+        $this->assertStringNotContainsString('class Jobsdefault ', $defaultClass);
+    }
+
+    /**
+     * A wildcard status range keeps the name it has always had.
+     *
+     * Pinned beside the `default` change, because the fix that pascalised `default` could just as
+     * easily have rewritten `Jobs4Xx` into `Jobs4xx` — the boundary it inserts is applied only to a
+     * purely alphabetic status for exactly that reason.
+     */
+    public function testAWildcardStatusRangeKeepsItsName(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/jobs' => ['get' => [
+                'responses' => ['4XX' => [
+                    'description' => 'client error',
+                    'content' => ['application/json' => ['schema' => [
+                        'type' => 'object',
+                        'required' => ['reason'],
+                        'properties' => ['reason' => ['type' => 'string']],
+                    ]]],
+                ]],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'WildcardStatusNs');
+
+        $this->assertStringContainsString(
+            'final class Jobs4Xx ',
+            (string)file_get_contents($this->outputDirectory . '/Jobs4Xx.php'),
+        );
     }
 
     /**

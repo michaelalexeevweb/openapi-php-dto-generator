@@ -5990,7 +5990,8 @@ final class GenerateDtoCommand extends Command
                         $ownerKey = strtoupper($method) . ' ' . $path;
                         $schemaName = $this->uniqueEndpointSchemaName(
                             path: $this->pathItemNamingKey($path),
-                            tail: (string)$statusCode . (is_string($mediaType) ? ($mediaTypeSuffixes[$mediaType] ?? '') : ''),
+                            tail: $this->responseNameTail((string)$statusCode)
+                                . (is_string($mediaType) ? ($mediaTypeSuffixes[$mediaType] ?? '') : ''),
                             ownerKey: $ownerKey,
                             owners: $inlineOwners,
                         );
@@ -6258,6 +6259,24 @@ final class GenerateDtoCommand extends Command
         }
 
         return $candidate;
+    }
+
+    /**
+     * The name part a response status contributes: `200` stays `200`, `default` becomes `Default`.
+     *
+     * `normalizeClassName()` lowercases each segment and capitalises its first letter, and it finds
+     * segment boundaries at non-alphanumerics or a lower-to-upper camel step. `Jobsdefault` has
+     * neither, so the word sat there in lowercase while every numeric sibling read as `Jobs200`. The
+     * underscore is not part of any emitted name — it exists only to give the normaliser the boundary
+     * it needs, and it is gone by the time a class name is built.
+     *
+     * Applied ONLY to a purely alphabetic status, which in OpenAPI means `default` and nothing else.
+     * A wildcard range like `4XX` is deliberately untouched: it has a digit, so the normaliser already
+     * splits it, and adding a boundary would rewrite `Jobs4Xx` into `Jobs4xx` — a rename for no gain.
+     */
+    private function responseNameTail(string $statusCode): string
+    {
+        return ctype_alpha($statusCode) ? '_' . $statusCode : $statusCode;
     }
 
     private function normalizePathForSchemaName(string $path): string

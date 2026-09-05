@@ -526,6 +526,19 @@ paths:
                 properties:
                   reason:
                     type: string
+        # The one purely alphabetic status OpenAPI defines, and the reason it is here: it used to read
+        # `ApiTestJobsdefault` while every numeric sibling read `ApiTestJobs200`.
+        default:
+          description: test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
 components:
   parameters:
     DogId:

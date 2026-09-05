@@ -3,6 +3,42 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.31 — 2026-09-05
+
+- the `default` response class is `JobsDefault`, not `Jobsdefault`
+- non-Latin property names are documented as unsupported
+
+**A `default` response produced a class name with a lowercase word in it.** Every numeric sibling read
+`Jobs200`, `Jobs404` — and the default one read `Jobsdefault`. The name normaliser lowercases each
+segment and capitalises its first letter, finding segment boundaries at non-alphanumerics or a
+lower-to-upper camel step; `Jobsdefault` offers neither, so the word stayed as typed.
+
+**If any document of yours declares `responses.default`, that class is renamed.** `Jobsdefault`
+becomes `JobsDefault`, and an import of the old spelling has to be updated. On a case-insensitive
+filesystem (macOS by default) the FILE is the same either way, so the change shows up as a class name,
+not a missing file — which is also why the test for it asserts on the class declaration rather than
+the file name.
+
+A wildcard range keeps the spelling it always had: `4XX` already carries a digit for the normaliser to
+split on, so `Jobs4Xx` is untouched. The boundary is inserted only for a purely alphabetic status,
+which in OpenAPI means `default` and nothing else — pinned from both sides.
+
+**Non-Latin property names are documented rather than fixed.** A property written in Cyrillic, Greek
+or CJK has nothing to normalise into and collapses to `value`, with the wire name carried in
+`$aliases`. One per schema works; two collide, and generation stops with
+`Property name collision in X: "имя" and "фамилия" normalize to "$value"` rather than emitting a class
+that silently holds one of them. That behaviour is unchanged and correct — it was simply written down
+nowhere, so a reader met it as a surprise. `README.md` now says so, alongside what IS handled:
+`kebab-case`, `dot.name`, `UPPER`, `123numeric`, `with space`, `$dollar` and PHP's reserved words all
+become clean identifiers.
+
+Also in this release, with no behaviour change: webhooks, callbacks and per-status response classes
+have tests and corpus entries at last. All three were generated correctly and pinned by nothing —
+deleting the support would have left the suite green. The audit that found them had to probe the
+generator by hand to learn they worked.
+
+Gates: 1772 tests (up from 1768), phpstan / phpcs / cs-fixer clean.
+
 ## 2.15.30 — 2026-09-05
 
 - an integer past the 64-bit range is refused, not wrapped into its own negative

@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.30
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.31
 ```
 
 ---
@@ -244,6 +244,19 @@ dependencies are in its guide.
 It generates the **server** side: the classes an incoming request becomes, and the checks that request must
 pass. It does not generate an HTTP client or an SDK for calling someone else's API — if that is what you
 need, JanePHP and OpenAPI Generator do it and this does not.
+
+**Property names outside the Latin alphabet do not survive the trip to PHP.** A name is normalised into a
+PHP identifier, and one written in Cyrillic, Greek or CJK has nothing to normalise into, so it collapses to
+`value` — `юникод` becomes `$value` with `$aliases['value'] = 'юникод'` carrying the wire name. One such
+property per schema works; two collide, and generation stops rather than emitting a class that silently
+holds one of them:
+
+```
+[ERROR] Property name collision in TwoUnicode: "имя" and "фамилия" normalize to "$value".
+```
+
+Punctuation and casing ARE handled — `kebab-case`, `dot.name`, `UPPER`, `123numeric`, `with space`,
+`$dollar` and PHP's own reserved words all become clean identifiers with an alias back to the original.
 
 ## Upgrading
 
