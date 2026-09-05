@@ -529,7 +529,10 @@ final class GenerateDtoCommand extends Command
         }
 
         $data = $this->parseSpecFile($filePath);
-        if (!is_array($data)) {
+        if (!is_array($data) || (array_is_list($data) && $data !== [])) {
+            // A LIST root is caught here and nowhere else: every OpenAPI document is a mapping, so a
+            // file that parsed into a sequence is not one — and it used to reach the end reporting
+            // `Generated 0 DTO class(es)`, which is a success message for a file nobody could read.
             throw new RuntimeException('OpenAPI root must be an object/array.');
         }
         $data = $this->foldJsonSchemaDefs($data);
@@ -666,6 +669,11 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach ($schemas as $schemaName => $schemaDefinition) {
+            // A component name of digits — `0`, `2024` — is legal by the specification's own key
+            // pattern, and every parser hands such a key back as an INT. It reached
+            // `schemaClassName(string $schemaName)` unconverted and killed the run with an uncaught
+            // TypeError and a stack trace, on a document that was never wrong.
+            $schemaName = (string)$schemaName;
             if (!is_array($schemaDefinition)) {
                 continue;
             }
@@ -1005,6 +1013,11 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach ($schemas as $schemaName => $schemaDefinition) {
+            // A component name of digits — `0`, `2024` — is legal by the specification's own key
+            // pattern, and every parser hands such a key back as an INT. It reached
+            // `schemaClassName(string $schemaName)` unconverted and killed the run with an uncaught
+            // TypeError and a stack trace, on a document that was never wrong.
+            $schemaName = (string)$schemaName;
             if (!is_array($schemaDefinition)) {
                 continue;
             }
@@ -1080,6 +1093,108 @@ final class GenerateDtoCommand extends Command
         }
     }
 
+    /** The seven type names JSON Schema and OpenAPI define between them. `null` is 3.1's. */
+    private const array KNOWN_SCHEMA_TYPES = [
+        'string',
+        'number',
+        'integer',
+        'boolean',
+        'array',
+        'object',
+        'null',
+    ];
+
+    /** Keys whose value is a single subschema. */
+    private const array SUBSCHEMA_KEYS = [
+        'items',
+        'contains',
+        'not',
+        'propertyNames',
+        'if',
+        'then',
+        'else',
+        'contentSchema',
+        'additionalProperties',
+        'unevaluatedItems',
+        'unevaluatedProperties',
+    ];
+
+    /** Keys whose value is a MAP of subschemas. */
+    private const array SUBSCHEMA_MAP_KEYS = [
+        'properties',
+        'patternProperties',
+        'dependentSchemas',
+        '$defs',
+    ];
+
+    /** Keys whose value is a LIST of subschemas. */
+    private const array SUBSCHEMA_LIST_KEYS = [
+        'allOf',
+        'anyOf',
+        'oneOf',
+        'prefixItems',
+    ];
+
+    /**
+     * Every `type` a schema declares has to be one JSON Schema defines. A typo is not a subtle one.
+     *
+     * `type: strng` cost the property its checking, twice over and silently: the emitted property
+     * became `mixed` instead of `string`, and the validator — which matches a value against a type it
+     * recognises — accepted every value there is. Neighbouring keywords stayed, so `minLength` still
+     * fired when the value happened to be a string and never otherwise. A document with one letter
+     * missing validated nothing and said nothing.
+     *
+     * The walk visits SCHEMA POSITIONS only, never values. That distinction is the whole reason it is
+     * written out by key rather than recursing over everything: `example: {type: banana}` is DATA — a
+     * sample payload with a field called `type` — and a walker that could not tell the difference
+     * would refuse valid documents.
+     *
+     * 3.1 allows a list (`type: [string, 'null']`), so each member is checked. `null` is accepted
+     * whatever the document's version claims: refusing it in a 3.0 document would reject something no
+     * parser or reader would misunderstand, and this is a check for typos, not for version policing.
+     *
+     * @param array<mixed> $schema
+     */
+    private function assertDeclaredTypesAreKnown(array $schema, string $ownerClassName): void
+    {
+        $type = $schema['type'] ?? null;
+        if ($type !== null) {
+            foreach (is_array($type) ? $type : [$type] as $member) {
+                if (is_string($member) && in_array($member, self::KNOWN_SCHEMA_TYPES, true)) {
+                    continue;
+                }
+
+                throw new RuntimeException(sprintf(
+                    'Schema "%s" declares type %s, which is not a JSON Schema type. Allowed: %s. '
+                    . 'An unrecognised type is dropped, leaving the value unchecked.',
+                    $ownerClassName,
+                    is_string($member) ? '"' . $member . '"' : get_debug_type($member),
+                    implode(', ', self::KNOWN_SCHEMA_TYPES),
+                ));
+            }
+        }
+
+        foreach (self::SUBSCHEMA_KEYS as $key) {
+            $child = $schema[$key] ?? null;
+            if (is_array($child)) {
+                $this->assertDeclaredTypesAreKnown($child, $ownerClassName);
+            }
+        }
+
+        foreach ([...self::SUBSCHEMA_MAP_KEYS, ...self::SUBSCHEMA_LIST_KEYS] as $key) {
+            $group = $schema[$key] ?? null;
+            if (!is_array($group)) {
+                continue;
+            }
+
+            foreach ($group as $child) {
+                if (is_array($child)) {
+                    $this->assertDeclaredTypesAreKnown($child, $ownerClassName);
+                }
+            }
+        }
+    }
+
     /**
      * @param array<string, mixed> $schemaDefinition
      */
@@ -1091,6 +1206,8 @@ final class GenerateDtoCommand extends Command
         // Keep the raw definition (including enums, which otherwise return early below) so a
         // referencing property can later read keywords declared on the target, e.g. `default`.
         $this->rawSchemasByClass[$className] = $schemaDefinition;
+
+        $this->assertDeclaredTypesAreKnown($schemaDefinition, $className);
 
         // `deprecated` on the schema ITSELF, which until 2.15.33 reached nothing: the keyword was
         // honoured on a property and dropped on the class the property belonged to. An operation
@@ -2171,14 +2288,95 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A node the specification says is an object has to be one, and a scalar there stops generation.
+     *
+     * `paths: "none"`, `components: {schemas: 5}`, `properties: 7` — each was skipped in silence and
+     * the run ended with `[OK] Generated 0 DTO class(es)` and exit 0. That is a SUCCESS message for a
+     * document nobody could read: a green CI, an empty output directory, and no sentence connecting
+     * the two.
+     *
+     * Absent is fine — `paths` is optional in 3.1, and an empty object is a legitimate way to say
+     * "nothing here". Only a value of the wrong KIND is refused.
+     *
+     * Deliberately NOT a "must be a map, not a list" check. A property named with digits comes back
+     * from any parser as an integer key, so `properties: {0: …, 1: …}` is a PHP list by shape while
+     * being a perfectly good object in the document. Only the root is checked for that, where a
+     * sequence cannot be right under any reading.
+     */
+    private function assertDocumentNodeIsAnObject(mixed $node, string $path): void
+    {
+        if ($node === null || is_array($node)) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            'The document declares `%s` as %s; it must be an object. A value of the wrong kind is '
+            . 'read as nothing at all, and generation would report success having produced nothing.',
+            $path,
+            get_debug_type($node),
+        ));
+    }
+
+    /**
+     * The document's `components.schemas`, keyed as the parser handed them over.
+     *
+     * `array-key`, not `string`: a component name of digits — `0`, `2024` — is legal by the
+     * specification's own key pattern and comes back as an INT from YAML and JSON alike. Promising
+     * `string` here was how such a name reached `schemaClassName(string …)` and killed the run with
+     * an uncaught TypeError, on a document that was never wrong.
+     *
      * @param array<mixed> $openApi
-     * @return array<string, mixed>
+     * @return array<array-key, mixed>
      */
     private function extractSchemas(array $openApi): array
     {
         $schemas = $openApi['components']['schemas'] ?? [];
+        $this->assertDocumentNodeIsAnObject($schemas, 'components.schemas');
 
         return is_array($schemas) ? $schemas : [];
+    }
+
+    /**
+     * A schema's `required` is a list of property NAMES, and anything else is a typo worth stopping for.
+     *
+     * `foreach` over a non-array in PHP does nothing at all, so `required: "s"` — one missing pair of
+     * brackets, and YAML invites it — produced a class where `s` was OPTIONAL. The document said the
+     * field must be sent, the emitted constructor said it need not be, and nothing anywhere said the
+     * two disagreed. `required: true` is the same slip made by someone thinking of a Parameter Object,
+     * where `required` IS a boolean.
+     *
+     * The empty list stays legal: a schema may declare `required: []`, and documents do.
+     *
+     * Only a SCHEMA's `required` reaches here. The Parameter and Header Objects have their own
+     * boolean field of that name, read elsewhere, and it is untouched by this.
+     */
+    private function assertSchemaRequiredIsAListOfNames(mixed $required, string $ownerClassName): void
+    {
+        if (!is_array($required)) {
+            throw new RuntimeException(sprintf(
+                'Schema "%s" declares `required` as %s; it must be a list of property names. A bare '
+                . '"name" is read as no requirement at all, which silently makes the property optional.',
+                $ownerClassName,
+                get_debug_type($required),
+            ));
+        }
+
+        foreach ($required as $name) {
+            // `int` belongs here as much as `string`: a property NAMED with digits (`"1": {...}`)
+            // comes back from a YAML or JSON parser as an integer key, and the document listing it
+            // under `required` is equally integer. That shape is supported and tested — measured the
+            // moment this check refused it. What is left to reject is a value that cannot name a
+            // property at all: a boolean, a null, a nested structure.
+            if (is_string($name) || is_int($name)) {
+                continue;
+            }
+
+            throw new RuntimeException(sprintf(
+                'Schema "%s" lists %s in `required`; every entry must name a property.',
+                $ownerClassName,
+                get_debug_type($name),
+            ));
+        }
     }
 
     /**
@@ -2190,9 +2388,12 @@ final class GenerateDtoCommand extends Command
         $properties = $schemaDefinition['properties'] ?? [];
         $required = $schemaDefinition['required'] ?? [];
 
+        $this->assertDocumentNodeIsAnObject($properties, sprintf('%s.properties', $ownerClassName));
         if (!is_array($properties)) {
             return [];
         }
+
+        $this->assertSchemaRequiredIsAListOfNames($required, $ownerClassName);
 
         $requiredMap = [];
         foreach ($required as $requiredProperty) {
@@ -5927,6 +6128,7 @@ final class GenerateDtoCommand extends Command
 
         foreach (['paths', 'webhooks'] as $section) {
             $group = $openApi[$section] ?? [];
+            $this->assertDocumentNodeIsAnObject($group, $section);
             if (!is_array($group)) {
                 continue;
             }
@@ -7133,6 +7335,7 @@ final class GenerateDtoCommand extends Command
                     pathLevel: $pathLevelParameters,
                     operationLevel: $operationParameters,
                 );
+                $this->warnAboutPathParameterMismatches($path, $resolvedParameters);
                 $pathAndQueryParameters = $this->filterPathAndQueryParameters($resolvedParameters);
 
                 if ($pathAndQueryParameters === []) {
@@ -7327,6 +7530,87 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Reports a path template and its `in: path` parameters disagreeing, and a path parameter that
+     * says it is optional.
+     *
+     * None of this changes what is emitted, and that is on purpose. A path parameter is required by
+     * the specification whether or not the document remembers to say so, and emitting a nullable one
+     * from a careless `required: false` would make the DTO lie in the other direction. What was
+     * missing is the sentence.
+     *
+     * The shape that prompted it:
+     *
+     *     /warehouse/{shelfId}/{?cursor}
+     *       - { in: path, name: cursor, required: false }
+     *
+     * `{?cursor}` is not OpenAPI path templating — that spelling is RFC 6570 query expansion, which
+     * `paths` does not use — so the placeholder is literally named `?cursor` and no router will ever
+     * fill it. Meanwhile `cursor` was emitted as a REQUIRED path property, so every request to that
+     * endpoint would fail on a parameter that cannot arrive. Generation said nothing; the failure
+     * waited for the first call.
+     *
+     * Three separate sentences, because the fixes differ: a placeholder nobody declared, a parameter
+     * that is in no placeholder, and a path parameter marked optional.
+     *
+     * @param array<int, array<string, mixed>> $parameters
+     */
+    private function warnAboutPathParameterMismatches(string $path, array $parameters): void
+    {
+        $declared = [];
+        foreach ($parameters as $parameter) {
+            if (($parameter['in'] ?? null) !== 'path') {
+                continue;
+            }
+
+            $name = $parameter['name'] ?? null;
+            if (!is_string($name)) {
+                continue;
+            }
+
+            $declared[$name] = true;
+
+            if (($parameter['required'] ?? null) !== true) {
+                $this->addGenerationWarning(sprintf(
+                    'Path parameter "%s" on "%s" is not marked `required: true`. A path parameter is '
+                    . 'always required, so the generated property is mandatory regardless — the '
+                    . 'document and the code disagree only on paper.',
+                    $name,
+                    $path,
+                ));
+            }
+        }
+
+        $placeholders = $this->pathParameterNames($path);
+        foreach ($placeholders as $placeholder) {
+            if (array_key_exists($placeholder, $declared)) {
+                continue;
+            }
+
+            $this->addGenerationWarning(sprintf(
+                'The path "%s" contains the placeholder {%s}, which no `in: path` parameter declares. '
+                . 'OpenAPI path templating is {name} — a spelling such as {?name} is RFC 6570 query '
+                . 'expansion and is not read here, so nothing will ever fill it.',
+                $path,
+                $placeholder,
+            ));
+        }
+
+        foreach (array_keys($declared) as $name) {
+            if (in_array($name, $placeholders, true)) {
+                continue;
+            }
+
+            $this->addGenerationWarning(sprintf(
+                'Parameter "%s" on "%s" is declared `in: path`, but the path template has no {%s}. '
+                . 'It is emitted as a required property that no request can supply.',
+                $name,
+                $path,
+                $name,
+            ));
+        }
+    }
+
+    /**
      * Extracts the `{placeholder}` parameter names from a path, in order.
      *
      * @return array<int, string>
@@ -7390,6 +7674,13 @@ final class GenerateDtoCommand extends Command
      * on the response side or to hand-written code. What was missing is the sentence saying the
      * runtime will not fill it.
      */
+    private function addGenerationWarning(string $warning): void
+    {
+        if (!in_array($warning, $this->generationWarnings, true)) {
+            $this->generationWarnings[] = $warning;
+        }
+    }
+
     private function warnAboutUndecodableParameterContent(
         string $name,
         ?string $mediaType,

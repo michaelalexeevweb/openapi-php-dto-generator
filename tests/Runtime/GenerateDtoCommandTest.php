@@ -1361,6 +1361,312 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * A path template and its `in: path` parameters disagreeing is reported, from all three angles.
+     *
+     * The shape that prompted it:
+     *
+     *     /warehouse/{shelfId}/{?cursor}
+     *       - { in: path, name: cursor, required: false }
+     *
+     * `{?cursor}` is not OpenAPI path templating — that spelling is RFC 6570 query expansion, which
+     * `paths` does not use — so the placeholder is literally named `?cursor` and no router fills it.
+     * Meanwhile `cursor` was emitted as a REQUIRED path property, because a path parameter is
+     * required whether or not the document says so. Every request to that endpoint would fail on a
+     * parameter that cannot arrive, and generation said nothing at all.
+     *
+     * Nothing about the emitted class changes: making the property nullable from a careless
+     * `required: false` would have the DTO lie in the other direction. Only the silence is fixed.
+     *
+     * @param array<int, array<string, mixed>> $parameters
+     */
+    #[DataProvider('pathParameterMismatchProvider')]
+    public function testAPathTemplateDisagreeingWithItsParametersIsReported(
+        string $path,
+        array $parameters,
+        int $expectedWarnings,
+        ?string $expectedText,
+    ): void {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [$path => ['get' => [
+                'parameters' => $parameters,
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'PathMismatchNs' . md5($path . serialize($parameters)));
+
+        $warnings = $this->generator->getGenerationWarnings();
+        $this->assertCount($expectedWarnings, $warnings, implode(' | ', $warnings));
+
+        if ($expectedText !== null) {
+            $this->assertStringContainsString($expectedText, (string)reset($warnings));
+        }
+    }
+
+    /**
+     * @return array<string, array{string, array<int, array<string, mixed>>, int, ?string}>
+     */
+    public static function pathParameterMismatchProvider(): array
+    {
+        $good = ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']];
+
+        return [
+            'a well-formed path says nothing' => ['/a/{id}', [$good], 0, null],
+            'a path with no parameters says nothing' => [
+                '/a',
+                [['in' => 'query', 'name' => 'q', 'schema' => ['type' => 'string']]],
+                0,
+                null,
+            ],
+            'a path parameter without required: true' => [
+                '/a/{id}',
+                [['in' => 'path', 'name' => 'id', 'schema' => ['type' => 'integer']]],
+                1,
+                'is not marked `required: true`',
+            ],
+            'required: false is the same slip' => [
+                '/a/{id}',
+                [['in' => 'path', 'name' => 'id', 'required' => false, 'schema' => ['type' => 'integer']]],
+                1,
+                'is not marked `required: true`',
+            ],
+            'a placeholder nobody declared' => [
+                '/a/{id}/{extra}',
+                [$good],
+                1,
+                'contains the placeholder {extra}',
+            ],
+            'a parameter in no placeholder' => [
+                '/a',
+                [$good],
+                1,
+                'the path template has no {id}',
+            ],
+            // The shape that prompted all three: RFC 6570 query expansion written into a path key.
+            'the {?name} spelling reports from both sides' => [
+                '/warehouse/{shelfId}/{?cursor}',
+                [
+                    ['in' => 'path', 'name' => 'shelfId', 'required' => true, 'schema' => ['type' => 'string']],
+                    ['in' => 'path', 'name' => 'cursor', 'required' => false, 'schema' => ['type' => 'integer']],
+                ],
+                3,
+                'is not marked `required: true`',
+            ],
+        ];
+    }
+
+    /**
+     * A `type` a schema declares must be one JSON Schema defines; a typo stops generation.
+     *
+     * `type: strng` cost the property its checking twice over, silently. The emitted property became
+     * `mixed` instead of `string`, and the validator — which matches a value against a type it
+     * RECOGNISES — accepted everything: 42, true, an array. Neighbouring keywords stayed, so
+     * `minLength` fired when the value happened to be a string and never otherwise. One missing
+     * letter, no validation, no message.
+     *
+     * Checked in every position a subschema can sit, because a typo is as likely inside `items` or a
+     * `oneOf` branch as at the top.
+     *
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('unknownTypeProvider')]
+    public function testAnUnknownTypeStopsGeneration(array $schema, string $expected): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['A' => $schema]],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage($expected);
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'UnknownTypeNs');
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string}>
+     */
+    public static function unknownTypeProvider(): array
+    {
+        return [
+            'on the schema itself' => [
+                ['type' => 'objekt'],
+                'declares type "objekt"',
+            ],
+            'on a property' => [
+                ['type' => 'object', 'properties' => ['s' => ['type' => 'strng']]],
+                'declares type "strng"',
+            ],
+            'inside items' => [
+                ['type' => 'object', 'properties' => ['s' => ['type' => 'array', 'items' => ['type' => 'sting']]]],
+                'declares type "sting"',
+            ],
+            'inside a oneOf branch' => [
+                ['type' => 'object', 'properties' => ['s' => ['oneOf' => [['type' => 'string'], ['type' => 'bolean']]]]],
+                'declares type "bolean"',
+            ],
+            'inside additionalProperties' => [
+                ['type' => 'object', 'additionalProperties' => ['type' => 'interger']],
+                'declares type "interger"',
+            ],
+            'a list member' => [
+                ['type' => 'object', 'properties' => ['s' => ['type' => ['string', 'nul']]]],
+                'declares type "nul"',
+            ],
+            'a non-string type' => [
+                ['type' => 'object', 'properties' => ['s' => ['type' => 7]]],
+                'declares type int',
+            ],
+        ];
+    }
+
+    /**
+     * What the type check must NOT refuse, including the one that would be easy to get wrong.
+     *
+     * The 3.1 list form is legal, and so is `null` inside it. `null` is accepted whatever version the
+     * document claims: refusing it in a 3.0 document would reject something no reader would
+     * misunderstand, and this is a check for typos rather than version policing.
+     *
+     * The last case is the reason the walk is written out by key instead of recursing over
+     * everything: `example: {type: banana}` is DATA — a sample payload with a field called `type` —
+     * and a walker that could not tell a schema position from a value would refuse a valid document.
+     *
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('acceptedTypeProvider')]
+    public function testTheTypeCheckAcceptsEveryLegalForm(array $schema): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['A' => $schema]],
+        ];
+
+        $count = $this->generator->generateFromArray($openApi, $this->outputDirectory, 'GoodTypeNs' . md5(serialize($schema)));
+
+        $this->assertGreaterThan(0, $count);
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function acceptedTypeProvider(): array
+    {
+        return [
+            'every scalar type' => [['type' => 'object', 'properties' => [
+                'a' => ['type' => 'string'],
+                'b' => ['type' => 'number'],
+                'c' => ['type' => 'integer'],
+                'd' => ['type' => 'boolean'],
+                'e' => ['type' => 'array', 'items' => ['type' => 'string']],
+                'f' => ['type' => 'object'],
+            ]]],
+            'the 3.1 list form' => [['type' => 'object', 'properties' => ['s' => ['type' => ['string', 'null']]]]],
+            'a schema with no type at all' => [['type' => 'object', 'properties' => ['s' => []]]],
+            // `type` here is a field of a sample payload, not a schema keyword.
+            'a type inside an example' => [['type' => 'object', 'properties' => [
+                's' => ['type' => 'object', 'example' => ['type' => 'banana']],
+            ]]],
+            'a type inside a default' => [['type' => 'object', 'properties' => [
+                's' => ['type' => 'object', 'default' => ['type' => 'banana']],
+            ]]],
+        ];
+    }
+
+    /**
+     * A schema's `required` must be a list of property names, and a typo stops generation.
+     *
+     * `foreach` over a non-array does nothing at all in PHP, so `required: "s"` — one missing pair of
+     * brackets, which YAML invites — built a class where `s` was OPTIONAL. The document said the
+     * field must be sent, the constructor said it need not be, and nothing reported the disagreement:
+     * `[OK] Generated 1 DTO class(es)`, and a requirement quietly gone.
+     *
+     * `required: true` is the same slip made while thinking of a Parameter Object, where `required`
+     * genuinely IS a boolean. That field is read elsewhere and is untouched by this check.
+     */
+    #[DataProvider('malformedRequiredProvider')]
+    public function testAMalformedRequiredStopsGeneration(mixed $required, string $expected): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['A' => [
+                'type' => 'object',
+                'required' => $required,
+                'properties' => ['s' => ['type' => 'string']],
+            ]]],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage($expected);
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'BadRequiredNs');
+    }
+
+    /**
+     * @return array<string, array{mixed, string}>
+     */
+    public static function malformedRequiredProvider(): array
+    {
+        return [
+            'a bare name instead of a list' => ['s', 'declares `required` as string'],
+            'the Parameter Object boolean' => [true, 'declares `required` as bool'],
+            'a map instead of a list' => [['s' => true], 'lists bool in `required`'],
+            'a nested list' => [[['s']], 'lists array in `required`'],
+            'a null entry' => [['s', null], 'lists null in `required`'],
+        ];
+    }
+
+    /**
+     * What `required` is allowed to be, so the check cannot creep.
+     *
+     * The empty list is legal and documents write it. An INTEGER entry is legal too, and that is not
+     * a leniency: a property named with digits (`"1": {…}`) comes back from a YAML or JSON parser as
+     * an integer key, and the document listing it under `required` is equally integer. Refusing those
+     * broke an existing test the moment the check was first written.
+     *
+     * @param array<int, mixed> $required
+     */
+    #[DataProvider('validRequiredProvider')]
+    public function testAWellFormedRequiredGenerates(array $required, array $properties, string $expectedProperty): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['A' => [
+                'type' => 'object',
+                'required' => $required,
+                'properties' => $properties,
+            ]]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'GoodRequiredNs' . md5(serialize($required)));
+
+        $this->assertStringContainsString(
+            $expectedProperty,
+            (string)file_get_contents($this->outputDirectory . '/A.php'),
+        );
+    }
+
+    /**
+     * @return array<string, array{array<int, mixed>, array<mixed, mixed>, string}>
+     */
+    public static function validRequiredProvider(): array
+    {
+        return [
+            'a name' => [['s'], ['s' => ['type' => 'string']], 'readonly string $s'],
+            // Nothing required: the property is emitted, optional.
+            'the empty list' => [[], ['s' => ['type' => 'string']], '$s = UnsetValue::UNSET'],
+            // A digit-named property, which every parser hands over as an integer key.
+            'an integer name' => [[1], [1 => ['type' => 'string']], 'readonly string $value1'],
+        ];
+    }
+
+    /**
      * Two parameters may share a NAME when they sit in different places, and both survive.
      *
      * "A unique parameter is defined by a combination of a name and location" — so `id` in the path

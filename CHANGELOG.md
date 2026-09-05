@@ -3,6 +3,90 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.35 — 2026-09-05
+
+- a malformed `required` stops generation instead of dropping the requirement
+- an unknown `type` stops generation instead of dropping the checking
+- a document node of the wrong kind stops generation instead of reporting success
+- a schema named with digits no longer crashes the generator
+- a path template disagreeing with its parameters is reported
+
+**Read this before upgrading: three documents that generate today will start failing.** All three are
+documents where the emitted code already disagrees with what was written; the failure is the sentence
+that was missing, not a new restriction.
+
+**`required` written as anything but a list silently dropped the requirement.** `foreach` over a
+non-array does nothing at all in PHP, so one missing pair of brackets built a class where the property
+was OPTIONAL:
+
+```yaml
+A: { type: object, required: "s", properties: { s: { type: string } } }
+#                  ^^^ a bare name, not a list
+```
+
+```php
+// before: [OK] Generated 1 DTO class(es)
+private readonly string|UnsetValue|null $s = UnsetValue::UNSET,
+```
+
+The document said the field must be sent, the constructor said it need not be, and nothing reported
+the disagreement. `required: true` is the same slip made while thinking of a Parameter Object, where
+`required` genuinely IS a boolean — that field is read elsewhere and is untouched.
+
+An INTEGER entry stays legal, and that is not a leniency: a property named with digits comes back from
+any parser as an integer key, and the document listing it under `required` is equally integer.
+
+**An unknown `type` silently dropped the checking, twice over.** `type: strng` emitted `mixed` instead
+of `string`, and the validator — which matches a value against a type it RECOGNISES — accepted
+everything: 42, true, an array. Neighbouring keywords stayed, so `minLength` fired when the value
+happened to be a string and never otherwise. One missing letter, no validation, no message.
+
+Checked in every position a subschema can sit, since a typo is as likely inside `items` or a `oneOf`
+branch as at the top. The walk visits SCHEMA POSITIONS only, written out by key rather than recursing
+over everything — `example: {type: banana}` is DATA, a sample payload with a field called `type`, and
+a walker that could not tell the difference would refuse valid documents. The 3.1 list form
+(`type: [string, 'null']`) is checked member by member, and `null` is accepted whatever version the
+document claims: this is a check for typos, not for version policing.
+
+**A node of the wrong kind reported success.** `paths: "none"`, `components: {schemas: 5}`,
+`properties: 7`, or a root that parsed into a sequence — each was skipped in silence and the run ended
+with `[OK] Generated 0 DTO class(es)` and exit 0. A green CI, an empty output directory, and no
+sentence connecting the two. Absent is still fine (`paths` is optional in 3.1) and so is an empty
+object; only a value of the wrong kind is refused.
+
+Deliberately NOT a "must be a map, not a list" check, except at the root: a property named with digits
+is a PHP list by shape while being a perfectly good object in the document.
+
+**A schema named with digits crashed the generator.** `components: {schemas: {0: {...}}}` is legal by
+the specification's own key pattern, and every parser hands such a key back as an INT. It reached
+`schemaClassName(string …)` unconverted and killed the run with an uncaught `TypeError` and a stack
+trace, on a document that was never wrong. The docblock promising `array<string, mixed>` was the lie
+that hid it; it says `array-key` now.
+
+**A path template disagreeing with its parameters is reported, from three angles.** The shape that
+prompted it:
+
+```yaml
+/warehouse/{shelfId}/{?cursor}:
+  get:
+    parameters:
+      - { in: path, name: cursor, required: false }
+```
+
+`{?cursor}` is not OpenAPI path templating — that spelling is RFC 6570 query expansion, which `paths`
+does not use — so the placeholder is literally named `?cursor` and no router will ever fill it.
+Meanwhile `cursor` was emitted as a REQUIRED path property, because a path parameter is required
+whether or not the document remembers to say so. Every request to that endpoint would fail on a
+parameter that cannot arrive, and generation said nothing.
+
+Three separate sentences, because the fixes differ: a placeholder nobody declared, a parameter that is
+in no placeholder, and a path parameter marked optional. **Nothing about the emitted class changes** —
+making the property nullable from a careless `required: false` would have the DTO lie in the other
+direction. Only the silence is fixed. A well-formed path says nothing at all, which the whole suite
+confirms: 1820 tests, not one false warning.
+
+Gates: 1820 tests (up from 1793), phpstan / phpcs / cs-fixer clean, snapshots unchanged.
+
 ## 2.15.34 — 2026-09-05
 
 - two parameters sharing a name in different locations both survive

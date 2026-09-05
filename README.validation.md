@@ -46,6 +46,11 @@ A few behaviours worth knowing when validating against the schema:
   for a nullable reference in 3.0, the ecosystem's tools read it the same way, and obeying the letter
   would quietly change the type of a property thousands of documents describe correctly. In 3.1 the
   siblings are permitted by the specification itself, so there the behaviour needs no defence.
+- **A malformed `required` or an unknown `type` stops generation.** `required` must be a list of
+  property names — written as a bare string it used to drop the requirement in silence, leaving the
+  property optional — and a `type` must be one JSON Schema defines, since an unrecognised one left the
+  value unchecked by anything. Both since 2.15.35. The 3.1 list form of `type` is checked member by
+  member; `null` is accepted whatever version the document claims.
 - **A boolean IS a schema.** `true` accepts every value and `false` accepts none, wherever a schema
   may stand: `items`, `contains`, `not`, `propertyNames`, `if`/`then`/`else`, `contentSchema`, each
   entry of `properties` / `patternProperties` / `dependentSchemas`, and each branch of `allOf` /
