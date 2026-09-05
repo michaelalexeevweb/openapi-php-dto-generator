@@ -1360,6 +1360,288 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('if (!$this->maybesInRequest) {', $content);
     }
 
+    /**
+     * Several media types on one operation each get their own class, and JSON keeps the plain name.
+     *
+     * `content` is a MAP keyed by media type, so an operation may legitimately describe several
+     * representations: `application/json` beside `application/xml`, a form fallback, `text/csv` on a
+     * response. The class name was derived from the operation ALONE, so every media type resolved to
+     * the same name and each overwrote the last — the document's final one won and the rest vanished
+     * with no warning. A client posting JSON to an operation that also declared a form got
+     * `Required parameter "f" not found in request`, because the emitted class described the form.
+     *
+     * JSON keeping the plain name is the point, not a detail: nearly every document describes one
+     * JSON body per operation, and those class names are already generated, imported and committed in
+     * consumers. They do not move. Only the additional representations gain a name.
+     */
+    public function testEachMediaTypeOfAnOperationGetsItsOwnClass(): void
+    {
+        $object = static fn(string $property): array => [
+            'type' => 'object',
+            'required' => [$property],
+            'properties' => [$property => ['type' => 'string']],
+        ];
+
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/three' => ['post' => [
+                'requestBody' => ['content' => [
+                    'application/json' => ['schema' => $object('j')],
+                    'application/xml' => ['schema' => $object('x')],
+                    'application/x-www-form-urlencoded' => ['schema' => $object('f')],
+                ]],
+                'responses' => ['200' => [
+                    'description' => 'ok',
+                    'content' => [
+                        'application/json' => ['schema' => $object('rj')],
+                        'text/csv' => ['schema' => $object('rc')],
+                    ],
+                ]],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'MediaTypeNs');
+
+        // The plain names — what a consumer already has — and what they now hold.
+        $this->assertStringContainsString('$j', (string)file_get_contents($this->outputDirectory . '/ThreePostRequest.php'));
+        $this->assertStringContainsString('$rj', (string)file_get_contents($this->outputDirectory . '/Three200.php'));
+
+        // The representations that used to be silently dropped.
+        $this->assertStringContainsString('$x', (string)file_get_contents($this->outputDirectory . '/ThreePostRequestXml.php'));
+        $this->assertStringContainsString('$f', (string)file_get_contents($this->outputDirectory . '/ThreePostRequestForm.php'));
+        $this->assertStringContainsString('$rc', (string)file_get_contents($this->outputDirectory . '/Three200Csv.php'));
+    }
+
+    /**
+     * One media type is named exactly as it was — the case that must not move.
+     *
+     * @param array<string, mixed> $content
+     */
+    #[DataProvider('singleMediaTypeProvider')]
+    public function testASingleMediaTypeKeepsItsPlainName(array $content, string $expectedFile): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/one' => ['post' => [
+                'requestBody' => ['content' => $content],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'SingleMediaNs');
+
+        $this->assertFileExists($this->outputDirectory . '/' . $expectedFile);
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string}>
+     */
+    public static function singleMediaTypeProvider(): array
+    {
+        $object = ['type' => 'object', 'required' => ['a'], 'properties' => ['a' => ['type' => 'string']]];
+
+        return [
+            'json' => [['application/json' => ['schema' => $object]], 'OnePostRequest.php'],
+            // No JSON anywhere: the only inline schema still takes the plain name.
+            'xml alone' => [['application/xml' => ['schema' => $object]], 'OnePostRequest.php'],
+            'form alone' => [['application/x-www-form-urlencoded' => ['schema' => $object]], 'OnePostRequest.php'],
+        ];
+    }
+
+    /**
+     * Which media type gets the plain name when several compete.
+     *
+     * A structured `+json` suffix IS JSON and wins it; with no JSON at all the first inline schema in
+     * document order keeps it, which is the name that document produces today.
+     */
+    public function testTheJsonMediaTypeTakesThePlainNameEvenUnderAVendorSuffix(): void
+    {
+        $object = static fn(string $property): array => [
+            'type' => 'object',
+            'required' => [$property],
+            'properties' => [$property => ['type' => 'string']],
+        ];
+
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/vendor' => ['post' => [
+                    'requestBody' => ['content' => [
+                        // Declared FIRST, and still not the winner: the vendor type is JSON.
+                        'application/xml' => ['schema' => $object('x')],
+                        'application/vnd.acme.v1+json' => ['schema' => $object('v')],
+                    ]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]],
+                '/nojson' => ['post' => [
+                    'requestBody' => ['content' => [
+                        'application/xml' => ['schema' => $object('x')],
+                        'text/csv' => ['schema' => $object('c')],
+                    ]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]],
+            ],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'MediaPrimaryNs');
+
+        $this->assertStringContainsString('$v', (string)file_get_contents($this->outputDirectory . '/VendorPostRequest.php'));
+        $this->assertStringContainsString('$x', (string)file_get_contents($this->outputDirectory . '/VendorPostRequestXml.php'));
+
+        $this->assertStringContainsString('$x', (string)file_get_contents($this->outputDirectory . '/NojsonPostRequest.php'));
+        $this->assertStringContainsString('$c', (string)file_get_contents($this->outputDirectory . '/NojsonPostRequestCsv.php'));
+    }
+
+    /**
+     * A `$ref` that names nothing stops generation instead of emitting a class nobody can construct.
+     *
+     * It used to pass. `#/components/schemas/Missing` reported `[OK] Generated 1 DTO class(es)`,
+     * emitted `private readonly Missing $thing`, generated no such class, and the output passed
+     * `php -l` and autoloading — a parameter type is resolved lazily — before dying at the first
+     * construction with `must be of type …\Missing`. A typo in a reference reached a staging server
+     * instead of the console.
+     *
+     * Every shape a reference can take is checked, because they resolve through different code paths:
+     * the property itself, the items of an array, the values of a map, and each branch of `allOf` /
+     * `oneOf`.
+     *
+     * @param array<string, mixed> $property
+     */
+    #[DataProvider('unresolvableRefProvider')]
+    public function testAnUnresolvableReferenceStopsGeneration(array $property): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Good' => ['type' => 'object', 'required' => ['g'], 'properties' => ['g' => ['type' => 'string']]],
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['x'],
+                    'properties' => ['x' => $property],
+                ],
+            ]],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unresolvable reference');
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'UnresolvableRefNs');
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function unresolvableRefProvider(): array
+    {
+        $missing = ['$ref' => '#/components/schemas/Missing'];
+
+        return [
+            'the property itself' => [$missing],
+            'array items' => [['type' => 'array', 'items' => $missing]],
+            'map values' => [['type' => 'object', 'additionalProperties' => $missing]],
+            'an allOf branch' => [['allOf' => [$missing]]],
+            'a oneOf branch beside a good one' => [
+                ['oneOf' => [['$ref' => '#/components/schemas/Good'], $missing]],
+            ],
+        ];
+    }
+
+    /**
+     * The same, for a reference into an external file whose pointer names nothing.
+     *
+     * A separate code path and a separate silence: the external registration found no such schema in
+     * the target document and returned quietly, while the caller had already turned the reference
+     * into a type name. The missing FILE was reported all along; the missing SCHEMA inside a file
+     * that does exist was not.
+     */
+    public function testAnExternalReferenceToAMissingSchemaStopsGeneration(): void
+    {
+        $unique = uniqid('openapi_missing_ext_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $specDir = $baseDir . '/spec';
+        $outputDir = $baseDir . '/generated';
+        mkdir($specDir . '/common', 0o755, true);
+        mkdir($outputDir, 0o755, true);
+
+        try {
+            file_put_contents(
+                $specDir . '/common/common.yaml',
+                "components:\n  schemas:\n    Present: { type: object, properties: { p: { type: string } } }\n",
+            );
+            file_put_contents($specDir . '/root.yaml', <<<'YAML'
+                openapi: 3.1.0
+                info: { title: t, version: 1.0.0 }
+                paths: {}
+                components:
+                  schemas:
+                    Holder:
+                      type: object
+                      required: [thing]
+                      properties:
+                        thing: { $ref: './common/common.yaml#/components/schemas/Absent' }
+                YAML);
+
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('Referenced schema "Absent" not found in');
+
+            $this->generator->generateFromFile($specDir . '/root.yaml', $outputDir, 'MissingExtNs');
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    /**
+     * The check must not fire on a schema that only EXISTS by the time rendering is done.
+     *
+     * Schemas are registered up front AND while rendering — an inline object becomes its own schema,
+     * a discriminator variant is synthesised — so a reference can legitimately resolve to a class
+     * that does not exist yet at the moment it is read. Asking the question then reported 68 false
+     * positives on this repository's own corpus; it is asked once, at the end. This pins the
+     * difference: a document that leans on both mechanisms still generates.
+     */
+    public function testReferencesResolvedBeforeTheirTargetExistsAreNotReported(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                // Refers to a sibling declared later in the document...
+                'First' => [
+                    'type' => 'object',
+                    'required' => ['next'],
+                    'properties' => ['next' => ['$ref' => '#/components/schemas/Second']],
+                ],
+                // ...whose own property is an INLINE object, extracted into a schema during rendering.
+                'Second' => [
+                    'type' => 'object',
+                    'required' => ['nested'],
+                    'properties' => [
+                        'nested' => [
+                            'type' => 'object',
+                            'required' => ['deep'],
+                            'properties' => ['deep' => ['type' => 'string']],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+
+        $count = $this->generator->generateFromArray($openApi, $this->outputDirectory, 'LateSchemaNs');
+
+        $this->assertGreaterThanOrEqual(3, $count, 'both schemas and the extracted inline one');
+        $this->assertFileExists($this->outputDirectory . '/First.php');
+        $this->assertFileExists($this->outputDirectory . '/Second.php');
+    }
+
     public function testNonNullableArrayItemsDoNotGenerateNullGuardInAdder(): void
     {
         $openApi = [

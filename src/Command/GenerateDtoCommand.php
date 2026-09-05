@@ -228,6 +228,14 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, array{type: string, values: array<int, string|int>, caseNames: array<int, string>, descriptions: array<int, ?string>}> */
     public array $enumSchemas = [];
 
+    /**
+     * Local `#/components/schemas/…` references seen while resolving types, keyed by the class name
+     * they resolve to. Read once at the end by {@see assertEveryLocalReferenceResolved()}.
+     *
+     * @var array<string, string>
+     */
+    private array $localSchemaReferences = [];
+
     /** @var array<string, true> */
     public array $parentClasses = [];
 
@@ -855,6 +863,7 @@ final class GenerateDtoCommand extends Command
     {
         $this->dtoSchemas = [];
         $this->enumSchemas = [];
+        $this->localSchemaReferences = [];
         $this->documentSelfUri = null;
         $this->generationWarnings = [];
         $this->requestPayloadClasses = [];
@@ -960,6 +969,9 @@ final class GenerateDtoCommand extends Command
             file_put_contents($filePath, $enumCode);
             $generatedCount++;
         }
+
+        // Last, when every schema — declared, extracted and synthesised — is registered.
+        $this->assertEveryLocalReferenceResolved();
 
         return $generatedCount;
     }
@@ -1552,7 +1564,18 @@ final class GenerateDtoCommand extends Command
 
         $definition = $this->externalSchemasOf($externalFile)[$schemaName] ?? null;
         if (!is_array($definition)) {
-            return;
+            // The pointer names a schema the external document does not define. Returning quietly
+            // here is what made a typo invisible: the CALLER has already turned the reference into a
+            // TYPE NAME, so the emitted class type-hints a class nobody generates. That output passes
+            // `php -l` and autoloading and dies on the first request with
+            // `must be of type …\Missing`. A reference that resolves to nothing is a broken document,
+            // and the place to say so is here, not on a staging server.
+            throw new RuntimeException(sprintf(
+                'Referenced schema "%s" not found in %s. The reference resolves to a file that does '
+                . 'not define it, so the generated code would name a class that is never emitted.',
+                $schemaName,
+                $externalFile,
+            ));
         }
 
         if ($this->isPureExternalSchemaAlias($definition)) {
@@ -4515,10 +4538,18 @@ final class GenerateDtoCommand extends Command
 
         if (str_starts_with($ref, $prefix)) {
             $schemaName = substr($ref, strlen($prefix));
+            if ($schemaName === '') {
+                return 'mixed';
+            }
 
-            return $schemaName !== ''
-                ? $this->schemaClassName($schemaName)
-                : 'mixed';
+            $className = $this->schemaClassName($schemaName);
+            // Recorded, not checked: schemas are also registered WHILE rendering — an inline object
+            // becomes its own schema, a discriminator variant gets synthesised — so a reference can
+            // legitimately be resolved before its target exists. The question is answered once, at
+            // the end, by {@see assertEveryLocalReferenceResolved()}.
+            $this->localSchemaReferences[$className] ??= $ref;
+
+            return $className;
         }
 
         $resolvedExternal = $this->resolveExternalSchemaPointer($ref, $currentSourceFile);
@@ -4538,6 +4569,51 @@ final class GenerateDtoCommand extends Command
         $this->registerExternalSchema(externalFile: $externalFile, schemaName: $schemaName);
 
         return $this->schemaClassName($schemaName);
+    }
+
+    /**
+     * Every local `$ref` seen while resolving types has to have named a schema that exists.
+     *
+     * Asked at the END, and that timing is the whole design: schemas are registered both up front
+     * (the document's own `components.schemas`) and DURING rendering — an inline object is extracted
+     * into its own schema, a discriminator variant is synthesised — so a reference resolved early may
+     * name a class that only appears later. Checking at resolution time reports 68 false positives on
+     * this repository's own corpus; checking once at the end reports none.
+     *
+     * The silence this replaces: `$ref: '#/components/schemas/Missing'` reported
+     * `[OK] Generated 1 DTO class(es)`, emitted `private readonly Missing $thing`, generated no such
+     * class, and the result passed `php -l` and autoloading before dying at the first construction
+     * with `must be of type …\Missing`. Generation is the only moment where the document and the code
+     * are both in hand.
+     *
+     * Enums count as resolved: a `$ref` to an enum schema names a generated enum, not a DTO.
+     */
+    private function assertEveryLocalReferenceResolved(): void
+    {
+        $unresolved = [];
+        foreach ($this->localSchemaReferences as $className => $ref) {
+            if (
+                array_key_exists($className, $this->dtoSchemas)
+                || array_key_exists($className, $this->enumSchemas)
+            ) {
+                continue;
+            }
+
+            $unresolved[] = sprintf('%s (would name class "%s")', $ref, $className);
+        }
+
+        if ($unresolved === []) {
+            return;
+        }
+
+        sort($unresolved);
+
+        throw new RuntimeException(sprintf(
+            'Unresolvable reference%s: the document declares no such schema, so the generated code '
+            . 'would name a class that is never emitted. %s',
+            count($unresolved) === 1 ? '' : 's',
+            implode('; ', $unresolved),
+        ));
     }
 
     private function getSchemaSourceFile(string $className): ?string
@@ -5894,7 +5970,9 @@ final class GenerateDtoCommand extends Command
                         continue;
                     }
 
-                    foreach ($content as $mediaTypeObject) {
+                    $mediaTypeSuffixes = $this->mediaTypeNameSuffixes($content, $openApi);
+
+                    foreach ($content as $mediaType => $mediaTypeObject) {
                         $mediaTypeObject = $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
                         if (!is_array($mediaTypeObject)) {
                             continue;
@@ -5912,7 +5990,7 @@ final class GenerateDtoCommand extends Command
                         $ownerKey = strtoupper($method) . ' ' . $path;
                         $schemaName = $this->uniqueEndpointSchemaName(
                             path: $this->pathItemNamingKey($path),
-                            tail: (string)$statusCode,
+                            tail: (string)$statusCode . (is_string($mediaType) ? ($mediaTypeSuffixes[$mediaType] ?? '') : ''),
                             ownerKey: $ownerKey,
                             owners: $inlineOwners,
                         );
@@ -5954,7 +6032,9 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                foreach ($content as $mediaTypeObject) {
+                $mediaTypeSuffixes = $this->mediaTypeNameSuffixes($content, $openApi);
+
+                foreach ($content as $mediaType => $mediaTypeObject) {
                     $mediaTypeObject = $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
                     if (!is_array($mediaTypeObject)) {
                         continue;
@@ -5987,7 +6067,8 @@ final class GenerateDtoCommand extends Command
                     $ownerKey = strtoupper($method) . ' ' . $path;
                     $schemaName = $this->uniqueEndpointSchemaName(
                         path: $this->pathItemNamingKey($path),
-                        tail: ucfirst(strtolower($method)) . 'Request',
+                        tail: ucfirst(strtolower($method)) . 'Request'
+                            . (is_string($mediaType) ? ($mediaTypeSuffixes[$mediaType] ?? '') : ''),
                         ownerKey: $ownerKey,
                         owners: $inlineOwners,
                     );
@@ -6012,6 +6093,130 @@ final class GenerateDtoCommand extends Command
         }
 
         return preg_match('/^[a-zA-Z][a-zA-Z0-9-]*$/', $method) === 1;
+    }
+
+    /**
+     * Name suffixes for the media types of ONE `content` map — empty for the one that keeps the
+     * plain name, distinct for the rest.
+     *
+     * `content` is a MAP keyed by media type, so an operation may legitimately describe several
+     * representations of the same payload: `application/json` beside `application/xml`, a form
+     * fallback beside JSON, `text/csv` beside JSON on a response. The name was derived from the
+     * operation alone, so every one of them resolved to the SAME class name and each overwrote the
+     * last — the document's final media type won and the others vanished with no warning. A client
+     * posting JSON to an operation that also declared a form got `Required parameter "f" not found`,
+     * because the emitted class described the form.
+     *
+     * Only media types carrying an INLINE object schema are numbered here. One pointing at a
+     * component declares no new class (the component has its own) and one that is not an object
+     * produces none either, so neither can collide.
+     *
+     * JSON keeps the plain name. That is deliberate and it is the whole reason this is not a renaming
+     * release: the overwhelming majority of documents describe one JSON body per operation, those
+     * names are already generated, imported and committed in consumers, and they do not move. A
+     * document with no JSON media type at all gives the plain name to its FIRST inline schema, which
+     * is likewise the name it has today.
+     *
+     * @param array<mixed> $content
+     * @param array<mixed> $openApi
+     * @return array<string, string>
+     */
+    private function mediaTypeNameSuffixes(array $content, array $openApi): array
+    {
+        $candidates = [];
+        foreach ($content as $mediaType => $mediaTypeObject) {
+            if (!is_string($mediaType)) {
+                continue;
+            }
+
+            $mediaTypeObject = $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
+            if (!is_array($mediaTypeObject)) {
+                continue;
+            }
+
+            $schema = $mediaTypeObject['schema'] ?? null;
+            if (
+                !is_array($schema)
+                || array_key_exists('$ref', $schema)
+                || ($schema['type'] ?? null) !== 'object'
+            ) {
+                continue;
+            }
+
+            $candidates[] = $mediaType;
+        }
+
+        if (count($candidates) < 2) {
+            return $candidates === [] ? [] : [$candidates[0] => ''];
+        }
+
+        $primary = null;
+        foreach ($candidates as $mediaType) {
+            if ($this->isJsonMediaTypeName($mediaType)) {
+                $primary = $mediaType;
+                break;
+            }
+        }
+        $primary ??= $candidates[0];
+
+        $suffixes = [];
+        $taken = [];
+        foreach ($candidates as $mediaType) {
+            if ($mediaType === $primary) {
+                $suffixes[$mediaType] = '';
+                continue;
+            }
+
+            $suffix = $this->mediaTypeNameSuffix($mediaType);
+            $candidate = $suffix;
+            $counter = 2;
+            while (array_key_exists($candidate, $taken)) {
+                $candidate = $suffix . $counter;
+                $counter++;
+            }
+
+            $taken[$candidate] = true;
+            $suffixes[$mediaType] = $candidate;
+        }
+
+        return $suffixes;
+    }
+
+    /**
+     * A readable class-name suffix for a media type: `application/xml` -> `Xml`.
+     *
+     * Derived from the SUBTYPE, because the type half is `application` almost everywhere and would
+     * say nothing. The three shorthands are the media types whose literal subtype makes an unusable
+     * identifier — `XWwwFormUrlencoded` for a form is noise, not information.
+     */
+    private function mediaTypeNameSuffix(string $mediaType): string
+    {
+        $type = strtolower(trim(explode(';', $mediaType)[0]));
+
+        $shorthands = [
+            'application/x-www-form-urlencoded' => 'Form',
+            'multipart/form-data' => 'Multipart',
+            'application/octet-stream' => 'Binary',
+            '*/*' => 'Any',
+        ];
+        if (array_key_exists($type, $shorthands)) {
+            return $shorthands[$type];
+        }
+
+        $slash = strpos($type, '/');
+        $subtype = $slash === false ? $type : substr($type, $slash + 1);
+        // A vendor tree says who owns the type, not what it is.
+        $subtype = preg_replace('/^vnd\./', '', $subtype) ?? $subtype;
+
+        $segments = preg_split('/[^a-z0-9]+/', $subtype);
+        $name = '';
+        foreach ($segments === false ? [] : $segments as $segment) {
+            if ($segment !== '') {
+                $name .= ucfirst($segment);
+            }
+        }
+
+        return $name !== '' ? $name : 'Alt';
     }
 
     /**

@@ -3,6 +3,119 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.30 — 2026-09-05
+
+- an integer past the 64-bit range is refused, not wrapped into its own negative
+- a `$ref` that names nothing stops generation instead of emitting an unusable class
+- every media type of an operation gets its own class; JSON keeps the plain name
+- the `int64` note in the validation guide was wrong and is corrected
+
+**A number one past `int64` used to change sign, silently.** `json_decode()` hands over anything that
+does not fit an int as a float, and the guard deciding whether such a float is still an integer
+compared it against `(float)PHP_INT_MAX` — which is not `PHP_INT_MAX`. 2^63-1 has no double, so the
+cast rounds UP to 2^63, and a `<=` comparison therefore admitted exactly the first ILLEGAL value for
+`(int)` to wrap:
+
+```
+sent 9223372036854775808   ->  stored -9223372036854775808,  validate() returned []
+sent -9223372036854775809  ->  stored -9223372036854775808,  validate() returned []
+sent 18446744073709551616  ->  refused  (the guard did work further out)
+```
+
+A client sent a positive number, the DTO held a large negative one, and validation approved it. The
+range check downstream could not catch it: by the time it ran, the value was a wrapped `int` sitting
+comfortably inside int64. The corruption existed only in the chain decode → cast → validate, which is
+why a guard-level test would not have found it and the end-to-end test added here does.
+
+The comparisons are strict now, and **refusing the boundary loses nothing** — measured, not assumed:
+both legal extremes fit an int, so `json_decode()` hands them over as `integer` and they never reach
+the float branch. A float equal to ±2^63 can only have come from a number outside the range. An
+integral float that ROUNDS onto the boundary (`9223372036854775806.0`) is refused with them, because
+it carries no information separating a legal value from an illegal one — casting it blind is how the
+original corruption happened.
+
+Out-of-range numbers now say `param "n" must be within integer range (…)`. They used to say
+`expects int, got float`, which answers someone who did send an integer. A real fractional part keeps
+the type message, because there the type IS the problem; both are pinned so neither swallows the other.
+
+**A `$ref` that names nothing used to generate.** A typo — or a schema someone deleted — passed the
+whole way through:
+
+```
+$ref: '#/components/schemas/Missing'      # no such schema anywhere in the document
+
+[OK] Generated 1 DTO class(es)            # no error, no warning
+private readonly Missing $thing           # emitted; no such class is ever written
+```
+
+The result passes `php -l`, passes autoloading — a parameter type is resolved lazily — and dies at the
+first construction with `must be of type …\Missing`. So the console said the generation succeeded and
+a staging server said otherwise. Every shape is covered, because they resolve through different paths:
+the property itself, an array's `items`, a map's `additionalProperties`, and each branch of `allOf` /
+`oneOf`. The external twin is fixed with it: a reference into a file that DOES exist but does not
+declare the schema returned quietly after the caller had already turned it into a type name. (A
+missing external FILE was always reported; only the missing schema inside a present one was not.)
+
+The question is asked ONCE, after generation, and that timing is the design rather than convenience.
+Schemas are registered both up front and WHILE rendering — an inline object becomes its own schema, a
+discriminator variant is synthesised — so a reference can legitimately resolve to a class that does
+not exist yet at the moment it is read. Asking at resolution time reported 68 false positives on this
+repository's own corpus; asking at the end reports none, and a test pins a document that leans on both
+mechanisms so the earlier, wrong shape cannot come back.
+
+**All but one media type of an operation used to be dropped.** `content` is a MAP keyed by media
+type, so an operation may legitimately describe several representations of the same payload —
+`application/json` beside `application/xml`, a form fallback beside JSON, `text/csv` beside JSON on a
+response. The class name was derived from the operation alone, so every media type resolved to the
+SAME name and each overwrote the last:
+
+```yaml
+/three:
+  post:
+    requestBody:
+      content:
+        application/json: { schema: {...} }   # lost
+        application/xml:  { schema: {...} }   # lost
+        application/x-www-form-urlencoded: { schema: {...} }   # the only one emitted
+```
+
+The document's FINAL media type won, which made the choice effectively arbitrary, and a client posting
+JSON got `Required parameter "f" not found in request` because the emitted class described the form.
+
+Each one gets its own class now — and **JSON keeps the plain name**:
+
+```
+ThreePostRequest      (application/json)          ThreePostRequestXml   (application/xml)
+Three200              (application/json)          ThreePostRequestForm  (…/x-www-form-urlencoded)
+                                                  Three200Csv           (text/csv)
+```
+
+**This is not a renaming release.** Nearly every document describes one JSON body per operation, and
+those class names are already generated, imported and committed in consumers — they do not move, which
+is pinned from the other side by a test covering a lone `application/json`, a lone `application/xml`
+and a lone form. A structured `+json` suffix counts as JSON and takes the plain name even when declared
+second; a document with no JSON at all gives the plain name to its first inline schema, which is the
+name that document produces today. Only the additional representations gain one.
+
+The suffix comes from the subtype — `Xml`, `Csv` — with shorthands where the literal subtype makes an
+unusable identifier (`Form` rather than `XWwwFormUrlencoded`, plus `Multipart`, `Binary`, `Any`).
+Two media types that shorten to the same word are separated by a counter.
+
+Narrower than it first looked, and worth stating: a media type whose schema is a `$ref` was never
+dropped — the component has its own class and no per-operation one is emitted for it. Only two or more
+INLINE object schemas on one operation collided. The corpus now declares such an operation, so the
+emission is snapshotted rather than resting on a unit test.
+
+**The correction.** `README.validation.md` stated that `int64` "has no such gap", written when the
+`uint64` boundary was ruled unfixable in 2.15.17. The measurement above says otherwise, and the two
+cases differ in the one way that matters: `uint64`'s legal maximum does NOT fit an int, so it arrives
+as the same double as the first illegal value and no comparison can separate them. `int64`'s does fit.
+`uint64` is unchanged and still documented as accepting its boundary.
+
+Gates: 1768 tests (up from 1738), phpstan / phpcs / cs-fixer clean. The snapshots grow by the corpus's
+new multi-representation operation and by nothing else: every deletion in the diff is a file-count
+header line.
+
 ## 2.15.29 — 2026-09-05
 
 - a `readOnly` property no longer makes its class impossible to deserialize

@@ -186,6 +186,7 @@ serialization rules before casting:
 | `in: querystring` (OAS 3.2) | the whole raw query string is decoded per its single `content` media type |
 | `content: {application/json: …}` on a parameter | the JSON string is decoded before validation and casting |
 | Encoding Object on a multipart body | a JSON part is decoded, a `style`-carrying part is split |
+| several media types on one operation | each INLINE schema gets its own class. `application/json` (or any `+json`) keeps the plain name — `ThreePostRequest` — and the rest take a suffix from their subtype: `ThreePostRequestXml`, `ThreePostRequestForm`, `Three200Csv`. With no JSON among them the first one keeps the plain name. A media type whose schema is a `$ref` emits no per-operation class at all; the component's own class is the payload. Since 2.15.30 — before it, every media type resolved to one name and the document's last one silently won |
 
 Laravel route parameters (`/users/{id}`) resolve automatically; see below.
 

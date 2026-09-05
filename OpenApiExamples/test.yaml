@@ -394,6 +394,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Test'
+  # `content` is a MAP keyed by media type, so one operation may describe several representations.
+  # The corpus carried none of that until 2.15.30, and until then every media type of an operation
+  # resolved to the SAME class name and each overwrote the last — silently, with the document's final
+  # one winning. JSON keeps the plain name (`ApiTestRepresentationsPostRequest`), so nothing already
+  # generated moves; the others gain a suffix.
+  /api/test/representations:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payload
+              properties:
+                payload:
+                  type: string
+          application/xml:
+            schema:
+              type: object
+              required:
+                - element
+              properties:
+                element:
+                  type: string
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - field
+              properties:
+                field:
+                  type: string
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean
+            text/csv:
+              schema:
+                type: object
+                required:
+                  - row
+                properties:
+                  row:
+                    type: string
 components:
   parameters:
     DogId:

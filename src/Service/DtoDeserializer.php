@@ -2240,8 +2240,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // number with a zero fractional part as one, and PHP decodes `42.0` to a float. A real
                 // fractional part, an out-of-range magnitude and a numeric STRING are all still refused.
                 if (!is_int($value) && !(is_float($value) && $this->isStrictIntValue($value))) {
+                    // An integer too large for PHP arrives as a float, so the type message would
+                    // answer "expects int, got float" to someone who did send an integer. Say what
+                    // actually happened instead; a float with a real fractional part keeps the
+                    // type message, because there the type IS the problem.
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
+                        is_float($value) && is_finite($value) && floor($value) === $value
+                            ? sprintf(
+                                'param "%s" must be within integer range (%s to %s), got %s',
+                                $paramPath,
+                                (string)PHP_INT_MIN,
+                                (string)PHP_INT_MAX,
+                                rtrim(rtrim(sprintf('%.0F', $value), '0'), '.'),
+                            )
+                            : $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
                     );
                 }
 
@@ -3572,10 +3584,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // payload of `42.0` is an integer — PHP just decodes it to a float. The magnitude still has to
         // fit an int, or the cast would saturate silently.
         if (is_float($value)) {
+            // The comparisons are STRICT, and that is the whole boundary. `(float)PHP_INT_MAX` is not
+            // PHP_INT_MAX: 2^63-1 has no double, so the cast rounds UP to 2^63 — and `<=` therefore
+            // admitted exactly the first ILLEGAL value, which `(int)` then wrapped to PHP_INT_MIN. A
+            // client sent 9223372036854775808 and the DTO held -9223372036854775808, with `validate()`
+            // approving it, because the range check downstream only ever saw the wrapped int.
+            //
+            // Refusing the boundary costs nothing, and that is measured rather than assumed: both
+            // legal extremes FIT an int, so `json_decode()` hands them over as `integer` and never
+            // reaches this branch —
+            //     json_decode('9223372036854775807')  -> integer
+            //     json_decode('-9223372036854775808') -> integer
+            // A float equal to ±2^63 can only have come from a number outside the range. (This is
+            // where `uint64` differs and stays unfixable: its legal maximum does NOT fit, so it
+            // arrives as the same double as the first illegal value. See `DtoValidator`.)
             return is_finite($value)
                 && floor($value) === $value
-                && $value >= (float)PHP_INT_MIN
-                && $value <= (float)PHP_INT_MAX;
+                && $value > (float)PHP_INT_MIN
+                && $value < (float)PHP_INT_MAX;
         }
 
         if (!is_string($value)) {

@@ -28,7 +28,13 @@ A few behaviours worth knowing when validating against the schema:
 - **Extended string formats.** Beyond the common set, these are validated: `uri-reference`/`iri-reference`, `uri-template` (RFC 6570), `idn-hostname`, `relative-json-pointer`. Unknown formats are accepted (per spec, an unknown `format` is an annotation, not an assertion).
 - **`contentEncoding: base64` accepts the empty string.** Empty content is validly encoded as nothing, so an empty value passes the encoding check; the rest is checked strictly, and `!!!` or a mispadded `QQ=` are refused. Use `minLength: 1` when the field must actually carry content.
 - **`format: uri` accepts a URI, not only a URL.** `urn:isbn:0451450523`, `urn:uuid:…`, `mailto:` and `tel:` are valid absolute URIs under RFC 3986 and are accepted. An authority-based URI (anything after the scheme starting with `//`) is still judged as a URL, so `http://[` stays refused.
-- **`uint64` cannot be checked at its own boundary.** `18446744073709551615` (the maximum) and `18446744073709551616` (one past it) are the same IEEE-754 double once `json_decode()` is done, so nothing downstream can separate them; the boundary value is accepted rather than refusing a legal maximum. Carry such a field as `type: string` with a `pattern` when the exact range matters. `int64` has no such gap — its boundary is below the float ceiling.
+- **`uint64` cannot be checked at its own boundary.** `18446744073709551615` (the maximum) and `18446744073709551616` (one past it) are the same IEEE-754 double once `json_decode()` is done, so nothing downstream can separate them; the boundary value is accepted rather than refusing a legal maximum. Carry such a field as `type: string` with a `pattern` when the exact range matters. **`int64` was described here as having no such gap, and that was wrong** — it has exactly the same
+  one, and unlike `uint64` it is fixable. `(float)PHP_INT_MAX` rounds UP to 2^63 (2^63-1 has no
+  double), so a value one past the maximum used to pass the guard and wrap to `PHP_INT_MIN`: sending
+  `9223372036854775808` stored `-9223372036854775808` and validated clean. Since 2.15.30 a float at or
+  beyond ±2^63 is refused with `must be within integer range (…)`. Nothing legal is lost, because both
+  int64 extremes FIT an int and arrive from `json_decode()` as `integer`, never as a float — which is
+  precisely what `uint64` cannot say about its own maximum.
 - **An `integer` bound is exact past 2^53.** `maximum: 9007199254740992` refuses `9007199254740993`: the comparison stays on integers while both the value and the bound are integers, instead of casting through a float that cannot tell the two apart.
 - **`idn-email` means the DOMAIN too.** `a@пример.рф` validates, not just `ф@example.com`. PHP's own
   filter allows Unicode before the `@` and requires ASCII after it, so the domain is checked with the

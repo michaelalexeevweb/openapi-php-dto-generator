@@ -2007,6 +2007,113 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * An integer one past the 64-bit range is REFUSED, not silently wrapped into its own negative.
+     *
+     * `json_decode()` hands over anything that does not fit an int as a float, and the guard that
+     * decides whether such a float is still an integer compared it against `(float)PHP_INT_MAX` —
+     * which is not PHP_INT_MAX. 2^63-1 has no double, so the cast rounds UP to 2^63, and `<=`
+     * therefore admitted exactly the first illegal value. `(int)` then wrapped it:
+     *
+     *     sent 9223372036854775808  ->  stored -9223372036854775808, and validate() said [].
+     *
+     * The sign flipped, silently, and the range check downstream could not see it because by then it
+     * was looking at a wrapped `int` sitting comfortably inside int64. Measured end-to-end rather than
+     * on the guard alone: the corruption only exists in the chain decode -> cast -> validate.
+     *
+     * Refusing the boundary loses nothing. Both legal extremes FIT an int and arrive as `integer`,
+     * never as float — so a float equal to ±2^63 can only have come from a number outside the range.
+     *
+     * @param int|string $sent raw JSON number, as a string when PHP cannot hold it
+     */
+    #[DataProvider('integerBoundaryProvider')]
+    public function testAnIntegerPastTheSixtyFourBitRangeIsRefused(
+        int|string $sent,
+        bool $accepted,
+        ?string $storedAs,
+    ): void {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Counter' => [
+                    'type' => 'object',
+                    'required' => ['n'],
+                    'properties' => ['n' => ['type' => 'integer', 'format' => 'int64']],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'IntBoundary' . md5((string)$sent), 'Counter');
+
+        $request = $this->jsonPostRequest('{"n":' . $sent . '}');
+
+        if (!$accepted) {
+            try {
+                (new DtoDeserializer())->deserialize($request, $fqcn);
+                $this->fail(sprintf('%s is outside int64 and must not be accepted', $sent));
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('must be within integer range', $e->getMessage());
+                // The old failure mode, stated so a regression cannot pass quietly.
+                $this->assertStringNotContainsString('-9223372036854775808', (string)$sent);
+            }
+
+            return;
+        }
+
+        /** @var object{getN: callable} $dto */
+        $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+        $this->assertSame($storedAs, (string)$dto->getN());
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+    }
+
+    /**
+     * @return array<string, array{int|string, bool, ?string}>
+     */
+    public static function integerBoundaryProvider(): array
+    {
+        return [
+            'legal maximum' => ['9223372036854775807', true, '9223372036854775807'],
+            'legal minimum' => ['-9223372036854775808', true, '-9223372036854775808'],
+            'one past the maximum' => ['9223372036854775808', false, null],
+            'one past the minimum' => ['-9223372036854775809', false, null],
+            'two to the sixty-fourth' => ['18446744073709551616', false, null],
+            // A float that lands ON the boundary carries no information separating a legal value from
+            // an illegal one, so it goes with the illegal ones rather than being cast blind.
+            'integral float rounding onto the boundary' => ['9223372036854775806.0', false, null],
+            'ordinary integer' => ['42', true, '42'],
+            // JSON Schema 2020-12 §6.1.1: a number with a zero fractional part IS an integer.
+            'integer-valued float' => ['42.0', true, '42'],
+            'negative integer-valued float' => ['-42.0', true, '-42'],
+        ];
+    }
+
+    /**
+     * A real fractional part keeps the type message: there, the TYPE is the problem.
+     *
+     * The overflow message had to be added because "expects int, got float" answers someone who did
+     * send an integer — it simply did not fit. That reasoning does not extend to `42.5`, and the two
+     * messages are pinned together so neither swallows the other.
+     */
+    public function testAFractionalNumberStillReportsAsAWrongType(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Counter' => [
+                    'type' => 'object',
+                    'required' => ['n'],
+                    'properties' => ['n' => ['type' => 'integer']],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'IntFractional', 'Counter');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('param "n" expects int, got float');
+        (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"n":42.5}'), $fqcn);
+    }
+
+    /**
      * A `readOnly` property does not make its class impossible to deserialize.
      *
      * OpenAPI: "If the property is marked as readOnly being true and is in the required list, the

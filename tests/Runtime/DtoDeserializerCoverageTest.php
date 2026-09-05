@@ -1016,6 +1016,18 @@ final class DtoDeserializerCoverageTest extends TestCase
             'alpha' => ['x', false],
             'overflow' => ['99999999999999999999', false],
             'float value' => [1.5, false],
+            // The float boundary. `(float)PHP_INT_MAX` is not PHP_INT_MAX — 2^63-1 has no double, so
+            // the cast rounds UP to 2^63, and a `<=` comparison admitted exactly the first ILLEGAL
+            // value for `(int)` to wrap into PHP_INT_MIN. Both legal extremes FIT an int and reach
+            // this method as `int`, never as float, so refusing the boundary float loses nothing.
+            'float at +2^63' => [9223372036854775808.0, false],
+            'float at -2^63' => [-9223372036854775808.0, false],
+            'float past 2^64' => [18446744073709551616.0, false],
+            'integer-valued float stays legal' => [42.0, true],
+            'negative integer-valued float' => [-42.0, true],
+            'zero as float' => [0.0, true],
+            'legal max as int' => [PHP_INT_MAX, true],
+            'legal min as int' => [PHP_INT_MIN, true],
         ];
     }
 
