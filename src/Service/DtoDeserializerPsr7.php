@@ -29,6 +29,14 @@ final class DtoDeserializerPsr7
     public function __construct(
         private readonly DtoDeserializerInterface $deserializer = new DtoDeserializer(),
     ) {
+        // These four lines read as UNCOVERED and always will. The bridge is installed in this
+        // repository (require-dev), so `class_exists()` is true in every in-process test; the guard
+        // is proved instead by `DtoDeserializerPsr7MissingBridgeTest`, which starts a PHP process
+        // with an autoloader that resolves this package and nothing else — the real condition rather
+        // than a simulation of it — and a coverage driver in the parent process cannot see a line
+        // executed in a child. Mutation-checked both ways: remove the guard and the reader gets
+        // `Error: Class "…HttpFoundationFactory" not found` instead of a sentence naming the package
+        // to install. Do not chase the number by reshaping this into something injectable.
         if (!class_exists(HttpFoundationFactory::class)) {
             throw new RuntimeException(
                 'PSR-7 support requires symfony/psr-http-message-bridge. '
