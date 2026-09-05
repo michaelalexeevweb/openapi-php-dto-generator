@@ -40,6 +40,12 @@ A few behaviours worth knowing when validating against the schema:
   filter allows Unicode before the `@` and requires ASCII after it, so the domain is checked with the
   same RFC 5890 rule `idn-hostname` uses (with or without the `intl` extension). Plain `format: email`
   stays ASCII-only — that is the difference between the two. Since 2.15.28.
+- **In 3.0, keywords beside a `$ref` are honoured, not ignored — a deliberate deviation.** The 3.0
+  specification says any sibling of `$ref` is ignored, so `{$ref: …, nullable: true}` should produce a
+  non-nullable type. It produces a nullable one here, because that spelling is the standard workaround
+  for a nullable reference in 3.0, the ecosystem's tools read it the same way, and obeying the letter
+  would quietly change the type of a property thousands of documents describe correctly. In 3.1 the
+  siblings are permitted by the specification itself, so there the behaviour needs no defence.
 - **A boolean IS a schema.** `true` accepts every value and `false` accepts none, wherever a schema
   may stand: `items`, `contains`, `not`, `propertyNames`, `if`/`then`/`else`, `contentSchema`, each
   entry of `properties` / `patternProperties` / `dependentSchemas`, and each branch of `allOf` /

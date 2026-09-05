@@ -255,6 +255,7 @@ trait RendersLaravelDto
             'namespace' => $namespace,
             'imports' => [],
             'className' => $className,
+            'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),
             'sourceRelated' => $this->relatedByClass[$className] ?? null,

@@ -583,6 +583,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Test'
+  # An operation marked deprecated. The keyword reached only a PROPERTY until 2.15.33, so the classes
+  # of a retired endpoint looked exactly like a live one's; now the request, parameter and response
+  # classes all carry `@deprecated` in their own docblock.
+  /api/test/legacy:
+    post:
+      deprecated: true
+      parameters:
+        - in: query
+          name: legacyFlag
+          schema:
+            type: boolean
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payload
+              properties:
+                payload:
+                  type: string
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean
+
   # A Path Item written as a reference — the 3.1 `components.pathItems` home for a shared path.
   # Neither this shape nor a pointer at another path was read until 2.15.32: the path produced no
   # classes and no message.
@@ -1349,6 +1384,17 @@ components:
     # only: a request that omits it is valid, so the constructor has to be callable without it. It is
     # declared BEFORE the required `title` on purpose — that is what moves it behind `title` in the
     # emitted parameter list, and the snapshot is where that shows.
+    # `deprecated` on the SCHEMA itself — the other place the keyword lives, and the other half of
+    # what 2.15.33 fixed.
+    RetiredShape:
+      type: object
+      deprecated: true
+      required:
+        - legacyId
+      properties:
+        legacyId:
+          type: integer
+
     ReadOnlyFields:
       type: object
       required:

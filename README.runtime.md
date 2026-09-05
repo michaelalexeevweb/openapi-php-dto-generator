@@ -178,6 +178,8 @@ serialization rules before casting:
 | Spec | Behaviour |
 |---|---|
 | `in: path` / `query` / `header` / `cookie` | the property is read ONLY from that source (`getParameterSources()`) |
+| `deprecated` on a schema or an operation | the generated CLASS carries `@deprecated`, not only the property that declares it: a deprecated schema marks its own class, and a deprecated operation marks the request, parameter and response classes it produces (since 2.15.33) |
+| a parameter's `content` in a media type the runtime cannot decode | generation warns. Only JSON media types are decoded for a parameter, plus `application/x-www-form-urlencoded` for `in: querystring`; anything else emits a class the deserializer cannot fill |
 | a Path Item written as `$ref` | resolved from `#/components/pathItems/<name>` or `#/paths/<escaped path>`; keys the referencing item declares itself win. An EXTERNAL path item reference is refused with a message saying so — valid OpenAPI, not implemented here (since 2.15.32) |
 | a callback written as `$ref` | resolved from `components.callbacks` and generated like an inline one, named after the callback's name in the operation (since 2.15.32) |
 | `parameters` on the PATH ITEM | apply to every operation of that path, merged with the operation's own; the operation overrides by (name, in) and the overridden parameter keeps its position. A `$ref` to `components.parameters` resolves on either level. Since 2.15.32 — before it, a path-level parameter never reached the generated class |

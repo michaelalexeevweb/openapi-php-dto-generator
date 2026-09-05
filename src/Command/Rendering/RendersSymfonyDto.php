@@ -291,6 +291,7 @@ trait RendersSymfonyDto
             'namespace' => $namespace,
             'imports' => $useStatements,
             'className' => $className,
+            'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             'implementedInterfaces' => $implementedInterfaces,
             'unionMembers' => null,
             'interfaceExtends' => [],

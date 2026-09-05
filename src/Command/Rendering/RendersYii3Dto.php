@@ -316,6 +316,7 @@ trait RendersYii3Dto
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
             'namespace' => $namespace,
             'className' => $className,
+            'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             'imports' => $this->yii3SortedImports($useStatements, $ruleImports, $sourceImports),
             'classAttributes' => $classAttributes,
             'libAbstractInput' => $this->yii3Lib('AbstractInput'),
@@ -838,6 +839,7 @@ trait RendersYii3Dto
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
             'namespace' => $namespace,
             'className' => $className,
+            'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             // A non-null `unionMembers` is what selects the interface branch of the template — the
             // same switch `dto.symfony.php.twig` uses, so the two modes read alike.
             'unionMembers' => array_map(

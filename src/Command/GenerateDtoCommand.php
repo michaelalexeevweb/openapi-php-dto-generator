@@ -274,6 +274,15 @@ final class GenerateDtoCommand extends Command
     public array $endpointByClass = [];
 
     /**
+     * Classes whose schema — or the operation that produced it — is marked `deprecated`.
+     *
+     * Read by every renderer when it builds the class docblock, the same way `endpointByClass` is.
+     *
+     * @var array<string, true>
+     */
+    public array $deprecatedByClass = [];
+
+    /**
      * Origin of a DTO the generator synthesised itself (an inline nested object/array-item/allOf
      * schema that has no name in the spec), keyed by generated class name and expressed as
      * "OwnerClass.property" (with a "[]" suffix for array-item types). Emitted as a `From:` doc line
@@ -878,6 +887,7 @@ final class GenerateDtoCommand extends Command
         $this->enumOutputDirectories = [];
         $this->externalDocSchemas = [];
         $this->endpointByClass = [];
+        $this->deprecatedByClass = [];
         $this->relatedByClass = [];
         $this->rootSpecFile = $rootSpecFile;
         $this->baseOutputDirectory = $outputDirectory;
@@ -1081,6 +1091,14 @@ final class GenerateDtoCommand extends Command
         // Keep the raw definition (including enums, which otherwise return early below) so a
         // referencing property can later read keywords declared on the target, e.g. `default`.
         $this->rawSchemasByClass[$className] = $schemaDefinition;
+
+        // `deprecated` on the schema ITSELF, which until 2.15.33 reached nothing: the keyword was
+        // honoured on a property and dropped on the class the property belonged to. An operation
+        // marked deprecated stamps the same keyword onto the schemas it produces, so its request,
+        // parameter and response classes carry the notice too.
+        if (($schemaDefinition['deprecated'] ?? false) === true) {
+            $this->deprecatedByClass[$className] = true;
+        }
 
         $this->assertEnumMembersMatchDeclaredType($className, $schemaDefinition);
 
@@ -6093,7 +6111,7 @@ final class GenerateDtoCommand extends Command
                             ownerKey: $ownerKey,
                             owners: $inlineOwners,
                         );
-                        $inlineSchemas[$schemaName] = $schema;
+                        $inlineSchemas[$schemaName] = $this->markSchemaDeprecatedByOperation($schema, $operation);
                         $inlineOwners[$schemaName] = $ownerKey;
                         $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                     }
@@ -6162,6 +6180,7 @@ final class GenerateDtoCommand extends Command
                     }
 
                     $schema = $this->applyEncodingToBodySchema($schema, $mediaTypeObject['encoding'] ?? null);
+                    $schema = $this->markSchemaDeprecatedByOperation($schema, $operation);
 
                     $ownerKey = strtoupper($method) . ' ' . $path;
                     $schemaName = $this->uniqueEndpointSchemaName(
@@ -7088,8 +7107,8 @@ final class GenerateDtoCommand extends Command
             // Declared once for the whole path and applying to every operation on it — the ordinary
             // way to write `/items/{id}` rather than repeating `id` under get, put and delete.
             $pathLevelParameters = $this->resolveParameters(
-                is_array($pathItem['parameters'] ?? null) ? $pathItem['parameters'] : [],
-                $openApi,
+                parameters: is_array($pathItem['parameters'] ?? null) ? $pathItem['parameters'] : [],
+                openApi: $openApi,
             );
 
             foreach ($pathItem as $method => $operation) {
@@ -7098,8 +7117,8 @@ final class GenerateDtoCommand extends Command
                 }
 
                 $operationParameters = $this->resolveParameters(
-                    is_array($operation['parameters'] ?? null) ? $operation['parameters'] : [],
-                    $openApi,
+                    parameters: is_array($operation['parameters'] ?? null) ? $operation['parameters'] : [],
+                    openApi: $openApi,
                 );
 
                 $resolvedParameters = $this->mergePathItemParameters(
@@ -7119,7 +7138,10 @@ final class GenerateDtoCommand extends Command
                     ownerKey: $ownerKey,
                     owners: $parameterOwners,
                 );
-                $parameterSchemas[$schemaName] = $this->buildParameterSchema($pathAndQueryParameters);
+                $parameterSchemas[$schemaName] = $this->markSchemaDeprecatedByOperation(
+                    schema: $this->buildParameterSchema($pathAndQueryParameters),
+                    operation: $operation,
+                );
                 $parameterOwners[$schemaName] = $ownerKey;
                 $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                 $this->requestPayloadClasses[$this->schemaClassName($schemaName)] = true;
@@ -7326,6 +7348,69 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Carries an operation's `deprecated` down onto the schema its body, parameters or response
+     * produce, so the emitted class says so too.
+     *
+     * The keyword was honoured on a PROPERTY and dropped everywhere else: an endpoint marked
+     * deprecated generated classes that looked exactly like a current endpoint's. A schema that
+     * already declares the keyword itself is left alone — it cannot become less deprecated by
+     * belonging to a live operation.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<mixed> $operation
+     * @return array<string, mixed>
+     */
+    private function markSchemaDeprecatedByOperation(array $schema, array $operation): array
+    {
+        if (($operation['deprecated'] ?? false) === true) {
+            $schema['deprecated'] = true;
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Warns when a parameter describes its value in a media type nothing downstream can decode.
+     *
+     * A Parameter Object may carry `content` instead of `schema`, and the runtime decodes exactly two
+     * things: any JSON media type, and — for OAS 3.2 `in: querystring` — a form-encoded body. Given
+     * `content: {application/xml: {...}}` the generator still emits a class for the schema and the
+     * deserializer still receives the raw string, so the class is one nothing can fill: a request
+     * carrying it fails on the cast, and the reader is left wondering which half is wrong.
+     *
+     * A warning rather than an error, deliberately: the document is VALID and the class may be of use
+     * on the response side or to hand-written code. What was missing is the sentence saying the
+     * runtime will not fill it.
+     */
+    private function warnAboutUndecodableParameterContent(
+        string $name,
+        ?string $mediaType,
+        bool $isQueryString,
+    ): void {
+        if ($mediaType === null || $this->isJsonMediaTypeName($mediaType)) {
+            return;
+        }
+
+        $normalized = strtolower(trim(explode(';', $mediaType)[0]));
+        if ($isQueryString && $normalized === 'application/x-www-form-urlencoded') {
+            return;
+        }
+
+        $warning = sprintf(
+            'Parameter "%s" describes its value with media type "%s", which the runtime cannot '
+                . 'decode. Its class is generated, but the deserializer sees the raw string and no '
+                . 'value will fill it. Only JSON media types are decoded for a parameter%s.',
+            $name,
+            $mediaType,
+            $isQueryString ? ', plus application/x-www-form-urlencoded for `in: querystring`' : '',
+        );
+
+        if (!in_array($warning, $this->generationWarnings, true)) {
+            $this->generationWarnings[] = $warning;
+        }
+    }
+
+    /**
      * @param array<mixed> $pathParameters
      * @return array<string, mixed>
      */
@@ -7346,11 +7431,13 @@ final class GenerateDtoCommand extends Command
             // content: {application/json: {schema}}) instead of a plain `schema`. Extract the
             // (single) media type's schema; JSON media types are decoded at deserialization.
             $contentJson = false;
+            $contentMediaType = null;
             if (!is_array($schema) && is_array($parameter['content'] ?? null)) {
                 foreach ($parameter['content'] as $mediaType => $mediaTypeObject) {
                     if (is_array($mediaTypeObject) && is_array($mediaTypeObject['schema'] ?? null)) {
                         $schema = $mediaTypeObject['schema'];
-                        $contentJson = is_string($mediaType) && $this->isJsonMediaTypeName($mediaType);
+                        $contentMediaType = is_string($mediaType) ? $mediaType : null;
+                        $contentJson = $contentMediaType !== null && $this->isJsonMediaTypeName($contentMediaType);
                         break;
                     }
                 }
@@ -7376,7 +7463,9 @@ final class GenerateDtoCommand extends Command
                 $schema['x-parameter-in'] = 'querystring';
                 $schema['x-parameter-style'] = $contentJson ? 'json' : 'querystring';
                 $schema['x-parameter-explode'] = false;
+                $this->warnAboutUndecodableParameterContent($name, $contentMediaType, true);
             } elseif (in_array($paramIn, ['path', 'query', 'header', 'cookie'], true)) {
+                $this->warnAboutUndecodableParameterContent($name, $contentMediaType, false);
                 $schema['x-parameter-in'] = $paramIn;
                 if ($contentJson) {
                     // A content:application/json parameter arrives as a JSON string; the

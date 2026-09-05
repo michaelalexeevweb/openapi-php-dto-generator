@@ -3,6 +3,57 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.33 — 2026-09-05
+
+- `deprecated` marks the whole class, not only a property
+- a parameter in an undecodable media type warns
+- the 3.0 `$ref` sibling deviation is written down
+
+**`deprecated` reached a property and nothing else.** The keyword sits in two places a document can
+mean the whole class by, and both were dropped:
+
+```yaml
+components:
+  schemas:
+    RetiredShape:
+      type: object
+      deprecated: true          # the schema itself — 3.1 inherits this from JSON Schema 2020-12,
+      properties: { legacyId: { type: integer } }   # 3.0 declares it on the Schema Object
+
+paths:
+  /legacy:
+    post:
+      deprecated: true          # the ENDPOINT, so everything generated from it
+```
+
+A class whose schema was deprecated, or whose operation was, looked exactly like a current one, and
+static analysis had nothing to warn a caller with. Both mark the class now. An operation carries its
+`deprecated` down onto the request body, the parameters and the responses it produces — and only
+downward: a schema that declares itself deprecated does not become current by being used in a live
+operation. All five modes emit it, since a class docblock is a class docblock in every one of them.
+
+Only an annotation is added, so nothing about a generated class changes shape. A project running
+`phpstan/phpstan-deprecation-rules` will start seeing the deprecations it asked for, which is the
+point of the keyword.
+
+**A parameter described in a media type nothing can decode now says so.** A Parameter Object may carry
+`content` instead of `schema`, and the runtime decodes two things: any JSON media type, and — for OAS
+3.2 `in: querystring` — a form-encoded value. Given `content: {application/xml: …}` a class was still
+emitted, the deserializer still received the raw string, and the request failed on the cast with
+nothing connecting the two. It is a warning rather than an error because the document is VALID and the
+class may serve a response or hand-written code; what was missing was the sentence.
+
+**The 3.0 `$ref` sibling deviation is documented.** 3.0 says any sibling of `$ref` is ignored, so
+`{$ref: …, nullable: true}` should produce a non-nullable type. It produces a nullable one here, and
+that is deliberate: the spelling is the standard workaround for a nullable reference in 3.0, the
+ecosystem reads it the same way, and obeying the letter would quietly change the type of a property
+that thousands of documents describe correctly. Behaviour unchanged — it was simply undefended in
+writing. In 3.1 the siblings are permitted by the specification itself.
+
+Gates: 1789 tests (up from 1779), phpstan / phpcs / cs-fixer clean. Every previously generated corpus
+class is byte-identical, checked file by file: adding classes in the middle of a snapshot realigns
+thousands of unrelated lines and the diff alone proves nothing.
+
 ## 2.15.32 — 2026-09-05
 
 - Path Item parameters reach every operation of the path

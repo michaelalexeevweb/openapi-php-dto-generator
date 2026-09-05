@@ -1567,6 +1567,206 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * A parameter described in a media type the runtime cannot decode says so, once.
+     *
+     * A Parameter Object may carry `content` instead of `schema`, and the runtime decodes exactly
+     * two things: any JSON media type, and — for OAS 3.2 `in: querystring` — a form-encoded value.
+     * Given `content: {application/xml: {...}}` a class is still emitted for the schema and the
+     * deserializer still receives the raw string, so the class is one nothing can fill; the request
+     * fails on the cast and the reader is left guessing which half is wrong.
+     *
+     * A warning rather than an error: the document is VALID and the class may be of use on the
+     * response side or to hand-written code. What was missing was the sentence.
+     *
+     * @param array<string, mixed> $content
+     */
+    #[DataProvider('parameterContentProvider')]
+    public function testAnUndecodableParameterContentIsReported(
+        string $in,
+        array $content,
+        bool $expectWarning,
+    ): void {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/p' => ['get' => [
+                'parameters' => [['name' => 'filter', 'in' => $in, 'content' => $content]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ParamContentNs' . ucfirst($in) . md5(serialize($content)));
+
+        $warnings = array_filter(
+            $this->generator->getGenerationWarnings(),
+            static fn(string $warning): bool => str_contains($warning, 'cannot decode'),
+        );
+
+        if (!$expectWarning) {
+            $this->assertSame([], array_values($warnings));
+
+            return;
+        }
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('Parameter "filter"', (string)reset($warnings));
+    }
+
+    /**
+     * @return array<string, array{string, array<string, mixed>, bool}>
+     */
+    public static function parameterContentProvider(): array
+    {
+        $schema = ['schema' => ['type' => 'object', 'required' => ['x'], 'properties' => ['x' => ['type' => 'string']]]];
+
+        return [
+            'json is decoded' => ['query', ['application/json' => $schema], false],
+            'a +json suffix is decoded too' => ['query', ['application/vnd.acme+json' => $schema], false],
+            'xml is not' => ['query', ['application/xml' => $schema], true],
+            'nor is text' => ['header', ['text/plain' => $schema], true],
+            // OAS 3.2: the whole query string, form-encoded — the one non-JSON media type the
+            // runtime does read.
+            'a form-encoded querystring is decoded' => ['querystring', ['application/x-www-form-urlencoded' => $schema], false],
+            'but not an xml one' => ['querystring', ['application/xml' => $schema], true],
+        ];
+    }
+
+    /**
+     * `deprecated` marks the CLASS, not only the property that happens to carry it.
+     *
+     * The keyword sits in two places in a document, and both mean the whole class is stale:
+     *
+     *   - on a Schema Object, where 3.1 inherits it from JSON Schema 2020-12 and 3.0 declares it
+     *     directly — the schema itself is deprecated, so its class is;
+     *   - on an Operation Object, which deprecates the ENDPOINT — so the request body, the parameters
+     *     and the responses it generates are all stale together.
+     *
+     * Until 2.15.33 only a PROPERTY could be marked. A class whose whole schema was deprecated, or
+     * whose operation was, looked exactly like a current one, and static analysis had nothing to warn
+     * a caller with.
+     *
+     * @param array<string, mixed> $openApi
+     * @param array<string, bool> $expected class file => whether it carries the notice
+     */
+    #[DataProvider('deprecatedClassProvider')]
+    public function testDeprecatedMarksTheWholeClass(array $openApi, array $expected): void
+    {
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'DeprecatedNs');
+
+        foreach ($expected as $file => $isDeprecated) {
+            $content = (string)file_get_contents($this->outputDirectory . '/' . $file);
+            // The class docblock only — a property's own `@deprecated` is a different line, indented
+            // inside the class, and counting both would let either one satisfy the other.
+            $classDocblock = substr($content, 0, (int)strpos($content, 'final class'));
+
+            if ($isDeprecated) {
+                $this->assertStringContainsString('@deprecated', $classDocblock, $file);
+
+                continue;
+            }
+
+            $this->assertStringNotContainsString('@deprecated', $classDocblock, $file);
+        }
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, array<string, bool>}>
+     */
+    public static function deprecatedClassProvider(): array
+    {
+        $object = static fn(string $property): array => [
+            'type' => 'object',
+            'required' => [$property],
+            'properties' => [$property => ['type' => 'string']],
+        ];
+
+        return [
+            'on the schema itself' => [
+                [
+                    'openapi' => '3.1.0',
+                    'info' => ['title' => 'T', 'version' => '1.0.0'],
+                    'components' => ['schemas' => [
+                        'Stale' => $object('b') + ['deprecated' => true],
+                        'Fresh' => $object('c'),
+                    ]],
+                ],
+                ['Stale.php' => true, 'Fresh.php' => false],
+            ],
+            'on the operation, reaching all three of its classes' => [
+                [
+                    'openapi' => '3.1.0',
+                    'info' => ['title' => 'T', 'version' => '1.0.0'],
+                    'paths' => [
+                        '/old' => ['post' => [
+                            'deprecated' => true,
+                            'parameters' => [['in' => 'query', 'name' => 'q', 'schema' => ['type' => 'string']]],
+                            'requestBody' => ['content' => ['application/json' => ['schema' => $object('a')]]],
+                            'responses' => ['200' => [
+                                'description' => 'ok',
+                                'content' => ['application/json' => ['schema' => $object('r')]],
+                            ]],
+                        ]],
+                        '/current' => ['post' => [
+                            'requestBody' => ['content' => ['application/json' => ['schema' => $object('x')]]],
+                            'responses' => ['200' => ['description' => 'ok']],
+                        ]],
+                    ],
+                    'components' => ['schemas' => []],
+                ],
+                [
+                    'OldPostRequest.php' => true,
+                    'OldPostQueryParams.php' => true,
+                    'Old200.php' => true,
+                    'CurrentPostRequest.php' => false,
+                ],
+            ],
+            // 3.0 declares the keyword on the Schema Object in its own right, so it has to work there
+            // without the JSON Schema 2020-12 inheritance 3.1 relies on.
+            'on a 3.0 schema' => [
+                [
+                    'openapi' => '3.0.3',
+                    'info' => ['title' => 'T', 'version' => '1.0.0'],
+                    'components' => ['schemas' => ['Stale' => $object('b') + ['deprecated' => true]]],
+                ],
+                ['Stale.php' => true],
+            ],
+        ];
+    }
+
+    /**
+     * A schema that declares itself deprecated stays so inside a live operation.
+     *
+     * The operation stamps its own `deprecated` onto the schemas it produces; the reverse must not
+     * happen — a stale schema does not become current by being used somewhere current.
+     */
+    public function testALiveOperationDoesNotUndeprecateItsSchema(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/current' => ['post' => [
+                'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Stale']]]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => ['Stale' => [
+                'type' => 'object',
+                'deprecated' => true,
+                'required' => ['b'],
+                'properties' => ['b' => ['type' => 'string']],
+            ]]],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'StaleRefNs');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/Stale.php');
+        $this->assertStringContainsString(
+            '@deprecated',
+            substr($content, 0, (int)strpos($content, 'final class')),
+        );
+    }
+
+    /**
      * A Path Item written as a `$ref` is resolved, in both shapes the pointer can take.
      *
      * The Path Item Object carries a `$ref` of its own, and 3.1 adds `components.pathItems` as the
