@@ -3,6 +3,69 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.29 — 2026-09-05
+
+- a `readOnly` property no longer makes its class impossible to deserialize
+- **the emitted constructor changes shape for those classes — read the migration note**
+- the corpus carries `readOnly` at last, so that shape is snapshotted
+
+**Read this before upgrading if any schema of yours marks a property `readOnly`.** The change is a
+fix, and it alters an emitted constructor. It ships as a patch by explicit decision; the paragraph on
+positional construction below is the part that matters.
+
+**The bug.** OpenAPI says: "If the property is marked as readOnly being true and is in the required
+list, the required will take effect on the RESPONSE only." A request that omits such a property is
+therefore valid. The generator emitted it as a required, non-nullable constructor parameter anyway,
+and `DtoDeserializer` refuses to accept a `readOnly` value from a client on principle — so it had
+nothing to pass and nothing to fall back on, and reported
+
+```
+Parameter "serverId" is readOnly and non-nullable with no default value.
+```
+
+for EVERY request, including one that sent the field. `id: {type: integer, readOnly: true}` inside
+`required` is an everyday shape, and it made the whole class undeserializable. No warning was emitted
+at generation time either.
+
+Such a property now carries the `UnsetValue` sentinel, which is how "required of a response, not of a
+request" is expressed in a constructor. What did NOT change: a `readOnly` value sent by a client is
+still ignored, `isXRequired()` still answers true, `toArray()` still writes the key, and `validate()`
+still refuses a response that never set one. The requirement moved to where the document put it — the
+response — instead of blocking the request.
+
+**Migration: construct with NAMED arguments.** A defaulted parameter must come after every required
+one — PHP deprecates the alternative — so a `readOnly` property declared before a required one moves
+behind it in the emitted parameter list:
+
+```php
+// before                                    // after
+__construct(int $serverId, string $title)    __construct(string $title, int|UnsetValue|null $serverId = UnsetValue::UNSET)
+```
+
+Positional construction therefore binds different arguments than it did. Where the swapped types
+differ you get a `TypeError`; **where they coincide you get nothing at all** — measured, with two
+`string` properties:
+
+```php
+new Product('C-1', 'Widget');
+// before: {"code":"C-1","name":"Widget"}
+// after:  {"code":"Widget","name":"C-1"}
+```
+
+Named arguments are unaffected and are the fix: `new Product(name: 'Widget', code: 'C-1')`. Two other
+signatures widen for the same properties — the getter returns `?int` where it returned `int`, and the
+constructor parameter accepts the sentinel — so a caller that assigns a getter result into a
+non-nullable type needs a null check that static analysis will point at.
+
+**The corpus now carries `readOnly`, and it never did.** That is why the entire suite stayed green
+while the constructor shape changed underneath it: nothing generated a `readOnly` property, so nothing
+could see it. A `ReadOnlyFields` schema was added, declaring its `readOnly` property BEFORE the
+required one so the parameter order is what the snapshot pins; the emitted metadata, the deserializer
+behaviour and the constructor order each have a test, and all three fail if the fix is reverted.
+
+Gates: 1738 tests (up from 1735), phpstan / phpcs / cs-fixer clean. The snapshot diff is additive —
+which says the corpus had no coverage here before, not that the change is invisible to callers.
+
 ## 2.15.28 — 2026-09-05
 
 - a urlencoded form BODY accepts the repeated-key array the same way a query string does

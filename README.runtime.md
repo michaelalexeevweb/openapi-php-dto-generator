@@ -196,6 +196,14 @@ Laravel route parameters (`/users/{id}`) resolve automatically; see below.
 become serialization groups the application has to pass — see
 [the Symfony guide](README.symfony.md#serialization-groups-readonly--writeonly).)
 
+A `readOnly` property is **response-only**, including when the document lists it under `required` —
+OpenAPI puts that requirement on the response alone, so a request may omit it. Its constructor
+parameter therefore carries the `UnsetValue` sentinel and sits after the required ones, which means
+**construct these DTOs with named arguments**: a `readOnly` property declared before a required one
+moves behind it, and positional code binds different arguments than it used to (since 2.15.29 — before
+it, such a class could not be deserialized at all). `isXRequired()`, the key in `toArray()` and the
+`validate()` verdict are unchanged: the requirement still holds, on the response.
+
 ### Dates, and containers of dates
 
 `format: date` / `date-time` becomes a `DateTimeImmutable` property, and the reader gets two getters:

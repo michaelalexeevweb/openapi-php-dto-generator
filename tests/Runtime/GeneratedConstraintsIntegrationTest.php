@@ -2007,6 +2007,134 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A `readOnly` property does not make its class impossible to deserialize.
+     *
+     * OpenAPI: "If the property is marked as readOnly being true and is in the required list, the
+     * required will take effect on the RESPONSE only." So a request that omits it is valid — but the
+     * constructor emitted it as a required, non-nullable parameter, and `DtoDeserializer` refuses to
+     * pass a client-sent `readOnly` value on principle. With no value to pass and no default to fall
+     * back on, it reported `Parameter "serverId" is readOnly and non-nullable with no default value`
+     * for EVERY request, including one that sent the field. `id: {type: integer, readOnly: true}`
+     * inside `required` is an ordinary shape, and it made the class undeserializable outright.
+     *
+     * The property carries the `UnsetValue` sentinel now, which is how "required of a response, not
+     * of a request" is expressed in a constructor.
+     */
+    public function testAReadOnlyRequiredPropertyNoLongerBlocksDeserialization(): void
+    {
+        $fqcn = $this->generateReadOnlyFields('ReadOnlyDeserialize');
+        $deserializer = new DtoDeserializer();
+
+        /** @var object{getServerId: callable, getTitle: callable, isServerIdRequired: callable, isServerIdInRequest: callable} $absent */
+        $absent = $deserializer->deserialize($this->jsonPostRequest('{"title":"T"}'), $fqcn);
+        $this->assertSame('T', $absent->getTitle());
+        $this->assertNull($absent->getServerId(), 'absent from the request, so absent from the DTO');
+        $this->assertFalse($absent->isServerIdInRequest());
+
+        // A readOnly value the client sent is still ignored — that half was always right, and it is
+        // the reason the field cannot simply be treated as an ordinary optional one.
+        /** @var object{getServerId: callable} $sent */
+        $sent = $deserializer->deserialize($this->jsonPostRequest('{"title":"T","serverId":7}'), $fqcn);
+        $this->assertNull($sent->getServerId(), 'a readOnly value from the client is not accepted');
+
+        // `required` did not become a lie: it still holds, and it still holds on the response.
+        $this->assertTrue($absent->isServerIdRequired());
+    }
+
+    /**
+     * The RESPONSE contract survives: the key is still written, and an unset one is still reported.
+     *
+     * Making the property optional in the constructor could have quietly demoted it on the way out
+     * too — the key vanishing from the body, or the omission going unnoticed. Neither happens: the
+     * schema still calls it required, so `toArray()` writes it unconditionally, and `validate()`
+     * refuses a DTO that never received one.
+     */
+    public function testAReadOnlyRequiredPropertyIsStillRequiredOfTheResponse(): void
+    {
+        $fqcn = $this->generateReadOnlyFields('ReadOnlyResponse');
+        $normalizer = new DtoNormalizer();
+
+        /** @var GeneratedDtoInterface $filled */
+        $filled = new $fqcn(title: 'T', serverId: 7);
+        $this->assertSame('{"serverId":7,"title":"T"}', $normalizer->toJson($filled));
+        $this->assertSame([], $normalizer->validate($filled));
+
+        /** @var GeneratedDtoInterface $unset */
+        $unset = new $fqcn(title: 'T');
+        $this->assertStringContainsString(
+            '"serverId":null',
+            $normalizer->toJson($unset),
+            'the key stays in the body — the schema still requires it of a response',
+        );
+        $this->assertNotEmpty(
+            $normalizer->validate($unset),
+            'and a response that never set it is refused',
+        );
+
+        // writeOnly is unaffected and still dropped on the way out.
+        $this->assertStringNotContainsString('secret', $normalizer->toJson(new $fqcn(title: 'T', secret: 's')));
+    }
+
+    /**
+     * The parameter ORDER this shape produces, pinned because it is the part that breaks callers.
+     *
+     * A sentinel-carrying parameter has a default, and the emitted constructor puts every defaulted
+     * parameter after every required one — PHP has no other option, an optional parameter before a
+     * required one is deprecated. So a `readOnly` property declared BEFORE a required one moves
+     * behind it, and code that constructs positionally binds different arguments than it used to.
+     * With matching types nothing throws.
+     *
+     * Named arguments are unaffected, which is the migration: `new Dto(title: …, serverId: …)`.
+     */
+    public function testTheConstructorPutsReadOnlyParametersAfterTheRequiredOnes(): void
+    {
+        $fqcn = $this->generateReadOnlyFields('ReadOnlyOrder');
+
+        $constructor = (new ReflectionClass($fqcn))->getConstructor();
+        $this->assertNotNull($constructor);
+
+        $names = array_map(
+            static fn(ReflectionParameter $p): string => $p->getName(),
+            $constructor->getParameters(),
+        );
+        $this->assertSame(['title', 'serverId', 'writtenAt', 'secret'], $names);
+
+        $title = $constructor->getParameters()[0];
+        $this->assertFalse($title->isOptional(), 'the only request-required property stays required');
+        $this->assertTrue(
+            $constructor->getParameters()[1]->isOptional(),
+            'the readOnly one is optional, which is what moved it',
+        );
+    }
+
+    /**
+     * Generates the corpus `ReadOnlyFields` schema and returns its class.
+     *
+     * @return class-string<GeneratedDtoInterface>
+     */
+    private function generateReadOnlyFields(string $namespace): string
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'ReadOnlyFields' => [
+                    'type' => 'object',
+                    'required' => ['serverId', 'title'],
+                    'properties' => [
+                        'serverId' => ['type' => 'integer', 'readOnly' => true],
+                        'title' => ['type' => 'string'],
+                        'writtenAt' => ['type' => 'string', 'format' => 'date-time', 'readOnly' => true],
+                        'secret' => ['type' => 'string', 'writeOnly' => true],
+                    ],
+                ],
+            ]],
+        ];
+
+        return $this->generateFromInlineSpec($spec, $namespace, 'ReadOnlyFields');
+    }
+
+    /**
      * A urlencoded form BODY loses repeated keys exactly the way a query string does, and is
      * recovered the same way.
      *

@@ -1114,3 +1114,28 @@ components:
             type:
               - integer
               - "null"
+
+    # readOnly, which the corpus carried nowhere until 2.15.29 — so what the generator emits for it
+    # was never snapshotted, and the constructor shape could change with the whole suite green.
+    # `serverId` is required AND readOnly, which OpenAPI says applies the requirement to the RESPONSE
+    # only: a request that omits it is valid, so the constructor has to be callable without it. It is
+    # declared BEFORE the required `title` on purpose — that is what moves it behind `title` in the
+    # emitted parameter list, and the snapshot is where that shows.
+    ReadOnlyFields:
+      type: object
+      required:
+        - serverId
+        - title
+      properties:
+        serverId:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+        writtenAt:
+          type: string
+          format: date-time
+          readOnly: true
+        secret:
+          type: string
+          writeOnly: true

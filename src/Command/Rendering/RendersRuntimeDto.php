@@ -371,7 +371,14 @@ trait RendersRuntimeDto
      */
     private function propertyUsesUnsetSentinel(array $property): bool
     {
-        if ($property['required']) {
+        // A `readOnly` property is response-only by definition. OpenAPI: "If the property is marked
+        // as readOnly being true and is in the required list, the required will take effect on the
+        // response only" — so a REQUEST that omits it is valid, and the constructor has to be
+        // callable without it. Emitted as required, it could not be: `DtoDeserializer` refuses to
+        // pass a client-sent readOnly value, finds no default and no null to put in its place, and
+        // the class became impossible to deserialize AT ALL. The sentinel is what makes "the
+        // document requires it of a response, not of a request" expressible in a constructor.
+        if ($property['required'] && ($property['readOnly'] ?? false) !== true) {
             return false;
         }
 
