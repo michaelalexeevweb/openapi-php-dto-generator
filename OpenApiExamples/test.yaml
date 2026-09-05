@@ -558,6 +558,13 @@ paths:
         name: region
         schema:
           type: string
+      # The same NAME in a different location — a distinct parameter by the specification's own
+      # definition, and one that silently overwrote its twin until 2.15.34. The first keeps the plain
+      # property name; this one becomes `tenantQuery` and still reads the field `tenant`.
+      - in: query
+        name: tenant
+        schema:
+          type: string
     get:
       parameters:
         - in: query

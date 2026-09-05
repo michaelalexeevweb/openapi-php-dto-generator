@@ -2114,6 +2114,42 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * Each of three parameters named `id` is read from its OWN source, by the name the document gave.
+     *
+     * The emission side proves three properties exist; only a request proves they are wired to
+     * different places. All three look up the field `id` — that is what the document says — and the
+     * path, the query string and the header each answer with their own value and their own type.
+     */
+    public function testParametersSharingANameAreEachReadFromTheirOwnSource(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/d/{id}' => ['get' => [
+                'parameters' => [
+                    ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']],
+                    ['in' => 'query', 'name' => 'id', 'schema' => ['type' => 'string']],
+                    ['in' => 'header', 'name' => 'id', 'schema' => ['type' => 'boolean']],
+                ],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'SameNameRuntimeNs', 'DgetQueryParams');
+
+        $request = Request::create('/d/7?id=from-query', 'GET');
+        $request->attributes->set('id', '7');
+        $request->headers->set('id', 'true');
+
+        /** @var object{getId: callable, getIdQuery: callable, getIdHeader: callable} $dto */
+        $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+
+        $this->assertSame(7, $dto->getId(), 'the router-verified path value, cast to its own type');
+        $this->assertSame('from-query', $dto->getIdQuery());
+        $this->assertTrue($dto->getIdHeader());
+    }
+
+    /**
      * A `readOnly` property does not make its class impossible to deserialize.
      *
      * OpenAPI: "If the property is marked as readOnly being true and is in the required list, the

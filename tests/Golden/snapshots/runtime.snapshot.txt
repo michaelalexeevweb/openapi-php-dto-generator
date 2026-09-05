@@ -1,4 +1,4 @@
-# runtime mode — 78 files, 22397 lines
+# runtime mode — 78 files, 22533 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7982,14 +7982,22 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
     private bool $regionInQuery = false;
     private bool $regionInHeader = false;
     private bool $regionInCookie = false;
+    private bool $tenantQueryInRequest = false;
+    private bool $tenantQueryInPath = false;
+    private bool $tenantQueryInQuery = false;
+    private bool $tenantQueryInHeader = false;
+    private bool $tenantQueryInCookie = false;
 
     public function __construct(
         private readonly int $tenant,
         private readonly string|UnsetValue|null $region = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $tenantQuery = UnsetValue::UNSET,
     ) {
         $this->tenantInPath = true;
         // Track if parameter was explicitly passed
         $this->regionInQuery = $region !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->tenantQueryInQuery = $tenantQuery !== UnsetValue::UNSET;
     }
 
     public function getTenant(): int
@@ -8060,6 +8068,41 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
     public function isRegionInRequest(): bool
     {
         return $this->regionInRequest;
+    }
+
+    public function getTenantQuery(): ?string
+    {
+        return $this->tenantQuery !== UnsetValue::UNSET ? $this->tenantQuery : null;
+    }
+
+    public function isTenantQueryRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTenantQueryInPath(): bool
+    {
+        return $this->tenantQueryInPath;
+    }
+
+    public function isTenantQueryInQuery(): bool
+    {
+        return $this->tenantQueryInQuery;
+    }
+
+    public function isTenantQueryInHeader(): bool
+    {
+        return $this->tenantQueryInHeader;
+    }
+
+    public function isTenantQueryInCookie(): bool
+    {
+        return $this->tenantQueryInCookie;
+    }
+
+    public function isTenantQueryInRequest(): bool
+    {
+        return $this->tenantQueryInRequest;
     }
 
     /**
@@ -8149,6 +8192,25 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
                 'arrayItemType' => '',
             ],
         ];
+        $map['tenantQuery'] = [
+            'getter' => 'getTenantQuery',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'tenant',
+                'required' => false,
+                'inPathFlagGetter' => 'isTenantQueryInPath',
+                'inQueryFlagGetter' => 'isTenantQueryInQuery',
+                'inHeaderFlagGetter' => 'isTenantQueryInHeader',
+                'inCookieFlagGetter' => 'isTenantQueryInCookie',
+                'inRequestFlagGetter' => 'isTenantQueryInRequest',
+                'constraints' => $constraints['tenantQuery'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
 
         return $map;
     }
@@ -8158,7 +8220,10 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
      */
     public static function getAliases(): array
     {
-        return [];
+        $aliases = [];
+        $aliases['tenantQuery'] = 'tenant';
+
+        return $aliases;
     }
 
     /**
@@ -8169,6 +8234,7 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
         $constraints = [];
         $constraints['tenant'] = ['type' => 'integer'];
         $constraints['region'] = ['type' => 'string'];
+        $constraints['tenantQuery'] = ['type' => 'string'];
 
         return $constraints;
     }
@@ -8185,6 +8251,7 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
         $sources = [];
         $sources['tenant'] = 'path';
         $sources['region'] = 'query';
+        $sources['tenantQuery'] = 'query';
 
         return $sources;
     }
@@ -8202,6 +8269,7 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
         $styles = [];
         $styles['tenant'] = ['style' => 'simple', 'explode' => false];
         $styles['region'] = ['style' => 'form', 'explode' => true];
+        $styles['tenantQuery'] = ['style' => 'form', 'explode' => true];
 
         return $styles;
     }
@@ -8240,6 +8308,11 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
     private bool $regionInQuery = false;
     private bool $regionInHeader = false;
     private bool $regionInCookie = false;
+    private bool $tenantQueryInRequest = false;
+    private bool $tenantQueryInPath = false;
+    private bool $tenantQueryInQuery = false;
+    private bool $tenantQueryInHeader = false;
+    private bool $tenantQueryInCookie = false;
     private bool $verboseInRequest = false;
     private bool $verboseInPath = false;
     private bool $verboseInQuery = false;
@@ -8249,11 +8322,14 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
     public function __construct(
         private readonly int $tenant,
         private readonly int|UnsetValue|null $region = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $tenantQuery = UnsetValue::UNSET,
         private readonly bool|UnsetValue|null $verbose = UnsetValue::UNSET,
     ) {
         $this->tenantInPath = true;
         // Track if parameter was explicitly passed
         $this->regionInQuery = $region !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->tenantQueryInQuery = $tenantQuery !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->verboseInQuery = $verbose !== UnsetValue::UNSET;
     }
@@ -8326,6 +8402,41 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
     public function isRegionInRequest(): bool
     {
         return $this->regionInRequest;
+    }
+
+    public function getTenantQuery(): ?string
+    {
+        return $this->tenantQuery !== UnsetValue::UNSET ? $this->tenantQuery : null;
+    }
+
+    public function isTenantQueryRequired(): bool
+    {
+        return false;
+    }
+
+    public function isTenantQueryInPath(): bool
+    {
+        return $this->tenantQueryInPath;
+    }
+
+    public function isTenantQueryInQuery(): bool
+    {
+        return $this->tenantQueryInQuery;
+    }
+
+    public function isTenantQueryInHeader(): bool
+    {
+        return $this->tenantQueryInHeader;
+    }
+
+    public function isTenantQueryInCookie(): bool
+    {
+        return $this->tenantQueryInCookie;
+    }
+
+    public function isTenantQueryInRequest(): bool
+    {
+        return $this->tenantQueryInRequest;
     }
 
     public function getVerbose(): ?bool
@@ -8450,6 +8561,25 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
                 'arrayItemType' => '',
             ],
         ];
+        $map['tenantQuery'] = [
+            'getter' => 'getTenantQuery',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'tenant',
+                'required' => false,
+                'inPathFlagGetter' => 'isTenantQueryInPath',
+                'inQueryFlagGetter' => 'isTenantQueryInQuery',
+                'inHeaderFlagGetter' => 'isTenantQueryInHeader',
+                'inCookieFlagGetter' => 'isTenantQueryInCookie',
+                'inRequestFlagGetter' => 'isTenantQueryInRequest',
+                'constraints' => $constraints['tenantQuery'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => true,
+                'arrayItemType' => '',
+            ],
+        ];
         $map['verbose'] = [
             'getter' => 'getVerbose',
             'type' => 'bool',
@@ -8478,7 +8608,10 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
      */
     public static function getAliases(): array
     {
-        return [];
+        $aliases = [];
+        $aliases['tenantQuery'] = 'tenant';
+
+        return $aliases;
     }
 
     /**
@@ -8489,6 +8622,7 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
         $constraints = [];
         $constraints['tenant'] = ['type' => 'integer'];
         $constraints['region'] = ['type' => 'integer'];
+        $constraints['tenantQuery'] = ['type' => 'string'];
         $constraints['verbose'] = ['type' => 'boolean'];
 
         return $constraints;
@@ -8506,6 +8640,7 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
         $sources = [];
         $sources['tenant'] = 'path';
         $sources['region'] = 'query';
+        $sources['tenantQuery'] = 'query';
         $sources['verbose'] = 'query';
 
         return $sources;
@@ -8524,6 +8659,7 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
         $styles = [];
         $styles['tenant'] = ['style' => 'simple', 'explode' => false];
         $styles['region'] = ['style' => 'form', 'explode' => true];
+        $styles['tenantQuery'] = ['style' => 'form', 'explode' => true];
         $styles['verbose'] = ['style' => 'form', 'explode' => true];
 
         return $styles;

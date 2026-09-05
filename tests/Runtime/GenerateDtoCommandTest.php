@@ -1361,6 +1361,54 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * Two parameters may share a NAME when they sit in different places, and both survive.
+     *
+     * "A unique parameter is defined by a combination of a name and location" — so `id` in the path
+     * and `id` in the query are two parameters, and a document is entitled to declare both. They
+     * cannot both be `$id`, and keyed by the name alone the later one silently overwrote the earlier:
+     * the class ended up with one property, of the last declared type, and the other parameter was
+     * unreachable.
+     *
+     * The FIRST keeps the plain name; each later one takes its location as a suffix and carries the
+     * real wire name in its alias, so the request lookup is unchanged — all three read the field `id`,
+     * each from its own source.
+     */
+    public function testParametersSharingANameInDifferentLocationsAllSurvive(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/d/{id}' => ['get' => [
+                'parameters' => [
+                    ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']],
+                    ['in' => 'query', 'name' => 'id', 'schema' => ['type' => 'string']],
+                    ['in' => 'header', 'name' => 'id', 'schema' => ['type' => 'boolean']],
+                ],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'SameNameParamsNs');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/DgetQueryParams.php');
+
+        // Three properties, and the declared types prove none of them overwrote another.
+        $this->assertStringContainsString('int $id', $content);
+        $this->assertStringContainsString('string|UnsetValue|null $idQuery', $content);
+        $this->assertStringContainsString('bool|UnsetValue|null $idHeader', $content);
+
+        // Each reads its own source...
+        $this->assertStringContainsString("\$sources['id'] = 'path';", $content);
+        $this->assertStringContainsString("\$sources['idQuery'] = 'query';", $content);
+        $this->assertStringContainsString("\$sources['idHeader'] = 'header';", $content);
+
+        // ...and all three look up the same field name, which is what the document declared.
+        $this->assertStringContainsString("\$aliases['idQuery'] = 'id';", $content);
+        $this->assertStringContainsString("\$aliases['idHeader'] = 'id';", $content);
+    }
+
+    /**
      * Parameters declared on the PATH ITEM reach every operation of that path.
      *
      * OpenAPI lets a Path Item carry `parameters` that apply to all of its operations — it is how

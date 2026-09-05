@@ -3,6 +3,57 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.34 — 2026-09-05
+
+- two parameters sharing a name in different locations both survive
+- every non-schema OpenAPI object is pinned against stopping generation
+
+**A parameter could silently overwrite another one.** "A unique parameter is defined by a combination
+of a name and location", so `id` in the path and `id` in the query are two parameters and a document
+is entitled to declare both:
+
+```yaml
+parameters:
+  - { in: path,   name: id, required: true, schema: { type: integer } }
+  - { in: query,  name: id, schema: { type: string } }
+  - { in: header, name: id, schema: { type: boolean } }
+```
+
+They cannot all be `$id`, and the properties were keyed by the name alone — so each declaration
+overwrote the last and the class came out with ONE property, of the type declared last. The other two
+parameters were unreachable: no property, no source entry, nothing in the request that could fill them.
+
+The first keeps the plain name; each later one takes its location as a suffix and keeps the wire name
+in its alias:
+
+```php
+private readonly int $id,                                    // $sources['id']       = 'path'
+private readonly string|UnsetValue|null $idQuery = …,        // $sources['idQuery']  = 'query'
+private readonly bool|UnsetValue|null $idHeader = …,         // $sources['idHeader'] = 'header'
+// $aliases['idQuery'] = 'id';  $aliases['idHeader'] = 'id';
+```
+
+All three still look up the field `id` — that is what the document says — each from its own source,
+which a request-level test pins alongside the emission one. **A document that declares such a pair
+gains properties**, and the surviving one may change type: it used to be whichever came last, and it
+is now whichever came first. Every other document is untouched, since the question never arises.
+
+This one is older than the path-item merge of 2.15.32, which brushed against it: that merge keeps a
+path `id` and a query `id` apart, as the specification says it should, and until now they collapsed
+again one step later.
+
+**Every OpenAPI object that names no class is now pinned against stopping the generator.** Info,
+Contact, License, Server, Server Variable, Security Scheme, OAuth Flows, Security Requirement, Tag,
+External Documentation, Example, Link, Header and XML describe an API for humans and for HTTP
+machinery; none produces a DTO, and nothing in the suite said they were safe to walk past. A fixture
+carrying all of them at once must generate, warn about nothing, and produce exactly the classes its
+schemas and operations call for — so an object that starts contributing a class of its own fails on
+the count. The three that DO reach the emitted code and travel with them are pinned separately: an
+Encoding Object naming a JSON part of a multipart body, a `$ref` carrying a 3.1 sibling `description`,
+and a deprecated Parameter.
+
+Gates: 1793 tests (up from 1789), phpstan / phpcs / cs-fixer clean.
+
 ## 2.15.33 — 2026-09-05
 
 - `deprecated` marks the whole class, not only a property

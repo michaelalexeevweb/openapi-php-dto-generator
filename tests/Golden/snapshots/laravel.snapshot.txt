@@ -1,4 +1,4 @@
-# laravel mode — 104 files, 13854 lines
+# laravel mode — 104 files, 13888 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4101,6 +4101,7 @@ final class ApiTestTenantsDeleteQueryParams
     public function __construct(
         private readonly int $tenant,
         private readonly ?string $region = null,
+        private readonly ?string $tenantQuery = null,
     ) {
     }
 
@@ -4115,6 +4116,7 @@ final class ApiTestTenantsDeleteQueryParams
         return [
             'tenant' => ['present', 'integer'],
             'region' => ['sometimes', 'string'],
+            'tenant' => ['sometimes', 'string'],
         ];
     }
 
@@ -4126,6 +4128,7 @@ final class ApiTestTenantsDeleteQueryParams
         $dto = new self(
             tenant: self::toIntIfIntegral($data['tenant']),
             region: ($data['region'] ?? null) === null ? null : $data['region'],
+            tenantQuery: ($data['tenant'] ?? null) === null ? null : $data['tenant'],
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -4145,6 +4148,16 @@ final class ApiTestTenantsDeleteQueryParams
     public function isRegionProvided(): bool
     {
         return in_array('region', $this->providedOpenApiKeys, true);
+    }
+
+    public function getTenantQuery(): ?string
+    {
+        return $this->tenantQuery;
+    }
+
+    public function isTenantQueryProvided(): bool
+    {
+        return in_array('tenant', $this->providedOpenApiKeys, true);
     }
 
     /**
@@ -4169,6 +4182,10 @@ final class ApiTestTenantsDeleteQueryParams
 
         if ($this->isRegionProvided()) {
             $result['region'] = $this->region;
+        }
+
+        if ($this->isTenantQueryProvided()) {
+            $result['tenant'] = $this->tenantQuery;
         }
 
         return $result;
@@ -4273,6 +4290,7 @@ final class ApiTestTenantsGetQueryParams
     public function __construct(
         private readonly int $tenant,
         private readonly ?int $region = null,
+        private readonly ?string $tenantQuery = null,
         private readonly ?bool $verbose = null,
     ) {
     }
@@ -4288,6 +4306,7 @@ final class ApiTestTenantsGetQueryParams
         return [
             'tenant' => ['present', 'integer'],
             'region' => ['sometimes', 'integer'],
+            'tenant' => ['sometimes', 'string'],
             'verbose' => ['sometimes', 'boolean'],
         ];
     }
@@ -4300,6 +4319,7 @@ final class ApiTestTenantsGetQueryParams
         $dto = new self(
             tenant: self::toIntIfIntegral($data['tenant']),
             region: ($data['region'] ?? null) === null ? null : self::toIntIfIntegral($data['region']),
+            tenantQuery: ($data['tenant'] ?? null) === null ? null : $data['tenant'],
             verbose: ($data['verbose'] ?? null) === null ? null : $data['verbose'],
         );
         $dto->providedOpenApiKeys = array_keys($data);
@@ -4320,6 +4340,16 @@ final class ApiTestTenantsGetQueryParams
     public function isRegionProvided(): bool
     {
         return in_array('region', $this->providedOpenApiKeys, true);
+    }
+
+    public function getTenantQuery(): ?string
+    {
+        return $this->tenantQuery;
+    }
+
+    public function isTenantQueryProvided(): bool
+    {
+        return in_array('tenant', $this->providedOpenApiKeys, true);
     }
 
     public function getVerbose(): ?bool
@@ -4354,6 +4384,10 @@ final class ApiTestTenantsGetQueryParams
 
         if ($this->isRegionProvided()) {
             $result['region'] = $this->region;
+        }
+
+        if ($this->isTenantQueryProvided()) {
+            $result['tenant'] = $this->tenantQuery;
         }
 
         if ($this->isVerboseProvided()) {

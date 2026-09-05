@@ -2267,6 +2267,14 @@ final class GenerateDtoCommand extends Command
                 ? $propertySchema['x-parameter-allow-empty-value']
                 : null;
 
+            // A parameter whose name collides with another parameter's IN A DIFFERENT LOCATION is
+            // keyed by a disambiguated string so both survive — `id` and `idQuery` — while the name
+            // the REQUEST carries stays `id` for both. The PHP name comes from the key; the wire
+            // name, which the alias map and the deserializer's field lookup want, comes from here.
+            $wireName = is_string($propertySchema['x-parameter-name'] ?? null)
+                ? $propertySchema['x-parameter-name']
+                : $openApiPropertyName;
+
             $normalizedName = $this->normalizePropertyName($openApiPropertyName);
             $alreadyMappedOpenApiName = $normalizedToOpenApiName[$normalizedName] ?? null;
             if ($alreadyMappedOpenApiName !== null && $alreadyMappedOpenApiName !== $openApiPropertyName) {
@@ -2283,7 +2291,7 @@ final class GenerateDtoCommand extends Command
 
             $result[] = [
                 'name' => $normalizedName,
-                'openApiName' => $openApiPropertyName,
+                'openApiName' => $wireName,
                 'type' => $type,
                 'nullable' => $nullable,
                 'required' => $isRequired,
@@ -7488,14 +7496,34 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
-            $properties[$name] = $schema;
+            // "A unique parameter is defined by a combination of a name and location", so `id` in the
+            // path and `id` in the query are two parameters — but they cannot both be `$id`. Keyed by
+            // the name alone, the second silently overwrote the first and one of them vanished from
+            // the class. The later one takes a key suffixed with its location instead, carrying the
+            // real wire name in `x-parameter-name` for the alias and the request lookup to use. The
+            // FIRST one keeps the plain key, so nothing moves for the documents where the question
+            // never arises.
+            $propertyKey = $name;
+            if (array_key_exists($propertyKey, $properties)) {
+                $suffix = is_string($paramIn) ? ucfirst($paramIn) : 'Duplicate';
+                $propertyKey = $name . $suffix;
+                $counter = 2;
+                while (array_key_exists($propertyKey, $properties)) {
+                    $propertyKey = $name . $suffix . $counter;
+                    $counter++;
+                }
+
+                $schema['x-parameter-name'] = $name;
+            }
+
+            $properties[$propertyKey] = $schema;
 
             $isPathParam = $paramIn === 'path';
             $isRequired = $this->toBoolean($parameter['required'] ?? false);
 
             // OpenAPI path parameters are always required even in malformed specs.
             if ($isPathParam || $isRequired) {
-                $required[] = $name;
+                $required[] = $propertyKey;
             }
         }
 

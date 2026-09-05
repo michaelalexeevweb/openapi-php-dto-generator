@@ -1,4 +1,4 @@
-# symfony mode — 78 files, 9745 lines
+# symfony mode — 78 files, 9803 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2440,6 +2440,7 @@ namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -2461,6 +2462,13 @@ final class ApiTestTenantsDeleteQueryParams
 
     #[Ignore]
     private bool $regionProvided = false;
+
+    #[Groups(['read', 'write'])]
+    #[SerializedName('tenant')]
+    private ?string $tenantQuery = null;
+
+    #[Ignore]
+    private bool $tenantQueryProvided = false;
 
     public function __construct(
         #[Assert\NotNull]
@@ -2494,6 +2502,27 @@ final class ApiTestTenantsDeleteQueryParams
     {
         return $this->regionProvided;
     }
+
+    public function getTenantQuery(): ?string
+    {
+        return $this->tenantQuery;
+    }
+
+    public function setTenantQuery(?string $tenantQuery): void
+    {
+        $this->tenantQuery = $tenantQuery;
+        $this->tenantQueryProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isTenantQueryProvided(): bool
+    {
+        return $this->tenantQueryProvided;
+    }
 }
 
 ===== ApiTestTenantsGetQueryParams.php =====
@@ -2505,6 +2534,7 @@ namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -2526,6 +2556,13 @@ final class ApiTestTenantsGetQueryParams
 
     #[Ignore]
     private bool $regionProvided = false;
+
+    #[Groups(['read', 'write'])]
+    #[SerializedName('tenant')]
+    private ?string $tenantQuery = null;
+
+    #[Ignore]
+    private bool $tenantQueryProvided = false;
 
     #[Groups(['read', 'write'])]
     private ?bool $verbose = null;
@@ -2564,6 +2601,27 @@ final class ApiTestTenantsGetQueryParams
     public function isRegionProvided(): bool
     {
         return $this->regionProvided;
+    }
+
+    public function getTenantQuery(): ?string
+    {
+        return $this->tenantQuery;
+    }
+
+    public function setTenantQuery(?string $tenantQuery): void
+    {
+        $this->tenantQuery = $tenantQuery;
+        $this->tenantQueryProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isTenantQueryProvided(): bool
+    {
+        return $this->tenantQueryProvided;
     }
 
     public function getVerbose(): ?bool

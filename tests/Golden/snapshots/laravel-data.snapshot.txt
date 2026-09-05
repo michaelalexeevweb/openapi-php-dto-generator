@@ -1,4 +1,4 @@
-# laravel-data mode — 78 files, 8697 lines
+# laravel-data mode — 78 files, 8705 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1761,6 +1761,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
@@ -1789,6 +1790,8 @@ final class ApiTestTenantsDeleteQueryParams extends Data
     public function __construct(
         public readonly int $tenant,
         public readonly string|Optional $region,
+        #[MapName('tenant')]
+        public readonly string|Optional $tenantQuery,
     ) {
     }
 
@@ -1806,6 +1809,7 @@ final class ApiTestTenantsDeleteQueryParams extends Data
         return [
             'tenant' => ['present', 'integer'],
             'region' => ['sometimes', 'string'],
+            'tenant' => ['sometimes', 'string'],
         ];
     }
 }
@@ -1817,6 +1821,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
@@ -1845,6 +1850,8 @@ final class ApiTestTenantsGetQueryParams extends Data
     public function __construct(
         public readonly int $tenant,
         public readonly int|Optional $region,
+        #[MapName('tenant')]
+        public readonly string|Optional $tenantQuery,
         public readonly bool|Optional $verbose,
     ) {
     }
@@ -1863,6 +1870,7 @@ final class ApiTestTenantsGetQueryParams extends Data
         return [
             'tenant' => ['present', 'integer'],
             'region' => ['sometimes', 'integer'],
+            'tenant' => ['sometimes', 'string'],
             'verbose' => ['sometimes', 'boolean'],
         ];
     }
