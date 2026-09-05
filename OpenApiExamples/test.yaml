@@ -486,6 +486,10 @@ paths:
                 callbackUrl:
                   type: string
       callbacks:
+        # A callback written as a Reference Object — the other legal spelling, and the one that
+        # generated nothing at all until 2.15.32 while the inline sibling below generated fine.
+        jobFailed:
+          $ref: '#/components/callbacks/JobFailed'
         jobDone:
           '{$request.body#/callbackUrl}':
             post:
@@ -539,7 +543,86 @@ paths:
                 properties:
                   message:
                     type: string
+  # Parameters declared on the PATH ITEM, applying to every operation of the path. The corpus carried
+  # none until 2.15.32 — zero occurrences — which is why a path-level parameter could be dropped
+  # entirely with the whole suite green. `tenant` is shared by both operations; `get` overrides
+  # `region` by (name, in) and adds one of its own, `delete` declares nothing and inherits the pair.
+  /api/test/tenants/{tenant}:
+    parameters:
+      - in: path
+        name: tenant
+        required: true
+        schema:
+          type: integer
+      - in: query
+        name: region
+        schema:
+          type: string
+    get:
+      parameters:
+        - in: query
+          name: region
+          schema:
+            type: integer
+        - in: query
+          name: verbose
+          schema:
+            type: boolean
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+    delete:
+      responses:
+        200:
+          description: test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+  # A Path Item written as a reference — the 3.1 `components.pathItems` home for a shared path.
+  # Neither this shape nor a pointer at another path was read until 2.15.32: the path produced no
+  # classes and no message.
+  /api/test/shared-path:
+    $ref: '#/components/pathItems/SharedListing'
+
 components:
+  pathItems:
+    SharedListing:
+      get:
+        parameters:
+          - in: query
+            name: cursor
+            schema:
+              type: string
+        responses:
+          200:
+            description: test
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Test'
+  callbacks:
+    JobFailed:
+      '{$request.body#/callbackUrl}':
+        post:
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - failure
+                  properties:
+                    failure:
+                      type: string
+          responses:
+            200:
+              description: test
   parameters:
     DogId:
       in: path

@@ -3,6 +3,88 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.32 — 2026-09-05
+
+- Path Item parameters reach every operation of the path
+- an operation overrides one by name and location
+- a callback written as a `$ref` generates its class
+- a Path Item written as a `$ref` is resolved
+
+**A parameter declared on the PATH ITEM was dropped entirely.** OpenAPI lets a path carry
+`parameters` that apply to all of its operations — it is how `/items/{id}` is normally written, with
+`id` declared once instead of once per method:
+
+```yaml
+/items/{id}:
+  parameters:
+    - { in: path,  name: id, required: true, schema: { type: integer } }
+    - { in: query, name: shared, schema: { type: string } }
+  get:
+    parameters:
+      - { in: query, name: own, schema: { type: string } }
+  delete: { responses: { '200': { description: ok } } }
+```
+
+The generator read the operation's own list alone, so `ItemsGetQueryParams` held `own` and nothing
+else — no `id`, no `shared`, and `getParameterSources()` listed one entry. The application had no way
+to read the path parameter at all, and `delete`, declaring nothing of its own, produced no class.
+Nothing was reported: the properties were simply absent from a class the document says should have
+them.
+
+Both lists are merged now, the operation winning on a clash. The identity is the pair the
+specification names — (name, in) — and an override replaces the definition **where the path declared
+it** rather than moving it to the end, so the argument order does not depend on which methods happen
+to override what. A `$ref` to `components.parameters` resolves on the path level exactly as it does on
+the operation level; that case failed worse than the others, producing no class at all.
+
+**If any path of yours declares `parameters`, the classes for its operations gain properties** — the
+ones the document always described. Named arguments are unaffected; positional construction of a
+generated `*QueryParams` class is not, since new parameters take their declared place in the list.
+An operation that declared nothing of its own now has a class where it previously had none.
+
+**The corpus carried zero path-level parameters**, which is why this survived every release: the whole
+suite stayed green with the feature entirely absent. A path declaring two of them — one shared, one
+overridden, one operation inheriting both — is in the corpus now, so the emission is snapshotted.
+
+Unchanged and worth stating, because the merge brushes against it: two parameters that share a name
+in DIFFERENT locations are kept apart by the merge, as the specification says they should be, but
+still collapse onto one PHP property downstream, the last one winning. That behaviour is older than
+this fix and is not addressed here.
+
+**A callback written as a `$ref` generated nothing.** A Callback Object may be a Reference Object —
+`{$ref: '#/components/callbacks/Shared'}` — and that spelling emitted no class at all, while the
+identical callback written inline emitted one. Support for one half of a two-way choice, silent about
+the other: the console said `[OK] Generated N classes` and the callback payload was not among them.
+References resolve now, including a short chain of them, and the class is named after the callback's
+name in the OPERATION rather than the component's, which is what keeps the two spellings
+interchangeable. The corpus carries one of each.
+
+**A Path Item written as a `$ref` was ignored.** The Path Item Object carries a `$ref` of its own, and
+3.1 adds `components.pathItems` as the place such a reference usually points. Neither was read, so a
+document that factors a shared path into a component had that part of itself silently dropped — no
+classes, no message. Both local shapes resolve now:
+
+```yaml
+/twin:   { $ref: '#/paths/~1real~1{id}' }        # a pointer at another path, `~1` being a slash
+/shared: { $ref: '#/components/pathItems/Listing' }
+```
+
+Keys the referencing item declares itself win over the ones it inherits. The specification calls that
+case undefined in 3.0 and asks for siblings to be ignored in 3.1; overlaying is the reading that
+cannot quietly lose an operation someone wrote down.
+
+Two failures are told apart rather than merged, because a reader fixes them differently. A pointer at
+nothing is a broken document and stops generation, as a broken schema `$ref` has since 2.15.30. A
+pointer OUT of the document is valid OpenAPI this generator does not implement, and says exactly that:
+`points outside this document … move the path item into #/components/pathItems, or inline it`. **A
+document relying on external path item references now fails instead of generating silently
+incomplete output** — the same trade the unresolvable-`$ref` rule made, and the reason it is worth
+making twice.
+
+Gates: 1779 tests (up from 1772), phpstan / phpcs / cs-fixer clean. Every previously generated corpus
+class is byte-identical — checked file by file, not read off the diff, because inserting classes in
+the middle of a snapshot realigns hundreds of unrelated lines.
+
 ## 2.15.31 — 2026-09-05
 
 - the `default` response class is `JobsDefault`, not `Jobsdefault`

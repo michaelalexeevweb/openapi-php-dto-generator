@@ -5804,6 +5804,90 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A Path Item written as a reference, resolved into the item it points at.
+     *
+     * The Path Item Object carries a `$ref` field of its own, and 3.1 adds `components.pathItems` as
+     * the place such a reference usually points. Neither was read: `/viaref: {$ref: …}` produced no
+     * classes and no message, so a document that factors a shared path out into a component simply
+     * had part of itself ignored.
+     *
+     * Two pointer shapes, both local:
+     *   `#/components/pathItems/Name` — the 3.1 home for shared path items;
+     *   `#/paths/~1a~1{id}`          — a pointer at another path, escaped per RFC 6901.
+     *
+     * Keys the referencing item declares ITSELF win over the ones it inherits. The specification
+     * calls that case undefined for 3.0 and asks for siblings to be ignored in 3.1; overlaying is the
+     * reading that cannot silently lose an operation someone wrote down.
+     *
+     * An unresolvable pointer stops generation, for the same reason a broken schema `$ref` has since
+     * 2.15.30: the alternative is emitting a document whose parts are missing without saying so.
+     *
+     * @param array<mixed> $pathItem
+     * @param array<mixed> $openApi
+     * @return array<mixed>
+     */
+    private function resolvePathItemRef(array $pathItem, string $key, array $openApi): array
+    {
+        $ref = $pathItem['$ref'] ?? null;
+        if (!is_string($ref)) {
+            return $pathItem;
+        }
+
+        // An external pointer is VALID OpenAPI that this generator does not implement, which is a
+        // different thing from a pointer that leads nowhere. Saying so plainly beats one message for
+        // two situations a reader would fix differently.
+        if (!str_starts_with($ref, '#/')) {
+            throw new RuntimeException(sprintf(
+                'Path item reference "%s" on "%s" points outside this document. External path item '
+                . 'references are not supported; move the path item into #/components/pathItems, or '
+                . 'inline it.',
+                $ref,
+                $key,
+            ));
+        }
+
+        $target = $this->resolveLocalPathItemPointer($ref, $openApi);
+        if ($target === null) {
+            throw new RuntimeException(sprintf(
+                'Unresolvable path item reference "%s" on "%s": nothing at that pointer. Supported '
+                . 'targets are #/components/pathItems/<name> and #/paths/<escaped path>.',
+                $ref,
+                $key,
+            ));
+        }
+
+        unset($pathItem['$ref']);
+
+        return $pathItem + $target;
+    }
+
+    /**
+     * @param array<mixed> $openApi
+     * @return array<mixed>|null
+     */
+    private function resolveLocalPathItemPointer(string $ref, array $openApi): ?array
+    {
+        foreach (['#/components/pathItems/' => ['components', 'pathItems'], '#/paths/' => ['paths']] as $prefix => $segments) {
+            if (!str_starts_with($ref, $prefix)) {
+                continue;
+            }
+
+            // RFC 6901: `~1` is a slash and `~0` a tilde, in that order — the reverse un-escapes
+            // `~01` into `~1` instead of leaving it alone.
+            $name = str_replace(['~1', '~0'], ['/', '~'], substr($ref, strlen($prefix)));
+
+            $node = $openApi;
+            foreach ([...$segments, $name] as $segment) {
+                $node = is_array($node) ? ($node[$segment] ?? null) : null;
+            }
+
+            return is_array($node) ? $node : null;
+        }
+
+        return null;
+    }
+
+    /**
      * Path Item Objects to walk: `paths` plus, since OAS 3.1, `webhooks`. A webhook entry is an
      * incoming request our own endpoint receives, so its body/parameters deserve DTOs exactly like
      * a path operation's. The key is a name, not a URL — it is used verbatim for class naming.
@@ -5825,6 +5909,8 @@ final class GenerateDtoCommand extends Command
                 if (!is_string($key) || !is_array($pathItem)) {
                     continue;
                 }
+
+                $pathItem = $this->resolvePathItemRef($pathItem, $key, $openApi);
                 // A webhook named like an existing path would otherwise overwrite it.
                 $items[$section === 'webhooks' ? 'webhook:' . $key : $key] = $pathItem;
             }
@@ -5835,7 +5921,7 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach ($items as $pathItem) {
-            foreach ($this->collectCallbackPathItems($pathItem) as $callbackKey => $callbackPathItem) {
+            foreach ($this->collectCallbackPathItems($pathItem, $openApi) as $callbackKey => $callbackPathItem) {
                 // Two operations may declare the same callback name with different payloads.
                 $uniqueKey = $callbackKey;
                 $counter = 2;
@@ -5887,10 +5973,15 @@ final class GenerateDtoCommand extends Command
      * expression (`{$request.body#/callbackUrl}`), useless for naming, so the callback name is used
      * instead — the payload is what matters here, not the URL it will be delivered to.
      *
+     * A callback may be written as a Reference Object — `{$ref: '#/components/callbacks/Shared'}` —
+     * and that spelling produced nothing at all: the payload class was never emitted, while the same
+     * callback written inline was. Support existed for one half of a two-way choice, silently.
+     *
      * @param array<mixed> $pathItem
+     * @param array<mixed> $openApi
      * @return array<string, array<mixed>>
      */
-    private function collectCallbackPathItems(array $pathItem): array
+    private function collectCallbackPathItems(array $pathItem, array $openApi): array
     {
         $collected = [];
 
@@ -5905,7 +5996,14 @@ final class GenerateDtoCommand extends Command
             }
 
             foreach ($callbacks as $callbackName => $callback) {
-                if (!is_string($callbackName) || !is_array($callback)) {
+                if (!is_string($callbackName)) {
+                    continue;
+                }
+
+                // Passes an inline callback through untouched and follows a reference (including a
+                // short chain of them) into `components.callbacks`.
+                $callback = $this->resolveComponentRef($callback, 'callbacks', $openApi);
+                if (!is_array($callback)) {
                     continue;
                 }
 
@@ -6987,17 +7085,27 @@ final class GenerateDtoCommand extends Command
         $parameterOwners = [];
 
         foreach ($paths as $path => $pathItem) {
+            // Declared once for the whole path and applying to every operation on it — the ordinary
+            // way to write `/items/{id}` rather than repeating `id` under get, put and delete.
+            $pathLevelParameters = $this->resolveParameters(
+                is_array($pathItem['parameters'] ?? null) ? $pathItem['parameters'] : [],
+                $openApi,
+            );
+
             foreach ($pathItem as $method => $operation) {
                 if (!is_string($method) || !$this->isHttpMethod($method) || !is_array($operation)) {
                     continue;
                 }
 
-                $parameters = $operation['parameters'] ?? null;
-                if (!is_array($parameters) || $parameters === []) {
-                    continue;
-                }
+                $operationParameters = $this->resolveParameters(
+                    is_array($operation['parameters'] ?? null) ? $operation['parameters'] : [],
+                    $openApi,
+                );
 
-                $resolvedParameters = $this->resolveParameters($parameters, $openApi);
+                $resolvedParameters = $this->mergePathItemParameters(
+                    pathLevel: $pathLevelParameters,
+                    operationLevel: $operationParameters,
+                );
                 $pathAndQueryParameters = $this->filterPathAndQueryParameters($resolvedParameters);
 
                 if ($pathAndQueryParameters === []) {
@@ -7019,6 +7127,60 @@ final class GenerateDtoCommand extends Command
         }
 
         return $parameterSchemas;
+    }
+
+    /**
+     * Path Item parameters plus the operation's own, the operation winning on a clash.
+     *
+     * OpenAPI: a Path Item may declare `parameters` that apply to EVERY operation on that path, and
+     * an operation may override one of them by matching name AND location. It is how `/items/{id}` is
+     * normally written — `id` once, not once per method. The generator read the operation's list
+     * alone, so a path-level parameter never reached the emitted class: `/items/{id}` with `id`
+     * declared on the path produced a class without `id`, and the application had no way to read the
+     * path parameter at all. Silently — the property was simply absent.
+     *
+     * A path-level parameter that the operation overrides keeps its POSITION and takes the
+     * operation's definition, so the argument order does not depend on which methods happen to
+     * override what. The identity is (name, in) exactly as the specification defines it: two
+     * parameters may share a name if they sit in different places.
+     *
+     * @param array<int, array<string, mixed>> $pathLevel
+     * @param array<int, array<string, mixed>> $operationLevel
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergePathItemParameters(array $pathLevel, array $operationLevel): array
+    {
+        $merged = [];
+        foreach ($pathLevel as $parameter) {
+            $merged[$this->parameterIdentity($parameter)] = $parameter;
+        }
+
+        foreach ($operationLevel as $parameter) {
+            // Assigning to an existing key replaces the value and keeps the slot, which is what makes
+            // an override sit where the path declared it.
+            $merged[$this->parameterIdentity($parameter)] = $parameter;
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * The (name, in) pair the specification uses to tell two parameters apart, as one string.
+     *
+     * A parameter missing either half cannot collide with anything, so it gets a key of its own
+     * rather than being merged into the group of all such parameters.
+     *
+     * @param array<string, mixed> $parameter
+     */
+    private function parameterIdentity(array $parameter): string
+    {
+        $name = $parameter['name'] ?? null;
+        $in = $parameter['in'] ?? null;
+        if (!is_string($name) || !is_string($in)) {
+            return 'anonymous:' . spl_object_id((object)$parameter);
+        }
+
+        return $in . ':' . $name;
     }
 
     /**

@@ -178,6 +178,9 @@ serialization rules before casting:
 | Spec | Behaviour |
 |---|---|
 | `in: path` / `query` / `header` / `cookie` | the property is read ONLY from that source (`getParameterSources()`) |
+| a Path Item written as `$ref` | resolved from `#/components/pathItems/<name>` or `#/paths/<escaped path>`; keys the referencing item declares itself win. An EXTERNAL path item reference is refused with a message saying so — valid OpenAPI, not implemented here (since 2.15.32) |
+| a callback written as `$ref` | resolved from `components.callbacks` and generated like an inline one, named after the callback's name in the operation (since 2.15.32) |
+| `parameters` on the PATH ITEM | apply to every operation of that path, merged with the operation's own; the operation overrides by (name, in) and the overridden parameter keeps its position. A `$ref` to `components.parameters` resolves on either level. Since 2.15.32 — before it, a path-level parameter never reached the generated class |
 | `style` + `explode` (`form`, `simple`, `matrix`, `label`, `spaceDelimited`, `pipeDelimited`, `deepObject`) | the raw string is split accordingly (`getParameterStyles()`) |
 | an array with `style: form, explode: true` (the DEFAULT for a query array) | the repeated key is collected: `?ids=1&ids=2` is `[1, 2]`, `?ids=1` is `[1]`, `?ids=` is `[]`. PHP's own `?ids[]=1&ids[]=2` keeps working. A SCALAR parameter is not collected — `?page=1&page=2` is 2, as `parse_str()` has it |
 | the same array in an `application/x-www-form-urlencoded` BODY | collected the same way, from the raw body: `tags=a&tags=b` is `['a', 'b']` (since 2.15.28). A MULTIPART body is not — its parts are not `&`-separated pairs, and a field PHP collapsed there still reports `expects array, got string` rather than silently becoming a one-element array |

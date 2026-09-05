@@ -1361,6 +1361,139 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * Parameters declared on the PATH ITEM reach every operation of that path.
+     *
+     * OpenAPI lets a Path Item carry `parameters` that apply to all of its operations — it is how
+     * `/items/{id}` is normally written, with `id` declared once instead of once per method. The
+     * generator read the operation's own list alone, so a path-level parameter never reached the
+     * emitted class: `/items/{id}` produced a class with no `id` at all, and the application had no
+     * way to read the path parameter. Nothing was reported; the property was simply absent.
+     *
+     * An operation with NO parameters of its own now gets a class too, where before it got none.
+     */
+    public function testPathItemParametersReachEveryOperationOfThePath(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/items/{id}' => [
+                'parameters' => [
+                    ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']],
+                    ['in' => 'query', 'name' => 'shared', 'schema' => ['type' => 'string']],
+                ],
+                'get' => [
+                    'parameters' => [['in' => 'query', 'name' => 'own', 'schema' => ['type' => 'string']]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ],
+                'delete' => ['responses' => ['200' => ['description' => 'ok']]],
+            ]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'PathParamsNs');
+
+        $get = (string)file_get_contents($this->outputDirectory . '/ItemsGetQueryParams.php');
+        $this->assertStringContainsString('$id', $get);
+        $this->assertStringContainsString('$shared', $get);
+        $this->assertStringContainsString('$own', $get, 'the operation keeps its own');
+        $this->assertStringContainsString("\$sources['id'] = 'path';", $get);
+        $this->assertStringContainsString("\$sources['shared'] = 'query';", $get);
+
+        // Before the fix this file did not exist: the operation declares nothing of its own.
+        $delete = (string)file_get_contents($this->outputDirectory . '/ItemsDeleteQueryParams.php');
+        $this->assertStringContainsString('$id', $delete);
+        $this->assertStringContainsString('$shared', $delete);
+    }
+
+    /**
+     * An operation overrides a path-level parameter by name AND location, and keeps its slot.
+     *
+     * The identity is the pair the specification names: (name, in). An override replaces the
+     * definition where the path declared it rather than moving it to the end, so the argument order
+     * does not depend on which methods happen to override what.
+     *
+     * The merge keeps a path `id` and a query `id` apart, as the specification says it should — but
+     * downstream they still collapse onto one PHP property, last one winning, and that is unchanged
+     * here and older than this fix. Not exercised by this test for that reason.
+     */
+    public function testAnOperationOverridesAPathItemParameterByNameAndLocation(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/over/{id}' => [
+                'parameters' => [
+                    ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'string']],
+                    ['in' => 'query', 'name' => 'tail', 'schema' => ['type' => 'string']],
+                ],
+                'get' => [
+                    'parameters' => [
+                        // Same name, same place: overrides, and the type below proves which won.
+                        ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']],
+                    ],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ],
+            ]],
+            'components' => ['schemas' => []],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'OverrideParamsNs');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/OverGetQueryParams.php');
+        $this->assertStringContainsString(
+            'private readonly int $id',
+            $content,
+            "the operation's integer wins over the path's string",
+        );
+        $this->assertStringContainsString('$tail', $content, 'the path-level parameter it did not touch');
+
+        // The override replaced the path's entry in place rather than being appended, so `id` still
+        // comes first IN THE CONSTRUCTOR. Read from the constructor alone: both names occur many
+        // times over a generated file, and a whole-file position proves nothing about argument order.
+        $matched = preg_match('/public function __construct\((.*?)\) \{/s', $content, $constructor);
+        $this->assertSame(1, $matched);
+        $this->assertLessThan(
+            strpos($constructor[1], '$tail'),
+            strpos($constructor[1], '$id'),
+            'the overridden parameter keeps the slot the path gave it',
+        );
+    }
+
+    /**
+     * A path-level parameter written as a `$ref` resolves like any other.
+     *
+     * Pinned separately because it failed in its own way: the class was not merely missing a
+     * property, it was not generated at all — the operation declared nothing, the path-level list was
+     * ignored, and nothing was left to build from.
+     *
+     * Written as 3.0 on purpose: the fix has to work under both major versions, and 3.0 is where the
+     * `$ref`-a-shared-parameter idiom is most common.
+     */
+    public function testAPathLevelParameterReferenceIsResolved(): void
+    {
+        $openApi = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/c/{id}' => [
+                'parameters' => [['$ref' => '#/components/parameters/SharedId']],
+                'get' => ['responses' => ['200' => ['description' => 'ok']]],
+            ]],
+            'components' => [
+                'parameters' => [
+                    'SharedId' => ['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']],
+                ],
+                'schemas' => [],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'PathRefParamNs');
+
+        $content = (string)file_get_contents($this->outputDirectory . '/CgetQueryParams.php');
+        $this->assertStringContainsString('private readonly int $id', $content);
+        $this->assertStringContainsString("\$sources['id'] = 'path';", $content);
+    }
+
+    /**
      * A 3.1 `webhooks` operation gets a request class, like any other operation.
      *
      * Webhooks are operations the API CALLS rather than serves, and their bodies need DTOs for
@@ -1431,6 +1564,154 @@ final class GenerateDtoCommandTest extends TestCase
         $owner = $this->outputDirectory . '/JobsPostRequest.php';
         $this->assertFileExists($owner, 'the declaring operation keeps its own class');
         $this->assertStringContainsString('$url', (string)file_get_contents($owner));
+    }
+
+    /**
+     * A Path Item written as a `$ref` is resolved, in both shapes the pointer can take.
+     *
+     * The Path Item Object carries a `$ref` of its own, and 3.1 adds `components.pathItems` as the
+     * place such a reference usually points. Neither was read: the path produced no classes and no
+     * message, so a document that factors a shared path into a component had part of itself ignored.
+     *
+     * Both local shapes are covered because they resolve differently: a component name, and an
+     * RFC 6901 pointer at another path where `~1` stands for a slash.
+     */
+    public function testAPathItemReferenceIsResolvedInBothPointerShapes(): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/real/{id}' => [
+                    'parameters' => [['in' => 'path', 'name' => 'id', 'required' => true, 'schema' => ['type' => 'integer']]],
+                    'get' => [
+                        'parameters' => [['in' => 'query', 'name' => 'q', 'schema' => ['type' => 'string']]],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+                // Pointer at another path: `~1` is a slash.
+                '/twin' => ['$ref' => '#/paths/~1real~1{id}'],
+                // The 3.1 home for a shared path item.
+                '/shared' => ['$ref' => '#/components/pathItems/Shared'],
+            ],
+            'components' => [
+                'pathItems' => ['Shared' => ['get' => [
+                    'parameters' => [['in' => 'query', 'name' => 'fromComponent', 'schema' => ['type' => 'string']]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]],
+                'schemas' => [],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'PathItemRefNs');
+
+        $twin = (string)file_get_contents($this->outputDirectory . '/TwinGetQueryParams.php');
+        $this->assertStringContainsString('$id', $twin, 'the referenced path item brings its own parameters');
+        $this->assertStringContainsString('$q', $twin);
+
+        $this->assertStringContainsString(
+            '$fromComponent',
+            (string)file_get_contents($this->outputDirectory . '/SharedGetQueryParams.php'),
+        );
+    }
+
+    /**
+     * A path item reference that leads nowhere, and one that leads out of the document, are two
+     * different problems and say so.
+     *
+     * The first is a broken document and stops generation for the same reason a broken schema `$ref`
+     * has since 2.15.30. The second is valid OpenAPI this generator does not implement — a reader
+     * fixes those two differently, so one message for both would be worse than useless.
+     *
+     * @param array<string, mixed> $paths
+     */
+    #[DataProvider('badPathItemRefProvider')]
+    public function testABadPathItemReferenceIsReported(array $paths, string $expected): void
+    {
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => $paths,
+            'components' => ['pathItems' => ['Real' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]], 'schemas' => []],
+        ];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage($expected);
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'BadPathItemRefNs');
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string}>
+     */
+    public static function badPathItemRefProvider(): array
+    {
+        return [
+            'pointer at nothing' => [
+                ['/x' => ['$ref' => '#/components/pathItems/Nope']],
+                'nothing at that pointer',
+            ],
+            'pointer out of the document' => [
+                ['/x' => ['$ref' => './other.yaml#/paths/~1y']],
+                'points outside this document',
+            ],
+        ];
+    }
+
+    /**
+     * A callback written as a `$ref` generates the same class an inline one does.
+     *
+     * A Callback Object may be a Reference Object, and that spelling produced nothing: the payload
+     * class was never emitted, while the identical callback written inline was. Support for one half
+     * of a two-way choice, and silent about the other — the reader saw `[OK] Generated N classes` and
+     * no class for the callback body.
+     *
+     * The class is named after the callback's name in the OPERATION, not the component's name, which
+     * is what keeps it consistent with the inline spelling.
+     */
+    public function testACallbackReferenceGeneratesTheSameClassAsAnInlineOne(): void
+    {
+        $body = static fn(string $property): array => ['content' => ['application/json' => ['schema' => [
+            'type' => 'object',
+            'required' => [$property],
+            'properties' => [$property => ['type' => 'string']],
+        ]]]];
+
+        $openApi = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/jobs' => ['post' => [
+                'requestBody' => $body('url'),
+                'callbacks' => [
+                    'viaRef' => ['$ref' => '#/components/callbacks/Shared'],
+                    'inline' => ['{$request.body#/url}' => ['post' => [
+                        'requestBody' => $body('inlineField'),
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ]]],
+                ],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => [
+                'callbacks' => ['Shared' => ['{$request.body#/url}' => ['post' => [
+                    'requestBody' => $body('referencedField'),
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]]],
+                'schemas' => [],
+            ],
+        ];
+
+        $this->generator->generateFromArray($openApi, $this->outputDirectory, 'CallbackRefNs');
+
+        $this->assertStringContainsString(
+            '$referencedField',
+            (string)file_get_contents($this->outputDirectory . '/CallbackViaRefPostRequest.php'),
+            'named after the callback in the operation, carrying the referenced payload',
+        );
+        $this->assertStringContainsString(
+            '$inlineField',
+            (string)file_get_contents($this->outputDirectory . '/CallbackInlinePostRequest.php'),
+            'the inline spelling is unaffected',
+        );
     }
 
     /**
