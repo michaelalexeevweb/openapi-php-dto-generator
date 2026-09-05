@@ -58,7 +58,15 @@ A few behaviours worth knowing when validating against the schema:
   `items: false` refuses an item past the declared positions. (`additionalProperties: false` and
   `unevaluatedItems` / `unevaluatedProperties` have always read the boolean; for them it is the
   ordinary spelling.) A `false` refusal reads *"is not allowed by the schema"* — the document did not
-  write `not`, so neither does the message. Enforced since 2.15.27; before it, a boolean subschema was
-  dropped and its keyword did nothing.
+  write `not`, so neither does the message. `DtoValidator` has read the boolean in every position
+  listed above since 2.15.27.
+
+  **Which positions the GENERATOR carries it into is narrower, and being widened.** A boolean is
+  emitted into the constraints — and so enforced — for `items`, `contains`, `propertyNames`,
+  `if`/`then`/`else`, `contentSchema`, `additionalProperties`, `unevaluatedItems`,
+  `unevaluatedProperties`, `anyOf`, `oneOf`, and, since 2.15.37, `allOf`. It is still dropped for
+  `properties`, `not`, `prefixItems` and `dependentSchemas`, where the keyword currently does nothing
+  — measured, not assumed. A boolean inside `allOf` was worse than dropped before 2.15.37: it stopped
+  generation outright with a PHP `TypeError` and wrote no files at all.
 - **An empty schema matches everything.** `items: {}`, `contains: {}` and `additionalProperties: {}` apply — and, importantly, mark their targets as evaluated, so a neighbouring `unevaluatedItems: false` or `unevaluatedProperties: false` does not reject a valid payload.
 - **How far `uri-reference`/`iri-reference` go.** A reference may be relative, so most of what looks wrong is legal: `not_a_uri` and `###` are valid relative references and are accepted, as any conforming validator accepts them. The check is deliberately no stricter than whitespace and control characters, which means a broken percent-escape (`%zz`) or a malformed host (`http://[`) passes here while the stricter `uri`/`iri` refuse both. Full RFC 3986 grammar is not worth the emitted code; if a field must be an absolute, well-formed URI, declare `format: uri`.

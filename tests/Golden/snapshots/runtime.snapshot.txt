@@ -1,4 +1,4 @@
-# runtime mode — 78 files, 22616 lines
+# runtime mode — 78 files, 22754 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8724,6 +8724,16 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     private bool $closedPairInQuery = false;
     private bool $closedPairInHeader = false;
     private bool $closedPairInCookie = false;
+    private bool $impossibleInRequest = false;
+    private bool $impossibleInPath = false;
+    private bool $impossibleInQuery = false;
+    private bool $impossibleInHeader = false;
+    private bool $impossibleInCookie = false;
+    private bool $vacuousInRequest = false;
+    private bool $vacuousInPath = false;
+    private bool $vacuousInQuery = false;
+    private bool $vacuousInHeader = false;
+    private bool $vacuousInCookie = false;
     private bool $conditionalInRequest = false;
     private bool $conditionalInPath = false;
     private bool $conditionalInQuery = false;
@@ -8746,6 +8756,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         array|UnsetValue|null $positions = UnsetValue::UNSET,
         array|UnsetValue|null $rest = UnsetValue::UNSET,
         array|UnsetValue|null $closedPair = UnsetValue::UNSET,
+        private readonly mixed $impossible = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $vacuous = UnsetValue::UNSET,
         private readonly ApplicatorRefsConditional|UnsetValue|null $conditional = UnsetValue::UNSET,
         private readonly ApplicatorRefsKeyed|UnsetValue|null $keyed = UnsetValue::UNSET,
     ) {
@@ -8756,6 +8768,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $this->restInRequest = $rest !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->closedPairInRequest = $closedPair !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->impossibleInRequest = $impossible !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->vacuousInRequest = $vacuous !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->conditionalInRequest = $conditional !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
@@ -8950,6 +8966,76 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
     }
 
+    public function getImpossible(): mixed
+    {
+        return $this->impossible !== UnsetValue::UNSET ? $this->impossible : null;
+    }
+
+    public function isImpossibleRequired(): bool
+    {
+        return false;
+    }
+
+    public function isImpossibleInPath(): bool
+    {
+        return $this->impossibleInPath;
+    }
+
+    public function isImpossibleInQuery(): bool
+    {
+        return $this->impossibleInQuery;
+    }
+
+    public function isImpossibleInHeader(): bool
+    {
+        return $this->impossibleInHeader;
+    }
+
+    public function isImpossibleInCookie(): bool
+    {
+        return $this->impossibleInCookie;
+    }
+
+    public function isImpossibleInRequest(): bool
+    {
+        return $this->impossibleInRequest;
+    }
+
+    public function getVacuous(): ?string
+    {
+        return $this->vacuous !== UnsetValue::UNSET ? $this->vacuous : null;
+    }
+
+    public function isVacuousRequired(): bool
+    {
+        return false;
+    }
+
+    public function isVacuousInPath(): bool
+    {
+        return $this->vacuousInPath;
+    }
+
+    public function isVacuousInQuery(): bool
+    {
+        return $this->vacuousInQuery;
+    }
+
+    public function isVacuousInHeader(): bool
+    {
+        return $this->vacuousInHeader;
+    }
+
+    public function isVacuousInCookie(): bool
+    {
+        return $this->vacuousInCookie;
+    }
+
+    public function isVacuousInRequest(): bool
+    {
+        return $this->vacuousInRequest;
+    }
+
     public function getConditional(): ?ApplicatorRefsConditional
     {
         return $this->conditional !== UnsetValue::UNSET ? $this->conditional : null;
@@ -9035,6 +9121,12 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         }
         if ($this->closedPairInRequest) {
             $result['closedPair'] = $this->closedPair === null ? null : array_values($this->closedPair);
+        }
+        if ($this->impossibleInRequest) {
+            $result['impossible'] = $this->getImpossible();
+        }
+        if ($this->vacuousInRequest) {
+            $result['vacuous'] = $this->getVacuous();
         }
         if ($this->conditionalInRequest) {
             $result['conditional'] = $this->getConditional();
@@ -9163,6 +9255,44 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['impossible'] = [
+            'getter' => 'getImpossible',
+            'type' => 'mixed',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'impossible',
+                'required' => false,
+                'inPathFlagGetter' => 'isImpossibleInPath',
+                'inQueryFlagGetter' => 'isImpossibleInQuery',
+                'inHeaderFlagGetter' => 'isImpossibleInHeader',
+                'inCookieFlagGetter' => 'isImpossibleInCookie',
+                'inRequestFlagGetter' => 'isImpossibleInRequest',
+                'constraints' => $constraints['impossible'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['vacuous'] = [
+            'getter' => 'getVacuous',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'vacuous',
+                'required' => false,
+                'inPathFlagGetter' => 'isVacuousInPath',
+                'inQueryFlagGetter' => 'isVacuousInQuery',
+                'inHeaderFlagGetter' => 'isVacuousInHeader',
+                'inCookieFlagGetter' => 'isVacuousInCookie',
+                'inRequestFlagGetter' => 'isVacuousInRequest',
+                'constraints' => $constraints['vacuous'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
         $map['conditional'] = [
             'getter' => 'getConditional',
             'type' => 'ApplicatorRefsConditional',
@@ -9223,6 +9353,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $constraints['positions'] = ['type' => 'array', 'prefixItems' => [['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
         $constraints['rest'] = ['type' => 'array', 'prefixItems' => [['type' => 'string']], 'unevaluatedItems' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]];
         $constraints['closedPair'] = ['type' => 'array', 'items' => false, 'prefixItems' => [['type' => 'string'], ['type' => 'integer']]];
+        $constraints['impossible'] = ['allOf' => [false]];
+        $constraints['vacuous'] = ['allOf' => [['type' => 'string', 'minLength' => 3]]];
         $constraints['conditional'] = ['type' => 'object', 'if' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]], 'then' => ['required' => ['label']], 'properties' => ['label' => ['type' => 'string']]];
         $constraints['keyed'] = ['type' => 'object', 'properties' => ['trigger' => ['type' => 'string']], 'dependentSchemas' => ['trigger' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]];
 
@@ -9261,6 +9393,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $rest = $restGiven ? $cast('rest', $data['rest'], $errors) : null;
         $closedPairGiven = array_key_exists('closedPair', $data);
         $closedPair = $closedPairGiven ? $cast('closedPair', $data['closedPair'], $errors) : null;
+        $impossibleGiven = array_key_exists('impossible', $data);
+        $impossible = $impossibleGiven ? $cast('impossible', $data['impossible'], $errors) : null;
+        $vacuousGiven = array_key_exists('vacuous', $data);
+        $vacuous = $vacuousGiven ? $cast('vacuous', $data['vacuous'], $errors) : null;
         $conditionalGiven = array_key_exists('conditional', $data);
         $conditional = $conditionalGiven ? $cast('conditional', $data['conditional'], $errors) : null;
         $keyedGiven = array_key_exists('keyed', $data);
@@ -9276,6 +9412,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
             positions: $positionsGiven ? $positions : UnsetValue::UNSET,
             rest: $restGiven ? $rest : UnsetValue::UNSET,
             closedPair: $closedPairGiven ? $closedPair : UnsetValue::UNSET,
+            impossible: $impossibleGiven ? $impossible : UnsetValue::UNSET,
+            vacuous: $vacuousGiven ? $vacuous : UnsetValue::UNSET,
             conditional: $conditionalGiven ? $conditional : UnsetValue::UNSET,
             keyed: $keyedGiven ? $keyed : UnsetValue::UNSET,
         );

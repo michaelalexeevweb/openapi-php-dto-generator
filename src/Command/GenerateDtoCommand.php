@@ -2915,6 +2915,15 @@ final class GenerateDtoCommand extends Command
         if (is_array($allOf) && $allOf !== []) {
             $branches = [];
             foreach ($allOf as $branch) {
+                // `false` is the subschema nothing satisfies, so an `allOf` holding one can never
+                // pass and no sibling branch can rescue it. Skipping it the way a `true` member is
+                // skipped turned `allOf: [false, {type: string}]` into a plain `type: string`: the
+                // document said no value is valid and the emitted class accepted every string.
+                // Kept in the spelling `DtoValidator` already reads — there is nothing to translate.
+                if ($branch === false) {
+                    $branches = [false];
+                    break;
+                }
                 if (!is_array($branch)) {
                     continue;
                 }
@@ -3502,6 +3511,29 @@ final class GenerateDtoCommand extends Command
         }
 
         if (array_key_exists('allOf', $propertySchema) && is_array($propertySchema['allOf'])) {
+            // A BOOLEAN member is a legal subschema — `true` is the empty schema, `false` is the one
+            // nothing satisfies — and neither carries a type. Every reader below assumes an array:
+            // `array_key_exists('$ref', false)` is a TypeError, and it was an uncaught one, so a
+            // document with `allOf: [false]` anywhere took the whole run down with a stack trace and
+            // wrote no files at all, in all five modes.
+            //
+            // The members are dropped HERE, for the type decision only. The constraints keep the
+            // boolean untouched, which is what makes the document still mean something:
+            // `DtoValidator` reads `allOf: [false]` in that spelling already and refuses every value
+            // against it. Nothing to expand, nothing to translate.
+            $schemaMembers = array_values(array_filter(
+                $propertySchema['allOf'],
+                static fn(mixed $member): bool => is_array($member),
+            ));
+
+            // Only booleans were there. `false` admits nothing and `true` constrains nothing, so
+            // either way no type can be read off the keyword and the property stays `mixed`.
+            if ($schemaMembers === []) {
+                return ['mixed', $nullable];
+            }
+
+            $propertySchema['allOf'] = $schemaMembers;
+
             $normalizedAllOf = $this->normalizeAllOfPropertySchema($propertySchema);
             if ($normalizedAllOf !== null) {
                 return $this->resolvePropertyType(
@@ -3533,7 +3565,9 @@ final class GenerateDtoCommand extends Command
             // allOf wrapping a single composed union (e.g. `allOf: [{ oneOf: [...] }]`) resolves to
             // the union type, not an empty merged object. Without this the property collapses to a
             // standalone empty DTO whose toArray() is always [].
-            if (count($propertySchema['allOf']) === 1 && is_array($propertySchema['allOf'][0])) {
+            // No `is_array()` on the member any more — the filter above left only arrays here, and
+            // that is the whole point of it: every reader below this line used to assume as much.
+            if (count($propertySchema['allOf']) === 1) {
                 $only = $propertySchema['allOf'][0];
                 foreach (['oneOf', 'anyOf'] as $unionKeyword) {
                     if (array_key_exists($unionKeyword, $only) && is_array($only[$unionKeyword])) {

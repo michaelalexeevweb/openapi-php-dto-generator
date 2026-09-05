@@ -230,6 +230,104 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A BOOLEAN member of `allOf` is a legal subschema, and it used to take the whole run down.
+     *
+     * `true` is the empty schema and `false` is the one nothing satisfies — JSON Schema 2020-12 §4.3.2
+     * — so both are legal wherever a subschema is. Every reader inside the generator assumed an array,
+     * and the first one to touch it was `array_key_exists('$ref', false)`: an uncaught `TypeError`,
+     * exit 255, a stack trace and NOT ONE FILE WRITTEN, in all five modes. A document nobody could
+     * have called malformed produced nothing at all and no sentence saying why.
+     *
+     * Generation is asserted per mode rather than once, because the crash was mode-independent and a
+     * fix that only reached the runtime renderer would look identical from here otherwise.
+     */
+    public function testABooleanMemberOfAllOfDoesNotStopGeneration(): void
+    {
+        foreach (['runtime', 'symfony', 'laravel', 'laravel-data', 'yii3'] as $mode) {
+            $namespace = 'BoolAllOf' . str_replace('-', '', ucfirst($mode));
+            (new GenerateDtoCommand())->generateFromArray(
+                self::booleanAllOfSpec(),
+                $this->outputDirectory,
+                $namespace,
+                $mode,
+            );
+
+            $this->assertNotSame(
+                [],
+                glob($this->outputDirectory . '/*.php') ?: [],
+                $mode . ' mode wrote no files for a boolean member of allOf',
+            );
+        }
+    }
+
+    /**
+     * And the document still MEANS something: `allOf: [false]` refuses every value.
+     *
+     * Not crashing is half an answer — dropping the member would have been the other half of the same
+     * bug, and quieter. `false` cannot be satisfied, so no sibling branch can rescue an `allOf` that
+     * holds one: `allOf: [false, {type: string}]` admits nothing at all, not "any string". The member
+     * is kept in the constraints in exactly the spelling `DtoValidator` already reads, so nothing is
+     * translated on the way.
+     *
+     * `true` is the control in both directions: it constrains nothing, so it must neither refuse a
+     * value on its own nor cancel the sibling branch next to it.
+     */
+    public function testAFalseMemberOfAllOfRefusesEveryValueAndTrueRefusesNone(): void
+    {
+        $fqcn = $this->generateFromInlineSpec(self::booleanAllOfSpec(), 'BoolAllOfRt', 'P');
+        $deserializer = new DtoDeserializer();
+        $normalizer = new DtoNormalizer();
+
+        $verdict = static function (string $json) use ($deserializer, $normalizer, $fqcn): bool {
+            $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+            try {
+                return $normalizer->validate($deserializer->deserialize($request, $fqcn)) === [];
+            } catch (Throwable) {
+                return false;
+            }
+        };
+
+        $this->assertFalse($verdict('{"onlyFalse":"x"}'), 'allOf: [false] admits nothing');
+        $this->assertFalse($verdict('{"falseAndSchema":"x"}'), 'a false member cannot be out-voted');
+        $this->assertFalse($verdict('{"nested":{"deep":"x"}}'), 'and it holds one level down');
+
+        $this->assertTrue($verdict('{"onlyTrue":"x"}'), 'allOf: [true] constrains nothing');
+        $this->assertTrue($verdict('{"trueAndSchema":"abc"}'), 'a true member leaves its sibling alone');
+        $this->assertFalse($verdict('{"trueAndSchema":"ab"}'), 'and the sibling is still enforced');
+    }
+
+    /**
+     * `false` alone, `false` next to a real branch, `true` alone, `true` next to a real branch, and one
+     * nested a level down — the shapes that answer "was the member read, dropped, or fatal".
+     *
+     * @return array<string, mixed>
+     */
+    private static function booleanAllOfSpec(): array
+    {
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'P' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'onlyFalse' => ['allOf' => [false]],
+                            'onlyTrue' => ['allOf' => [true]],
+                            'falseAndSchema' => ['allOf' => [false, ['type' => 'string']]],
+                            'trueAndSchema' => ['allOf' => [true, ['type' => 'string', 'minLength' => 3]]],
+                            'nested' => [
+                                'type' => 'object',
+                                'properties' => ['deep' => ['allOf' => [false]]],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
      * `additionalProperties: false` closes the object, and runtime mode is the one mode that can
      * still see the offending key.
      *

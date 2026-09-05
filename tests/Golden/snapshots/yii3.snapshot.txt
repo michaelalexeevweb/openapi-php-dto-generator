@@ -1,4 +1,4 @@
-# yii3 mode — 78 files, 25688 lines
+# yii3 mode — 78 files, 25727 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10128,6 +10128,8 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         'positions' => 'positions',
         'rest' => 'rest',
         'closedPair' => 'closedPair',
+        'impossible' => 'impossible',
+        'vacuous' => 'vacuous',
         'conditional' => 'conditional',
         'keyed' => 'keyed',
     ];
@@ -10209,6 +10211,11 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                     ],
                 ],
             ],
+            'impossible' => [],
+            'vacuous' => [
+                'type' => 'string',
+                'minLength' => 3,
+            ],
             'conditional' => [
                 'type' => 'object',
                 'if' => [
@@ -10270,6 +10277,10 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     public readonly ?array $closedPair;
 
+    public readonly string|int|float|bool|array|null $impossible;
+
+    public readonly ?string $vacuous;
+
     #[Nested(skipOnEmpty: new WhenNull())]
     public readonly ?ApplicatorRefsConditional $conditional;
 
@@ -10313,6 +10324,28 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     public function isClosedPairProvided(): bool
     {
         return $this->hasProperty('closedPair');
+    }
+
+    public function getImpossible(): string|int|float|bool|array|null
+    {
+        return $this->hasProperty('impossible') ? $this->impossible : null;
+    }
+
+    /** Whether the payload carried `impossible` at all. */
+    public function isImpossibleProvided(): bool
+    {
+        return $this->hasProperty('impossible');
+    }
+
+    public function getVacuous(): ?string
+    {
+        return $this->hasProperty('vacuous') ? $this->vacuous : null;
+    }
+
+    /** Whether the payload carried `vacuous` at all. */
+    public function isVacuousProvided(): bool
+    {
+        return $this->hasProperty('vacuous');
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -10467,6 +10500,12 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         }
         if ($this->hasProperty('closedPair')) {
             $payload['closedPair'] = $this->closedPair;
+        }
+        if ($this->hasProperty('impossible')) {
+            $payload['impossible'] = $this->impossible;
+        }
+        if ($this->hasProperty('vacuous')) {
+            $payload['vacuous'] = $this->vacuous;
         }
         if ($this->hasProperty('conditional')) {
             $payload['conditional'] = $this->conditional;

@@ -1,4 +1,4 @@
-# laravel mode — 104 files, 13982 lines
+# laravel mode — 104 files, 14016 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4620,6 +4620,8 @@ final class ApplicatorRefs
         private readonly ?array $positions = null,
         private readonly ?array $rest = null,
         private readonly ?array $closedPair = null,
+        private readonly mixed $impossible = null,
+        private readonly ?string $vacuous = null,
         private readonly ?ApplicatorRefsConditional $conditional = null,
         private readonly ?ApplicatorRefsKeyed $keyed = null,
     ) {
@@ -4639,6 +4641,8 @@ final class ApplicatorRefs
             'positions' => ['sometimes', 'array', 'list'],
             'rest' => ['sometimes', 'array', 'list'],
             'closedPair' => ['sometimes', 'array', 'list'],
+            'impossible' => ['sometimes'],
+            'vacuous' => ['sometimes', 'string', 'min:3'],
             'conditional' => ['sometimes', 'array'],
             'conditional.label' => ['string'],
             'keyed' => ['sometimes', 'array'],
@@ -4766,6 +4770,8 @@ final class ApplicatorRefs
             positions: ($data['positions'] ?? null) === null ? null : $data['positions'],
             rest: ($data['rest'] ?? null) === null ? null : $data['rest'],
             closedPair: ($data['closedPair'] ?? null) === null ? null : $data['closedPair'],
+            impossible: ($data['impossible'] ?? null) === null ? null : $data['impossible'],
+            vacuous: ($data['vacuous'] ?? null) === null ? null : $data['vacuous'],
             conditional: ($data['conditional'] ?? null) === null ? null : ApplicatorRefsConditional::fromValidated($data['conditional']),
             keyed: ($data['keyed'] ?? null) === null ? null : ApplicatorRefsKeyed::fromValidated($data['keyed']),
         );
@@ -4810,6 +4816,26 @@ final class ApplicatorRefs
     public function isClosedPairProvided(): bool
     {
         return in_array('closedPair', $this->providedOpenApiKeys, true);
+    }
+
+    public function getImpossible(): mixed
+    {
+        return $this->impossible;
+    }
+
+    public function isImpossibleProvided(): bool
+    {
+        return in_array('impossible', $this->providedOpenApiKeys, true);
+    }
+
+    public function getVacuous(): ?string
+    {
+        return $this->vacuous;
+    }
+
+    public function isVacuousProvided(): bool
+    {
+        return in_array('vacuous', $this->providedOpenApiKeys, true);
     }
 
     public function getConditional(): ?ApplicatorRefsConditional
@@ -5094,6 +5120,14 @@ final class ApplicatorRefs
 
         if ($this->isClosedPairProvided()) {
             $result['closedPair'] = $this->closedPair === null ? null : array_values($this->closedPair);
+        }
+
+        if ($this->isImpossibleProvided()) {
+            $result['impossible'] = $this->impossible;
+        }
+
+        if ($this->isVacuousProvided()) {
+            $result['vacuous'] = $this->vacuous;
         }
 
         if ($this->isConditionalProvided()) {

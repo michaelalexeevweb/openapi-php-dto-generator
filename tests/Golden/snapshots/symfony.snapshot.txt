@@ -1,4 +1,4 @@
-# symfony mode — 78 files, 9929 lines
+# symfony mode — 78 files, 9990 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2767,6 +2767,8 @@ final class ApplicatorRefs
                     ],
                 ],
             ],
+            'impossible' => [],
+            'vacuous' => [],
             'conditional' => [
                 'if' => [
                     'type' => 'object',
@@ -2810,6 +2812,8 @@ final class ApplicatorRefs
         'positions' => 'positions',
         'rest' => 'rest',
         'closedPair' => 'closedPair',
+        'impossible' => 'impossible',
+        'vacuous' => 'vacuous',
         'conditional' => 'conditional',
         'keyed' => 'keyed',
     ];
@@ -2818,6 +2822,8 @@ final class ApplicatorRefs
         'positions' => 'positionsProvided',
         'rest' => 'restProvided',
         'closedPair' => 'closedPairProvided',
+        'impossible' => 'impossibleProvided',
+        'vacuous' => 'vacuousProvided',
         'conditional' => 'conditionalProvided',
         'keyed' => 'keyedProvided',
     ];
@@ -2841,6 +2847,19 @@ final class ApplicatorRefs
 
     #[Ignore]
     private bool $closedPairProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private mixed $impossible = null;
+
+    #[Ignore]
+    private bool $impossibleProvided = false;
+
+    #[Assert\Length(min: 3)]
+    #[Groups(['read', 'write'])]
+    private ?string $vacuous = null;
+
+    #[Ignore]
+    private bool $vacuousProvided = false;
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
@@ -2935,6 +2954,48 @@ final class ApplicatorRefs
     public function isClosedPairProvided(): bool
     {
         return $this->closedPairProvided;
+    }
+
+    public function getImpossible(): mixed
+    {
+        return $this->impossible;
+    }
+
+    public function setImpossible(mixed $impossible): void
+    {
+        $this->impossible = $impossible;
+        $this->impossibleProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isImpossibleProvided(): bool
+    {
+        return $this->impossibleProvided;
+    }
+
+    public function getVacuous(): ?string
+    {
+        return $this->vacuous;
+    }
+
+    public function setVacuous(?string $vacuous): void
+    {
+        $this->vacuous = $vacuous;
+        $this->vacuousProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isVacuousProvided(): bool
+    {
+        return $this->vacuousProvided;
     }
 
     public function getConditional(): ?ApplicatorRefsConditional

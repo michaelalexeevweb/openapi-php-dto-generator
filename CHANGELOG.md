@@ -3,6 +3,49 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.37 — 2026-09-05
+
+- a boolean member of `allOf` no longer stops generation
+- `allOf: [false]` refuses every value instead of being dropped
+
+**A document with `allOf: [false]` anywhere produced no files at all.** A boolean IS a schema — `true`
+is the empty one, `false` the one nothing satisfies (JSON Schema 2020-12 §4.3.2) — and it is legal
+wherever a subschema may stand. Every reader inside the generator assumed an array, and the first one
+to reach it was `array_key_exists('$ref', false)`:
+
+```
+PHP Fatal error: Uncaught TypeError: array_key_exists(): Argument #2 ($array)
+must be of type array, false given
+```
+
+Exit 255, a stack trace, nothing written, in all five modes. `allOf: [true]` died the same way, so it
+was the boolean and not its value. Nobody could have called such a document malformed, and nothing
+said what was wrong with it.
+
+The members are now dropped before the TYPE is decided — neither boolean carries one, and if the list
+holds nothing else the property is `mixed` — while the constraints keep the boolean untouched, in the
+spelling `DtoValidator` has read since 2.15.27. Nothing is translated on the way there.
+
+**Not crashing was only half of it.** The constraint extractor skipped a boolean branch the way it
+skips an unresolvable one, which is right for `true` and wrong for `false`: nothing satisfies `false`,
+so no sibling branch can rescue an `allOf` that holds one.
+
+```
+allOf: [false]                     admits nothing   <- was: accepted everything
+allOf: [false, {type: string}]     admits nothing   <- was: accepted every string
+allOf: [true]                      constrains nothing
+allOf: [true, {type: string, minLength: 3}]   the sibling still applies
+```
+
+The second line is the one that mattered: a document saying "no value is valid" emitted a class that
+accepted every string, and quietly.
+
+**Scope, stated plainly.** Enforcement of `allOf: [false]` at property level lands in runtime mode.
+The other four modes emit it only for a NESTED property today; at the top level their constraint
+filters drop the keyword, which is a separate gap of its own and not fixed here. The README's
+validation guide now lists, position by position, where a boolean actually arrives and where it is
+still dropped — the previous wording claimed every position, and four of them never worked.
+
 ## 2.15.36 — 2026-09-05
 
 - a `readOnly` property listed in `required` no longer breaks the four non-runtime modes
