@@ -55,6 +55,21 @@ Parameters:
 | `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
 | `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
 
+## The output directory belongs to the command
+
+`--directory` is regenerated, not merged into: anything the run did not emit is removed, so the
+directory should hold generated code only.
+
+**A failed run changes nothing.** The whole document is rendered in memory and checked before the
+first file is written, so a typo in a `$ref` — or any other error — leaves the previous generation
+exactly as it was. Fix the spec and run again.
+
+**A successful run rewrites in place**, which is worth knowing if the directory is one a live process
+is already serving from: during the write burst at the end of the run, a worker starting up can look
+for a class in the moment it is being replaced. Regenerate where you build — in CI, or into the
+release directory being prepared — and let the deploy swap the finished tree in, rather than running
+the command against a directory that is currently under load.
+
 ## Requirements
 
 - PHP 8.3+

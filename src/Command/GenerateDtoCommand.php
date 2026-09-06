@@ -930,8 +930,20 @@ final class GenerateDtoCommand extends Command
         $this->resetSymfonyReachabilityCache();
         $this->resetLaravelRenderState();
 
-        $this->prepareOutputDirectory($this->baseOutputDirectory);
         $this->warnAboutClassNamesTheEmittedCodeAlsoUses();
+
+        // Render everything into memory BEFORE touching the output directory. A document can only
+        // be proven fully renderable once every synthesised schema is registered, and that happens
+        // during rendering — so an unresolvable `$ref` is detected at the very end. Emptying the
+        // directory up front meant such a run printed its error having ALREADY replaced the
+        // application's working classes with a half-generated set: a DTO type-hinting a class that
+        // was never emitted, which fatals on the next request. Buffering makes a failed generation
+        // leave the previous output exactly as it was.
+        //
+        // It also shrinks the window in which a concurrently loading worker sees no file at all,
+        // from the whole run down to the write burst at the end.
+        /** @var array<string, string> $pendingFiles absolute path => file contents */
+        $pendingFiles = [];
 
         $generatedCount = 0;
 
@@ -957,18 +969,16 @@ final class GenerateDtoCommand extends Command
                 className: $className,
                 schemaMetadata: $schemaMetadata,
             );
-            $this->ensureDirectoryExists($outputDirectory);
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . '.php';
-            file_put_contents($filePath, $classCode);
+            $pendingFiles[$filePath] = $classCode;
             $generatedCount++;
 
             // Laravel mode also emits the first-party entry point for an INCOMING payload, so the
             // application type-hints it and gets a validated, typed object without writing anything.
             if ($this->laravelEmitsFormRequestFor($className)) {
-                file_put_contents(
-                    rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . 'FormRequest.php',
-                    $this->renderLaravelFormRequestClass($namespace, $className),
-                );
+                $formRequestPath = rtrim($outputDirectory, DIRECTORY_SEPARATOR)
+                    . DIRECTORY_SEPARATOR . $className . 'FormRequest.php';
+                $pendingFiles[$formRequestPath] = $this->renderLaravelFormRequestClass($namespace, $className);
                 $generatedCount++;
             }
         }
@@ -984,14 +994,21 @@ final class GenerateDtoCommand extends Command
                 caseNames: $enumDefinition['caseNames'],
                 descriptions: $enumDefinition['descriptions'],
             );
-            $this->ensureDirectoryExists($outputDirectory);
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $enumName . '.php';
-            file_put_contents($filePath, $enumCode);
+            $pendingFiles[$filePath] = $enumCode;
             $generatedCount++;
         }
 
-        // Last, when every schema — declared, extracted and synthesised — is registered.
+        // Last, when every schema — declared, extracted and synthesised — is registered, and still
+        // before a single byte has been written.
         $this->assertEveryLocalReferenceResolved();
+
+        $this->prepareOutputDirectory($this->baseOutputDirectory);
+
+        foreach ($pendingFiles as $filePath => $fileContents) {
+            $this->ensureDirectoryExists(dirname($filePath));
+            file_put_contents($filePath, $fileContents);
+        }
 
         return $generatedCount;
     }

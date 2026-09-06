@@ -2644,6 +2644,85 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * A generation that FAILS leaves the previous output exactly as it was.
+     *
+     * The output directory used to be emptied before the first class was rendered, and an
+     * unresolvable `$ref` is only detectable at the very end — every synthesised schema has to be
+     * registered first, and that happens during rendering. So a run that reported
+     * `Unresolvable reference` and exited non-zero had already replaced the application's working
+     * classes with a half-generated set, including a DTO type-hinting a class that was never
+     * emitted. The command said it had failed; the deployed code fatalled on the next request, and
+     * the previous generation was unrecoverable.
+     *
+     * Both halves are asserted: the file LIST (nothing added, nothing removed) and the file
+     * CONTENTS (the surviving class is the old one, not the broken document's version of it).
+     */
+    public function testAFailedGenerationLeavesThePreviousOutputUntouched(): void
+    {
+        $good = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['keeper'],
+                    'properties' => ['keeper' => ['type' => 'string']],
+                ],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($good, $this->outputDirectory, 'SurvivesNs');
+
+        $listedBefore = scandir($this->outputDirectory);
+        $this->assertIsArray($listedBefore);
+        $this->assertContains('Holder.php', $listedBefore);
+
+        $before = [];
+        foreach ($listedBefore as $entry) {
+            $path = $this->outputDirectory . '/' . $entry;
+            if (is_file($path)) {
+                $before[$entry] = (string)file_get_contents($path);
+            }
+        }
+
+        // Same class name, a different shape, and a reference that names nothing — so the run gets
+        // far enough to render and would overwrite `Holder.php` before discovering it is broken.
+        $broken = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['wrecker'],
+                    'properties' => ['wrecker' => ['$ref' => '#/components/schemas/Absent']],
+                ],
+            ]],
+        ];
+
+        try {
+            $this->generator->generateFromArray($broken, $this->outputDirectory, 'SurvivesNs');
+            $this->fail('The broken document was expected to stop generation.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Unresolvable reference', $exception->getMessage());
+        }
+
+        $listedAfter = scandir($this->outputDirectory);
+        $this->assertIsArray($listedAfter);
+        $this->assertSame($listedBefore, $listedAfter);
+
+        foreach ($before as $entry => $contents) {
+            $this->assertSame(
+                $contents,
+                (string)file_get_contents($this->outputDirectory . '/' . $entry),
+                sprintf('The failed run rewrote %s.', $entry),
+            );
+        }
+
+        $this->assertStringContainsString('$keeper', $before['Holder.php']);
+        $this->assertStringNotContainsString('wrecker', $before['Holder.php']);
+    }
+
+    /**
      * A `$ref` that names nothing stops generation instead of emitting a class nobody can construct.
      *
      * It used to pass. `#/components/schemas/Missing` reported `[OK] Generated 1 DTO class(es)`,

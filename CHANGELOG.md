@@ -3,6 +3,38 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.47 — 2026-09-06
+
+- a failed generation no longer destroys the output
+- the output directory is written last
+
+**A run that reported an error had already replaced your DTOs.** The output directory was emptied
+before the first class was rendered, and files were written one by one after that. Most document
+errors are caught before any of it happens — but not all of them.
+
+An unresolvable `$ref` cannot be detected early. It is only knowable once every schema is registered,
+including the ones the generator synthesises itself, and that happens *during* rendering. So the
+check ran last, with the files already on disk:
+
+```
+before:      [Holder.php]          working
+exit code:   1                     the command reported the error
+after:       [Absent.php Holder.php]
+```
+
+`Holder.php` was no longer the working one. It now type-hinted a class the failed run never emitted,
+so the next request fatalled — and the previous generation was gone. A CI job seeing the non-zero
+exit would reasonably conclude the deploy had simply not happened.
+
+The order was `empty → write → check`. It is now `render → check → empty → write`: the whole document
+is rendered into memory and validated before a single byte is written, so a failed run leaves the
+previous output exactly as it was. The emitted code is unchanged — the golden corpus does not move by
+a byte.
+
+This also narrows, but does not close, the moment during a successful run when a worker starting up
+can look for a class that is being replaced. Regenerating in place into a directory under load has no
+honest fix in the generator; `README.cli.md` now says to generate where you build.
+
 ## 2.15.46 — 2026-09-06
 
 - a repeated `enum` member no longer breaks `from()`
