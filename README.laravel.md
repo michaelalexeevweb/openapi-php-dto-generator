@@ -204,13 +204,16 @@ request.
   and absent on the way out.
 
 A `readOnly` property listed under `required` is typed nullable with a `null` default, and its rule is
-`sometimes` rather than `present`. On the way OUT it is written whenever it has a value: a response
-your code builds carries the field it set, and one hydrated from a request — which never carries a
-readOnly field — leaves it out. (`toArray()` asks the presence flag for every OTHER optional property;
-for this one the flag would be false forever, and 2.15.36 to 2.15.41 dropped the field because of it.) OpenAPI puts that requirement on the response alone, so demanding
-it of a request was wrong twice over: the rule asked the client for a field it does not own, and
+`sometimes` rather than `present`. OpenAPI puts that requirement on the RESPONSE alone, so demanding it
+of a request was wrong twice over: the rule asked the client for a field it does not own, and
 `fromValidated()` then fed `null` to a `readonly int` parameter — a `TypeError` on every hydration,
 valid payload or not (fixed in 2.15.36).
+
+On the way OUT the same property is written whenever it HAS a value: a response your code builds
+carries the field it set, and one hydrated from a request — which never carries a readOnly field —
+leaves it out. `toArray()` asks the presence flag for every other optional property, and for this one
+that flag is false forever, which is why 2.15.36 through 2.15.41 dropped the field from every response
+built in code (fixed in 2.15.42).
 
 ## What this mode does not do
 
