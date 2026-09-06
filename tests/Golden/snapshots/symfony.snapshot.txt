@@ -1,4 +1,4 @@
-# symfony mode — 79 files, 10367 lines
+# symfony mode — 79 files, 11087 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1415,6 +1415,9 @@ use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1488,7 +1491,12 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -1622,6 +1630,43 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -1661,6 +1706,9 @@ use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -2108,7 +2156,12 @@ final class ApiTestSerializationGetQueryParams
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -2288,6 +2341,43 @@ final class ApiTestSerializationGetQueryParams
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
     }
 
     private function openApiChildPath(string $path, string $propertyName): string
@@ -2690,6 +2780,9 @@ use function mb_strlen;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -3245,7 +3338,12 @@ final class ApplicatorRefs
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -3495,6 +3593,43 @@ final class ApplicatorRefs
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -3556,6 +3691,9 @@ use function mb_strlen;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -3636,7 +3774,12 @@ final class ApplicatorRefsConditional
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -3784,6 +3927,43 @@ final class ApplicatorRefsConditional
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -3845,6 +4025,9 @@ use function mb_strlen;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -3922,7 +4105,12 @@ final class ApplicatorRefsKeyed
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -4061,6 +4249,43 @@ final class ApplicatorRefsKeyed
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -4118,6 +4343,9 @@ use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4186,7 +4414,12 @@ final class ApplicatorRefsPoisonedKey
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -4269,6 +4502,43 @@ final class ApplicatorRefsPoisonedKey
             get_object_vars($value),
             static fn(mixed $propertyValue): bool => $propertyValue !== null,
         );
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
     }
 }
 
@@ -4884,6 +5154,9 @@ use function method_exists;
 use function preg_match;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5137,7 +5410,12 @@ final class Containers
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -5324,6 +5602,43 @@ final class Containers
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -5412,6 +5727,9 @@ use function json_encode;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5440,7 +5758,12 @@ final class CountMap
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -5570,6 +5893,43 @@ final class CountMap
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
     }
 
     private function openApiChildPath(string $path, string $propertyName): string
@@ -5981,6 +6341,9 @@ use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6124,7 +6487,12 @@ final class ItemBounds
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -6289,6 +6657,43 @@ final class ItemBounds
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -6332,6 +6737,9 @@ use function method_exists;
 use function preg_match;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 use function var_export;
 
 /**
@@ -6705,7 +7113,12 @@ final class NestedContainers
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -6907,6 +7320,43 @@ final class NestedContainers
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -6986,6 +7436,9 @@ use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -7175,7 +7628,12 @@ final class NullableContainerValues
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -7344,6 +7802,43 @@ final class NullableContainerValues
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -7383,6 +7878,9 @@ use function method_exists;
 use function serialize;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 use function var_export;
 
 /**
@@ -7507,7 +8005,12 @@ final class ObjectWideRules
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -7717,6 +8220,43 @@ final class ObjectWideRules
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
     }
 
     private function openApiChildPath(string $path, string $propertyName): string
@@ -8430,6 +8970,9 @@ use function property_exists;
 use function sprintf;
 use function str_contains;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8570,7 +9113,12 @@ final class TestPostRequest
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -8836,6 +9384,43 @@ final class TestPostRequest
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -8948,6 +9533,9 @@ use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9110,7 +9698,12 @@ final class TreeNode
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -9407,6 +10000,43 @@ final class TreeNode
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -9497,6 +10127,9 @@ use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9741,7 +10374,12 @@ final class UnionUnderContainer
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -10067,6 +10705,43 @@ final class UnionUnderContainer
             && method_exists($value, 'toOpenApiValidationPayload');
     }
 
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
     private function openApiChildPath(string $path, string $propertyName): string
     {
         // The first level names the field the way the runtime validator's caller does, so both
@@ -10125,6 +10800,9 @@ use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -10179,7 +10857,12 @@ final class UniqueScalars
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -10310,6 +10993,43 @@ final class UniqueScalars
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
     }
 
     private function openApiChildPath(string $path, string $propertyName): string

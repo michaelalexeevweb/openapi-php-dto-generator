@@ -703,7 +703,12 @@ PHP,
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 
@@ -1810,6 +1815,57 @@ PHP;
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+PHP;
+        }
+
+        // Gated exactly the way the ENTRY that calls it is gated, and for a reason worth saying: an
+        // earlier version asked for properties as well, and a schema carrying only object-level
+        // keywords (`minProperties`, `dependentRequired`, a nested `required`) then emitted the call
+        // without the method — `Call to undefined method`, on the eight cases that have exactly that
+        // shape.
+        //
+        // Only the two modes whose interpreter is entered once per OBJECT need to read a property name
+        // back out of a message: laravel enters it once per PROPERTY and passes the name to
+        // `errors()->add()` at the call site, so there is nothing to recover there.
+        if ($payloadIsHydratedObject) {
+            $sections[] = <<<'PHP'
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
     }
 PHP;
         }

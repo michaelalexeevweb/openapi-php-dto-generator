@@ -3,6 +3,39 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.43 — 2026-09-06
+
+- a symfony violation from the interpreter names its field
+- the same path reaches yii3 through `valuePath`
+
+**Every keyword this package enforces itself landed at the ROOT of a symfony error response.** An
+error body is grouped by `propertyPath` — that is what the standard renderer, API Platform included,
+keys on. A violation raised by an attribute carries it, because the attribute sits on the property;
+the ones this package raises come out of a class-level `#[Assert\Callback]`, which has no property to
+sit on. So a payload violating `contains`, `not`, `dependentRequired`, `propertyNames`, `if`/`then` or
+any other keyword Symfony has no constraint for produced this:
+
+```
+path=(empty)  field "tags" must contain at least 1 item(s) matching the 'contains' schema
+path=n        This value is too short. It should have 5 characters or more.
+```
+
+Two violations of one payload, one addressed to a field and one to nothing. The sentence always named
+the field, so a human reading the body saw it and a per-field renderer showed it nowhere.
+
+The interpreter bakes the subject into the sentence — `field "tags" must …`, and one level down
+`field "tags".id must …` — because the wording has to match the runtime validator's word for word.
+That is now read back and carried BESIDE the sentence rather than only inside it, so the violation
+answers `tags` and `tags.id`. No message changed.
+
+**yii3 gets the same answer through its own shape.** `Result::addError()` takes a `valuePath`, which is
+that mode's `atPath()`. The trait docblock has described the interpreter as "one entry point per
+object, paths set by the callback" since the mode was written, and named `valuePath` as the equivalent
+— it was the one part of that sentence the code never did.
+
+laravel and laravel-data never had the problem: they enter the interpreter once per PROPERTY and hand
+the name to `errors()->add()` at the call site, so nothing has to be recovered there.
+
 ## 2.15.42 — 2026-09-06
 
 - a laravel response built in code keeps its readOnly fields

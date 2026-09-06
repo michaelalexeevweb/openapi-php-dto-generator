@@ -481,6 +481,79 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
+     * A violation this interpreter raises names the FIELD, not just the sentence.
+     *
+     * Symfony groups an error response by `propertyPath` — that is what every renderer, API Platform
+     * included, keys on. Attribute-produced violations carry it because the attribute sits on the
+     * property; the ones this package raises come out of a class-level `#[Assert\Callback]`, which has
+     * no property to sit on, so every keyword the interpreter owns was landing at the ROOT. The
+     * sentence still named the field, so a human reading the body saw it and a per-field renderer
+     * showed nothing.
+     *
+     * The trait docblock had said "paths set by the callback" since the mode was written; it was the
+     * one part of that sentence the code never did.
+     *
+     * `contains` is the probe because Symfony has no constraint for it — an attribute would answer
+     * this test instead of the interpreter.
+     */
+    public function testAnInterpreterViolationCarriesThePropertyPath(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['tags'],
+                        'properties' => [
+                            'tags' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string'],
+                                'contains' => ['const' => 'hit'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, 'violation path'), 'symfony');
+
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
+        $serializer = new Serializer(
+            [
+                new ObjectNormalizer(
+                    $classMetadataFactory,
+                    new MetadataAwareNameConverter($classMetadataFactory),
+                    null,
+                    $typeExtractor,
+                ),
+                new ArrayDenormalizer(),
+            ],
+            [new JsonEncoder()],
+        );
+
+        $dto = $serializer->deserialize('{"tags":["miss"]}', $fqcn, 'json');
+        $violations = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator()->validate($dto);
+
+        $this->assertCount(1, $violations, 'the payload violates exactly one keyword');
+
+        $violation = $violations->get(0);
+        $this->assertSame('tags', $violation->getPropertyPath(), 'the violation names the field');
+        $this->assertStringContainsString(
+            'field "tags"',
+            (string)$violation->getMessage(),
+            'and the sentence is unchanged — the path is carried BESIDE it, not instead of it',
+        );
+    }
+
+    /**
      * @param array<string, mixed> $spec
      * @return array<int, string>
      */

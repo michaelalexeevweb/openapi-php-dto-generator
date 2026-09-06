@@ -927,7 +927,12 @@ trait RendersYii3Dto
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.')->addViolation();
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
         }
     }
 PHP;
@@ -944,7 +949,11 @@ PHP;
     {
         \$result = new {$this->yii3Lib('Result')}();
         foreach (\$this->validateOpenApiNode(\$this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as \$error) {
-            \$result->addError(str_ends_with(\$error, '.') ? \$error : \$error . '.');
+            \$path = self::openApiViolationPath(\$error);
+            \$result->addError(
+                str_ends_with(\$error, '.') ? \$error : \$error . '.',
+                valuePath: \$path === null ? [] : explode('.', \$path),
+            );
         }
 
         return \$result;
