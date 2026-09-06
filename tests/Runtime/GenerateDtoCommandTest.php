@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
+use BackedEnum;
 use FilesystemIterator;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
@@ -3471,6 +3472,92 @@ final class GenerateDtoCommandTest extends TestCase
 
         $typeContent = file_get_contents($typeEnumFile);
         $this->assertStringContainsString('enum ArticleType: int', $typeContent);
+    }
+
+    /**
+     * Two documents that used to emit an enum PHP will not run.
+     *
+     * Both passed generation, both LINTED (one of them), and both died later — which is why neither the
+     * corpus nor the crash sweeps saw them:
+     *
+     * - a REPEATED member emitted two cases carrying one backed value, and `from()`/`tryFrom()` — the
+     *   two methods every generated hydration goes through — threw `Duplicate value in enum`. The class
+     *   declares fine and `cases()` even answers, so nothing failed until a payload arrived, and then
+     *   it failed as an `Error` rather than as a validation message;
+     * - the member `class` emitted `case CLASS = 'class';`, and that file does not COMPILE: `class` is
+     *   the one name PHP refuses for a class constant, case-insensitively.
+     *
+     * The repeat is dropped rather than refused — JSON Schema says members SHOULD be unique, not MUST —
+     * and `class` is prefixed the way a digit-first value already was.
+     *
+     * @param array<int, string> $members
+     * @param array<int, string> $expectedCases
+     */
+    #[DataProvider('awkwardEnumMemberProvider')]
+    public function testAnEnumPhpCanActuallyRunIsEmitted(
+        string $key,
+        array $members,
+        array $expectedCases,
+        string $wireValue,
+        string $expectedCaseName,
+    ): void {
+        $namespace = 'EnumShape' . ucfirst($key);
+
+        // A directory of its own per case: both data sets emit `Kind.php`, and a second
+        // `require_once` of the same PATH is a no-op, so the second namespace would never load.
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+
+        $this->generator->generateFromArray([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => ['type' => 'object', 'properties' => ['f' => ['$ref' => '#/components/schemas/Kind']]],
+                    'Kind' => ['type' => 'string', 'enum' => $members],
+                ],
+            ],
+        ], $target, $namespace);
+
+        $file = $target . '/Kind.php';
+        $this->assertFileExists($file);
+
+        $content = (string)file_get_contents($file);
+        foreach ($expectedCases as $case) {
+            $this->assertStringContainsString($case, $content);
+        }
+
+        require_once $file;
+
+        /** @var class-string<BackedEnum> $enum */
+        $enum = $namespace . '\Kind';
+
+        // The whole point: the wire value still reaches a case. `from()` is where both defects surfaced.
+        $this->assertSame($expectedCaseName, $enum::from($wireValue)->name);
+        $this->assertCount(count($expectedCases), $enum::cases());
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<int, string>, 2: array<int, string>, 3: string, 4: string}>
+     */
+    public static function awkwardEnumMemberProvider(): array
+    {
+        return [
+            'a repeated member' => [
+                'repeated',
+                ['a', 'a', 'b'],
+                ["case A = 'a';", "case B = 'b';"],
+                'a',
+                'A',
+            ],
+            'the member "class"' => [
+                'reservedClass',
+                ['class', 'other'],
+                ["case VALUE_CLASS = 'class';", "case OTHER = 'other';"],
+                'class',
+                'VALUE_CLASS',
+            ],
+        ];
     }
 
     /**

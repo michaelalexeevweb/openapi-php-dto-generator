@@ -3,6 +3,45 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.46 — 2026-09-06
+
+- a repeated `enum` member no longer breaks `from()`
+- the `enum` member `class` no longer breaks the file
+
+**Two documents emitted an enum PHP will not run.** Both passed generation, one of them even passed
+`php -l`, and both failed later — which is why neither the corpus nor the crash sweeps had seen them.
+
+**A repeated member.** `enum: [a, a, b]` emitted two cases carrying one backed value:
+
+```php
+case A = 'a';
+case A_2 = 'a';   // PHP: Duplicate value in enum Kind for cases A and A_2
+```
+
+The class DECLARES fine and `cases()` even answers — PHP builds the value map lazily — so nothing fails
+until a payload arrives. Then `from()` and `tryFrom()`, the two methods every generated hydration goes
+through, throw an `Error`, and that property can never be deserialized. JSON Schema says the members
+SHOULD be unique rather than MUST, so the document is not wrong enough to refuse: the repeat is dropped
+and the first occurrence keeps its name, its `x-enum-varnames` entry and its description.
+
+**The member `class`.** `enum: [class, other]` emitted `case CLASS = 'class';`, and that file does not
+COMPILE — `class` is the one name PHP refuses for a class constant, and it refuses it
+case-insensitively. It is prefixed now, the way a digit-first value already was:
+
+```
+"1st"     ->  case VALUE_1ST = '1st';
+"class"   ->  case VALUE_CLASS = 'class';
+```
+
+Every other reserved word was measured and none of them needs this: `function`, `list`, `default`,
+`case`, `enum`, `self`, `static`, `parent`, `true`, `false` and `null` all make legal constant names.
+
+**Found by taking enums, `allOf`, discriminators and `$ref` as a review angle** — four feature areas no
+earlier review had swept. Thirty-one edge documents across all five modes produced one clean refusal
+(a `discriminator` mapping pointing at a schema the document does not declare, which is already
+reported by name) and no crash; the two defects above surfaced only when the emitted enums were
+actually loaded and called, which is the step a lint does not take.
+
 ## 2.15.45 — 2026-09-06
 
 - `shortClassName()` joins the other naming helpers

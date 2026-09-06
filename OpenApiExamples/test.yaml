@@ -830,6 +830,17 @@ components:
       enum:
         - catType
         - dogType
+    # Two members PHP refuses to take at face value, and neither was in the corpus until 2.15.46.
+    # `class` is the one name a class constant may not have, case-insensitively, so `case CLASS` is a
+    # file that does not compile; a REPEATED member emitted two cases with one backed value, which
+    # declares fine and then throws `Duplicate value in enum` from `from()` — the method every
+    # generated hydration goes through. Both are pinned here because both passed generation.
+    AwkwardEnum:
+      type: string
+      enum:
+        - class
+        - shelf
+        - shelf
     User:
       type: object
       required:

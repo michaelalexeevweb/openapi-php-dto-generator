@@ -6827,6 +6827,42 @@ final class GenerateDtoCommand extends Command
         $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
         $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
 
+        // A REPEATED member is a document repeating itself, and PHP will not have it: two cases
+        // carrying one backed value make `from()` and `tryFrom()` throw `Duplicate value in enum` —
+        // the two methods every generated hydration goes through. The class declares fine and
+        // `cases()` answers, so nothing fails until a payload arrives, and then it fails as an `Error`
+        // rather than as a validation message.
+        //
+        // JSON Schema says the members SHOULD be unique, not MUST, so the document is not wrong enough
+        // to refuse. The repeat is dropped instead, and the FIRST occurrence keeps its name, its
+        // `x-enum-varnames` entry and its description — all three are indexed together.
+        $seen = [];
+        $uniqueValues = [];
+        $uniqueVarnames = $varnames === null ? null : [];
+        $uniqueDescriptions = $descriptions === null ? null : [];
+
+        foreach (array_values($values) as $index => $value) {
+            // `1` and `"1"` are different members of a mixed-type document, so the kind is part of
+            // the key rather than left to PHP's array-key juggling.
+            $key = is_int($value) ? 'i:' . $value : 's:' . $value;
+            if (array_key_exists($key, $seen)) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $uniqueValues[] = $value;
+            if ($uniqueVarnames !== null) {
+                $uniqueVarnames[] = $varnames[$index] ?? '';
+            }
+            if ($uniqueDescriptions !== null) {
+                $uniqueDescriptions[] = $descriptions[$index] ?? null;
+            }
+        }
+
+        $values = $uniqueValues;
+        $varnames = $uniqueVarnames;
+        $descriptions = $uniqueDescriptions;
+
         if (array_key_exists($enumName, $this->enumSchemas)) {
             $existing = $this->enumSchemas[$enumName];
             if ($existing['type'] !== $type || $existing['values'] !== $values) {
@@ -7025,6 +7061,13 @@ final class GenerateDtoCommand extends Command
             $base = 'VALUE_' . $base;
         }
 
+        // `class` is the one name PHP refuses for a class constant, and it refuses it case-insensitively
+        // — so a document whose enum member is "class" emitted `case CLASS = 'class';`, a file that does
+        // not COMPILE. The digit rule above already owns the "prefix it" idiom, so this follows it.
+        if (strcasecmp($base, 'CLASS') === 0) {
+            $base = 'VALUE_' . $base;
+        }
+
         $name = $base;
         $i = 2;
 
@@ -7083,6 +7126,13 @@ final class GenerateDtoCommand extends Command
         }
 
         if (is_numeric($base[0])) {
+            $base = 'VALUE_' . $base;
+        }
+
+        // `class` is the one name PHP refuses for a class constant, and it refuses it case-insensitively
+        // — so a document whose enum member is "class" emitted `case CLASS = 'class';`, a file that does
+        // not COMPILE. The digit rule above already owns the "prefix it" idiom, so this follows it.
+        if (strcasecmp($base, 'CLASS') === 0) {
             $base = 'VALUE_' . $base;
         }
 
