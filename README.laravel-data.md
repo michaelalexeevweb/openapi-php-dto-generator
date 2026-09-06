@@ -46,6 +46,7 @@ final class UserPostRequestData extends Data
         #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
         public readonly DateTimeImmutable|Optional $bornOn,
+        #[WithoutValidation]
         #[DataCollectionOf(Address::class)]
         public readonly array|Optional $addresses,
     ) {
