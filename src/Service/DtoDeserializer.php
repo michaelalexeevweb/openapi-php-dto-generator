@@ -427,17 +427,42 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // declared — a hydrating mode drops it on the way into a typed property and never learns it
         // was there. Only body keys are compared: query, header and cookie carry their own keys by
         // definition, and the document does not close those.
-        if (($this->resolveOpenApiObjectConstraints($reflection)['additionalProperties'] ?? null) === false) {
+        $closingConstraints = $this->resolveOpenApiObjectConstraints($reflection);
+        if (($closingConstraints['additionalProperties'] ?? null) === false) {
             $declared = [];
             foreach ($classMeta['params'] as $declaredParam) {
                 $declared[$declaredParam['requestFieldName']] = true;
             }
+
+            // A key matched by `patternProperties` is NOT additional — JSON Schema evaluates the
+            // patterns before deciding, and `DtoValidator` has said so all along for a nested object.
+            // The root check here compared against the declared parameters alone, so a document
+            // pairing `additionalProperties: false` with `patternProperties` had its own conformant
+            // payload refused: `{"s":"a","x_ok":"b"}` against `^x_` came back with
+            // `Unknown property "x_ok"`. A false rejection, and the one shape where being strict is
+            // simply wrong.
+            $patterns = [];
+            $declaredPatterns = $closingConstraints['patternProperties'] ?? null;
+            if (is_array($declaredPatterns)) {
+                foreach (array_keys($declaredPatterns) as $pattern) {
+                    if (is_string($pattern)) {
+                        $patterns[] = $pattern;
+                    }
+                }
+            }
+
             // No guard on the key type: a JSON key that looks like an integer arrives as one
             // (`{"0":…}` becomes `0`), and `%s` renders it the way the client wrote it.
             foreach (array_keys($bodyData) as $bodyKey) {
-                if (!array_key_exists($bodyKey, $declared)) {
-                    $errors[] = sprintf('Unknown property "%s" is not allowed by the schema.', $bodyKey);
+                if (array_key_exists($bodyKey, $declared)) {
+                    continue;
                 }
+
+                if ($this->bodyKeyMatchesPattern($bodyKey, $patterns)) {
+                    continue;
+                }
+
+                $errors[] = sprintf('Unknown property "%s" is not allowed by the schema.', $bodyKey);
             }
         }
 
@@ -3382,6 +3407,40 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $exception->getCode(),
             $exception,
         );
+    }
+
+    /**
+     * Whether a body key is claimed by one of the object's `patternProperties`.
+     *
+     * A deliberate twin of `DtoValidator::keyMatchesPattern()`: the two services are independent by
+     * design — generated runtime code uses either without the other — and this is eight lines rather
+     * than a shared dependency between them. An invalid pattern in the document matches nothing
+     * instead of raising, which is what the twin does too.
+     *
+     * The key is typed `string|int` because that is what a decoded body hands back: a JSON key of
+     * digits (`{"0":…}`) becomes an int the moment PHP holds the array, whatever the PHPDoc says.
+     *
+     * @param array<int, string> $patterns the raw JSON Schema patterns, undelimited
+     */
+    private function bodyKeyMatchesPattern(string|int $key, array $patterns): bool
+    {
+        $subject = (string)$key;
+
+        foreach ($patterns as $pattern) {
+            $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
+            set_error_handler(static fn(): bool => true);
+            try {
+                $matched = preg_match($regex, $subject) === 1;
+            } finally {
+                restore_error_handler();
+            }
+
+            if ($matched) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

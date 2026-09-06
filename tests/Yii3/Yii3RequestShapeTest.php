@@ -297,6 +297,49 @@ final class Yii3RequestShapeTest extends TestCase
     }
 
     /**
+     * The key order a union MEMBER comes back in: the discriminator first, as in every mode but
+     * laravel-data.
+     *
+     * The support matrix states this for yii3 and cited the normalization parity case for it — where
+     * yii3 comes back EMPTY, because a property typed by the union interface is one the hydrator
+     * cannot fill (see `testAUnionMemberImplementsTheUnionInterface` and the row above it in that
+     * table). So the cell was true and its evidence showed something else. The member has to be
+     * driven directly, which is also the way an application uses it here: build or hydrate the member,
+     * and the union interface is the type its response is declared with.
+     */
+    public function testAUnionMemberReadsBackWithTheDiscriminatorFirst(): void
+    {
+        $namespace = $this->generate([
+            'Dog' => [
+                'type' => 'object',
+                'required' => ['petType', 'bark'],
+                'properties' => ['petType' => ['type' => 'string'], 'bark' => ['type' => 'string']],
+            ],
+            'Cat' => [
+                'type' => 'object',
+                'required' => ['petType', 'meow'],
+                'properties' => ['petType' => ['type' => 'string'], 'meow' => ['type' => 'string']],
+            ],
+            'Pet' => [
+                'oneOf' => [['$ref' => '#/components/schemas/Dog'], ['$ref' => '#/components/schemas/Cat']],
+                'discriminator' => [
+                    'propertyName' => 'petType',
+                    'mapping' => ['dog' => '#/components/schemas/Dog', 'cat' => '#/components/schemas/Cat'],
+                ],
+            ],
+        ]);
+
+        $member = (new Yii3Container())->hydrate(
+            $namespace . '\Dog',
+            ['petType' => 'dog', 'bark' => 'woof'],
+        );
+
+        // assertSame on the ARRAY is what sees the order; the keys and values alone would pass either
+        // way, and JSON object order carries no meaning to a client.
+        self::assertSame(['petType' => 'dog', 'bark' => 'woof'], $member->getData());
+    }
+
+    /**
      * A property with NO `type` in its schema takes any JSON value, and every one of them must
      * survive hydration.
      *

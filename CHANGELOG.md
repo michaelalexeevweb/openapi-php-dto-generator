@@ -3,6 +3,42 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.48 — 2026-09-06
+
+- a closed schema is now closed at its ROOT too
+- runtime no longer refuses a `patternProperties` key
+
+**`additionalProperties: false` written at the TOP of a component was enforced by nobody in laravel or
+laravel-data.** One level down it worked: nested, the keyword travels as a property's own schema and
+reaches the emitted interpreter. At the root it reached nothing — this mode's interpreter literal is
+keyed by PROPERTY NAME, so a keyword belonging to the object itself had nowhere to go. Runtime refused
+the undeclared key; the two rule-based modes accepted it, on a document one level of nesting away from
+an identical one.
+
+The object slot beside it (`minProperties`, `dependentRequired`, `not`, a top-level conditional) now
+carries the closed flag as well. The declared NAMES travel with it, because the interpreter decides what
+counts as additional from the `properties` of the same schema — the flag alone would call every key
+additional and refuse every payload. Their schemas are empty on purpose: the rule map already validates
+each property, and repeating it is how one violation becomes two messages.
+
+**Runtime refused a payload its own document allowed.** A schema pairing `additionalProperties: false`
+with `patternProperties` has keys that are matched, not additional — JSON Schema evaluates the patterns
+before deciding, and `DtoValidator` has done so all along for a nested object. The ROOT check in
+`DtoDeserializer` compared body keys against the declared parameters alone, so `{"s":"a","x_ok":"b"}`
+against `^x_` came back with `Unknown property "x_ok"`. A conformant request got a 422 — a false
+rejection, which is the one direction where being strict is simply wrong.
+
+Documentation, all three corrections found by re-measuring rather than re-reading:
+
+- `README.support-matrix.md` counted fourteen divergences and listed fifteen;
+- the loose `date-time` row claimed five modes and its test drove three — the other two were measured
+  since, both refuse, and the test now holds all five;
+- the union key-order row cited a case in which yii3 comes back EMPTY. The cell is right; the evidence
+  was not. The member is now measured directly, by a test of its own;
+- `README.comparison.md`: league 0.24 is recorded as accepting `42.0` for `type: integer` and refuses it
+  — its type keyword is `is_int($data)`, so §6.1.1 is not implemented. Four of the five tools were
+  reinstalled and re-run; the rest of the table reproduced, in three places verbatim.
+
 ## 2.15.47 — 2026-09-06
 
 - a failed generation no longer destroys the output

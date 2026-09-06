@@ -1496,6 +1496,56 @@ trait RendersLaravelDto
             }
         }
 
+        return $this->laravelWithClosedObjectFlag($schema, $objectLevel);
+    }
+
+    /**
+     * `additionalProperties: false` written at the TOP of a component, carried into the object slot.
+     *
+     * It used to be carried nowhere. Nested one level down the same keyword was enforced — that schema
+     * reaches the interpreter as a property's own — so a document closing its root object was refused
+     * by runtime and accepted here, silently, with nothing in the emitted class mentioning it.
+     *
+     * The declared NAMES have to travel with the flag: the interpreter decides what counts as
+     * additional from the `properties` of the same schema, so the flag alone would make every key
+     * additional and refuse every payload. Their schemas are deliberately EMPTY — Laravel's rule map
+     * already validates each property, and repeating it here is how one violation becomes two
+     * messages, which is the same reason `properties` is otherwise kept out of this slot.
+     *
+     * `unevaluatedProperties: false` closes the object the same way, and is spelled as the keyword the
+     * document used so the message says what the reader wrote.
+     *
+     * @param array<string, mixed> $schema the class schema as the document declared it
+     * @param array<string, mixed> $objectLevel the slot built from the object-level keywords
+     * @return array<string, mixed>
+     */
+    private function laravelWithClosedObjectFlag(array $schema, array $objectLevel): array
+    {
+        $closesWithAdditional = ($schema['additionalProperties'] ?? null) === false;
+        $closesWithUnevaluated = ($schema['unevaluatedProperties'] ?? null) === false;
+
+        if (!$closesWithAdditional && !$closesWithUnevaluated) {
+            return $objectLevel;
+        }
+
+        $declaredProperties = $schema['properties'] ?? [];
+        $declaredNames = [];
+        if (is_array($declaredProperties)) {
+            foreach (array_keys($declaredProperties) as $declaredName) {
+                $declaredNames[(string)$declaredName] = [];
+            }
+        }
+
+        $objectLevel['properties'] = $declaredNames;
+
+        if ($closesWithAdditional) {
+            $objectLevel['additionalProperties'] = false;
+        }
+
+        if ($closesWithUnevaluated) {
+            $objectLevel['unevaluatedProperties'] = false;
+        }
+
         return $objectLevel;
     }
 

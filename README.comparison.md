@@ -63,7 +63,7 @@ endpoint: {type: string, format: uri-template}
 | payload | this library (runtime) | league 0.24 | Jane 7.13 | maxbeckers 0.1.6 | OG `php-symfony` |
 |---|---|---|---|---|---|
 | baseline `{id:1, name:"n", code:42}` | ✅ accepted | ✅ accepted | ✅ accepted | ✅ accepted | ❌ refused¹ |
-| `code = 42.0` — an integer per §6.1.1 | ✅ accepted | ✅ accepted | ✅ accepted² | ✅ accepted | — |
+| `code = 42.0` — an integer per §6.1.1 | ✅ accepted | ❌ **refused**⁶ | ✅ accepted² | ✅ accepted | — |
 | `code = 42.5` — not an integer | ✅ refused | ✅ refused | ❌ **accepted** | ❌ **accepted** | — |
 | `code = 5` — breaks `minimum: 10` | ✅ refused | ✅ refused | ❌ **accepted** | ❌ **accepted** | — |
 | `code = <uuid>` — second `oneOf` branch | ✅ accepted | ✅ accepted | ✅ accepted² | ✅ accepted | — |
@@ -86,7 +86,11 @@ null" are one state. Presence cannot be expressed.<br>
 `$data['name'] ?? ''`. An entirely empty payload produces a well-formed object with `id = 0` and
 `name = ''`, which is worse than a refusal because nothing downstream can tell it apart from real data.<br>
 ⁵ and only by accident: the promoted `public int $id` throws a `TypeError`, not a validation error, so
-there is no message and no path — the request 500s instead of 422-ing.</sub>
+there is no message and no path — the request 500s instead of 422-ing.<br>
+⁶ corrected on 2026-09-06: this cell read "accepted" and does not reproduce. league's type keyword tests
+`integer` as `is_int($data)`, and a JSON `42.0` decodes to a PHP float — so it refuses, on a plain
+`type: integer` property as well as inside the `oneOf`, in both the 3.0 and 3.1 dialects. That is the
+source, not a reading: `Schema/Keywords/Type.php`.</sub>
 
 **Jane catches exactly three things:** a missing required key, `null`, and a wrong scalar type. All of
 `oneOf`, every `format`, every bound — through.
@@ -185,7 +189,25 @@ figures above are kept as measured on the day, beside the competitors, rather th
 - **`getRoutedRequestValidator()` was used for league**, because ordinary path matching trips over
   `servers: [{url: 'https'}]` in our own example spec.
 - **Versions move.** Everything above is the version named in the first table, on the date named at the top.
-  Re-run before quoting it anywhere that matters.
+  Re-run before quoting it anywhere that matters. **Re-measured 2026-09-06**, four of the five tools
+  reinstalled from scratch and re-run on the schema quoted above:
+
+  | | rows reproduced | notes |
+  |---|---|---|
+  | this library (runtime) | 12 / 12 | both quoted messages byte-identical |
+  | `league` 0.24 | 11 / 12 | the twelfth is corrected above (footnote ⁶) |
+  | Jane 7.13.0 | 12 / 12 | footnote ² verbatim: `'code' => Required([NotNull])`, no `Type` |
+  | maxbeckers 0.1.6 | 12 / 12 | footnotes ¹, ⁴ and ⁵ all verbatim, down to `$data['name'] ?? ''` |
+  | OG 7.24.0 `php-symfony` | source-level | `TestPostRequestCode` has zero properties; required properties are `?T $x = null`; no bound, format or composition assertion is emitted |
+
+  `php-collective/dto` was not re-run — it generates from its own XML config, holds no cell in the tables
+  above, and re-authoring that config measures the config rather than the tool.
+
+  Two things about the re-run itself are worth writing down. maxbeckers still does not start out of the
+  box, for the reason footnote ¹ gives, and still needs `symfony/console` pinned below v8. And the full
+  `OpenApiExamples/test.yaml` no longer loads in a fresh league install at all: composer now resolves its
+  parser to `devizzent/cebe-php-openapi`, which refuses a boolean subschema our corpus carries on purpose.
+  That is why league was re-measured on the reduced schema.
 - **Nothing here is reproducible from this repository.** The competitors are not vendored and there is no
   harness: the tables are a record of a run, not a test that fails when a verdict changes. Treat them as
   dated evidence, and re-measure rather than trust them.

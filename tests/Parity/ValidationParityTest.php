@@ -620,6 +620,102 @@ final class ValidationParityTest extends TestCase
             ],
             $key,
         );
+
+        // The same keyword at the TOP of the component, which is the shape the support matrix's row
+        // actually names ("on a DTO-shaped schema") and the shape nothing here used to drive. Laravel
+        // and laravel-data accepted the undeclared key: the interpreter's literal is keyed by property,
+        // so a keyword belonging to the object itself had nowhere to travel, and the object slot beside
+        // it did not carry the closed flag. Runtime refused the same payload, one level of nesting
+        // away from an identical document.
+        $rootSpec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['known'],
+                        'additionalProperties' => false,
+                        'properties' => ['known' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+
+        $rootKey = 'unknown keys are dropped at the root';
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict(
+                $mode,
+                $rootSpec,
+                $rootKey,
+                '{"known":"a"}',
+                '{"known":"a","extra":"b"}',
+            ),
+            [
+                ...self::diverges(
+                    GenerationMode::Symfony,
+                    ['valid' => true, 'invalid' => true],
+                    'the same reason as the nested shape above: the serializer denormalizes first',
+                ),
+                ...self::diverges(
+                    GenerationMode::Yii3,
+                    ['valid' => true, 'invalid' => true],
+                    'the same reason as the nested shape above: the hydrator fills the object first',
+                ),
+            ],
+            $rootKey,
+        );
+
+        // Closed AND patterned. A key the patterns claim is not additional — JSON Schema evaluates
+        // `patternProperties` before deciding — so the VALID payload here carries one, and refusing it
+        // is the failure this pins. Runtime did refuse it: its root check compared body keys against
+        // the declared parameters alone and never read the patterns, which is the one shape where
+        // being strict is simply wrong. The invalid payload's key matches no pattern and no property,
+        // so it must still be refused; a fix that stopped closing the object would pass the first
+        // assertion and fail this one.
+        $patternedSpec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['known'],
+                        'additionalProperties' => false,
+                        'patternProperties' => ['^x_' => ['type' => 'string']],
+                        'properties' => ['known' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+
+        $patternedKey = 'a patterned key is not an undeclared one';
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict(
+                $mode,
+                $patternedSpec,
+                $patternedKey,
+                '{"known":"a","x_extra":"b"}',
+                '{"known":"a","nope":"b"}',
+            ),
+            [
+                ...self::diverges(
+                    GenerationMode::Symfony,
+                    ['valid' => true, 'invalid' => true],
+                    'the same reason as the two shapes above: the serializer denormalizes first',
+                ),
+                ...self::diverges(
+                    GenerationMode::Yii3,
+                    ['valid' => true, 'invalid' => true],
+                    'the same reason as the two shapes above: the hydrator fills the object first',
+                ),
+            ],
+            $patternedKey,
+        );
     }
 
     /**
@@ -1339,13 +1435,19 @@ final class ValidationParityTest extends TestCase
         $valid = '{"f":"2026-03-10T12:00:00+00:00"}';
         $loose = '{"f":"yesterday"}';
 
-        $expected = ['valid' => true, 'invalid' => false];
-        $this->assertSame($expected, $this->runtimeVerdict($spec, $key, $valid, $loose));
-        $this->assertSame($expected, $this->laravelVerdict($spec, $key, $valid, $loose));
-
-        $this->assertSame(
-            ['valid' => true, 'invalid' => true],
-            $this->symfonyVerdict($spec, $key, $valid, $loose),
+        // Every mode, not the three this used to name. The support matrix's row claims all five, and
+        // laravel-data and yii3 were asserted by nobody — measured since, and both refuse, but an
+        // unmeasured cell is a claim either way.
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $loose),
+            self::diverges(
+                GenerationMode::Symfony,
+                ['valid' => true, 'invalid' => true],
+                'the property is a DateTimeImmutable, so the serializer parses the string before any '
+                    . "generated constraint runs, and PHP's parser accepts \"yesterday\"",
+            ),
+            $key,
         );
     }
 
