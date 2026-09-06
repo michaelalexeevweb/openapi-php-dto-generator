@@ -161,6 +161,63 @@ final class GoldenCorpusTest extends TestCase
     }
 
     /**
+     * A generated class names its OWN framework and no other.
+     *
+     * The rule is stated in the repository conventions — "the generated code must be dependency-free
+     * per mode: runtime DTOs use this package's services, Symfony-mode DTOs use only `symfony/*`,
+     * Laravel-mode DTOs use only what ships with the framework" — and until this test it was stated
+     * and nothing more. A leak has a real cost: a Laravel application that installs neither
+     * `symfony/validator` nor `spatie/laravel-data` gets a class that will not load, and the emitter
+     * has four render paths, so a stray import can reach one of them without touching the others.
+     *
+     * Two imports look like leaks and are not, so they are allowed by name rather than by pattern:
+     * `Symfony\Component\HttpFoundation\File\UploadedFile` ships WITH Laravel, and
+     * `Psr\Http\Message\UploadedFileInterface` is what yiisoft builds on. Both are the framework the
+     * mode already depends on, reached under another vendor's name.
+     *
+     * The package's own services are the mirror of the same rule: only runtime mode may name them.
+     * Every other mode emits a class that validates itself with the framework's own machinery, and an
+     * import of `OpenapiPhpDtoGenerator\Service\…` there would drag this package into a
+     * runtime dependency it promises not to be.
+     */
+    #[DataProvider('modeProvider')]
+    public function testAGeneratedClassNamesNoForeignFramework(string $mode): void
+    {
+        $foreignByMode = [
+            'runtime' => ['Illuminate', 'Spatie', 'Yiisoft', 'Symfony\Component\Validator', 'Symfony\Component\Serializer'],
+            'symfony' => ['Illuminate', 'Spatie', 'Yiisoft'],
+            'laravel' => ['Spatie', 'Yiisoft', 'Symfony\Component\Validator', 'Symfony\Component\Serializer'],
+            'laravel-data' => ['Yiisoft', 'Symfony\Component\Validator', 'Symfony\Component\Serializer'],
+            'yii3' => ['Illuminate', 'Spatie', 'Symfony\Component\Validator', 'Symfony\Component\Serializer'],
+        ];
+
+        $this->generateCorpus($mode);
+
+        $problems = [];
+        foreach ($this->corpusFiles() as $relativePath => $absolutePath) {
+            $source = (string)file_get_contents($absolutePath);
+            preg_match_all('/^use ([\w\\\]+);$/m', $source, $matches);
+            /** @var list<string> $imports */
+            $imports = $matches[1];
+
+            foreach ($imports as $import) {
+                foreach ($foreignByMode[$mode] as $foreign) {
+                    if (str_starts_with($import, $foreign . '\\') || $import === $foreign) {
+                        $problems[] = sprintf('%s imports %s', $relativePath, $import);
+                    }
+                }
+
+                // Only runtime mode may name this package at run time.
+                if ($mode !== 'runtime' && str_starts_with($import, 'OpenapiPhpDtoGenerator\\')) {
+                    $problems[] = sprintf('%s imports %s', $relativePath, $import);
+                }
+            }
+        }
+
+        $this->assertSame([], $problems, $mode . ' mode emitted an import from a framework it does not depend on');
+    }
+
+    /**
      * Every global function the generated code calls is imported — none left bare, none written with
      * a leading backslash, and none imported without being called.
      *
