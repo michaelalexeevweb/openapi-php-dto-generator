@@ -4286,7 +4286,7 @@ final class Containers extends Data
             'datesByDay' => ['sometimes', 'array'],
             'datesByDay.*' => ['string', 'date_format:Y-m-d'],
             'timestamps' => ['sometimes', 'array', 'list'],
-            'timestamps.*' => ['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'timestamps.*' => ['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'tagsByKey' => ['sometimes', 'array'],
             'tagsByKey.*.id' => ['integer'],
             'tagsByKey.*.name' => ['string'],
@@ -5972,7 +5972,7 @@ final class ReadOnlyFields extends Data
     public function __construct(
         public readonly string $title,
         public readonly int|Optional $serverId,
-        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
+        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
         public readonly DateTimeImmutable|Optional $writtenAt,
         #[Hidden]
         public readonly string|Optional $secret,
@@ -5993,7 +5993,7 @@ final class ReadOnlyFields extends Data
         return [
             'serverId' => ['sometimes', 'integer'],
             'title' => ['present', 'string'],
-            'writtenAt' => ['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'writtenAt' => ['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'secret' => ['sometimes', 'string'],
         ];
     }
@@ -6386,7 +6386,7 @@ final class Test2 extends Data
             'user.id' => ['integer'],
             'user.name' => ['string'],
             'user.pet' => ['nullable'],
-            'user.createdAt' => ['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'user.createdAt' => ['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'userType' => ['sometimes', 'array'],
             'userType.region' => ['string'],
         ];
@@ -8700,7 +8700,7 @@ final class User extends Data
         public readonly string $name,
         #[WithoutValidation]
         public readonly Animal2|null $pet,
-        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
+        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
         public readonly DateTimeImmutable $createdAt,
     ) {
     }
@@ -8720,7 +8720,7 @@ final class User extends Data
             'id' => ['present', 'integer'],
             'name' => ['present', 'string'],
             'pet' => ['present', 'nullable'],
-            'createdAt' => ['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'createdAt' => ['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
         ];
     }
 

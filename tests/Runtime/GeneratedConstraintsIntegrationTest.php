@@ -380,7 +380,12 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $normalizer = new DtoNormalizer();
 
         $verdict = static function (string $json) use ($deserializer, $normalizer, $fqcn): bool {
-            $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
+            $request = Request::create(
+                uri: '/',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: $json,
+            );
             try {
                 return $normalizer->validate($deserializer->deserialize($request, $fqcn)) === [];
             } catch (Throwable) {

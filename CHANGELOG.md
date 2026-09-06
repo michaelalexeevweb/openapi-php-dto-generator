@@ -3,6 +3,51 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.40 — 2026-09-06
+
+- laravel accepts a UTC date-time written with `Z`
+- a container of empty objects no longer breaks laravel hydration
+
+**`2026-01-02T03:04:05Z` was refused in laravel mode.** The commonest spelling of a UTC timestamp
+there is, on a payload every other mode accepts. `date_format` does not merely parse: Laravel formats
+the parsed value back and compares the STRING, and the two PHP offset letters write it differently —
+`P` gives `+00:00`, `p` gives `Z`. So each pattern round-trips exactly one spelling and refuses the
+other, and only `P` was emitted:
+
+```
+2026-01-02T03:04:05Z          was: REFUSED    now: accepted
+2026-01-02T03:04:05.123456Z   was: REFUSED    now: accepted
+2026-01-02T03:04:05+00:00     accepted, unchanged
+2026-01-02T03:04:05+02:00     accepted, unchanged
+2026-13-45T99:99:99Z          refused, unchanged
+```
+
+Both letters are emitted now. The comment above that rule claimed it mirrored
+`GeneratedDtoInterface::DATE_TIME_FORMATS` — which uses `p` — and it did not; the deserializer only
+PARSES with its list, where either letter reads either spelling, which is why the two could disagree
+unnoticed for so long. The parity matrix had only ever sent an explicit numeric offset. It now sends
+both, so the next divergence between them fails a test rather than a request.
+
+**A container holding empty objects broke hydration.** 2.15.39 fixed the direct case — a required
+nested object sent as `{}` — and stopped one level too early. `validated()` drops any key whose value
+yields no extractable leaf, and a LIST or MAP of empty objects yields none either:
+
+```
+{"f":{}}        fixed in 2.15.39
+{"f":[{}]}      array_map(): Argument #2 ($array) must be of type array, null given
+{"f":{"k":{}}}  the same
+{"f":[[{}]]}    Probe::__construct(): Argument #1 ($f) must be of type array, null given
+```
+
+All three were accepted by the rules first, so all three were 500s rather than 422s — the rules and
+the hydrator disagreeing about one request, which is the worst failure this mode has. One guarded
+accessor now serves every container-valued branch instead of the single one 2.15.39 patched, and the
+three shapes are pinned beside the two that never had the problem (an empty list and an empty map,
+which `validated()` returns untouched).
+
+Found by asking the question mechanically rather than case by case: for a dozen property shapes, does
+everything the rules accept also hydrate? Three answers were no.
+
 ## 2.15.39 — 2026-09-06
 
 - symfony and yii3 enforce a boolean subschema in every position

@@ -596,11 +596,22 @@ trait RendersLaravelDataDto
 
         $castFormats = $temporalFormat === 'Y-m-d'
             ? ["'Y-m-d'"]
-            // The same four patterns every other mode accepts (`GeneratedDtoInterface::DATE_TIME_FORMATS`,
+            // The same patterns every other mode accepts (`GeneratedDtoInterface::DATE_TIME_FORMATS`,
             // and the `date_format:` rule this same schema emits). laravel-data's default is the single
             // `config('data.date_format')`, which cannot parse a value carrying microseconds — a payload
             // its own rule had just accepted then died in the cast with `CannotCastDate`.
-            : ["'Y-m-d\\TH:i:sP'", "'Y-m-d\\TH:i:s.uP'", "'Y-m-d H:i:s'", "'Y-m-d\\TH:i:s'"];
+            //
+            // Both offset letters, to stay identical to the rule beside it. The cast only PARSES, where
+            // `P` already reads `Z`, so this half was never wrong on its own — but a cast list and a
+            // rule list that disagree is exactly how the `Z` refusal survived unnoticed.
+            : [
+                "'Y-m-d\\TH:i:sP'",
+                "'Y-m-d\\TH:i:s.uP'",
+                "'Y-m-d\\TH:i:sp'",
+                "'Y-m-d\\TH:i:s.up'",
+                "'Y-m-d H:i:s'",
+                "'Y-m-d\\TH:i:s'",
+            ];
 
         $castImports = [];
         $withCastRef = $this->libraryClassRef('Spatie\LaravelData\Attributes\WithCast', $namespace, $castImports);

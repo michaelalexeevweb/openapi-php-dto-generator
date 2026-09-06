@@ -861,9 +861,17 @@ trait RendersLaravelDto
             'ipv4' => "'ipv4'",
             'ipv6' => "'ipv6'",
             'date' => "'date_format:Y-m-d'",
-            // The same four patterns the deserializer and the validator accept, so every mode takes
-            // the same inputs (GeneratedDtoInterface::DATE_TIME_FORMATS).
-            'date-time', 'datetime' => "'date_format:Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\\TH:i:s'",
+            // BOTH offset spellings, and that is not redundancy. Laravel's `date_format` does not
+            // merely parse: it formats the parsed value back and compares the STRING. `P` writes a UTC
+            // offset as `+00:00` and `p` writes it as `Z`, so each pattern round-trips exactly one of
+            // them and refuses the other. With `P` alone — which is what this emitted until 2.15.40 —
+            // `2026-01-02T03:04:05Z` was refused, the commonest spelling there is, on a payload every
+            // other mode accepts. The canonical list this claims to mirror
+            // (`GeneratedDtoInterface::DATE_TIME_FORMATS`) uses `p`, and the deserializer only PARSES
+            // with it, where either letter reads either spelling — which is why the disagreement could
+            // sit here unnoticed.
+            'date-time', 'datetime' => "'date_format:Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.uP,"
+                . "Y-m-d\\TH:i:sp,Y-m-d\\TH:i:s.up,Y-m-d H:i:s,Y-m-d\\TH:i:s'",
             default => null,
         };
     }
@@ -935,6 +943,21 @@ trait RendersLaravelDto
     {
         $key = $this->phpStringLiteral($property['openApiName']);
         $raw = sprintf('$data[%s]', $key);
+
+        // `validated()` builds its result out of the LEAVES it could extract, so a container holding
+        // nothing extractable loses its key entirely — `{"f":{}}`, `{"f":[{}]}`, `{"f":{"k":{}}}` and
+        // `{"f":[[{}]]}` all arrive with `f` absent, even though the property has rules of its own and
+        // `present` passed on it. Every branch below that treats the value as an array then died on it:
+        // `Child::fromValidated(null)`, `array_map(..., null)`, and the constructor itself. A 500 AFTER
+        // the validator said yes, which is the worst disagreement this mode can have.
+        //
+        // The key WAS sent, so an empty array is the faithful reconstruction. Only the required
+        // non-nullable path needs it — every other one is wrapped in an `($data[...] ?? null) === null`
+        // guard below, where absent has to stay absent.
+        $containerRaw = $property['required'] === true && $property['nullable'] !== true
+            ? sprintf('(%s ?? [])', $raw)
+            : $raw;
+
         $enumClass = $this->laravelEnumClass($property);
         $dtoClass = $this->laravelDtoClass($property);
         $itemClass = $this->laravelDtoItemClass($property);
@@ -954,27 +977,18 @@ trait RendersLaravelDto
             // keeps string keys, so a MAP of dates survives as a map.
             $param['isTemporalItems'] === true => sprintf(
                 'array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), %s)',
-                $raw,
+                $containerRaw,
             ),
             $enumClass !== null => sprintf('%s::from(%s)', $this->shortClassName($enumClass), $raw),
             $dtoClass !== null => $this->laravelNestedDtoExpression(
                 $dtoClass,
-                // `validated()` DROPS a key whose value is an empty OBJECT when the property has
-                // nested rules: Laravel builds its result from the leaves it could extract, and `{}`
-                // has none. The key WAS sent — `present` passed — so the faithful reconstruction is
-                // an empty array. Without it `Child::fromValidated(null)` was a TypeError on a
-                // payload the document allows, after the validator had already said yes. Only the
-                // required non-nullable path needs it; every other one is wrapped in an
-                // `($data[...] ?? null) === null` guard below, where absent must stay absent.
-                $property['required'] === true && $property['nullable'] !== true
-                    ? sprintf('(%s ?? [])', $raw)
-                    : $raw,
+                $containerRaw,
                 $property['openApiName'],
             ),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) => sprintf(
                 'array_map(static fn(int|string $item): %1$s => %1$s::from($item), %2$s)',
                 $this->shortClassName($itemClass),
-                $raw,
+                $containerRaw,
             ),
             $itemClass !== null && $this->isUnhydratableUnionClass($itemClass) => $this->laravelUnhydratableUnionThrow(
                 unionClass: $itemClass,
@@ -989,9 +1003,13 @@ trait RendersLaravelDto
                 'array_map(static fn(array $item): %s => %s, %s)',
                 $this->shortClassName($itemClass),
                 $this->laravelNestedDtoExpression($itemClass, '$item', $property['openApiName']),
-                $raw,
+                $containerRaw,
             ),
-            default => $raw,
+            // A container with no class of its own — a list of lists, a map of scalars — still reaches
+            // a constructor parameter typed `array`, so it needs the same accessor.
+            default => $param['declaredType'] === 'array' || str_starts_with($param['declaredType'], '?array')
+                ? $containerRaw
+                : $raw,
         };
 
         // A readOnly property is server-owned: runtime mode ignores whatever the client sent, so the

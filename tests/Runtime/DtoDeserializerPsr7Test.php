@@ -204,7 +204,12 @@ final class DtoDeserializerPsr7Test extends TestCase
             $psr = $psr->withAttribute($name, $attributeValue);
         }
 
-        $symfony = SymfonyRequest::create($path, 'POST', [], [], [], ['CONTENT_TYPE' => $contentType], $body);
+        $symfony = SymfonyRequest::create(
+            uri: $path,
+            method: 'POST',
+            server: ['CONTENT_TYPE' => $contentType],
+            content: $body,
+        );
         foreach ($attributes as $name => $attributeValue) {
             $symfony->attributes->set($name, $attributeValue);
         }

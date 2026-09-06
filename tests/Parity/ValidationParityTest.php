@@ -212,6 +212,26 @@ final class ValidationParityTest extends TestCase
             'format uuid' => [['type' => 'string', 'format' => 'uuid'], '{"f":"7f8d4c22-3d1f-4b6e-9c5a-2b1d3e4f5a6b"}', '{"f":"nope"}'],
             'format uri-reference' => [['type' => 'string', 'format' => 'uri-reference'], '{"f":"/rel/path"}', '{"f":"has space "}'],
             'format date' => [['type' => 'string', 'format' => 'date'], '{"f":"2026-01-01"}', '{"f":"2026-13-45"}'],
+            // The `Z` spelling of a UTC offset — the commonest one an API writes, and the one laravel
+            // mode refused until 2.15.40. `date_format` does not merely parse: it formats the parsed
+            // value back and compares the string, so `P` (`+00:00`) and `p` (`Z`) each round-trip one
+            // spelling and refuse the other. Both are emitted now, and both are pinned: the matrix had
+            // only ever sent an explicit numeric offset.
+            // The invalid half is a string PHP cannot parse AT ALL, deliberately. Both other candidates
+            // pin PHP's leniency rather than this keyword: `+99:99` is normalised into `+100:39`, and
+            // `2026-13-45T99:99:99` overflows into a real date in 2027. A mode that casts before its
+            // rules run — yii3 does — therefore accepts both, and the case would be measuring the
+            // parser instead of the two offset spellings it exists to pin.
+            'format date-time with Z' => [
+                ['type' => 'string', 'format' => 'date-time'],
+                '{"f":"2026-01-02T03:04:05Z"}',
+                '{"f":"not a timestamp"}',
+            ],
+            'format date-time with a numeric offset' => [
+                ['type' => 'string', 'format' => 'date-time'],
+                '{"f":"2026-01-02T03:04:05+00:00"}',
+                '{"f":"not a timestamp"}',
+            ],
             // The container twins of the case above. A `format` one level down was the 2.15.3 bug —
             // the item was typed as a date and then nothing enforced it on the way out — and nothing
             // here asserted the way IN either, in any mode.

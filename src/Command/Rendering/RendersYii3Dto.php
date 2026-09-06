@@ -1209,15 +1209,23 @@ PHP;
         }
 
         $kept = array_values(array_diff($required, $readOnlyNames));
-        if ($kept === []) {
-            unset($constraints['required']);
 
-            return $constraints;
+        // Rebuilt rather than unset: the result says what the constraints ARE, and "nothing is
+        // required any more" is expressed by not writing the key. Walked in place so `required`
+        // keeps its position — appending it instead would move it in every emitted constant.
+        $rebuilt = [];
+        foreach ($constraints as $keyword => $value) {
+            if ($keyword !== 'required') {
+                $rebuilt[$keyword] = $value;
+
+                continue;
+            }
+            if ($kept !== []) {
+                $rebuilt[$keyword] = $kept;
+            }
         }
 
-        $constraints['required'] = $kept;
-
-        return $constraints;
+        return $rebuilt;
     }
 
     /**

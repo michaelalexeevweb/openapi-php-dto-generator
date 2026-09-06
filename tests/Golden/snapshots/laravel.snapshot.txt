@@ -3220,8 +3220,8 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            matrixIds: $data['matrixIds'],
-            labelIds: $data['labelIds'],
+            matrixIds: ($data['matrixIds'] ?? []),
+            labelIds: ($data['labelIds'] ?? []),
         );
 
         return $dto;
@@ -4800,7 +4800,7 @@ final class ApplicatorRefs
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            mustContain: $data['mustContain'],
+            mustContain: ($data['mustContain'] ?? []),
             positions: ($data['positions'] ?? null) === null ? null : $data['positions'],
             rest: ($data['rest'] ?? null) === null ? null : $data['rest'],
             closedPair: ($data['closedPair'] ?? null) === null ? null : $data['closedPair'],
@@ -7062,7 +7062,7 @@ final class ChainMiddle
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            links: array_map(static fn(array $item): ChainLink => ChainLink::fromValidated($item), $data['links']),
+            links: array_map(static fn(array $item): ChainLink => ChainLink::fromValidated($item), ($data['links'] ?? [])),
         );
 
         return $dto;
@@ -7520,7 +7520,7 @@ final class ContainerAliases
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            listOfLists: $data['listOfLists'],
+            listOfLists: ($data['listOfLists'] ?? []),
             listOfMaps: ($data['listOfMaps'] ?? null) === null ? null : $data['listOfMaps'],
             mapOfLists: ($data['mapOfLists'] ?? null) === null ? null : $data['mapOfLists'],
             plain: ($data['plain'] ?? null) === null ? null : $data['plain'],
@@ -7725,7 +7725,7 @@ final class Containers
             'datesByDay' => ['sometimes', 'array'],
             'datesByDay.*' => ['string', 'date_format:Y-m-d'],
             'timestamps' => ['sometimes', 'array', 'list'],
-            'timestamps.*' => ['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'timestamps.*' => ['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'tagsByKey' => ['sometimes', 'array'],
             'tagsByKey.*.id' => ['integer'],
             'tagsByKey.*.name' => ['string'],
@@ -7849,8 +7849,8 @@ final class Containers
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            dates: array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), $data['dates']),
-            shapes: array_map(static fn(array $item): Shape => match ($item['kind'] ?? null) { 'circle' => Circle::fromValidated($item), 'square' => Square::fromValidated($item), default => throw new InvalidArgumentException(sprintf('Unknown kind "%s".', (string)($item['kind'] ?? ''))) }, $data['shapes']),
+            dates: array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), ($data['dates'] ?? [])),
+            shapes: array_map(static fn(array $item): Shape => match ($item['kind'] ?? null) { 'circle' => Circle::fromValidated($item), 'square' => Square::fromValidated($item), default => throw new InvalidArgumentException(sprintf('Unknown kind "%s".', (string)($item['kind'] ?? ''))) }, ($data['shapes'] ?? [])),
             datesByDay: ($data['datesByDay'] ?? null) === null ? null : array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), $data['datesByDay']),
             timestamps: ($data['timestamps'] ?? null) === null ? null : array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), $data['timestamps']),
             tagsByKey: ($data['tagsByKey'] ?? null) === null ? null : array_map(static fn(array $item): Tag => Tag::fromValidated($item), $data['tagsByKey']),
@@ -8961,7 +8961,7 @@ final class ItemBounds
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            scores: $data['scores'],
+            scores: ($data['scores'] ?? []),
             scoresByKey: ($data['scoresByKey'] ?? null) === null ? null : $data['scoresByKey'],
             codes: ($data['codes'] ?? null) === null ? null : $data['codes'],
         );
@@ -9295,8 +9295,8 @@ final class NestedContainers
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            matrix: $data['matrix'],
-            rowsOfMaps: $data['rowsOfMaps'],
+            matrix: ($data['matrix'] ?? []),
+            rowsOfMaps: ($data['rowsOfMaps'] ?? []),
             listsByKey: ($data['listsByKey'] ?? null) === null ? null : $data['listsByKey'],
             mapsByKey: ($data['mapsByKey'] ?? null) === null ? null : $data['mapsByKey'],
             dateRows: ($data['dateRows'] ?? null) === null ? null : $data['dateRows'],
@@ -9709,7 +9709,7 @@ final class NullableContainerValues
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            listOfNullable: $data['listOfNullable'],
+            listOfNullable: ($data['listOfNullable'] ?? []),
             mapOfNullable: ($data['mapOfNullable'] ?? null) === null ? null : $data['mapOfNullable'],
             listOfNullable31: ($data['listOfNullable31'] ?? null) === null ? null : $data['listOfNullable31'],
             mapOfNullable31: ($data['mapOfNullable31'] ?? null) === null ? null : $data['mapOfNullable31'],
@@ -10377,7 +10377,7 @@ final class ReadOnlyFields
         return [
             'serverId' => ['sometimes', 'integer'],
             'title' => ['present', 'string'],
-            'writtenAt' => ['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'writtenAt' => ['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'secret' => ['sometimes', 'string'],
         ];
     }
@@ -11039,7 +11039,7 @@ final class Test2
             'user.id' => ['integer'],
             'user.name' => ['string'],
             'user.pet' => ['nullable'],
-            'user.createdAt' => ['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'user.createdAt' => ['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
             'userType' => ['sometimes', 'array'],
             'userType.region' => ['string'],
         ];
@@ -11164,7 +11164,7 @@ final class Test2
         $dto = new self(
             id: self::toIntIfIntegral($data['id']),
             name: $data['name'],
-            tags: array_map(static fn(array $item): Tag => Tag::fromValidated($item), $data['tags']),
+            tags: array_map(static fn(array $item): Tag => Tag::fromValidated($item), ($data['tags'] ?? [])),
             types: Test2Types::from($data['types']),
             user: ($data['user'] ?? null) === null ? null : User::fromValidated($data['user']),
             userType: ($data['userType'] ?? null) === null ? null : Test2UserType::fromValidated($data['userType']),
@@ -12429,7 +12429,7 @@ final class TreeNode
     {
         $dto = new self(
             label: $data['label'],
-            children: $data['children'],
+            children: ($data['children'] ?? []),
         );
 
         return $dto;
@@ -13712,7 +13712,7 @@ final class UniqueScalars
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            tags: $data['tags'],
+            tags: ($data['tags'] ?? []),
         );
 
         return $dto;
@@ -13903,7 +13903,7 @@ final class User
             'id' => ['present', 'integer'],
             'name' => ['present', 'string'],
             'pet' => ['present', 'nullable'],
-            'createdAt' => ['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d H:i:s,Y-m-d\TH:i:s'],
+            'createdAt' => ['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s'],
         ];
     }
 

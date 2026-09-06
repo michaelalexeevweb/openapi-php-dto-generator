@@ -323,6 +323,55 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * Every CONTAINER shape whose contents are empty objects — the same loss one level down.
+     *
+     * `validated()` drops a key whose value yields no extractable leaf, and a list of empty objects
+     * yields none either. Each of these reached a different arm of the hydrator and died differently:
+     * `array_map(): Argument #2 ($array) must be of type array, null given` for the list and the map,
+     * and the constructor's own type for the list of lists. All three were accepted by the rules
+     * first, which is what makes them 500s rather than 422s.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('emptyContainerProvider')]
+    public function testAContainerOfEmptyObjectsHydrates(string $key, array $propertySchema, mixed $value): void
+    {
+        $fqcn = $this->generateProbe($key, $propertySchema);
+
+        $validator = $this->validatorFactory()->make(['f' => $value], call_user_func([$fqcn, 'rules']));
+        $this->assertFalse($validator->fails(), 'the rules accept it');
+
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        $this->assertNotNull($dto->getF(), 'and so the DTO can be built from it');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: mixed}>
+     */
+    public static function emptyContainerProvider(): array
+    {
+        $emptyObject = ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]];
+
+        return [
+            'list of empty objects' => [
+                'list of empty objects',
+                ['type' => 'array', 'items' => $emptyObject],
+                [[]],
+            ],
+            'map of empty objects' => [
+                'map of empty objects',
+                ['type' => 'object', 'additionalProperties' => $emptyObject],
+                ['k' => []],
+            ],
+            'list of lists of empty objects' => [
+                'list of lists of empty objects',
+                ['type' => 'array', 'items' => ['type' => 'array', 'items' => $emptyObject]],
+                [[[]]],
+            ],
+        ];
+    }
+
+    /**
      * The two shapes that always survived `validated()`, kept beside the one that did not — otherwise
      * the fix above looks like it might have been needed for every container.
      */
