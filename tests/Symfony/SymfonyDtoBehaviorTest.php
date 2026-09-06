@@ -403,7 +403,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
     /**
      * A bound on the ITEMS of a container is enforced once, by the attribute.
      *
-     * `filterSymfonyValidationConstraints()` says it removes "supported scalar / count / regex
+     * `filterInterpreterConstraints()` says it removes "supported scalar / count / regex
      * constraints … so the callback does not duplicate attribute-based violations" — and then its
      * `items` recursion handed the callback every scalar keyword anyway, while `#[Assert\All]` was
      * enforcing them too. Measured before this: `{"scoresByKey":{"a":"x"}}` produced THREE messages

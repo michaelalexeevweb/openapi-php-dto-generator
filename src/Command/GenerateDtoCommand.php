@@ -12,6 +12,7 @@ use OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDataDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersSchemaInterpreter;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersYii3Dto;
 use RuntimeException;
@@ -66,13 +67,14 @@ use Twig\TwigFilter;
 final class GenerateDtoCommand extends Command
 {
     // One emitter per mode, each in its own file; everything they need (schema registries, type
-    // resolution, naming, templates) stays on this class and is shared by all three. Laravel mode also
-    // reads `RendersSymfonyDto::renderSymfonyValidationBlock()` — the interpreter has one
-    // implementation and three packagings, see `renderLaravelInterpreterBlock()`.
+    // resolution, naming, templates) stays on this class and is shared by all of them. The schema
+    // INTERPRETER is shared too, and by four of the five: `RendersSchemaInterpreter` holds the one
+    // walker, and symfony, laravel, laravel-data and yii3 each wrap it in an entry point of their own.
     use NamesLibraryClasses;
     use RendersLaravelDataDto;
     use RendersLaravelDto;
     use RendersRuntimeDto;
+    use RendersSchemaInterpreter;
     use RendersSymfonyDto;
     use RendersYii3Dto;
 

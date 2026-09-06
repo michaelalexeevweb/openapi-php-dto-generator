@@ -227,7 +227,7 @@ trait RendersYii3Dto
         // accepted. What the emitted rules DO cover is pruned below instead, so one mistake is still
         // reported once.
         $interpreterConstraints = $this->yii3PruneNativelyCovered(
-            $this->filterSymfonyValidationConstraints(
+            $this->filterInterpreterConstraints(
                 constraints: $this->extractValidationConstraints(
                     $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
                 ),
@@ -246,7 +246,7 @@ trait RendersYii3Dto
             // a generated backed enum, a DateTimeImmutable — not the scalar the client sent, and
             // without these flags the interpreter compares an enum instance against `enum: ['a','b']`
             // and rejects a perfectly valid member. Measured: `{"f":"a"}` came back invalid.
-            valueKinds: $this->symfonyCallbackValueKinds($className, array_map(
+            valueKinds: $this->interpreterValueKinds($className, array_map(
                 static fn(array $parameter): array => [
                     'name' => $parameter['name'],
                     'declaredType' => $parameter['propertyType'],
@@ -857,7 +857,7 @@ trait RendersYii3Dto
 
     /**
      * The interpreter, packaged for Yii3 — the THIRD packaging of the one implementation emitted by
-     * {@see RendersSymfonyDto::renderSymfonyValidationBlock()}.
+     * {@see RendersSchemaInterpreter::renderInterpreterBlock()}.
      *
      * Yii3 validates an OBJECT, so this takes the Symfony packaging (`payloadIsHydratedObject: true`,
      * one entry per object, `toOpenApiValidationPayload()` as the view) and changes only the failure
@@ -886,7 +886,7 @@ trait RendersYii3Dto
             return ['consts' => '', 'methods' => '', 'imports' => [], 'entered' => false];
         }
 
-        $block = $this->renderSymfonyValidationBlock(
+        $block = $this->renderInterpreterBlock(
             constraints: $constraints,
             phpToOpenApiNameMap: $phpToOpenApiNameMap,
             // No presence flags: Symfony records presence in a boolean property, this mode reads it
@@ -968,7 +968,7 @@ PHP;
             throw new RuntimeException(
                 'The Symfony interpreter entry this mode swaps out has changed shape. Update the '
                 . '`$symfonyEntry` heredoc in ' . __METHOD__ . ' to match '
-                . 'RendersSymfonyDto::renderSymfonyValidationBlock() again.',
+                . 'RendersSchemaInterpreter::renderInterpreterBlock() again.',
             );
         }
 

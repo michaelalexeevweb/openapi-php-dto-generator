@@ -3,6 +3,43 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.44 — 2026-09-06
+
+- the shared schema interpreter moves out of `RendersSymfonyDto`
+- generated output is byte-identical
+
+**Nothing about the generated code changed.** This release moves one thing and renames four; the
+golden corpus is unchanged in all five modes, which is the whole proof.
+
+`RendersSymfonyDto` was 4138 lines, and 2515 of them were not about Symfony. The schema INTERPRETER —
+the walker that checks what neither Laravel's rule vocabulary nor Symfony's constraint attributes can
+express (`contains`, `not`, `if`/`then`, `propertyNames`, `dependentSchemas`, `unevaluated*`, a
+boolean subschema) — lives inside the class every mode emits, and FOUR of the five modes share one
+copy of it: symfony, laravel, laravel-data and yii3. Only the entry point differs, and each mode
+supplies its own.
+
+It now lives in `RendersSchemaInterpreter`, and the methods stop naming a mode they do not belong to:
+
+```
+renderSymfonyValidationBlock        ->  renderInterpreterBlock
+renderSymfonyValidationMethods      ->  renderInterpreterMethods
+filterSymfonyValidationConstraints  ->  filterInterpreterConstraints
+symfonyCallbackValueKinds           ->  interpreterValueKinds
+```
+
+```
+RendersSymfonyDto.php          4138  ->  1666 lines   attributes, groups, the class shape
+RendersSchemaInterpreter.php     new     2515 lines   the walker, shared by four modes
+```
+
+**Why one copy and not four**, since that is the question the old name kept raising: the walk is about
+1500 emitted lines, and the parity suites exist to prove the modes agree about a schema. Sharing the
+walker makes that agreement true BY CONSTRUCTION and leaves the suites to check the edges; four copies
+would make it a hope. The sharing is deliberate and guarded — `RendersYii3Dto` string-replaces the
+Symfony entry with its own and throws a named error if the needle ever stops matching.
+
+Every name here is private to the generator: nothing a consumer can call was touched.
+
 ## 2.15.43 — 2026-09-06
 
 - a symfony violation from the interpreter names its field
