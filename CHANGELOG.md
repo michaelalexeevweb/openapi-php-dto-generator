@@ -3,6 +3,45 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.41 — 2026-09-06
+
+- a property name outside ASCII keeps its letters
+- an object keyword failing at the root names the body
+
+**Two non-ASCII property names could not be generated at all.** PHP identifiers accept every byte from
+`\x80` up — `$имя` and `$名前` are ordinary property names to the language — but the name normalizer
+split on `[^A-Za-z0-9]+`, which left nothing of either. One such property came out as the `value`
+fallback, carrying no trace of what it was; two collapsed onto the same fallback and generation
+stopped, blaming the document for a collision the generator had invented:
+
+```
+Property name collision in P: "имя" and "名前" normalize to "$value".
+```
+
+The presence flags were derived by a second copy of the same split, so even ONE such property emitted
+`$valueInRequest` — and two made the emitted class impossible to load (`Cannot redeclare
+P::$valueInRequest`). Both places keep the bytes now, in all five modes.
+
+The wire name never depended on any of this: `openApiName` carries it, so the payload and the response
+are byte-identical either way. What changes is that the PHP property is readable and, more to the
+point, distinct from its neighbour. **If a document of yours has a non-ASCII property name, its PHP
+property was `$value` and is now the name itself** — the only case where this renames anything, and
+the previous name was not usable.
+
+**An object keyword failing at the ROOT had nothing to name.** `dependentRequired`,
+`dependentSchemas`, `minProperties`, `not` and a top-level conditional all compose their message as
+`"{subject}.{name} is …"` or `"{subject} is …"`, and the root of a payload has no property name of its
+own — it was passed as an empty string, so the subject position came out as the separator alone:
+
+```
+.b is required.                        ->  body.b is required.
+ must have at least 2 properties.      ->  Body must have at least 2 properties.
+ is not allowed by the schema.         ->  Body is not allowed by the schema.
+```
+
+Both directions: the deserializer on the way in, the normalizer on the way out. Nothing about which
+payloads are accepted changed — only what the refusal says.
+
 ## 2.15.40 — 2026-09-06
 
 - laravel accepts a UTC date-time written with `Z`

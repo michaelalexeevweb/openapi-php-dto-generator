@@ -647,10 +647,15 @@ final class DtoNormalizerTest extends TestCase
     {
         $errors = (new DtoNormalizer())->validate(new NormalizerObjectConstraintsThrowingToArrayDto('present'));
 
+        // `Body`, not a leading space or a leading dot. These two messages are composed as
+        // `"{subject} is …"` and `"{subject}.{name} is …"`, and the ROOT of a payload has no property
+        // name of its own — it used to be passed as an empty string, so the subject position came out
+        // as the separator alone. Naming it is the whole fix; the capital is `finalizeMessage()`
+        // opening a sentence, as it does for every message that is not a `field "…"` one.
         $this->assertSame(
             [
-                ' must have at least 2 properties.',
-                '.gamma is required when beta is present.',
+                'Body must have at least 2 properties.',
+                'Body.gamma is required when beta is present.',
             ],
             $errors,
             'the object keywords are answered from the reflection payload, not from the throwing toArray()',

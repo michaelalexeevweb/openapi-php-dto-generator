@@ -280,7 +280,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $objectConstraints = $this->resolveOpenApiObjectConstraintsByClass($dto::class);
         unset($objectConstraints['additionalProperties']);
         if ($objectConstraints !== []) {
-            $subject = $pathPrefix === '' ? '' : $pathPrefix;
+            // Named for the same reason the deserializer names it: an empty subject leaves the
+            // message starting with its own separator. At the root there is no property name to use,
+            // so `body` stands in — the same word on the way out as on the way in.
+            $subject = $pathPrefix === '' ? 'body' : $pathPrefix;
             foreach ($this->constraintValidator->validate($subject, $this->toArray($dto), $objectConstraints) as $objectError) {
                 $errors[] = $objectError;
             }

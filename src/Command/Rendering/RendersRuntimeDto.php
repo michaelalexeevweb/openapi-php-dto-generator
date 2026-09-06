@@ -1488,7 +1488,11 @@ trait RendersRuntimeDto
 
     private function normalizeTrackingFlagName(string $propertyName, string $suffix): string
     {
-        $splitResult = preg_split('/[^A-Za-z0-9]+/', $propertyName);
+        // Same class as `normalizePropertyName()`, and for the same reason: PHP identifiers accept
+        // `\x80-\xFF`, and stripping those bytes collapsed every non-ASCII name to `value` — so two
+        // such properties emitted `$valueInRequest` twice and the class would not even load
+        // ("Cannot redeclare P::$valueInRequest"). The flag name has to track the property name.
+        $splitResult = preg_split('/[^A-Za-z0-9\x80-\xFF]+/', $propertyName);
         $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {

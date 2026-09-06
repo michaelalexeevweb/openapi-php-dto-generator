@@ -1,4 +1,4 @@
-# laravel-data mode — 79 files, 8981 lines
+# laravel-data mode — 79 files, 8985 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2066,6 +2066,8 @@ final class ApplicatorRefs extends Data
         public readonly array|Optional $closedPair,
         public readonly mixed $impossible,
         public readonly string|Optional $vacuous,
+        public readonly string|Optional $имя,
+        public readonly string|Optional $名前,
         public readonly mixed $forbiddenKey,
         public readonly mixed $neverMatches,
         public readonly array|Optional $closedFirstSlot,
@@ -2097,6 +2099,8 @@ final class ApplicatorRefs extends Data
             'closedPair' => ['sometimes', 'array', 'list'],
             'impossible' => ['sometimes'],
             'vacuous' => ['sometimes', 'string', 'min:3'],
+            'имя' => ['sometimes', 'string'],
+            '名前' => ['sometimes', 'string'],
             'forbiddenKey' => ['sometimes'],
             'neverMatches' => ['sometimes'],
             'closedFirstSlot' => ['sometimes', 'array', 'list'],

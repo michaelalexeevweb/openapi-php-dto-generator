@@ -5683,7 +5683,12 @@ final class GenerateDtoCommand extends Command
         // Split camelCase/PascalCase and keep arbitrary separators from OpenAPI keys.
         $normalized = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $normalized) ?? $normalized;
         $normalized = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1 $2', $normalized) ?? $normalized;
-        $splitResult = preg_split('/[^A-Za-z0-9]+/', $normalized);
+        // `\x80-\xFF` is kept because PHP identifiers accept it: `$имя` and `$名前` are legal property
+        // names, and stripping those bytes left NOTHING behind — every non-ASCII name collapsed to the
+        // `value` fallback below, so one such property was emitted under a name that says nothing and
+        // two were a hard generation failure: "Property name collision: "имя" and "名前" normalize to
+        // "$value"". The wire name is unaffected either way; `openApiName` carries it.
+        $splitResult = preg_split('/[^A-Za-z0-9\x80-\xFF]+/', $normalized);
         $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {

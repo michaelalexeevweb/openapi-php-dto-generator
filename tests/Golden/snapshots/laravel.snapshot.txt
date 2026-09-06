@@ -1,4 +1,4 @@
-# laravel mode — 105 files, 14322 lines
+# laravel mode — 105 files, 14356 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4646,6 +4646,8 @@ final class ApplicatorRefs
         private readonly ?array $closedPair = null,
         private readonly mixed $impossible = null,
         private readonly ?string $vacuous = null,
+        private readonly ?string $имя = null,
+        private readonly ?string $名前 = null,
         private readonly mixed $forbiddenKey = null,
         private readonly mixed $neverMatches = null,
         private readonly ?array $closedFirstSlot = null,
@@ -4671,6 +4673,8 @@ final class ApplicatorRefs
             'closedPair' => ['sometimes', 'array', 'list'],
             'impossible' => ['sometimes'],
             'vacuous' => ['sometimes', 'string', 'min:3'],
+            'имя' => ['sometimes', 'string'],
+            '名前' => ['sometimes', 'string'],
             'forbiddenKey' => ['sometimes'],
             'neverMatches' => ['sometimes'],
             'closedFirstSlot' => ['sometimes', 'array', 'list'],
@@ -4806,6 +4810,8 @@ final class ApplicatorRefs
             closedPair: ($data['closedPair'] ?? null) === null ? null : $data['closedPair'],
             impossible: ($data['impossible'] ?? null) === null ? null : $data['impossible'],
             vacuous: ($data['vacuous'] ?? null) === null ? null : $data['vacuous'],
+            имя: ($data['имя'] ?? null) === null ? null : $data['имя'],
+            名前: ($data['名前'] ?? null) === null ? null : $data['名前'],
             forbiddenKey: ($data['forbiddenKey'] ?? null) === null ? null : $data['forbiddenKey'],
             neverMatches: ($data['neverMatches'] ?? null) === null ? null : $data['neverMatches'],
             closedFirstSlot: ($data['closedFirstSlot'] ?? null) === null ? null : $data['closedFirstSlot'],
@@ -4874,6 +4880,26 @@ final class ApplicatorRefs
     public function isVacuousProvided(): bool
     {
         return in_array('vacuous', $this->providedOpenApiKeys, true);
+    }
+
+    public function getимя(): ?string
+    {
+        return $this->имя;
+    }
+
+    public function isимяProvided(): bool
+    {
+        return in_array('имя', $this->providedOpenApiKeys, true);
+    }
+
+    public function get名前(): ?string
+    {
+        return $this->名前;
+    }
+
+    public function is名前Provided(): bool
+    {
+        return in_array('名前', $this->providedOpenApiKeys, true);
     }
 
     public function getForbiddenKey(): mixed
@@ -5210,6 +5236,14 @@ final class ApplicatorRefs
 
         if ($this->isVacuousProvided()) {
             $result['vacuous'] = $this->vacuous;
+        }
+
+        if ($this->isимяProvided()) {
+            $result['имя'] = $this->имя;
+        }
+
+        if ($this->is名前Provided()) {
+            $result['名前'] = $this->名前;
         }
 
         if ($this->isForbiddenKeyProvided()) {

@@ -450,7 +450,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $objectConstraints = $this->resolveOpenApiObjectConstraints($reflection);
         unset($objectConstraints['additionalProperties']);
         if ($objectConstraints !== []) {
-            foreach ($this->constraintValidator->validate('', $bodyData, $objectConstraints) as $objectError) {
+            // `body`, not an empty subject. These messages are composed as `"{subject}.{name}"` and
+            // `"{subject} is …"`, so an empty one produced `.b is required.` and
+            // ` is not allowed by the schema.` — a stray separator where the name of the thing should
+            // be. The root of a request has no property name of its own, so it needs one given to it,
+            // and `body` is the word the neighbouring messages already use
+            // ("JSON body must be an object").
+            foreach ($this->constraintValidator->validate('body', $bodyData, $objectConstraints) as $objectError) {
                 $errors[] = $objectError;
             }
         }

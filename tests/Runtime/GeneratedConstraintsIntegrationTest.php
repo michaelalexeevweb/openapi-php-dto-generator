@@ -18,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionParameter;
+use ReflectionProperty;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
@@ -328,6 +329,114 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 true,
             ],
         ];
+    }
+
+    /**
+     * An object-level keyword that fails at the ROOT names the thing it is talking about.
+     *
+     * These messages are composed as `"{subject}.{name} is …"`, and the root of a request has no
+     * property name of its own — it was passed as an empty string, so the subject position came out as
+     * the separator alone: `.b is required.`, ` must have at least 2 properties.`. Every object-level
+     * keyword shared it (`dependentRequired`, `dependentSchemas`, `minProperties`, `not`, a top-level
+     * conditional), in both spellings, on the way in and on the way out.
+     */
+    public function testAnObjectKeywordFailingAtTheRootNamesTheBody(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'P' => [
+                        'type' => 'object',
+                        'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
+                        'dependentRequired' => ['a' => ['b']],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'RootSubject', 'P');
+        $request = Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"a":"x"}',
+        );
+
+        $thrown = null;
+        try {
+            (new DtoDeserializer())->deserialize($request, $fqcn);
+        } catch (Throwable $caught) {
+            $thrown = $caught;
+        }
+
+        $this->assertNotNull($thrown, 'the payload is refused');
+        $this->assertStringContainsString('body.b is required', $thrown->getMessage());
+        $this->assertStringNotContainsString(' .b is required', $thrown->getMessage());
+    }
+
+    /**
+     * Property names outside ASCII, which PHP itself has no trouble with.
+     *
+     * `$имя` and `$名前` are legal PHP identifiers — the language accepts every byte from `\x80` up —
+     * but the name normalizer split on `[^A-Za-z0-9]+`, which left NOTHING of such a name. One of them
+     * came out as the `value` fallback, carrying no trace of what it was; TWO were a hard generation
+     * failure, and the message blamed the document for a collision the generator had invented:
+     *
+     *     Property name collision in P: "имя" and "名前" normalize to "$value".
+     *
+     * The presence flags were derived by a second copy of the same split, so even one such property
+     * emitted `$valueInRequest` — and two made the class impossible to load at all
+     * ("Cannot redeclare P::$valueInRequest"). Both places keep the bytes now.
+     *
+     * The WIRE name never depended on any of this: `openApiName` carries it, so the payload and the
+     * response are byte-identical either way. What changes is that the PHP property is now readable
+     * and, more to the point, distinct from its neighbour.
+     */
+    public function testNonAsciiPropertyNamesGenerateAndRoundTrip(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'P' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'имя' => ['type' => 'string'],
+                            '名前' => ['type' => 'string'],
+                            'plain' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $fqcn = $this->generateFromInlineSpec($spec, 'NonAscii', 'P');
+        $json = (string)json_encode(['имя' => 'Аня', '名前' => '太郎', 'plain' => 'x'], JSON_UNESCAPED_UNICODE);
+        $request = Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $json,
+        );
+
+        $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
+
+        // The wire names survive untouched, which is the half a client can see.
+        $this->assertSame(
+            ['имя' => 'Аня', '名前' => '太郎', 'plain' => 'x'],
+            (new DtoNormalizer())->validateAndNormalizeToArray($dto),
+        );
+
+        // And the two names stayed apart, which is what used to fail.
+        $properties = array_map(
+            static fn(ReflectionProperty $property): string => $property->getName(),
+            (new ReflectionClass($dto))->getProperties(),
+        );
+        $this->assertContains('имя', $properties);
+        $this->assertContains('名前', $properties);
     }
 
     /**

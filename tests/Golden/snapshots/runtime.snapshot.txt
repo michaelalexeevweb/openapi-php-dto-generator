@@ -1,4 +1,4 @@
-# runtime mode — 79 files, 23270 lines
+# runtime mode — 79 files, 23408 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8735,6 +8735,16 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     private bool $vacuousInQuery = false;
     private bool $vacuousInHeader = false;
     private bool $vacuousInCookie = false;
+    private bool $имяInRequest = false;
+    private bool $имяInPath = false;
+    private bool $имяInQuery = false;
+    private bool $имяInHeader = false;
+    private bool $имяInCookie = false;
+    private bool $名前InRequest = false;
+    private bool $名前InPath = false;
+    private bool $名前InQuery = false;
+    private bool $名前InHeader = false;
+    private bool $名前InCookie = false;
     private bool $forbiddenKeyInRequest = false;
     private bool $forbiddenKeyInPath = false;
     private bool $forbiddenKeyInQuery = false;
@@ -8780,6 +8790,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         array|UnsetValue|null $closedPair = UnsetValue::UNSET,
         private readonly mixed $impossible = UnsetValue::UNSET,
         private readonly string|UnsetValue|null $vacuous = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $имя = UnsetValue::UNSET,
+        private readonly string|UnsetValue|null $名前 = UnsetValue::UNSET,
         private readonly mixed $forbiddenKey = UnsetValue::UNSET,
         private readonly mixed $neverMatches = UnsetValue::UNSET,
         array|UnsetValue|null $closedFirstSlot = UnsetValue::UNSET,
@@ -8798,6 +8810,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $this->impossibleInRequest = $impossible !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->vacuousInRequest = $vacuous !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->имяInRequest = $имя !== UnsetValue::UNSET;
+        // Track if parameter was explicitly passed
+        $this->名前InRequest = $名前 !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
         $this->forbiddenKeyInRequest = $forbiddenKey !== UnsetValue::UNSET;
         // Track if parameter was explicitly passed
@@ -9071,6 +9087,76 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         return $this->vacuousInRequest;
     }
 
+    public function getимя(): ?string
+    {
+        return $this->имя !== UnsetValue::UNSET ? $this->имя : null;
+    }
+
+    public function isимяRequired(): bool
+    {
+        return false;
+    }
+
+    public function isимяInPath(): bool
+    {
+        return $this->имяInPath;
+    }
+
+    public function isимяInQuery(): bool
+    {
+        return $this->имяInQuery;
+    }
+
+    public function isимяInHeader(): bool
+    {
+        return $this->имяInHeader;
+    }
+
+    public function isимяInCookie(): bool
+    {
+        return $this->имяInCookie;
+    }
+
+    public function isимяInRequest(): bool
+    {
+        return $this->имяInRequest;
+    }
+
+    public function get名前(): ?string
+    {
+        return $this->名前 !== UnsetValue::UNSET ? $this->名前 : null;
+    }
+
+    public function is名前Required(): bool
+    {
+        return false;
+    }
+
+    public function is名前InPath(): bool
+    {
+        return $this->名前InPath;
+    }
+
+    public function is名前InQuery(): bool
+    {
+        return $this->名前InQuery;
+    }
+
+    public function is名前InHeader(): bool
+    {
+        return $this->名前InHeader;
+    }
+
+    public function is名前InCookie(): bool
+    {
+        return $this->名前InCookie;
+    }
+
+    public function is名前InRequest(): bool
+    {
+        return $this->名前InRequest;
+    }
+
     public function getForbiddenKey(): mixed
     {
         return $this->forbiddenKey !== UnsetValue::UNSET ? $this->forbiddenKey : null;
@@ -9315,6 +9401,12 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         if ($this->vacuousInRequest) {
             $result['vacuous'] = $this->getVacuous();
         }
+        if ($this->имяInRequest) {
+            $result['имя'] = $this->getимя();
+        }
+        if ($this->名前InRequest) {
+            $result['名前'] = $this->get名前();
+        }
         if ($this->forbiddenKeyInRequest) {
             $result['forbiddenKey'] = $this->getForbiddenKey();
         }
@@ -9492,6 +9584,44 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
                 'arrayItemType' => '',
             ],
         ];
+        $map['имя'] = [
+            'getter' => 'getимя',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => 'имя',
+                'required' => false,
+                'inPathFlagGetter' => 'isимяInPath',
+                'inQueryFlagGetter' => 'isимяInQuery',
+                'inHeaderFlagGetter' => 'isимяInHeader',
+                'inCookieFlagGetter' => 'isимяInCookie',
+                'inRequestFlagGetter' => 'isимяInRequest',
+                'constraints' => $constraints['имя'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['名前'] = [
+            'getter' => 'get名前',
+            'type' => 'string',
+            'nullable' => true,
+            'metadata' => [
+                'openApiName' => '名前',
+                'required' => false,
+                'inPathFlagGetter' => 'is名前InPath',
+                'inQueryFlagGetter' => 'is名前InQuery',
+                'inHeaderFlagGetter' => 'is名前InHeader',
+                'inCookieFlagGetter' => 'is名前InCookie',
+                'inRequestFlagGetter' => 'is名前InRequest',
+                'constraints' => $constraints['名前'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
         $map['forbiddenKey'] = [
             'getter' => 'getForbiddenKey',
             'type' => 'mixed',
@@ -9630,6 +9760,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $constraints['closedPair'] = ['type' => 'array', 'items' => false, 'prefixItems' => [['type' => 'string'], ['type' => 'integer']]];
         $constraints['impossible'] = ['allOf' => [false]];
         $constraints['vacuous'] = ['allOf' => [['type' => 'string', 'minLength' => 3]]];
+        $constraints['имя'] = ['type' => 'string'];
+        $constraints['名前'] = ['type' => 'string'];
         $constraints['forbiddenKey'] = ['not' => true];
         $constraints['neverMatches'] = ['not' => true];
         $constraints['closedFirstSlot'] = ['type' => 'array', 'prefixItems' => [false, ['type' => 'integer']]];
@@ -9676,6 +9808,10 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $impossible = $impossibleGiven ? $cast('impossible', $data['impossible'], $errors) : null;
         $vacuousGiven = array_key_exists('vacuous', $data);
         $vacuous = $vacuousGiven ? $cast('vacuous', $data['vacuous'], $errors) : null;
+        $имяGiven = array_key_exists('имя', $data);
+        $имя = $имяGiven ? $cast('имя', $data['имя'], $errors) : null;
+        $名前Given = array_key_exists('名前', $data);
+        $名前 = $名前Given ? $cast('名前', $data['名前'], $errors) : null;
         $forbiddenKeyGiven = array_key_exists('forbiddenKey', $data);
         $forbiddenKey = $forbiddenKeyGiven ? $cast('forbiddenKey', $data['forbiddenKey'], $errors) : null;
         $neverMatchesGiven = array_key_exists('neverMatches', $data);
@@ -9701,6 +9837,8 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
             closedPair: $closedPairGiven ? $closedPair : UnsetValue::UNSET,
             impossible: $impossibleGiven ? $impossible : UnsetValue::UNSET,
             vacuous: $vacuousGiven ? $vacuous : UnsetValue::UNSET,
+            имя: $имяGiven ? $имя : UnsetValue::UNSET,
+            名前: $名前Given ? $名前 : UnsetValue::UNSET,
             forbiddenKey: $forbiddenKeyGiven ? $forbiddenKey : UnsetValue::UNSET,
             neverMatches: $neverMatchesGiven ? $neverMatches : UnsetValue::UNSET,
             closedFirstSlot: $closedFirstSlotGiven ? $closedFirstSlot : UnsetValue::UNSET,

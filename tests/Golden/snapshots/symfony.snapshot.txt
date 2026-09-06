@@ -1,4 +1,4 @@
-# symfony mode — 79 files, 10307 lines
+# symfony mode — 79 files, 10367 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2770,6 +2770,8 @@ final class ApplicatorRefs
             ],
             'impossible' => [],
             'vacuous' => [],
+            'имя' => [],
+            '名前' => [],
             'forbiddenKey' => [
                 'not' => [],
             ],
@@ -2838,6 +2840,8 @@ final class ApplicatorRefs
         'closedPair' => 'closedPair',
         'impossible' => 'impossible',
         'vacuous' => 'vacuous',
+        'имя' => 'имя',
+        '名前' => '名前',
         'forbiddenKey' => 'forbiddenKey',
         'neverMatches' => 'neverMatches',
         'closedFirstSlot' => 'closedFirstSlot',
@@ -2852,6 +2856,8 @@ final class ApplicatorRefs
         'closedPair' => 'closedPairProvided',
         'impossible' => 'impossibleProvided',
         'vacuous' => 'vacuousProvided',
+        'имя' => 'имяProvided',
+        '名前' => '名前Provided',
         'forbiddenKey' => 'forbiddenKeyProvided',
         'neverMatches' => 'neverMatchesProvided',
         'closedFirstSlot' => 'closedFirstSlotProvided',
@@ -2892,6 +2898,18 @@ final class ApplicatorRefs
 
     #[Ignore]
     private bool $vacuousProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private ?string $имя = null;
+
+    #[Ignore]
+    private bool $имяProvided = false;
+
+    #[Groups(['read', 'write'])]
+    private ?string $名前 = null;
+
+    #[Ignore]
+    private bool $名前Provided = false;
 
     #[Groups(['read', 'write'])]
     private mixed $forbiddenKey = null;
@@ -3053,6 +3071,48 @@ final class ApplicatorRefs
     public function isVacuousProvided(): bool
     {
         return $this->vacuousProvided;
+    }
+
+    public function getимя(): ?string
+    {
+        return $this->имя;
+    }
+
+    public function setимя(?string $имя): void
+    {
+        $this->имя = $имя;
+        $this->имяProvided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function isимяProvided(): bool
+    {
+        return $this->имяProvided;
+    }
+
+    public function get名前(): ?string
+    {
+        return $this->名前;
+    }
+
+    public function set名前(?string $名前): void
+    {
+        $this->名前 = $名前;
+        $this->名前Provided = true;
+    }
+
+    /**
+     * Whether the payload carried this key — true even when its value was null. Set by the setter,
+     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
+     */
+    #[Ignore]
+    public function is名前Provided(): bool
+    {
+        return $this->名前Provided;
     }
 
     public function getForbiddenKey(): mixed

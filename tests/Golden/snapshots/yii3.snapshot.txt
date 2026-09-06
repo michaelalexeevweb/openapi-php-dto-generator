@@ -1,4 +1,4 @@
-# yii3 mode — 79 files, 26142 lines
+# yii3 mode — 79 files, 26185 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10097,6 +10097,7 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Nested;
+use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
@@ -10131,6 +10132,8 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         'closedPair' => 'closedPair',
         'impossible' => 'impossible',
         'vacuous' => 'vacuous',
+        'имя' => 'имя',
+        '名前' => '名前',
         'forbiddenKey' => 'forbiddenKey',
         'neverMatches' => 'neverMatches',
         'closedFirstSlot' => 'closedFirstSlot',
@@ -10220,6 +10223,12 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
             'vacuous' => [
                 'type' => 'string',
                 'minLength' => 3,
+            ],
+            'имя' => [
+                'type' => 'string',
+            ],
+            '名前' => [
+                'type' => 'string',
             ],
             'forbiddenKey' => [
                 'not' => [],
@@ -10316,6 +10325,12 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     public readonly ?string $vacuous;
 
+    #[StringValue(skipOnEmpty: new WhenNull())]
+    public readonly ?string $имя;
+
+    #[StringValue(skipOnEmpty: new WhenNull())]
+    public readonly ?string $名前;
+
     public readonly string|int|float|bool|array|null $forbiddenKey;
 
     public readonly string|int|float|bool|array|null $neverMatches;
@@ -10390,6 +10405,28 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     public function isVacuousProvided(): bool
     {
         return $this->hasProperty('vacuous');
+    }
+
+    public function getимя(): ?string
+    {
+        return $this->hasProperty('имя') ? $this->имя : null;
+    }
+
+    /** Whether the payload carried `имя` at all. */
+    public function isимяProvided(): bool
+    {
+        return $this->hasProperty('имя');
+    }
+
+    public function get名前(): ?string
+    {
+        return $this->hasProperty('名前') ? $this->名前 : null;
+    }
+
+    /** Whether the payload carried `名前` at all. */
+    public function is名前Provided(): bool
+    {
+        return $this->hasProperty('名前');
     }
 
     public function getForbiddenKey(): string|int|float|bool|array|null
@@ -10594,6 +10631,12 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         }
         if ($this->hasProperty('vacuous')) {
             $payload['vacuous'] = $this->vacuous;
+        }
+        if ($this->hasProperty('имя')) {
+            $payload['имя'] = $this->имя;
+        }
+        if ($this->hasProperty('名前')) {
+            $payload['名前'] = $this->名前;
         }
         if ($this->hasProperty('forbiddenKey')) {
             $payload['forbiddenKey'] = $this->forbiddenKey;
