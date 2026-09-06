@@ -5557,6 +5557,22 @@ final class GenerateDtoCommand extends Command
             : $className;
     }
 
+    /**
+     * The last segment of a class name, which is how an emitted file spells a class it has imported.
+     *
+     * Lived in `RendersSymfonyDto` until it was moved here: five files call it, none of them about
+     * Symfony, and its three siblings — `normalizeClassName()`, `normalizePropertyName()` and
+     * `formatPhpTypeForNamespace()` — were already on this class. Not to be confused with
+     * {@see NamesLibraryClasses::libraryClassRef()}, which answers the harder question of WHETHER the
+     * short name is safe to use at all when the document has a schema of that name.
+     */
+    private function shortClassName(string $type): string
+    {
+        $parts = explode('\\', $type);
+
+        return end($parts);
+    }
+
     private function normalizeClassName(string $name): string
     {
         $name = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $name) ?? $name;

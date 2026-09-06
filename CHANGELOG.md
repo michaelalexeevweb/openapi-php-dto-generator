@@ -3,6 +3,29 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.45 — 2026-09-06
+
+- `shortClassName()` joins the other naming helpers
+
+**Nothing about the generated code changed**, and the golden corpus proves it in all five modes. The
+tail of 2.15.44: one five-line helper was still stranded in a mode trait.
+
+`shortClassName()` — the last segment of a class name, which is how an emitted file spells a class it
+has imported — lived in `RendersSymfonyDto` and was called from five files, none of them about
+Symfony. Its three siblings were already on `GenerateDtoCommand`:
+
+```
+normalizeClassName          GenerateDtoCommand
+normalizePropertyName       GenerateDtoCommand
+formatPhpTypeForNamespace   GenerateDtoCommand
+shortClassName              Rendering/RendersSymfonyDto   <- the odd one out
+```
+
+It sits beside them now. `NamesLibraryClasses` was the other candidate and is the wrong one: its
+charter is the harder question of WHETHER a short name may be used at all when the document declares a
+schema of that name — `libraryClassRef()` — not what the short name is. The docblock says so, so the
+two are not confused again.
+
 ## 2.15.44 — 2026-09-06
 
 - the shared schema interpreter moves out of `RendersSymfonyDto`

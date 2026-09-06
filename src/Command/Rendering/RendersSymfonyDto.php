@@ -1646,13 +1646,6 @@ PHP;
         }
     }
 
-    private function shortClassName(string $type): string
-    {
-        $parts = explode('\\', $type);
-
-        return end($parts);
-    }
-
     private function numericLiteral(int|float $value): string
     {
         if (is_int($value)) {
