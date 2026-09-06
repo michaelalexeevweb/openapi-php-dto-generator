@@ -3,6 +3,50 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.42 — 2026-09-06
+
+- a laravel response built in code keeps its readOnly fields
+- a map with dense numeric keys is pinned across modes
+
+**A response your own code builds lost every `readOnly` field, in laravel mode, since 2.15.36.**
+`toArray()` gates an optional property on `isXProvided()`, which reads the key set `fromValidated()`
+recorded — and a DTO built through the CONSTRUCTOR has recorded nothing. Since 2.15.36 a readOnly
+property is SHAPED like an optional one, because a request never carries it, and the two facts met in
+the worst possible place:
+
+```php
+$dto = new Article(title: 'T', serverId: 7);
+$dto->toArray();     // was: ['title' => 'T']        <- the server set serverId and it vanished
+                     // now: ['title' => 'T', 'serverId' => 7]
+```
+
+The field a server sets, in the one direction a readOnly field exists for. 2.15.35 emitted it
+unconditionally — it was a required constructor argument then — so this is a regression the readOnly
+fix introduced on the way out while fixing the way in, and it went unnoticed because every existing
+test builds its DTO from a payload.
+
+Output now asks the VALUE, not the request: a readOnly property that has one is written, one that was
+never set is left out. The request path is untouched, and the other four modes never had the problem —
+symfony records presence in its setter, laravel-data types the property `int|Optional`, and yii3 has no
+constructor to build one with.
+
+**A map whose keys are `"0"`, `"1"`, … is now pinned across modes.** Not a change — a measurement that
+had never been written down. Such a PHP array IS a list, so the three modes that hand their array
+straight to `json_encode` emit `["a","b"]` and the names are gone:
+
+```
+runtime       {"0":"a","1":"b"}
+laravel       {"0":"a","1":"b"}
+symfony       ["a","b"]
+laravel-data  ["a","b"]
+yii3          ["a","b"]
+```
+
+The mechanism was already documented for an empty map (`{}` versus `[]`); this is the same split with
+the KEYS at stake rather than the braces. Sparse numeric keys (`{"2":…,"7":…}`) survive everywhere,
+because no PHP array of theirs is a list — only the 0-based dense case is ambiguous with an array to
+begin with. Both the parity suite and the support matrix now say so.
+
 ## 2.15.41 — 2026-09-06
 
 - a property name outside ASCII keeps its letters

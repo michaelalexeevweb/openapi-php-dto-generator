@@ -10544,12 +10544,12 @@ final class ReadOnlyFields
     {
         $result = [];
 
-        if ($this->isServerIdProvided()) {
+        if ($this->serverId !== null) {
             $result['serverId'] = $this->serverId;
         }
         $result['title'] = $this->title;
 
-        if ($this->isWrittenAtProvided()) {
+        if ($this->writtenAt !== null) {
             $result['writtenAt'] = $this->getWrittenAt();
         }
 

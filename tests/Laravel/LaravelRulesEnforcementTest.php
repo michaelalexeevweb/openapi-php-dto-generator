@@ -323,6 +323,36 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * A RESPONSE the server builds itself keeps the readOnly field it just set.
+     *
+     * `toArray()` gates an optional property on `isXProvided()`, which reads the key set
+     * `fromValidated()` recorded. A DTO built through the CONSTRUCTOR has recorded nothing — and
+     * since 2.15.36 a readOnly property is shaped like an optional one, because a request never
+     * carries it. The two facts met in the wrong place: the field a server sets, and the only
+     * direction a readOnly field exists for, was dropped from every response built in code.
+     *
+     * 2.15.35 emitted it unconditionally (it was a required constructor argument then), so this is a
+     * regression the readOnly fix introduced on the way out while fixing the way in.
+     *
+     * Output asks the VALUE, not the request: a readOnly property that has one is written, and one
+     * that was never set is left out — which is what a DTO hydrated from a request should say.
+     */
+    public function testAServerBuiltResponseKeepsTheReadOnlyFieldItSet(): void
+    {
+        $fqcn = $this->generateProbe('readonly in a server built response', [
+            'type' => 'integer',
+            'readOnly' => true,
+        ]);
+
+        $built = new $fqcn(f: 7);
+        $this->assertSame(['f' => 7], $built->toArray(), 'the server set it, so the response carries it');
+
+        // The mirror: hydrated from a request, which never carries a readOnly field, it stays out.
+        $fromRequest = call_user_func([$fqcn, 'fromValidated'], []);
+        $this->assertSame([], $fromRequest->toArray(), 'never set, so nothing to write');
+    }
+
+    /**
      * Every CONTAINER shape whose contents are empty objects — the same loss one level down.
      *
      * `validated()` drops a key whose value yields no extractable leaf, and a list of empty objects

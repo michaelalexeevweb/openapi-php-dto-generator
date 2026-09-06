@@ -323,6 +323,11 @@ trait RendersLaravelDto
             'docType' => $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null,
             'name' => $property['name'],
             'required' => $required,
+            // Required OF THE RESPONSE, which is a different question from `$required` above and the
+            // only one `toArray()` may ask. A readOnly property is absent from every request, so its
+            // request-presence flag is false forever — gating output on it dropped the field from the
+            // response of a DTO the SERVER had just built and filled.
+            'readOnly' => ($property['readOnly'] ?? false) === true,
             'openApiName' => $property['openApiName'],
             'default' => $defaultLiteral,
             'docDescription' => $this->resolveSymfonyDocDescription($property),

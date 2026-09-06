@@ -385,6 +385,19 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% for param in params|filter(param => param.toArrayExpression is not empty) %}
 {% if param.required %}
         $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
+{% elseif param.readOnly %}
+{#
+  A readOnly property is required of the RESPONSE and absent from every REQUEST, so its
+  request-presence flag is false forever. Gating on it dropped the field from the response of a DTO
+  the server had built and filled — the one direction such a property exists for. The value is the
+  only honest question here: a readOnly property the document ALSO makes nullable, deliberately set
+  to null, is omitted rather than written as null, because a constructor-built DTO tracks no presence
+  at all and there is nothing better to ask.
+#}
+
+        if ($this->{{ param.name }} !== null) {
+            $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
+        }
 {% else %}
 
         if ($this->{{ param.providedGetter }}()) {

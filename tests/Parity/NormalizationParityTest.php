@@ -561,6 +561,35 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            // The same array/stdClass split as `empty map` below, but with the sharper consequence:
+            // here the KEYS are what is lost. A map whose keys happen to be "0","1",… is a dense
+            // integer-keyed PHP array, so `json_encode` writes it as a LIST — the client reads
+            // positions where the document promised names. Sparse numeric keys ("2","7") survive
+            // everywhere, because no PHP array of theirs is a list; only the 0-based dense case is
+            // ambiguous with an array in the first place. Pinned so the answer cannot change quietly.
+            'map with dense numeric keys' => [
+                'schema' => self::object(['map' => ['type' => 'object', 'additionalProperties' => ['type' => 'string']]], ['map']),
+                'json' => '{"map":{"0":"a","1":"b"}}',
+                'runtime' => ['map' => ['#object' => ['0' => 'a', '1' => 'b']]],
+                'symfony' => ['map' => ['0' => 'a', '1' => 'b']],
+                'reason' => 'runtime casts the map to stdClass, so it encodes as an OBJECT and the '
+                    . 'keys survive; Symfony hands the serializer the PHP array, which is a list '
+                    . 'here, and encodes ["a","b"] with the names gone',
+                'diverges' => [
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data has no toArray() of its own — spatie returns the PHP '
+                            . 'array untouched, so the dense integer keys encode as a list exactly as '
+                            . 'they do in Symfony mode',
+                    ],
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'the data set is the PHP array the hydrator filled, and a JSON '
+                            . 'object with dense numeric keys is indistinguishable from a list by the '
+                            . 'time this mode sees it — the same limit it declares for an empty map',
+                    ],
+                ],
+            ],
             'empty map' => [
                 'schema' => self::object(['map' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]], ['map']),
                 'json' => '{"map":{}}',
