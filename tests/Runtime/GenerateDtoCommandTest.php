@@ -40,6 +40,80 @@ final class GenerateDtoCommandTest extends TestCase
         }
     }
 
+    /**
+     * The three sentences a MISTYPED invocation gets, pinned.
+     *
+     * All three are reachable by an ordinary slip — a `--ref-namespace` whose `--ref` was forgotten, a
+     * `$ref` to a path that does not exist, a referenced file that is not a document — and none of them
+     * was covered. An error message nothing asserts is free to drift: the condition can invert, the
+     * name can drop out of the sentence, the throw can be deleted with the branch that raised it, and
+     * the suite stays green because a passing generation never reaches any of it.
+     *
+     * The filesystem failures beside them in the same file (`Cannot create directory`, `Cannot read
+     * file`) are deliberately NOT pinned here: reaching them means making the filesystem fail, which
+     * is brittle and OS-dependent, and they are guards rather than answers to a document.
+     */
+    public function testAMissingRefForARefNamespaceIsReported(): void
+    {
+        // Through the console the failure is an exit code and a sentence, not an exception: the
+        // command catches it and renders it, which is what a user actually sees.
+        $commandTester = new CommandTester(new GenerateDtoCommand());
+
+        $exitCode = $commandTester->execute([
+            '--file' => __DIR__ . '/../../OpenApiExamples/test.yaml',
+            '--directory' => $this->outputDirectory,
+            '--namespace' => 'RefNsProbe',
+            '--ref-namespace' => ['absent.yaml=Some\Namespace'],
+        ]);
+
+        $this->assertNotSame(0, $exitCode, 'a --ref-namespace with no --ref is a failure');
+        $this->assertStringContainsString(
+            '--ref-namespace for "absent.yaml" requires a matching --ref.',
+            $commandTester->getDisplay(),
+        );
+    }
+
+    public function testARefToAMissingFileIsReported(): void
+    {
+        $spec = $this->outputDirectory . '/missing-ref.yaml';
+        file_put_contents($spec, implode("\n", [
+            'openapi: 3.1.0',
+            'info: { title: T, version: 1.0.0 }',
+            'components:',
+            '  schemas:',
+            '    Probe:',
+            "      \$ref: './nowhere.yaml#/components/schemas/Other'",
+            '',
+        ]));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Referenced OpenAPI file not found: /');
+
+        $this->generator->generateFromFile($spec, $this->outputDirectory . '/gen', 'MissingRefProbe');
+    }
+
+    public function testAReferencedFileThatIsNotADocumentIsReported(): void
+    {
+        $scalar = $this->outputDirectory . '/scalar.yaml';
+        file_put_contents($scalar, "just a string\n");
+
+        $spec = $this->outputDirectory . '/scalar-ref.yaml';
+        file_put_contents($spec, implode("\n", [
+            'openapi: 3.1.0',
+            'info: { title: T, version: 1.0.0 }',
+            'components:',
+            '  schemas:',
+            '    Probe:',
+            "      \$ref: './scalar.yaml#/components/schemas/Other'",
+            '',
+        ]));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/OpenAPI root must be an object\/array in /');
+
+        $this->generator->generateFromFile($spec, $this->outputDirectory . '/gen', 'ScalarRefProbe');
+    }
+
     private function deleteDirectory(string $dir): void
     {
         if (!is_dir($dir)) {
