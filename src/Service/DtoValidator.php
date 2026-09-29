@@ -18,6 +18,73 @@ final class DtoValidator implements DtoValidatorInterface
 {
     private const int MAX_VALIDATION_DEPTH = 256;
 
+    /** ECMA-262 ASCII escapes outside a character class. */
+    private const array ASCII_ATOM_ESCAPES = [
+        'd' => '[0-9]',
+        'D' => '[^0-9]',
+        'w' => '[A-Za-z0-9_]',
+        'W' => '[^A-Za-z0-9_]',
+        'b' => '(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))',
+        'B' => '(?:(?<=[A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<![A-Za-z0-9_])(?![A-Za-z0-9_]))',
+    ];
+
+    /** The same inside a class, as ranges; `\b` there is a backspace in both dialects. */
+    private const array ASCII_CLASS_ESCAPES = [
+        'd' => '0-9',
+        'D' => '\x{0}-\x{2F}\x{3A}-\x{10FFFF}',
+        'w' => 'A-Za-z0-9_',
+        'W' => '\x{0}-\x{2F}\x{3A}-\x{40}\x{5B}-\x{5E}\x{60}\x{7B}-\x{10FFFF}',
+    ];
+
+    /**
+     * Delimit a schema pattern without escaping an already escaped delimiter twice, and keep the
+     * ECMA-262 ASCII meaning of `\d` `\w` `\b` under the Unicode modifier.
+     */
+    public static function delimitPattern(string $pattern, bool $unicode = true): string
+    {
+        $delimited = '#';
+        $length = strlen($pattern);
+        $inClass = false;
+        $classOpenedAt = -1;
+        for ($i = 0; $i < $length; $i++) {
+            $character = $pattern[$i];
+            if ($character === '\\' && $i + 1 < $length) {
+                $next = $pattern[$i + 1];
+                // ECMA-262 `\uXXXX` and `\u{X…}` are PCRE's `\x{…}`; PCRE has no `\u` at all.
+                if ($next === 'u' && preg_match('/\G(?:\{([0-9A-Fa-f]{1,6})\}|([0-9A-Fa-f]{4}))/', $pattern, $hex, 0, $i + 2) === 1) {
+                    $delimited .= '\x{' . ($hex[1] !== '' ? $hex[1] : $hex[2]) . '}';
+                    $i += 1 + strlen($hex[0]);
+                    continue;
+                }
+                $i++;
+                // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
+                // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
+                $ascii = $unicode ? ($inClass ? self::ASCII_CLASS_ESCAPES : self::ASCII_ATOM_ESCAPES)[$next] ?? null : null;
+                $delimited .= $ascii ?? '\\' . $next;
+                continue;
+            }
+            if ($inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ':') {
+                // A POSIX class carries its own `]`; copied whole, it cannot close the outer class.
+                $end = strpos($pattern, ':]', $i + 2);
+                if ($end !== false) {
+                    $delimited .= substr($pattern, $i, $end + 2 - $i);
+                    $i = $end + 1;
+                    continue;
+                }
+            }
+            if (!$inClass && $character === '[') {
+                $inClass = true;
+                $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
+            } elseif ($inClass && $character === ']' && $i > $classOpenedAt + 1) {
+                // PCRE reads a `]` right after `[` or `[^` as a literal member, not as the end.
+                $inClass = false;
+            }
+            $delimited .= $character === '#' ? '\#' : $character;
+        }
+
+        return $delimited . ($unicode ? '#u' : '#');
+    }
+
     /**
      * One shape for every message this package writes: a full stop at the end, and a capital at the
      * start unless the sentence begins with a name the document chose.
@@ -212,19 +279,6 @@ final class DtoValidator implements DtoValidatorInterface
 
         $constraints = self::expandBooleanSubschemas($constraints);
 
-        if ($value === null) {
-            $nullable = ($constraints['nullable'] ?? false) === true;
-            $typeConstraint = $constraints['type'] ?? null;
-            if (
-                $nullable
-                || $typeConstraint === 'null'
-                || (is_array($typeConstraint) && in_array('null', $typeConstraint, true))
-            ) {
-                return [];
-            }
-            // null not explicitly allowed: fall through so type/union checks can report errors
-        }
-
         // Guard inlined: the helper returns the value untouched for anything that is not a date,
         // and paying a method call per value to learn that is the common case.
         if ($value instanceof DateTimeInterface) {
@@ -281,12 +335,23 @@ final class DtoValidator implements DtoValidatorInterface
                 )];
             }
 
-            // enum: value must be strictly equal to one of the allowed values.
+            // enum: compare JSON values without coercing strings or booleans.
             if (array_key_exists('enum', $constraints) && is_array($constraints['enum'])) {
                 // A backed enum getter returns the enum object; the schema's enum list holds raw
                 // scalars. Compare by ->value so a matching backed enum is not falsely rejected.
-                $enumComparable = $value instanceof BackedEnum ? $value->value : $value;
-                if (!in_array($enumComparable, $constraints['enum'], true)) {
+                $fingerprint = $this->jsonValueFingerprint($value);
+                $matches = false;
+                if ($fingerprint !== null) {
+                    foreach ($constraints['enum'] as $candidate) {
+                        if ($fingerprint === $this->jsonValueFingerprint($candidate)) {
+                            $matches = true;
+                            break;
+                        }
+                    }
+                }
+                if ($fingerprint === null) {
+                    $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
+                } elseif (!$matches) {
                     $allowed = implode(', ', array_map(
                         static function (mixed $v): string {
                             $json = json_encode($v);
@@ -298,9 +363,12 @@ final class DtoValidator implements DtoValidatorInterface
                 }
             }
 
-            // const: value must be strictly equal to the given constant.
+            // const: compare the complete JSON value, including nested containers.
             if (array_key_exists('const', $constraints)) {
-                if ($value !== $constraints['const']) {
+                $fingerprint = $this->jsonValueFingerprint($value);
+                if ($fingerprint === null) {
+                    $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
+                } elseif ($fingerprint !== $this->jsonValueFingerprint($constraints['const'])) {
                     $constJson = json_encode($constraints['const']);
                     $errors[] = sprintf(
                         '%s must equal %s',
@@ -312,7 +380,10 @@ final class DtoValidator implements DtoValidatorInterface
 
             // not: value must NOT satisfy the given schema.
             if (array_key_exists('not', $constraints) && is_array($constraints['not'])) {
-                if ($this->validateConstraints($subject, $value, $constraints['not'], $depth + 1) === []) {
+                $notErrors = $this->validateConstraints($subject, $value, $constraints['not'], $depth + 1);
+                // A branch that could not be checked to the end did not "fail to match": fail closed.
+                $errors = [...$errors, ...$this->incompleteVerdict($notErrors)];
+                if ($notErrors === []) {
                     // `not: {}` is how {@see booleanSchemaAsArray()} spells the schema `false`, and a
                     // document that wrote `false` never mentioned `not` — so the sentence must not
                     // either. It reads as the refusal it is: nothing is allowed here.
@@ -324,7 +395,11 @@ final class DtoValidator implements DtoValidatorInterface
 
             // if/then/else: conditional schema application.
             if (array_key_exists('if', $constraints) && is_array($constraints['if'])) {
-                if ($this->validateConstraints($subject, $value, $constraints['if'], $depth + 1) === []) {
+                $ifErrors = $this->validateConstraints($subject, $value, $constraints['if'], $depth + 1);
+                $incompleteIf = $this->incompleteVerdict($ifErrors);
+                if ($incompleteIf !== []) {
+                    $errors = [...$errors, ...$incompleteIf];
+                } elseif ($ifErrors === []) {
                     if (array_key_exists('then', $constraints) && is_array($constraints['then'])) {
                         $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['then'], $depth + 1, propertyRulesOwnedByDto: false)];
                     }
@@ -337,7 +412,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         // type: value must match the declared OpenAPI type.
-        if (array_key_exists('type', $constraints)) {
+        if (array_key_exists('type', $constraints) && !($value === null && ($constraints['nullable'] ?? false) === true)) {
             $typeConstraint = $constraints['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiType(value: $value, type: $typeConstraint)) {
@@ -515,6 +590,10 @@ final class DtoValidator implements DtoValidatorInterface
             }
 
             $branchErrors = $this->validateConstraints($subject, $value, $branch, $depth + 1);
+            // `oneOf` counts matches, and a branch that could not be finished may have been one.
+            if ($isOneOf && $this->incompleteVerdict($branchErrors) !== []) {
+                return $this->incompleteVerdict($branchErrors);
+            }
             if ($branchErrors === []) {
                 $validBranches++;
                 if (!$isOneOf) {
@@ -667,11 +746,11 @@ final class DtoValidator implements DtoValidatorInterface
 
         // The RAW bound is kept beside the float one: when it and the value are both integers the
         // comparison is done on integers, which is the only way `9007199254740993` can be told from
-        // `9007199254740992`. The float form is still what the message prints.
+        // `9007199254740992`. Error messages preserve integer bounds too.
         $rawMinimum = $constraints['minimum'] ?? null;
         $rawMaximum = $constraints['maximum'] ?? null;
-        $minimum = $this->toFloatOrNull($rawMinimum);
-        $maximum = $this->toFloatOrNull($rawMaximum);
+        $minimum = is_int($rawMinimum) ? $rawMinimum : $this->toFloatOrNull($rawMinimum);
+        $maximum = is_int($rawMaximum) ? $rawMaximum : $this->toFloatOrNull($rawMaximum);
         $atLeast = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
             ? $value >= $bound
             : (float)$value >= (float)$bound;
@@ -687,11 +766,12 @@ final class DtoValidator implements DtoValidatorInterface
 
         $exclusiveMinimum = $constraints['exclusiveMinimum'] ?? null;
         if (is_numeric($exclusiveMinimum)) {
-            $minExclusive = (float)$exclusiveMinimum;
+            $minExclusive = is_int($exclusiveMinimum) ? $exclusiveMinimum : (float)$exclusiveMinimum;
             if (!$above(is_int($exclusiveMinimum) ? $exclusiveMinimum : $minExclusive)) {
                 $errors[] = "{$subject} must be greater than {$this->stringifyNumber($minExclusive)}";
             }
-        } elseif ($minimum !== null) {
+        }
+        if ($minimum !== null) {
             if (($constraints['exclusiveMinimum'] ?? null) === true) {
                 if (!$above(is_int($rawMinimum) ? $rawMinimum : $minimum)) {
                     $errors[] = "{$subject} must be greater than {$this->stringifyNumber($minimum)}";
@@ -703,11 +783,12 @@ final class DtoValidator implements DtoValidatorInterface
 
         $exclusiveMaximum = $constraints['exclusiveMaximum'] ?? null;
         if (is_numeric($exclusiveMaximum)) {
-            $maxExclusive = (float)$exclusiveMaximum;
+            $maxExclusive = is_int($exclusiveMaximum) ? $exclusiveMaximum : (float)$exclusiveMaximum;
             if (!$below(is_int($exclusiveMaximum) ? $exclusiveMaximum : $maxExclusive)) {
                 $errors[] = "{$subject} must be less than {$this->stringifyNumber($maxExclusive)}";
             }
-        } elseif ($maximum !== null) {
+        }
+        if ($maximum !== null) {
             if (($constraints['exclusiveMaximum'] ?? null) === true) {
                 if (!$below(is_int($rawMaximum) ? $rawMaximum : $maximum)) {
                     $errors[] = "{$subject} must be less than {$this->stringifyNumber($maximum)}";
@@ -717,10 +798,19 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
-        $multipleOf = $this->toFloatOrNull($constraints['multipleOf'] ?? null);
-        if ($multipleOf !== null && $multipleOf > 0.0) {
+        $rawMultipleOf = $constraints['multipleOf'] ?? null;
+        $multipleOf = $this->toFloatOrNull($rawMultipleOf);
+        if (is_int($value) && is_int($rawMultipleOf) && $rawMultipleOf > 0) {
+            // Two integers: exact. Through floats 9007199254740993 was "not a multiple of 3".
+            if ($value % $rawMultipleOf !== 0) {
+                $errors[] = "{$subject} must be a multiple of {$rawMultipleOf}";
+            }
+        } elseif ($multipleOf !== null && $multipleOf > 0.0 && !self::isDecimalMultiple($value, is_int($rawMultipleOf) ? $rawMultipleOf : $multipleOf)) {
+            // Not a decimal multiple — but a float COMPUTED in PHP (`3 * 1e-8`) is off by one ulp,
+            // so a whole ratio within 1e-9 still counts. Only a NON-ZERO one: a tolerance around zero
+            // is what said `1e-12` is a multiple of `0.1`.
             $ratio = $value / $multipleOf;
-            if (abs($ratio - round($ratio)) > 1e-9) {
+            if (round($ratio) === 0.0 || abs($ratio - round($ratio)) > 1e-9) {
                 $errors[] = "{$subject} must be a multiple of {$this->stringifyNumber($multipleOf)}";
             }
         }
@@ -801,7 +891,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
-            $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
+            $regex = self::delimitPattern($pattern);
             // Single compile: preg_match returns false for an invalid pattern (warning
             // suppressed), 1 on match, 0 on no-match — distinguishing both error cases.
             set_error_handler(static fn(): bool => true);
@@ -863,17 +953,154 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         try {
-            $parsed = json_decode($decoded, true, 512, JSON_THROW_ON_ERROR);
+            // Objects stay stdClass: decoded to arrays, `[]` passed `type: object` and `{}` failed `array`.
+            $parsed = json_decode($decoded, false, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
             return ["{$subject} is not valid {$mediaType} content"];
         }
 
         $contentSchema = $constraints['contentSchema'] ?? null;
         if (is_array($contentSchema) && $contentSchema !== []) {
-            return $this->validateConstraints($subject, $parsed, $contentSchema, $depth + 1);
+            return [
+                ...$this->contentShapeErrors(subject: $subject, value: $parsed, schema: $contentSchema, depth: $depth + 1),
+                ...$this->validateConstraints($subject, $parsed, $contentSchema, $depth + 1),
+            ];
         }
 
         return [];
+    }
+
+    /**
+     * `multipleOf` as JSON means it: the quotient is a whole number in DECIMAL. A float ratio with a
+     * tolerance said `1e-12` is a multiple of `0.1`. Both numbers are read at the shortest decimal
+     * spelling that round-trips, scaled to one exponent, and divided as a digit string.
+     */
+    private static function isDecimalMultiple(int|float $value, int|float $of): bool
+    {
+        if (!is_finite((float)$value) || !is_finite((float)$of) || $of <= 0) {
+            return false;
+        }
+        [$valueDigits, $valueExponent] = self::decimalParts($value);
+        [$ofDigits, $ofExponent] = self::decimalParts($of);
+        if ($valueDigits === '0') {
+            return true;
+        }
+        $shift = $valueExponent - $ofExponent;
+        if ($shift < 0) {
+            // Scaling the value down must not cut off a non-zero digit.
+            if (strlen($valueDigits) <= -$shift || substr($valueDigits, $shift) !== str_repeat('0', -$shift)) {
+                return false;
+            }
+            $valueDigits = substr($valueDigits, 0, $shift);
+        } else {
+            $valueDigits .= str_repeat('0', $shift);
+        }
+        // Seventeen digits at most, so `$remainder * 10` cannot overflow; only an integer divisor
+        // can be longer, and next to a float value that is past exactness anyway.
+        if (strlen($ofDigits) > 17) {
+            return fmod((float)$value, (float)$of) === 0.0;
+        }
+        $divisor = (int)$ofDigits;
+        $remainder = 0;
+        foreach (str_split($valueDigits) as $digit) {
+            $remainder = ($remainder * 10 + (int)$digit) % $divisor;
+        }
+
+        return $remainder === 0;
+    }
+
+    /**
+     * @return array{0: string, 1: int} significant digits and the power of ten they are scaled by
+     */
+    private static function decimalParts(int|float $number): array
+    {
+        if (is_int($number)) {
+            return [ltrim((string)$number, '-'), 0];
+        }
+        $number = abs($number);
+        $rendered = sprintf('%.16e', $number);
+        for ($precision = 0; $precision < 17; $precision++) {
+            $candidate = sprintf('%.' . $precision . 'e', $number);
+            if ((float)$candidate === $number) {
+                $rendered = $candidate;
+                break;
+            }
+        }
+        [$mantissa, $exponent] = explode('e', $rendered);
+        $fraction = strlen(explode('.', $mantissa . '.')[1]);
+        $digits = ltrim(str_replace('.', '', $mantissa), '0');
+
+        return [$digits === '' ? '0' : $digits, (int)$exponent - $fraction];
+    }
+
+    /**
+     * The errors that say a subschema was NOT checked to the end — the depth limit, an equality walk
+     * that could not finish. Where a keyword turns "has errors" into "did not match" (`not`, `if`, a
+     * `oneOf` count, `contains`), these must not: an unfinished check is not a verdict.
+     *
+     * @param array<string> $errors
+     * @return array<string>
+     */
+    private function incompleteVerdict(array $errors): array
+    {
+        return array_values(array_filter(
+            $errors,
+            static fn(string $error): bool => str_contains($error, 'schema nesting exceeds')
+                || str_contains($error, 'JSON equality traversal exceeds its limits'),
+        ));
+    }
+
+    /**
+     * The one wire-shape question the type check cannot answer: a JSON array where only `object` is
+     * allowed. `type: object` accepts any PHP array, because a hydrated map `{}` IS `[]` — but an
+     * embedded document is decoded here with its objects as stdClass, so every array in it is a JSON
+     * array. Walked along the keywords that address a position; a union branch cannot be decided
+     * alone and is left to the ordinary check.
+     *
+     * @return array<string>
+     */
+    private function contentShapeErrors(string $subject, mixed $value, mixed $schema, int $depth): array
+    {
+        if (!is_array($schema) || $depth >= self::MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $type = $schema['type'] ?? null;
+        $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        if (is_array($value) && in_array('object', $types, true) && !in_array('array', $types, true)) {
+            return ["{$subject} must be of type " . implode('|', array_filter($types, 'is_string'))];
+        }
+
+        $errors = [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            $errors = [...$errors, ...$this->contentShapeErrors(subject: $subject, value: $value, schema: $branch, depth: $depth + 1)];
+        }
+
+        if ($value instanceof stdClass) {
+            $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+            $extra = is_array($schema['patternProperties'] ?? null) ? null : ($schema['additionalProperties'] ?? null);
+            foreach (get_object_vars($value) as $name => $member) {
+                $memberSchema = $properties[$name] ?? $extra;
+                $errors = [...$errors, ...$this->contentShapeErrors(
+                    subject: "{$subject}.{$name}",
+                    value: $member,
+                    schema: $memberSchema,
+                    depth: $depth + 1,
+                )];
+            }
+        } elseif (is_array($value)) {
+            $prefix = is_array($schema['prefixItems'] ?? null) ? $schema['prefixItems'] : [];
+            foreach ($value as $index => $member) {
+                $errors = [...$errors, ...$this->contentShapeErrors(
+                    subject: "{$subject}[{$index}]",
+                    value: $member,
+                    schema: $prefix[$index] ?? $schema['items'] ?? null,
+                    depth: $depth + 1,
+                )];
+            }
+        }
+
+        return $errors;
     }
 
     private function decodeContent(string $value, string $encoding): ?string
@@ -915,31 +1142,54 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
-     * The value as JSON Schema compares it: object keys sorted, list order untouched.
-     *
-     * `uniqueItems` asks whether two items are EQUAL, and two objects are equal when they carry the
-     * same properties with the same values — key order is not part of the identity. Encoding the item
-     * as it arrived made it part of the identity: `[{"a":1,"b":2},{"b":2,"a":1}]` produced two
-     * different strings and passed a check it should have failed. A LIST is left alone, because there
-     * element order IS the value.
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
      */
-    private function canonicalizeForEquality(mixed $value): mixed
+    private function jsonValueFingerprint(mixed $value, int $depth = 0): ?string
     {
-        if ($value instanceof stdClass) {
-            $value = (array)$value;
+        if ($depth >= self::MAX_VALIDATION_DEPTH) {
+            return null;
         }
-
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                return serialize($value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if ($value >= PHP_INT_MIN && $value < -(float)PHP_INT_MIN && floor($value) === $value) {
+                $value = (int)$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', $value));
+            }
+        }
+        // A hydrated date has no public state: through get_object_vars() every date was `{}`, so two
+        // distinct dates were equal under uniqueItems.
+        if ($value instanceof DateTimeInterface) {
+            return 'date-time:' . $value->format('Y-m-d\TH:i:s.uP');
+        }
+        $isObject = is_object($value) || (is_array($value) && !array_is_list($value));
+        if (is_object($value)) {
+            $value = $this->generatedDtoPayload($value) ?? get_object_vars($value);
+        }
         if (!is_array($value)) {
-            return $value;
+            return serialize($value);
+        }
+        if ($isObject) {
+            ksort($value, SORT_STRING);
+        }
+        $members = [];
+        foreach ($value as $key => $item) {
+            $fingerprint = $this->jsonValueFingerprint($item, $depth + 1);
+            if ($fingerprint === null) {
+                return null;
+            }
+            $members[$key] = $fingerprint;
         }
 
-        $canonical = array_map(fn(mixed $item): mixed => $this->canonicalizeForEquality($item), $value);
-
-        if (!array_is_list($canonical)) {
-            ksort($canonical);
-        }
-
-        return $canonical;
+        return ($isObject ? 'object:' : 'array:') . serialize($members);
     }
 
     /**
@@ -1148,17 +1398,10 @@ final class DtoValidator implements DtoValidatorInterface
         if (($constraints['uniqueItems'] ?? false) === true) {
             $seen = [];
             foreach ($value as $item) {
-                if (is_scalar($item) || $item === null) {
-                    $fingerprint = 's:' . var_export($item, true);
-                } else {
-                    try {
-                        $fingerprint = 'j:' . json_encode(
-                            value: $this->canonicalizeForEquality($item),
-                            flags: JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
-                        );
-                    } catch (JsonException) {
-                        $fingerprint = 'j:' . serialize($item);
-                    }
+                $fingerprint = $this->jsonValueFingerprint($item);
+                if ($fingerprint === null) {
+                    $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
+                    break;
                 }
 
                 if (array_key_exists($fingerprint, $seen)) {
@@ -1225,10 +1468,17 @@ final class DtoValidator implements DtoValidatorInterface
                 || array_key_exists('not', $containsSchema)
                 || array_key_exists('if', $containsSchema);
             $matchCount = 0;
+            $incompleteMatch = [];
             foreach ($value as $itemValue) {
-                if ($this->validateConstraints($subject, $itemValue, $containsSchema, $depth + 1, $containsHasComposition) === []) {
+                $itemErrors = $this->validateConstraints($subject, $itemValue, $containsSchema, $depth + 1, $containsHasComposition);
+                if ($itemErrors === []) {
                     $matchCount++;
                 }
+                $incompleteMatch = [...$incompleteMatch, ...$this->incompleteVerdict($itemErrors)];
+            }
+            // An item whose match could not be decided makes the count unknown.
+            if ($incompleteMatch !== []) {
+                $errors = [...$errors, ...array_values(array_unique($incompleteMatch))];
             }
 
             $minContains = $this->toIntOrNull($constraints['minContains'] ?? null) ?? 1;
@@ -1307,10 +1557,24 @@ final class DtoValidator implements DtoValidatorInterface
      * @param array<string, mixed> $constraints
      * @return array<string, true>
      */
-    private function collectEvaluatedProperties(mixed $value, array $constraints, int $depth): array
+    private function collectEvaluatedProperties(mixed $value, array $constraints, int $depth, bool $asSubschema = false): array
     {
         if (!is_array($value) || $depth >= self::MAX_VALIDATION_DEPTH) {
             return [];
+        }
+
+        // An in-place subschema carrying its own `unevaluatedProperties` (anything but `false`) has evaluated
+        // every position that reached it — the ones it did not, it just did. Its annotation belongs to
+        // the location above, which read none of it: `allOf: [{unevaluatedProperties: {…}}], unevaluatedProperties: false`
+        // refused what the branch had already checked. Not for the location's OWN keyword, which is
+        // the one asking.
+        if ($asSubschema && array_key_exists('unevaluatedProperties', $constraints) && $constraints['unevaluatedProperties'] !== false) {
+            $all = [];
+            foreach (array_keys($value) as $key) {
+                $all[(string)$key] = true;
+            }
+
+            return $all;
         }
 
         // The annotation walk reads the same subschema keys the validation walk reads, so it needs
@@ -1351,7 +1615,7 @@ final class DtoValidator implements DtoValidatorInterface
         if (is_array($constraints['allOf'] ?? null)) {
             foreach ($constraints['allOf'] as $branch) {
                 if (is_array($branch)) {
-                    $evaluated += $this->collectEvaluatedProperties($value, $branch, $depth + 1);
+                    $evaluated += $this->collectEvaluatedProperties($value, $branch, $depth + 1, asSubschema: true);
                 }
             }
         }
@@ -1366,7 +1630,7 @@ final class DtoValidator implements DtoValidatorInterface
                     && $this->matchesOpenApiType($value, $branch['type'] ?? null)
                     && $this->validateConstraints('', $value, $branch, $depth + 1) === []
                 ) {
-                    $evaluated += $this->collectEvaluatedProperties($value, $branch, $depth + 1);
+                    $evaluated += $this->collectEvaluatedProperties($value, $branch, $depth + 1, asSubschema: true);
                 }
             }
         }
@@ -1374,19 +1638,19 @@ final class DtoValidator implements DtoValidatorInterface
         if (is_array($constraints['if'] ?? null)) {
             $ifApplies = $this->validateConstraints('', $value, $constraints['if'], $depth + 1) === [];
             if ($ifApplies) {
-                $evaluated += $this->collectEvaluatedProperties($value, $constraints['if'], $depth + 1);
+                $evaluated += $this->collectEvaluatedProperties($value, $constraints['if'], $depth + 1, asSubschema: true);
                 if (is_array($constraints['then'] ?? null)) {
-                    $evaluated += $this->collectEvaluatedProperties($value, $constraints['then'], $depth + 1);
+                    $evaluated += $this->collectEvaluatedProperties($value, $constraints['then'], $depth + 1, asSubschema: true);
                 }
             } elseif (is_array($constraints['else'] ?? null)) {
-                $evaluated += $this->collectEvaluatedProperties($value, $constraints['else'], $depth + 1);
+                $evaluated += $this->collectEvaluatedProperties($value, $constraints['else'], $depth + 1, asSubschema: true);
             }
         }
 
         if (is_array($constraints['dependentSchemas'] ?? null)) {
             foreach ($constraints['dependentSchemas'] as $ifProp => $schema) {
                 if (is_string($ifProp) && array_key_exists($ifProp, $value) && is_array($schema)) {
-                    $evaluated += $this->collectEvaluatedProperties($value, $schema, $depth + 1);
+                    $evaluated += $this->collectEvaluatedProperties($value, $schema, $depth + 1, asSubschema: true);
                 }
             }
         }
@@ -1402,10 +1666,24 @@ final class DtoValidator implements DtoValidatorInterface
      * @param array<string, mixed> $constraints
      * @return array<int, true>
      */
-    private function collectEvaluatedItems(mixed $value, array $constraints, int $depth): array
+    private function collectEvaluatedItems(mixed $value, array $constraints, int $depth, bool $asSubschema = false): array
     {
         if (!is_array($value) || $depth >= self::MAX_VALIDATION_DEPTH) {
             return [];
+        }
+
+        // An in-place subschema carrying its own `unevaluatedItems` (anything but `false`) has evaluated
+        // every position that reached it — the ones it did not, it just did. Its annotation belongs to
+        // the location above, which read none of it: `allOf: [{unevaluatedItems: {…}}], unevaluatedItems: false`
+        // refused what the branch had already checked. Not for the location's OWN keyword, which is
+        // the one asking.
+        if ($asSubschema && array_key_exists('unevaluatedItems', $constraints) && $constraints['unevaluatedItems'] !== false) {
+            $all = [];
+            foreach (array_keys($value) as $key) {
+                $all[$key] = true;
+            }
+
+            return $all;
         }
 
         // The annotation walk reads the same subschema keys the validation walk reads, so it needs
@@ -1448,7 +1726,7 @@ final class DtoValidator implements DtoValidatorInterface
         if (is_array($constraints['allOf'] ?? null)) {
             foreach ($constraints['allOf'] as $branch) {
                 if (is_array($branch)) {
-                    $evaluated += $this->collectEvaluatedItems($value, $branch, $depth + 1);
+                    $evaluated += $this->collectEvaluatedItems($value, $branch, $depth + 1, asSubschema: true);
                 }
             }
         }
@@ -1463,7 +1741,7 @@ final class DtoValidator implements DtoValidatorInterface
                     && $this->matchesOpenApiType($value, $branch['type'] ?? null)
                     && $this->validateConstraints('', $value, $branch, $depth + 1) === []
                 ) {
-                    $evaluated += $this->collectEvaluatedItems($value, $branch, $depth + 1);
+                    $evaluated += $this->collectEvaluatedItems($value, $branch, $depth + 1, asSubschema: true);
                 }
             }
         }
@@ -1471,12 +1749,12 @@ final class DtoValidator implements DtoValidatorInterface
         if (is_array($constraints['if'] ?? null)) {
             $ifApplies = $this->validateConstraints('', $value, $constraints['if'], $depth + 1) === [];
             if ($ifApplies) {
-                $evaluated += $this->collectEvaluatedItems($value, $constraints['if'], $depth + 1);
+                $evaluated += $this->collectEvaluatedItems($value, $constraints['if'], $depth + 1, asSubschema: true);
                 if (is_array($constraints['then'] ?? null)) {
-                    $evaluated += $this->collectEvaluatedItems($value, $constraints['then'], $depth + 1);
+                    $evaluated += $this->collectEvaluatedItems($value, $constraints['then'], $depth + 1, asSubschema: true);
                 }
             } elseif (is_array($constraints['else'] ?? null)) {
-                $evaluated += $this->collectEvaluatedItems($value, $constraints['else'], $depth + 1);
+                $evaluated += $this->collectEvaluatedItems($value, $constraints['else'], $depth + 1, asSubschema: true);
             }
         }
 
@@ -1513,7 +1791,7 @@ final class DtoValidator implements DtoValidatorInterface
 
     private function keyMatchesPattern(string $key, string $pattern): bool
     {
-        $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
+        $regex = self::delimitPattern($pattern);
         // Suppress warnings from an invalid schema pattern → treat as no match.
         set_error_handler(static fn(): bool => true);
         try {
@@ -1691,7 +1969,7 @@ final class DtoValidator implements DtoValidatorInterface
         // false (not 0) when the pattern fails to compile. No `u` modifier: `format: regex`
         // only asks whether the pattern compiles, and forcing UTF-8 would reject otherwise
         // valid byte-oriented patterns.
-        $regex = '#' . str_replace('#', '\#', $value) . '#';
+        $regex = self::delimitPattern($value, unicode: false);
         set_error_handler(static fn(): bool => true);
         try {
             return preg_match($regex, '') !== false;
@@ -1799,13 +2077,11 @@ final class DtoValidator implements DtoValidatorInterface
         return (int)$value;
     }
 
-    private function stringifyNumber(float $value): string
+    private function stringifyNumber(int|float $value): string
     {
-        if ((float)(int)$value === $value) {
-            return (string)(int)$value;
-        }
+        $rendered = json_encode($value);
 
-        return rtrim(rtrim(sprintf('%.12F', $value), '0'), '.');
+        return is_string($rendered) ? $rendered : (string)$value;
     }
 
     private function typeToOpenApi(mixed $value): string

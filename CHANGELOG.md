@@ -3,6 +3,77 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.49 — 2026-10-01
+
+- Stage output; roll back failed publication
+- Preserve symlink targets during cleanup
+- Isolate mutable request bodies
+- Escape generated comment terminators
+- Reject incomplete depth-limited validation
+- Validate Laravel blank strings
+- Reject ambiguous Laravel property paths
+- Normalize vendored service namespaces
+- Reject ambiguous external schema names
+- Detect generated class collisions
+- Preserve multiline literal values
+- Guard cyclic free-form objects
+- Reject multiple laravel-data morph bases
+- Reset schema registry between documents
+- Validate nullable schema assertions
+- Preserve independent allOf constraints
+- Count null collection members
+- Compare JSON values consistently
+- Preserve independent numeric bounds
+- Retain integer and fractional precision
+- Enforce Symfony integer format ranges
+- Preserve regex delimiters and Unicode
+- Reject invalid empty formatted strings
+- Support standalone null schemas
+- Separate Laravel root constraint storage
+- Preserve reserved query array characters
+- Keep empty subschemas meaningful
+- Keep ECMA ASCII regex classes
+- Reject JSON arrays as DTO items
+- Cast JSON content parameters strictly
+- Parse simple/form object parameters
+- Keep schema-less JSON objects
+- Accept null in untyped schemas
+- Accept nullable DTOs two containers down
+- Check embedded JSON object shape
+- Read applicator evaluation annotations
+- Count laravel-data mapped keys once
+- Audit dependencies in CI
+- Treat hard-linked and case-variant files as one
+- Fail closed on unfinished branch checks
+- Divide integers exactly for multipleOf
+- Inline referenced null schemas
+- Reject dotted names in required lists
+- Keep the output directory in place
+- Divide fractions exactly for multipleOf
+- Translate ECMA unicode regex escapes
+- Leave uncompilable patterns to the interpreter
+- Accept null items where allowed
+- Inline external null schemas
+
+Regenerate DTOs and update vendored services. Multiple output roots do not switch atomically; generate
+into an inactive build directory.
+
+Behaviour that changes for existing documents and callers:
+
+- an output or `--dto-generator-directory` that is itself a symlink is refused;
+- Laravel modes refuse property and parameter names containing a literal `.` or `*`, also in
+  `required` and `dependentRequired`;
+- a direct `copyCommonServices()` call without a namespace lowercases each path segment, as the CLI does;
+- schemas with the same name in different files are an error, even when identical;
+- `nullable: true` with an inline `enum` lacking `null` now rejects null;
+- `const`, inline `enum`, `uniqueItems` and `number` bounds report the interpreter's message instead
+  of the framework rule's;
+- an empty subschema `{}` asserts what JSON Schema says: `not: {}` rejects everything, `if: {}` always
+  applies `then`, a `oneOf` branch `{}` counts as a match;
+- runtime: a schema-less (`{}`) property returns a JSON object as `stdClass`, no longer as an array,
+  and accepts `null`; a JSON-content parameter is cast as strictly as the body (`"42"` is not an
+  integer); a malformed comma-serialized object parameter is an error.
+
 ## 2.15.48 — 2026-09-06
 
 - a closed schema is now closed at its ROOT too

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use RuntimeException;
+
 /**
  * laravel-data-mode emitter: ONE `spatie/laravel-data` class per schema, instead of the FormRequest +
  * DTO pair the first-party Laravel mode emits.
@@ -85,9 +87,13 @@ trait RendersLaravelDataDto
         $rules = [];
         $objectShapePaths = [];
         $parentArguments = [];
+        $inputAliases = [];
 
         foreach ($properties as $property) {
             $param = $this->resolveLaravelDataParam($property, $namespace);
+            if ($property['openApiName'] !== $property['name']) {
+                $inputAliases[$property['openApiName']] = $property['name'];
+            }
             if ($morphDiscriminator !== null && $property['openApiName'] === $morphDiscriminator) {
                 $param['promoted'] = false;
                 $parentArguments[] = $param['name'];
@@ -180,7 +186,8 @@ trait RendersLaravelDataDto
             'morphBase' => null,
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],
-            'hasObjectConstraints' => array_key_exists(self::LARAVEL_OBJECT_CONSTRAINTS_KEY, $interpreterConstraints),
+            'hasObjectConstraints' => $interpreterConstraints['object'] !== [],
+            'inputAliasesLiteral' => $inputAliases === [] ? null : $this->renderPhpArrayLiteral($inputAliases, 3),
             'interpreterMethodsBlock' => $interpreter['methods'],
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),
@@ -294,19 +301,24 @@ trait RendersLaravelDataDto
      */
     private function laravelDataMorphBaseFor(string $className): ?string
     {
+        $bases = [];
         foreach ($this->discriminatorSchemas as $baseClass => $discriminator) {
             if (!$this->laravelDiscriminatorBaseIsInterface($baseClass)) {
-                // A discriminator on a plain `type: object` schema is already a class the children
-                // extend in every mode; there is no union base to morph.
+                // A discriminator on a plain object schema already uses ordinary inheritance.
                 continue;
             }
-
             if (in_array($className, array_values($discriminator['mapping']), true)) {
-                return $baseClass;
+                $bases[] = $baseClass;
             }
         }
+        if (count($bases) > 1) {
+            throw new RuntimeException(
+                message: 'Laravel-data member ' . $className . ' belongs to multiple morph bases: '
+                . implode(', ', $bases) . '. PHP cannot extend multiple classes; use a separate member schema for each union.',
+            );
+        }
 
-        return null;
+        return $bases[0] ?? null;
     }
 
     /**

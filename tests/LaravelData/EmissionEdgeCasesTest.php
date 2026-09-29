@@ -181,7 +181,8 @@ final class EmissionEdgeCasesTest extends TestCase
 
         /** @var array<string, mixed> $rules */
         $rules = $fqcn::rules();
-        $this->assertSame(['sometimes', 'file'], $rules['doc']);
+        $this->assertSame(['sometimes', 'file'], array_slice($rules['doc'], 0, 2));
+        $this->assertInstanceOf(\Illuminate\Contracts\Validation\ImplicitRule::class, $rules['doc'][2]);
     }
 
     /**

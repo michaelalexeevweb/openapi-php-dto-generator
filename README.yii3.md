@@ -247,7 +247,7 @@ Natively expressed by `yiisoft/validator`:
 |---|---|
 | `type: string` / `integer` / `number` / `boolean` | `#[StringValue]`, `#[Integer]`, `#[Number]`, `#[BooleanValue]` — NOT redundant with the PHP type: the hydrator's `PhpNativeTypeCaster` coerces, so `{"f":5}` filled a `string $f` with `"5"` until these were emitted |
 | `minLength` / `maxLength` | `#[Length(min:, max:)]` |
-| `minimum` / `maximum` | `#[GreaterThanOrEqual]` / `#[LessThanOrEqual]` |
+| `minimum` / `maximum` | `#[GreaterThanOrEqual]` / `#[LessThanOrEqual]` with `type: original`, preserving integer and float comparisons |
 | `exclusiveMinimum` / `exclusiveMaximum` as a NUMBER | `#[GreaterThan]` / `#[LessThan]` |
 | `exclusiveMinimum: true` beside `minimum` (OpenAPI 3.0) | no rule — `#[GreaterThanOrEqual]` is the wrong comparison, so the whole bound goes to the interpreter |
 | `pattern` | `#[Regex]` |
@@ -256,7 +256,7 @@ Natively expressed by `yiisoft/validator`:
 | `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration |
 | nested object | `#[Nested]` — argument-free; it cascades into the nested class's own attributes |
 | list of nested objects | `#[Each(new Nested())]` plus `#[Collection(…)]` for hydration |
-| `enum` | the generated backed enum becomes the property TYPE |
+| `enum` | backed enums become the property TYPE; inline enums use JSON equality in the interpreter |
 
 Everything else reaches the emitted interpreter through the class-level `#[Callback]`: `oneOf`, `not`,
 `if`/`then`/`else`, `contains`, `prefixItems`, `unevaluated*`, `propertyNames`, `patternProperties`,

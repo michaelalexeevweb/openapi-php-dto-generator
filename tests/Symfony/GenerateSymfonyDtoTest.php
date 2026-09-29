@@ -115,7 +115,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->assertStringContainsString('#[Assert\GreaterThan(0)]', $content);
         $this->assertStringContainsString('#[Assert\DivisibleBy(0.5)]', $content);
         $this->assertStringContainsString('#[Assert\Count(min: 1, max: 5)]', $content);
-        $this->assertStringContainsString('#[Assert\Unique]', $content);
+        $this->assertStringContainsString('#[Assert\Callback]', $content);
         $this->assertStringContainsString('#[Assert\Valid]', $content);
         $this->assertStringContainsString('private readonly string $name,', $content);
     }
@@ -847,7 +847,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->assertStringNotContainsString('Assert\Callback', $content);
         $this->assertStringNotContainsString('validateOpenApiNode', $content);
         $this->assertStringNotContainsString('toIntConstraint', $content);
-        $this->assertStringNotContainsString('toFloatConstraint', $content);
+        $this->assertStringNotContainsString('toNumericConstraint', $content);
         $this->assertStringNotContainsString('ExecutionContextInterface', $content);
 
         $this->assertStringContainsString('private readonly int $id,', $content);
@@ -881,7 +881,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         // A pattern inside `not` needs the callback, but neither the length nor the numeric reader.
         $this->assertStringContainsString('must match pattern', $content);
         $this->assertStringNotContainsString('toIntConstraint', $content);
-        $this->assertStringNotContainsString('toFloatConstraint', $content);
+        $this->assertStringNotContainsString('toNumericConstraint', $content);
         $this->assertStringNotContainsString('mb_strlen', $content);
         $this->assertStringNotContainsString('isValidOpenApiStringFormat', $content);
     }

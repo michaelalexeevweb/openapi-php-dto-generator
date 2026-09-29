@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 29485 lines
+# yii3 mode — 80 files, 30629 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -136,7 +136,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -320,8 +319,25 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -389,10 +405,7 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -471,7 +484,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -655,8 +667,25 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -724,10 +753,7 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -806,7 +832,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -990,8 +1015,25 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1059,10 +1101,7 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -1143,7 +1182,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -1342,8 +1380,25 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1411,10 +1466,7 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -1495,7 +1547,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -1708,8 +1759,25 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1777,10 +1845,7 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -1859,7 +1924,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -2043,8 +2107,25 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2112,10 +2193,7 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -2201,7 +2279,6 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -2268,13 +2345,13 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
-    #[LessThanOrEqual(100, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -2454,8 +2531,25 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2524,10 +2618,7 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -2613,7 +2704,6 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -2680,13 +2770,13 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
-    #[LessThanOrEqual(100, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -2866,8 +2956,25 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2936,10 +3043,7 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -3025,7 +3129,6 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -3092,13 +3195,13 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
-    #[LessThanOrEqual(100, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -3278,8 +3381,25 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3348,10 +3468,7 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -3437,7 +3554,6 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -3504,13 +3620,13 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
-    #[LessThanOrEqual(100, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -3690,8 +3806,25 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3760,10 +3893,7 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -3845,7 +3975,6 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -4032,8 +4161,25 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4101,10 +4247,7 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -4186,7 +4329,6 @@ use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -4373,8 +4515,25 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4442,10 +4601,7 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -4525,7 +4681,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -4707,8 +4862,25 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4758,10 +4930,7 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     /**
@@ -4831,7 +5000,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -5015,8 +5183,25 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5084,10 +5269,7 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -5166,7 +5348,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -5350,8 +5531,25 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5419,10 +5617,7 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -5501,7 +5696,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -5685,8 +5879,25 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5754,10 +5965,7 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -5837,7 +6045,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -6022,8 +6229,25 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6091,10 +6315,7 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -6173,7 +6394,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -6357,8 +6577,25 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6426,10 +6663,7 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -6510,7 +6744,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -6703,8 +6936,25 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6773,10 +7023,7 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -6856,7 +7103,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -7041,8 +7287,25 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7110,10 +7373,7 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -7192,7 +7452,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -7376,8 +7635,25 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7445,10 +7721,7 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -7527,7 +7800,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -7711,8 +7983,25 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7780,10 +8069,7 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -7863,7 +8149,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -8048,8 +8333,25 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8117,10 +8419,7 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -8200,7 +8499,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -8385,8 +8683,25 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8454,10 +8769,7 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -8537,7 +8849,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -8722,8 +9033,25 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8791,10 +9119,7 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -8873,7 +9198,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -9092,8 +9416,25 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -9186,10 +9527,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -9274,7 +9612,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -9723,8 +10060,25 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -9872,10 +10226,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -9987,7 +10338,6 @@ use Yiisoft\Validator\Rule\Date\Date;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -10187,8 +10537,25 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10266,10 +10633,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -10350,7 +10714,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -10542,8 +10905,25 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10612,10 +10992,7 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -10698,7 +11075,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -10928,8 +11304,25 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10998,10 +11391,7 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -11085,7 +11475,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -11342,8 +11731,25 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -11414,10 +11820,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -11497,7 +11900,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -12070,8 +12472,25 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -12209,6 +12628,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
         if ($listValue && array_key_exists('unevaluatedItems', $schema)) {
             $unevaluatedItemsSchema = $schema['unevaluatedItems'];
+            $evaluatedItemIndices += $this->collectOpenApiApplicatorItems($value, $schema, $depth);
             foreach ($value as $index => $itemValue) {
                 if (array_key_exists($index, $evaluatedItemIndices)) {
                     continue;
@@ -12271,10 +12691,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -12357,6 +12774,76 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
         return null;
     }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, array<string, mixed>>
+     */
+    private function openApiAppliedBranches(mixed $value, mixed $object, array $schema, int $depth): array
+    {
+        $branches = [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            if (is_array($branch)) {
+                $branches[] = $branch;
+            }
+        }
+        foreach (['anyOf', 'oneOf'] as $unionKey) {
+            foreach (is_array($schema[$unionKey] ?? null) ? $schema[$unionKey] : [] as $branch) {
+                if (is_array($branch) && $this->validateOpenApiNode($value, $branch, '', $depth + 1) === []) {
+                    $branches[] = $branch;
+                }
+            }
+        }
+        if (is_array($schema['if'] ?? null)) {
+            if ($this->validateOpenApiNode($value, $schema['if'], '', $depth + 1) === []) {
+                $branches[] = $schema['if'];
+                if (is_array($schema['then'] ?? null)) {
+                    $branches[] = $schema['then'];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $branches[] = $schema['else'];
+            }
+        }
+        if (is_array($object) && is_array($schema['dependentSchemas'] ?? null)) {
+            foreach ($schema['dependentSchemas'] as $trigger => $branch) {
+                if (is_string($trigger) && array_key_exists($trigger, $object) && is_array($branch)) {
+                    $branches[] = $branch;
+                }
+            }
+        }
+
+        return $branches;
+    }
+
+    /**
+     * @param array<int, mixed> $value
+     * @param array<string, mixed> $schema
+     * @return array<int, true>
+     */
+    private function collectOpenApiApplicatorItems(array $value, array $schema, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+        $evaluated = [];
+        foreach ($this->openApiAppliedBranches($value, null, $schema, $depth) as $branch) {
+            $prefixCount = is_array($branch['prefixItems'] ?? null) ? count($branch['prefixItems']) : 0;
+            $coversAll = array_key_exists('unevaluatedItems', $branch) && $branch['unevaluatedItems'] !== false;
+            foreach ($value as $index => $itemValue) {
+                if (
+                    $coversAll
+                    || $index < $prefixCount
+                    || (is_array($branch['items'] ?? null) && $index >= $prefixCount)
+                    || (is_array($branch['contains'] ?? null) && $this->validateOpenApiNode($itemValue, $branch['contains'], '', $depth + 1) === [])
+                ) {
+                    $evaluated[$index] = true;
+                }
+            }
+            $evaluated += $this->collectOpenApiApplicatorItems($value, $branch, $depth + 1);
+        }
+
+        return $evaluated;
+    }
 }
 
 ===== ApplicatorRefsConditional.php =====
@@ -12379,7 +12866,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -12589,8 +13075,25 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -12685,10 +13188,7 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -12793,7 +13293,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -13000,8 +13499,25 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -13087,10 +13603,7 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -13195,7 +13708,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -13389,8 +13901,25 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -13472,10 +14001,7 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -13575,7 +14101,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -13644,7 +14169,7 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
 
     #[Data('both\\\'s')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[GreaterThanOrEqual(1, skipOnEmpty: new WhenNull())]
+    #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     public readonly ?int $bothS;
 
     public function getPlain(): string
@@ -13824,8 +14349,25 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -13895,10 +14437,7 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -13978,7 +14517,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -14163,8 +14701,25 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -14232,10 +14787,7 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -14315,7 +14867,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -14500,8 +15051,25 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -14569,10 +15137,7 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -14651,7 +15216,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -14849,8 +15413,25 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -14918,10 +15499,7 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -15004,7 +15582,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
@@ -15214,8 +15791,25 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -15286,10 +15880,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -15370,7 +15961,6 @@ use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
@@ -15560,8 +16150,25 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -15632,10 +16239,7 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -15715,7 +16319,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -15900,8 +16503,25 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -15969,10 +16589,7 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -16052,7 +16669,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -16250,8 +16866,25 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -16319,10 +16952,7 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -16399,7 +17029,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
@@ -16650,8 +17279,25 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -16722,10 +17368,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -16807,7 +17450,6 @@ use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -17106,8 +17748,25 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -17236,10 +17895,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -17370,7 +18026,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -17545,8 +18200,25 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -17563,7 +18235,7 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
@@ -17626,10 +18298,7 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -17701,12 +18370,12 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         return false;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -17935,19 +18604,32 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -18043,10 +18725,7 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -18342,19 +19021,32 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -18450,10 +19142,7 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -18765,19 +19454,32 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -18873,10 +19575,7 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -18974,7 +19673,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -19172,8 +19870,25 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -19241,10 +19956,7 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -19323,7 +20035,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -19521,8 +20232,25 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -19590,10 +20318,7 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -19675,7 +20400,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -19887,8 +20611,25 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -19956,10 +20697,7 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -20036,7 +20774,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -20060,8 +20797,8 @@ use function restore_error_handler;
 use function set_error_handler;
 use function sprintf;
 use function str_ends_with;
-use function str_replace;
 use function str_starts_with;
+use function strlen;
 use function strpos;
 use function substr;
 
@@ -20293,8 +21030,25 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -20313,7 +21067,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
@@ -20326,7 +21080,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
                 $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
             }
             if (is_string($pattern = $schema['pattern'] ?? null) && $pattern !== '') {
-                $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
+                $regex = $this->delimitOpenApiPattern($pattern);
                 set_error_handler(static fn(): bool => true);
                 try {
                     $match = preg_match($regex, $normalizedValue);
@@ -20452,10 +21206,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -20527,6 +21278,65 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         return false;
     }
 
+    private function delimitOpenApiPattern(string $pattern, bool $unicode = true): string
+    {
+        $delimited = '#';
+        $length = strlen($pattern);
+        $inClass = false;
+        $classOpenedAt = -1;
+        for ($i = 0; $i < $length; $i++) {
+            $character = $pattern[$i];
+            if ($character === '\\' && $i + 1 < $length) {
+                $next = $pattern[$i + 1];
+                // ECMA-262 `\uXXXX` and `\u{X…}` are PCRE's `\x{…}`; PCRE has no `\u` at all.
+                if ($next === 'u' && preg_match('/\G(?:\{([0-9A-Fa-f]{1,6})\}|([0-9A-Fa-f]{4}))/', $pattern, $hex, 0, $i + 2) === 1) {
+                    $delimited .= '\\x{' . ($hex[1] !== '' ? $hex[1] : $hex[2]) . '}';
+                    $i += 1 + strlen($hex[0]);
+                    continue;
+                }
+                $i++;
+                // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
+                // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
+                $ascii = !$unicode ? null : ($inClass ? match ($next) {
+                    'd' => '0-9',
+                    'D' => '\x{0}-\x{2F}\x{3A}-\x{10FFFF}',
+                    'w' => 'A-Za-z0-9_',
+                    'W' => '\x{0}-\x{2F}\x{3A}-\x{40}\x{5B}-\x{5E}\x{60}\x{7B}-\x{10FFFF}',
+                    default => null,
+                } : match ($next) {
+                    'd' => '[0-9]',
+                    'D' => '[^0-9]',
+                    'w' => '[A-Za-z0-9_]',
+                    'W' => '[^A-Za-z0-9_]',
+                    'b' => '(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))',
+                    'B' => '(?:(?<=[A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<![A-Za-z0-9_])(?![A-Za-z0-9_]))',
+                    default => null,
+                });
+                $delimited .= $ascii ?? '\\' . $next;
+                continue;
+            }
+            if ($inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ':') {
+                // A POSIX class carries its own `]`; copied whole, it cannot close the outer class.
+                $end = strpos($pattern, ':]', $i + 2);
+                if ($end !== false) {
+                    $delimited .= substr($pattern, $i, $end + 2 - $i);
+                    $i = $end + 1;
+                    continue;
+                }
+            }
+            if (!$inClass && $character === '[') {
+                $inClass = true;
+                $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
+            } elseif ($inClass && $character === ']' && $i > $classOpenedAt + 1) {
+                // PCRE reads a `]` right after `[` or `[^` as a literal member, not as the end.
+                $inClass = false;
+            }
+            $delimited .= $character === '#' ? '\\#' : $character;
+        }
+
+        return $delimited . ($unicode ? '#u' : '#');
+    }
+
     private function toIntConstraint(mixed $value): ?int
     {
         if (is_int($value)) {
@@ -20539,12 +21349,12 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         return null;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -20570,16 +21380,15 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function bin2hex;
 use function explode;
 use function floor;
 use function get_object_vars;
 use function implode;
-use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -20587,9 +21396,12 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function json_encode;
+use function ksort;
 use function method_exists;
+use function pack;
 use function preg_match;
 use function property_exists;
+use function serialize;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
@@ -20983,23 +21795,54 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (is_array($schema['enum'] ?? null) && !in_array($normalizedValue, $schema['enum'], true)) {
-            $allowed = implode(', ', array_map(
-                static function (mixed $allowedValue): string {
-                    $json = json_encode($allowedValue);
-                    return $json !== false ? $json : var_export($allowedValue, true);
-                },
-                $schema['enum'],
-            ));
-            $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
+        if (is_array($schema['enum'] ?? null)) {
+            $fingerprint = $this->jsonValueFingerprint($normalizedValue);
+            $matches = false;
+            if ($fingerprint !== null) {
+                foreach ($schema['enum'] as $candidate) {
+                    if ($fingerprint === $this->jsonValueFingerprint($candidate)) {
+                        $matches = true;
+                        break;
+                    }
+                }
+            }
+            if ($fingerprint === null) {
+                $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+            } elseif (!$matches) {
+                $allowed = implode(', ', array_map(
+                    static function (mixed $allowedValue): string {
+                        $json = json_encode($allowedValue);
+                        return $json !== false ? $json : var_export($allowedValue, true);
+                    },
+                    $schema['enum'],
+                ));
+                $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
+            }
         }
 
         if (array_key_exists('type', $schema)) {
@@ -21014,7 +21857,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
@@ -21133,10 +21976,51 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
+    }
+
+    /**
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
+     */
+    private function jsonValueFingerprint(mixed $value, int $depth = 0): ?string
+    {
+        if ($depth >= 256) {
+            return null;
+        }
+
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                return serialize($value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if ($value >= PHP_INT_MIN && $value < -(float)PHP_INT_MIN && floor($value) === $value) {
+                $value = (int)$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', $value));
+            }
+        }
+        $isObject = is_object($value) || (is_array($value) && !array_is_list($value));
+        if (is_object($value)) {
+            $value = $this->normalizeOpenApiStructuralValue($value);
+        }
+        if (!is_array($value)) {
+            return serialize($value);
+        }
+        if ($isObject) {
+            ksort($value, SORT_STRING);
+        }
+        $members = [];
+        foreach ($value as $key => $item) {
+            $fingerprint = $this->jsonValueFingerprint($item, $depth + 1);
+            if ($fingerprint === null) {
+                return null;
+            }
+            $members[$key] = $fingerprint;
+        }
+
+        return ($isObject ? 'object:' : 'array:') . serialize($members);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -21208,12 +22092,12 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return false;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -21255,7 +22139,6 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -21534,19 +22417,32 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -21558,7 +22454,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
@@ -21678,10 +22574,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -21765,12 +22658,12 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         return null;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -21797,7 +22690,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function count;
@@ -21808,19 +22700,15 @@ use function is_array;
 use function is_float;
 use function is_int;
 use function is_object;
-use function is_scalar;
 use function is_string;
-use function json_encode;
 use function mb_strlen;
 use function method_exists;
 use function property_exists;
-use function serialize;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
-use function var_export;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ObjectWideRules extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -22056,8 +22944,25 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -22083,10 +22988,8 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
 
         if (is_array($value) || is_object($value)) {
             $structural = is_array($value) ? $value : $this->normalizeOpenApiStructuralValue($value);
-            $valueArray = is_array($structural) ? array_filter(
-                $structural,
-                static fn(mixed $propertyValue): bool => $propertyValue !== null,
-            ) : [];
+            // Presence belongs to the payload view. Null remains a real list item/object value.
+            $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
             if ($minItems !== null && is_array($value) && $count < $minItems) {
@@ -22111,14 +23014,10 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
             if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
-                    if (is_scalar($item) || $item === null) {
-                        $fingerprint = 's:' . var_export($item, true);
-                    } else {
-                        // A generated DTO keeps its state private, so compare the payload it
-                        // reports rather than the object, which would encode as {} every time.
-                        $comparable = $this->normalizeOpenApiStructuralValue($item);
-                        $json = json_encode($comparable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                        $fingerprint = is_string($json) ? 'j:' . $json : 'j:' . serialize($comparable);
+                    $fingerprint = $this->jsonValueFingerprint($item);
+                    if ($fingerprint === null) {
+                        $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+                        break;
                     }
                     if (array_key_exists($fingerprint, $seen)) {
                         $errors[] = sprintf('%s must contain unique items', $path);
@@ -22217,10 +23116,7 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -22325,7 +23221,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -22509,8 +23404,25 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -22578,10 +23490,7 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -22664,7 +23573,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -22932,8 +23840,25 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -23020,10 +23945,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -23102,7 +24024,6 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -23286,8 +24207,25 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -23355,10 +24293,7 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -23458,7 +24393,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -23656,8 +24590,25 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -23725,10 +24676,7 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -23808,7 +24756,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -24006,8 +24953,25 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -24075,10 +25039,7 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -24157,7 +25118,6 @@ use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -24341,8 +25301,25 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -24410,10 +25387,7 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -24496,7 +25470,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
@@ -24773,8 +25746,25 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -24869,10 +25859,7 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -24970,7 +25957,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -25159,8 +26145,25 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -25221,10 +26224,7 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -25305,7 +26305,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -25518,8 +26517,25 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -25587,10 +26603,7 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -25672,7 +26685,6 @@ use Yiisoft\Validator\Rule\Url;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -25958,8 +26970,25 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -26056,11 +27085,11 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
-            $maximum = $this->toFloatConstraint($schema['maximum'] ?? null);
+            $maximum = $this->toNumericConstraint($schema['maximum'] ?? null);
             if ($maximum !== null && !($normalizedValue <= $maximum)) {
                 $errors[] = sprintf('%s must be less than or equal to %s', $path, $this->stringifyOpenApiNumber($maximum));
             }
@@ -26181,10 +27210,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -26256,12 +27282,12 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         return false;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -26329,7 +27355,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -26622,8 +27647,25 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -26867,10 +27909,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -26992,7 +28031,6 @@ use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -27357,8 +28395,25 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -27631,10 +28686,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -27737,23 +28789,24 @@ use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function bin2hex;
 use function count;
 use function explode;
 use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
-use function is_scalar;
 use function is_string;
-use function json_encode;
+use function ksort;
 use function method_exists;
+use function pack;
 use function property_exists;
 use function serialize;
 use function sprintf;
@@ -27761,7 +28814,6 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
-use function var_export;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class UniqueScalars extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -27938,8 +28990,25 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -27959,10 +29028,8 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
 
         if (is_array($value) || is_object($value)) {
             $structural = is_array($value) ? $value : $this->normalizeOpenApiStructuralValue($value);
-            $valueArray = is_array($structural) ? array_filter(
-                $structural,
-                static fn(mixed $propertyValue): bool => $propertyValue !== null,
-            ) : [];
+            // Presence belongs to the payload view. Null remains a real list item/object value.
+            $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
             if ($minItems !== null && is_array($value) && $count < $minItems) {
@@ -27987,14 +29054,10 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
             if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
-                    if (is_scalar($item) || $item === null) {
-                        $fingerprint = 's:' . var_export($item, true);
-                    } else {
-                        // A generated DTO keeps its state private, so compare the payload it
-                        // reports rather than the object, which would encode as {} every time.
-                        $comparable = $this->normalizeOpenApiStructuralValue($item);
-                        $json = json_encode($comparable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                        $fingerprint = is_string($json) ? 'j:' . $json : 'j:' . serialize($comparable);
+                    $fingerprint = $this->jsonValueFingerprint($item);
+                    if ($fingerprint === null) {
+                        $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+                        break;
                     }
                     if (array_key_exists($fingerprint, $seen)) {
                         $errors[] = sprintf('%s must contain unique items', $path);
@@ -28079,10 +29142,51 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
+    }
+
+    /**
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
+     */
+    private function jsonValueFingerprint(mixed $value, int $depth = 0): ?string
+    {
+        if ($depth >= 256) {
+            return null;
+        }
+
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                return serialize($value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if ($value >= PHP_INT_MIN && $value < -(float)PHP_INT_MIN && floor($value) === $value) {
+                $value = (int)$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', $value));
+            }
+        }
+        $isObject = is_object($value) || (is_array($value) && !array_is_list($value));
+        if (is_object($value)) {
+            $value = $this->normalizeOpenApiStructuralValue($value);
+        }
+        if (!is_array($value)) {
+            return serialize($value);
+        }
+        if ($isObject) {
+            ksort($value, SORT_STRING);
+        }
+        $members = [];
+        foreach ($value as $key => $item) {
+            $fingerprint = $this->jsonValueFingerprint($item, $depth + 1);
+            if ($fingerprint === null) {
+                return null;
+            }
+            $members[$key] = $fingerprint;
+        }
+
+        return ($isObject ? 'object:' : 'array:') . serialize($members);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -28192,7 +29296,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -28436,19 +29539,32 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -28527,10 +29643,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -28614,7 +29727,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -28855,19 +29967,32 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -28946,10 +30071,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -29028,7 +30150,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -29255,19 +30376,32 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -29328,10 +30462,7 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -29411,7 +30542,6 @@ use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 
-use function array_filter;
 use function array_key_exists;
 use function array_map;
 use function explode;
@@ -29596,8 +30726,25 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -29665,10 +30812,7 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool

@@ -12,6 +12,7 @@ use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use stdClass;
 use TypeError;
 
 enum TestStringBackedEnum: string
@@ -125,7 +126,7 @@ final class DtoValidatorTest extends TestCase
     // Null / empty shortcut
     // =========================================================================
 
-    public function testNullValueSkipsAllValidation(): void
+    public function testNullValueSkipsTypeSpecificValidation(): void
     {
         $errors = $this->validator->validate(
             subject: 'f',
@@ -133,6 +134,52 @@ final class DtoValidatorTest extends TestCase
             constraints: ['minimum' => 10, 'format' => 'email', 'minLength' => 5],
         );
         $this->assertSame([], $errors);
+    }
+
+    public function testNumericBoundMessagePreservesIntegerPrecision(): void
+    {
+        $errors = $this->validator->validate('f', PHP_INT_MAX, ['maximum' => PHP_INT_MAX - 1]);
+        $this->assertSame(['f must be less than or equal to ' . (PHP_INT_MAX - 1) . '.'], $errors);
+    }
+
+    public function testJsonEqualityPreservesObjectShapeAndIntegerPrecision(): void
+    {
+        $object = (object)['0' => 1];
+        $this->assertSame([], $this->validator->validate('f', (object)['0' => 1.0], ['const' => $object]));
+        $this->assertNotEmpty($this->validator->validate('f', [1], ['const' => $object]));
+        $this->assertNotEmpty($this->validator->validate('f', [], ['const' => (object)[]]));
+        $this->assertSame([], $this->validator->validate('f', PHP_INT_MAX, ['const' => PHP_INT_MAX]));
+        $this->assertNotEmpty($this->validator->validate('f', (float)PHP_INT_MAX, ['const' => PHP_INT_MAX]));
+        $this->assertSame([], $this->validator->validate('f', (float)PHP_INT_MIN, ['const' => PHP_INT_MIN]));
+    }
+
+    public function testJsonEqualityIgnoresSerializationPrecisionSetting(): void
+    {
+        $previous = ini_set('serialize_precision', '3');
+        try {
+            $this->assertSame([], $this->validator->validate('f', 1.234567, ['const' => 1.234567]));
+            $this->assertNotEmpty($this->validator->validate('f', 1.234568, ['const' => 1.234567]));
+            $this->assertSame([], $this->validator->validate('f', [1.234567, 1.234568], ['uniqueItems' => true]));
+        } finally {
+            ini_set('serialize_precision', $previous === false ? '-1' : $previous);
+        }
+    }
+
+    public function testJsonEqualityRejectsIncompleteTraversal(): void
+    {
+        $cyclic = new stdClass();
+        $cyclic->child = $cyclic;
+        $this->assertNotEmpty($this->validator->validate('f', $cyclic, ['const' => $cyclic]));
+        $this->assertNotEmpty($this->validator->validate('f', $cyclic, ['enum' => [$cyclic]]));
+        $this->assertNotEmpty($this->validator->validate('f', [$cyclic], ['uniqueItems' => true]));
+    }
+
+    public function testNullTypeStillEnforcesIndependentAssertions(): void
+    {
+        $this->assertSame([], $this->validator->validate('f', null, ['type' => 'null', 'const' => null]));
+        $this->assertNotEmpty($this->validator->validate('f', null, ['type' => 'null', 'const' => 'red']));
+        $this->assertNotEmpty($this->validator->validate('f', null, ['type' => 'null', 'enum' => ['red']]));
+        $this->assertNotEmpty($this->validator->validate('f', null, ['type' => 'null', 'not' => ['type' => 'null']]));
     }
 
     public function testTypeStringAcceptsStringBackedEnum(): void
@@ -2453,12 +2500,12 @@ final class DtoValidatorTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
-    public function testUniqueItemsFallsBackToSerializeOnJsonException(): void
+    public function testUniqueItemsHandlesNonJsonNumbers(): void
     {
-        // A non-scalar item that cannot be JSON-encoded (contains INF) must not crash uniqueItems;
-        // it falls back to serialize() for the fingerprint.
+        // PHP callers can provide non-JSON numbers. Preserve uniqueness checks without encoding them.
         $errors = $this->validator->validate('a', [['x' => INF]], ['type' => 'array', 'uniqueItems' => true]);
         $this->assertSame([], $errors);
+        $this->assertNotEmpty($this->validator->validate('a', [['x' => INF], ['x' => INF]], ['uniqueItems' => true]));
     }
 
     public function testFormatDateAndDateTimeRejectEmptyString(): void
@@ -3723,5 +3770,31 @@ final class DtoValidatorTest extends TestCase
 
         self::assertSame([], $this->validator->validate('f', ['miss', 'hit'], $constraints));
         self::assertNotSame([], $this->validator->validate('f', ['miss', 'other'], $constraints));
+    }
+
+    /**
+     * An unfinished check is not a verdict. Inside `not`, `if`, a `oneOf` count or `contains` the
+     * errors of a subschema read as "did not match", so a cycle or the depth limit turned into a pass.
+     */
+    public function testAnUnfinishedSubschemaCheckFailsClosed(): void
+    {
+        $cycle = new stdClass();
+        $cycle->self = $cycle;
+
+        self::assertNotSame([], $this->validator->validate('f', $cycle, ['not' => ['const' => ['self' => 1]]]));
+        self::assertNotSame([], $this->validator->validate('f', $cycle, ['if' => ['const' => ['self' => 1]], 'else' => true]));
+        self::assertNotSame([], $this->validator->validate('f', $cycle, ['oneOf' => [['const' => ['self' => 1]], ['type' => 'string']]]));
+        self::assertNotSame([], $this->validator->validate('f', [$cycle], ['contains' => ['const' => ['self' => 1]], 'maxContains' => 0]));
+
+        $chain = [];
+        for ($i = 0; $i < 300; $i++) {
+            $chain = ['not' => $chain];
+        }
+        $errors = $this->validator->validate('f', 'x', $chain);
+        self::assertNotSame([], $errors);
+        self::assertStringContainsString('nesting exceeds', implode(' ', $errors));
+
+        // Finished checks are untouched.
+        self::assertSame([], $this->validator->validate('f', 'x', ['not' => ['const' => 'y']]));
     }
 }

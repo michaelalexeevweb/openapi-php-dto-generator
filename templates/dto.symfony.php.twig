@@ -20,13 +20,13 @@ use {{ import }};
 {% if (sourceEndpoint is defined and sourceEndpoint is not null) or (sourceRelated is defined and sourceRelated is not null) or (sourceSpecLink is defined and sourceSpecLink is not null) or (unionMembers is defined and unionMembers is not null) %}
  *
 {% if sourceEndpoint is defined and sourceEndpoint is not null %}
- * Route: {{ sourceEndpoint }}
+ * Route: {{ sourceEndpoint|php_doc }}
 {% endif %}
 {% if sourceRelated is defined and sourceRelated is not null %}
- * From: {{ sourceRelated }}
+ * From: {{ sourceRelated|php_doc }}
 {% endif %}
 {% if sourceSpecLink is defined and sourceSpecLink is not null %}
- * Spec: @see {{ sourceSpecLink }}
+ * Spec: @see {{ sourceSpecLink|php_doc }}
 {% endif %}
 {% if unionMembers is defined and unionMembers is not null %}
  * Members: {{ unionMembers }}
@@ -68,7 +68,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% for param in optionalParams %}
 {% if param.docType is not null or param.docDescription is not null %}
     /**
-     * @var {{ param.docType ?? param.declaredType }}{{ param.docDescription is not null ? ' ' ~ param.docDescription : '' }}
+     * @var {{ param.docType ?? param.declaredType }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
      */
 {% endif %}
 {% for attribute in param.attributes %}
@@ -96,7 +96,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
-     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ param.docDescription : '' }}
+     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
 {% endfor %}
      */
 {% endif %}

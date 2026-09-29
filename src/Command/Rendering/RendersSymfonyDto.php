@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
+
 /**
  * Symfony attribute-mode rendering: plain DTOs decorated with Symfony Validator / Serializer
  * attributes — `#[Assert\*]`, `#[Groups]`, `#[SerializedName]`, `#[Ignore]` — and the class shape
@@ -493,9 +495,12 @@ PHP;
         }
 
         if (array_key_exists($short, $this->enumSchemas)) {
-            unset($propertySchema['enum'], $propertySchema['type']);
-
-            return $propertySchema;
+            return array_filter(
+                array: $propertySchema,
+                callback: static fn(string $keyword): bool => $keyword !== 'type'
+                    && ($keyword !== 'enum' || str_starts_with($declaredType, '?')),
+                mode: ARRAY_FILTER_USE_KEY,
+            );
         }
 
         if (array_key_exists($short, $this->dtoSchemas)) {
@@ -974,14 +979,6 @@ PHP;
             $attributes[] = '#[Assert\Count(' . implode(', ', $count) . ')]';
         }
 
-        if (
-            ($constraints['uniqueItems'] ?? null) === true
-            && !$this->symfonyPropertyCascades($property)
-            && !$this->requiresCallbackUniqueItems($constraints['items'] ?? null)
-        ) {
-            $attributes[] = '#[Assert\Unique]';
-        }
-
         // Typed map values (additionalProperties: { schema }) — validate every value via All.
         //
         // Unless the value is itself a CONTAINER. There `valueConstraintExpressions()` has nothing to
@@ -1279,19 +1276,18 @@ PHP;
         if (
             is_string($constraints['pattern'] ?? null)
             && $constraints['pattern'] !== ''
-            && $this->canUseSymfonyRegexConstraint($constraints['pattern'])
+            && $this->patternCompiles($constraints['pattern'])
         ) {
-            $delimited = '/' . str_replace('/', '\/', $constraints['pattern']) . '/';
+            $delimited = DtoValidator::delimitPattern($constraints['pattern']);
             $specs[] = ['name' => 'Regex', 'args' => $this->phpStringLiteral($delimited)];
             $covered[] = 'pattern';
+            // Symfony Regex skips empty strings; only forbid them when the pattern does.
+            if (preg_match($delimited, '') === 0) {
+                $specs[] = ['name' => 'NotBlank', 'args' => 'allowNull: true'];
+            }
         }
 
-        if (array_key_exists('const', $constraints) && $this->isScalarConstValue($constraints['const'])) {
-            $specs[] = ['name' => 'EqualTo', 'args' => 'value: ' . $this->scalarLiteral($constraints['const'])];
-            $covered[] = 'const';
-        }
-
-        if (is_array($constraints['enum'] ?? null) && $constraints['enum'] !== []) {
+        if (!$this->schemaAllowsNull($constraints) && !$this->enumRequiresJsonEquality($constraints) && is_array($constraints['enum'] ?? null) && $constraints['enum'] !== []) {
             $choices = [];
             $allLiteralizable = true;
             foreach ($constraints['enum'] as $enumValue) {
@@ -1307,14 +1303,8 @@ PHP;
             }
         }
 
-        $hasRange = $range !== [];
         $formatSpecs = $this->formatConstraintSpecs($constraints['format'] ?? null);
         foreach ($formatSpecs as $spec) {
-            // An explicit minimum/maximum Range already covers (and is tighter than) the format's
-            // implicit int32 bounds — avoid emitting a redundant second Range.
-            if ($spec['name'] === 'Range' && $hasRange) {
-                continue;
-            }
             $specs[] = $spec;
         }
         // `formatConstraintSpecs()` answers for a HANDFUL of formats and skips the rest, so the
@@ -1322,6 +1312,11 @@ PHP;
         // unmapped one is still the callback's to enforce.
         if ($formatSpecs !== []) {
             $covered[] = 'format';
+            // Native string format validators also skip empty strings, but these formats forbid them.
+            $notBlank = ['name' => 'NotBlank', 'args' => 'allowNull: true'];
+            if (!in_array($constraints['format'], ['int32', 'uint32'], true) && !in_array($notBlank, $specs, true)) {
+                $specs[] = $notBlank;
+            }
         }
 
         return ['specs' => $specs, 'covered' => array_values(array_unique($covered))];
@@ -1425,23 +1420,6 @@ PHP;
         return null;
     }
 
-    private function isScalarConstValue(mixed $value): bool
-    {
-        return is_string($value) || is_int($value) || is_float($value) || is_bool($value);
-    }
-
-    private function scalarLiteral(mixed $value): string
-    {
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-        if (is_int($value) || is_float($value)) {
-            return $this->numericLiteral($value);
-        }
-
-        return $this->phpStringLiteral(is_string($value) ? $value : (string)$value);
-    }
-
     private function enumChoiceLiteral(mixed $value): string
     {
         if ($value === null) {
@@ -1507,6 +1485,9 @@ PHP;
         }
 
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        if (($constraints['type'] ?? null) === 'null') {
+            return true;
+        }
         if (is_array($constraints['oneOf'] ?? null)) {
             return true;
         }
@@ -1524,13 +1505,7 @@ PHP;
             return true;
         }
 
-        if (
-            ($constraints['uniqueItems'] ?? null) === true
-            && (
-                $this->symfonyPropertyCascades($property)
-                || $this->requiresCallbackUniqueItems($constraints['items'] ?? null)
-            )
-        ) {
+        if (($constraints['uniqueItems'] ?? null) === true) {
             return true;
         }
 
@@ -1543,7 +1518,7 @@ PHP;
 
         return is_string($constraints['pattern'] ?? null)
             && $constraints['pattern'] !== ''
-            && !$this->canUseSymfonyRegexConstraint($constraints['pattern']);
+            && !$this->patternCompiles($constraints['pattern']);
     }
 
     /**
@@ -1597,53 +1572,6 @@ PHP;
             ],
             true,
         );
-    }
-
-    private function requiresCallbackUniqueItems(mixed $itemsSchema): bool
-    {
-        if (!is_array($itemsSchema)) {
-            return false;
-        }
-
-        if (
-            array_key_exists('$ref', $itemsSchema)
-            || array_key_exists('oneOf', $itemsSchema)
-            || array_key_exists('anyOf', $itemsSchema)
-            || array_key_exists('allOf', $itemsSchema)
-            || array_key_exists('properties', $itemsSchema)
-            || array_key_exists('additionalProperties', $itemsSchema)
-        ) {
-            return true;
-        }
-
-        $type = $itemsSchema['type'] ?? null;
-        if (is_array($type)) {
-            foreach ($type as $candidate) {
-                if (!is_string($candidate) || !in_array($candidate, ['string', 'integer', 'number', 'boolean', 'null'], true)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        if (!is_string($type)) {
-            return true;
-        }
-
-        return !in_array($type, ['string', 'integer', 'number', 'boolean', 'null'], true);
-    }
-
-    private function canUseSymfonyRegexConstraint(string $pattern): bool
-    {
-        $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
-
-        set_error_handler(static fn(): bool => true);
-        try {
-            return preg_match($regex, '') !== false;
-        } finally {
-            restore_error_handler();
-        }
     }
 
     private function numericLiteral(int|float $value): string

@@ -19,13 +19,13 @@ use {{ import }};
 {% endif %}
 {% if sourceEndpoint is not null %}
  *
- * Route: {{ sourceEndpoint }}
+ * Route: {{ sourceEndpoint|php_doc }}
 {% endif %}
 {% if sourceRelated is not null %}
- * From: {{ sourceRelated }}
+ * From: {{ sourceRelated|php_doc }}
 {% endif %}
 {% if sourceSpecLink is not null %}
- * @see {{ sourceSpecLink }}
+ * @see {{ sourceSpecLink|php_doc }}
 {% endif %}
 {% if unionMembers is null %}
  *
@@ -92,7 +92,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
-     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ param.docDescription : '' }}
+     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
 {% endfor %}
      */
 {% endif %}
@@ -127,6 +127,10 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         ];
     }
 
+{% if rules is not empty %}
+{% include 'laravel.blank-strings.php.twig' %}
+
+{% endif %}
 {% if objectShapePaths is not empty %}
     /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
@@ -170,13 +174,8 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
 
-            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
-{% if hasObjectConstraints %}
-                // The object's own rules share this map under a reserved key — see below.
-                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
-{% else %}
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
-{% endif %}
                     continue;
                 }
 
@@ -191,7 +190,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             // whole payload, and the message goes in without a field name because that is what it is
             // about. `properties` and `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
                 $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
             }
 {% endif %}

@@ -146,6 +146,8 @@ final class LaravelRulesEnforcementTest extends TestCase
             'required' => ['name'],
             'properties' => ['name' => ['type' => 'string', 'minLength' => 2]],
         ]];
+        $shade = ['Shade' => ['type' => 'string', 'enum' => ['red', 'blue']]];
+        $nullableShade = ['oneOf' => [['$ref' => '#/components/schemas/Shade'], ['type' => 'null']]];
 
         $cases = [
             // schema, valid payload, invalid payload, extra schemas
@@ -173,7 +175,6 @@ final class LaravelRulesEnforcementTest extends TestCase
                 ['f' => 'a'],
                 [],
             ],
-            'const' => [['type' => 'string', 'const' => 'only'], ['f' => 'only'], ['f' => 'other'], []],
             'format email' => [['type' => 'string', 'format' => 'email'], ['f' => 'a@b.co'], ['f' => 'nope'], []],
             'format uuid' => [
                 ['type' => 'string', 'format' => 'uuid'],
@@ -233,6 +234,10 @@ final class LaravelRulesEnforcementTest extends TestCase
                 [],
             ],
             'required field missing' => [['type' => 'string'], ['f' => 'a'], [], []],
+            // A nullable `$ref` enum carries no inline `enum` for the interpreter: `Rule::enum` is the
+            // only check of the member, and without it `"x"` reached the hydrator as a ValueError.
+            'nullable enum ref member' => [$nullableShade, ['f' => 'red'], ['f' => 'x'], $shade],
+            'nullable enum ref null' => [$nullableShade, ['f' => null], ['f' => 'x'], $shade],
         ];
 
         // The case name is also the namespace seed, so it is threaded through as the first argument.
@@ -511,6 +516,7 @@ final class LaravelRulesEnforcementTest extends TestCase
     public static function interpreterProvider(): array
     {
         $cases = [
+            'const' => [['type' => 'string', 'const' => 'only'], ['f' => 'only'], ['f' => 'other'], 'must equal'],
             // `uniqueItems` used to be emitted as Laravel's `distinct` rule, and `distinct` is right
             // about WHETHER and wrong about HOW MANY: it reports once per offending element, so one
             // duplicated pair produced two `validation.distinct` messages where every other mode

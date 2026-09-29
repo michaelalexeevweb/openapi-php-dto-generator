@@ -1,4 +1,4 @@
-# symfony mode — 80 files, 11102 lines
+# symfony mode — 80 files, 11559 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -421,6 +421,7 @@ final class ApiTestCatsActionsGetQueryParams
     public function __construct(
         #[Assert\NotNull]
         #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true)]
         #[Groups(['read', 'write'])]
         private readonly string $id,
         #[Assert\NotNull]
@@ -527,6 +528,7 @@ final class ApiTestCatsActionsPostQueryParams
     public function __construct(
         #[Assert\NotNull]
         #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true)]
         #[Groups(['read', 'write'])]
         private readonly string $id,
         #[Assert\NotNull]
@@ -633,6 +635,7 @@ final class ApiTestDogsTagsGetQueryParams
     public function __construct(
         #[Assert\NotNull]
         #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true)]
         #[Groups(['read', 'write'])]
         private readonly string $id,
         #[Assert\NotNull]
@@ -739,6 +742,7 @@ final class ApiTestDogsTagsPatchQueryParams
     public function __construct(
         #[Assert\NotNull]
         #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true)]
         #[Groups(['read', 'write'])]
         private readonly string $id,
         #[Assert\NotNull]
@@ -830,6 +834,7 @@ final class ApiTestFileDeleteQueryParams
     public function __construct(
         #[Assert\NotNull]
         #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true)]
         #[Groups(['read', 'write'])]
         private readonly string $id,
     ) {
@@ -871,6 +876,7 @@ final class ApiTestFilePatchQueryParams
     public function __construct(
         #[Assert\NotNull]
         #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true)]
         #[Groups(['read', 'write'])]
         private readonly string $id,
     ) {
@@ -1401,7 +1407,6 @@ use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -1534,8 +1539,25 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1616,10 +1638,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -1692,7 +1711,6 @@ use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -2199,8 +2217,25 @@ final class ApiTestSerializationGetQueryParams
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2329,10 +2364,7 @@ final class ApiTestSerializationGetQueryParams
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -2764,7 +2796,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -3381,8 +3412,25 @@ final class ApplicatorRefs
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3518,6 +3566,7 @@ final class ApplicatorRefs
 
         if ($listValue && array_key_exists('unevaluatedItems', $schema)) {
             $unevaluatedItemsSchema = $schema['unevaluatedItems'];
+            $evaluatedItemIndices += $this->collectOpenApiApplicatorItems($value, $schema, $depth);
             foreach ($value as $index => $itemValue) {
                 if (array_key_exists($index, $evaluatedItemIndices)) {
                     continue;
@@ -3579,10 +3628,7 @@ final class ApplicatorRefs
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -3665,6 +3711,76 @@ final class ApplicatorRefs
 
         return null;
     }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, array<string, mixed>>
+     */
+    private function openApiAppliedBranches(mixed $value, mixed $object, array $schema, int $depth): array
+    {
+        $branches = [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            if (is_array($branch)) {
+                $branches[] = $branch;
+            }
+        }
+        foreach (['anyOf', 'oneOf'] as $unionKey) {
+            foreach (is_array($schema[$unionKey] ?? null) ? $schema[$unionKey] : [] as $branch) {
+                if (is_array($branch) && $this->validateOpenApiNode($value, $branch, '', $depth + 1) === []) {
+                    $branches[] = $branch;
+                }
+            }
+        }
+        if (is_array($schema['if'] ?? null)) {
+            if ($this->validateOpenApiNode($value, $schema['if'], '', $depth + 1) === []) {
+                $branches[] = $schema['if'];
+                if (is_array($schema['then'] ?? null)) {
+                    $branches[] = $schema['then'];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $branches[] = $schema['else'];
+            }
+        }
+        if (is_array($object) && is_array($schema['dependentSchemas'] ?? null)) {
+            foreach ($schema['dependentSchemas'] as $trigger => $branch) {
+                if (is_string($trigger) && array_key_exists($trigger, $object) && is_array($branch)) {
+                    $branches[] = $branch;
+                }
+            }
+        }
+
+        return $branches;
+    }
+
+    /**
+     * @param array<int, mixed> $value
+     * @param array<string, mixed> $schema
+     * @return array<int, true>
+     */
+    private function collectOpenApiApplicatorItems(array $value, array $schema, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+        $evaluated = [];
+        foreach ($this->openApiAppliedBranches($value, null, $schema, $depth) as $branch) {
+            $prefixCount = is_array($branch['prefixItems'] ?? null) ? count($branch['prefixItems']) : 0;
+            $coversAll = array_key_exists('unevaluatedItems', $branch) && $branch['unevaluatedItems'] !== false;
+            foreach ($value as $index => $itemValue) {
+                if (
+                    $coversAll
+                    || $index < $prefixCount
+                    || (is_array($branch['items'] ?? null) && $index >= $prefixCount)
+                    || (is_array($branch['contains'] ?? null) && $this->validateOpenApiNode($itemValue, $branch['contains'], '', $depth + 1) === [])
+                ) {
+                    $evaluated[$index] = true;
+                }
+            }
+            $evaluated += $this->collectOpenApiApplicatorItems($value, $branch, $depth + 1);
+        }
+
+        return $evaluated;
+    }
 }
 
 ===== ApplicatorRefsConditional.php =====
@@ -3679,7 +3795,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_key_exists;
 use function floor;
 use function get_object_vars;
@@ -3817,8 +3932,25 @@ final class ApplicatorRefsConditional
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3913,10 +4045,7 @@ final class ApplicatorRefsConditional
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -4013,7 +4142,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_key_exists;
 use function floor;
 use function get_object_vars;
@@ -4148,8 +4276,25 @@ final class ApplicatorRefsKeyed
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4235,10 +4380,7 @@ final class ApplicatorRefsKeyed
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -4335,7 +4477,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_key_exists;
 use function get_object_vars;
 use function is_array;
@@ -4457,8 +4598,25 @@ final class ApplicatorRefsPoisonedKey
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4499,10 +4657,7 @@ final class ApplicatorRefsPoisonedKey
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     /**
@@ -5159,7 +5314,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -5470,8 +5624,25 @@ final class Containers
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5605,10 +5776,7 @@ final class Containers
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -5731,7 +5899,6 @@ namespace GoldenCorpus;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_key_exists;
 use function floor;
 use function get_object_vars;
@@ -5818,8 +5985,25 @@ final class CountMap
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5836,7 +6020,7 @@ final class CountMap
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
@@ -5898,10 +6082,7 @@ final class CountMap
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -5973,12 +6154,12 @@ final class CountMap
         return false;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -6344,7 +6525,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -6421,7 +6601,7 @@ final class ItemBounds
     /**
      * @var ?array<string>
      */
-    #[Assert\All([new Assert\Length(min: 2), new Assert\Regex('/^[a-z]+$/')])]
+    #[Assert\All([new Assert\Length(min: 2), new Assert\Regex('#^[a-z]+$#u'), new Assert\NotBlank(allowNull: true)])]
     #[Groups(['read', 'write'])]
     private ?array $codes = null;
 
@@ -6547,8 +6727,25 @@ final class ItemBounds
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6660,10 +6857,7 @@ final class ItemBounds
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -6735,15 +6929,14 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function bin2hex;
 use function floor;
 use function get_object_vars;
 use function implode;
-use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -6751,8 +6944,11 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function json_encode;
+use function ksort;
 use function method_exists;
+use function pack;
 use function preg_match;
+use function serialize;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
@@ -7173,23 +7369,54 @@ final class NestedContainers
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (is_array($schema['enum'] ?? null) && !in_array($normalizedValue, $schema['enum'], true)) {
-            $allowed = implode(', ', array_map(
-                static function (mixed $allowedValue): string {
-                    $json = json_encode($allowedValue);
-                    return $json !== false ? $json : var_export($allowedValue, true);
-                },
-                $schema['enum'],
-            ));
-            $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
+        if (is_array($schema['enum'] ?? null)) {
+            $fingerprint = $this->jsonValueFingerprint($normalizedValue);
+            $matches = false;
+            if ($fingerprint !== null) {
+                foreach ($schema['enum'] as $candidate) {
+                    if ($fingerprint === $this->jsonValueFingerprint($candidate)) {
+                        $matches = true;
+                        break;
+                    }
+                }
+            }
+            if ($fingerprint === null) {
+                $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+            } elseif (!$matches) {
+                $allowed = implode(', ', array_map(
+                    static function (mixed $allowedValue): string {
+                        $json = json_encode($allowedValue);
+                        return $json !== false ? $json : var_export($allowedValue, true);
+                    },
+                    $schema['enum'],
+                ));
+                $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
+            }
         }
 
         if (array_key_exists('type', $schema)) {
@@ -7204,7 +7431,7 @@ final class NestedContainers
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
@@ -7323,10 +7550,51 @@ final class NestedContainers
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
+    }
+
+    /**
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
+     */
+    private function jsonValueFingerprint(mixed $value, int $depth = 0): ?string
+    {
+        if ($depth >= 256) {
+            return null;
+        }
+
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                return serialize($value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if ($value >= PHP_INT_MIN && $value < -(float)PHP_INT_MIN && floor($value) === $value) {
+                $value = (int)$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', $value));
+            }
+        }
+        $isObject = is_object($value) || (is_array($value) && !array_is_list($value));
+        if (is_object($value)) {
+            $value = $this->normalizeOpenApiStructuralValue($value);
+        }
+        if (!is_array($value)) {
+            return serialize($value);
+        }
+        if ($isObject) {
+            ksort($value, SORT_STRING);
+        }
+        $members = [];
+        foreach ($value as $key => $item) {
+            $fingerprint = $this->jsonValueFingerprint($item, $depth + 1);
+            if ($fingerprint === null) {
+                return null;
+            }
+            $members[$key] = $fingerprint;
+        }
+
+        return ($isObject ? 'object:' : 'array:') . serialize($members);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -7398,12 +7666,12 @@ final class NestedContainers
         return false;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -7439,7 +7707,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -7688,19 +7955,32 @@ final class NullableContainerValues
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
-        if ($value === null && ($schema['nullable'] ?? false) === true) {
-            return [];
-        }
-
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -7805,10 +8085,7 @@ final class NullableContainerValues
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -7879,7 +8156,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_key_exists;
 use function count;
 use function floor;
@@ -7888,18 +8164,14 @@ use function is_array;
 use function is_float;
 use function is_int;
 use function is_object;
-use function is_scalar;
 use function is_string;
-use function json_encode;
 use function mb_strlen;
 use function method_exists;
-use function serialize;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
-use function var_export;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8065,8 +8337,25 @@ final class ObjectWideRules
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8092,10 +8381,8 @@ final class ObjectWideRules
 
         if (is_array($value) || is_object($value)) {
             $structural = is_array($value) ? $value : $this->normalizeOpenApiStructuralValue($value);
-            $valueArray = is_array($structural) ? array_filter(
-                $structural,
-                static fn(mixed $propertyValue): bool => $propertyValue !== null,
-            ) : [];
+            // Presence belongs to the payload view. Null remains a real list item/object value.
+            $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
             if ($minItems !== null && is_array($value) && $count < $minItems) {
@@ -8120,14 +8407,10 @@ final class ObjectWideRules
             if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
-                    if (is_scalar($item) || $item === null) {
-                        $fingerprint = 's:' . var_export($item, true);
-                    } else {
-                        // A generated DTO keeps its state private, so compare the payload it
-                        // reports rather than the object, which would encode as {} every time.
-                        $comparable = $this->normalizeOpenApiStructuralValue($item);
-                        $json = json_encode($comparable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                        $fingerprint = is_string($json) ? 'j:' . $json : 'j:' . serialize($comparable);
+                    $fingerprint = $this->jsonValueFingerprint($item);
+                    if ($fingerprint === null) {
+                        $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+                        break;
                     }
                     if (array_key_exists($fingerprint, $seen)) {
                         $errors[] = sprintf('%s must contain unique items', $path);
@@ -8225,10 +8508,7 @@ final class ObjectWideRules
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -8959,7 +9239,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -9173,8 +9452,25 @@ final class TestPostRequest
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -9271,11 +9567,11 @@ final class TestPostRequest
         }
 
         if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum', 'maximum'])) {
-            $minimum = $this->toFloatConstraint($schema['minimum'] ?? null);
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
             if ($minimum !== null && !($normalizedValue >= $minimum)) {
                 $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
             }
-            $maximum = $this->toFloatConstraint($schema['maximum'] ?? null);
+            $maximum = $this->toNumericConstraint($schema['maximum'] ?? null);
             if ($maximum !== null && !($normalizedValue <= $maximum)) {
                 $errors[] = sprintf('%s must be less than or equal to %s', $path, $this->stringifyOpenApiNumber($maximum));
             }
@@ -9387,10 +9683,7 @@ final class TestPostRequest
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -9462,12 +9755,12 @@ final class TestPostRequest
         return false;
     }
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
     }
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -9526,7 +9819,6 @@ use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -9758,8 +10050,25 @@ final class TreeNode
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10003,10 +10312,7 @@ final class TreeNode
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -10120,7 +10426,6 @@ use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -10434,8 +10739,25 @@ final class UnionUnderContainer
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10708,10 +11030,7 @@ final class UnionUnderContainer
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -10807,15 +11126,23 @@ use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
-use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function bin2hex;
+use function count;
+use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
 use function is_object;
 use function is_string;
+use function ksort;
 use function method_exists;
+use function pack;
+use function serialize;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
@@ -10837,6 +11164,8 @@ final class UniqueScalars
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'tags' => [
+                'type' => 'array',
+                'uniqueItems' => true,
                 'items' => [
                     'type' => 'string',
                 ],
@@ -10857,7 +11186,6 @@ final class UniqueScalars
      */
     public function __construct(
         #[Assert\NotNull]
-        #[Assert\Unique]
         #[Groups(['read', 'write'])]
         private readonly array $tags,
     ) {
@@ -10917,8 +11245,25 @@ final class UniqueScalars
      */
     private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
     {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10929,7 +11274,51 @@ final class UniqueScalars
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
-                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                    $errors[] = $typeConstraint === 'array' && is_array($normalizedValue)
+                        ? sprintf('%s must be a JSON array (list with sequential keys), got an associative array', $path)
+                        : sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($value) || is_object($value)) {
+            $structural = is_array($value) ? $value : $this->normalizeOpenApiStructuralValue($value);
+            // Presence belongs to the payload view. Null remains a real list item/object value.
+            $valueArray = is_array($structural) ? $structural : [];
+            $count = count($valueArray);
+            $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
+            if ($minItems !== null && is_array($value) && $count < $minItems) {
+                $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
+            }
+
+            $maxItems = $this->toIntConstraint($schema['maxItems'] ?? null);
+            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+                $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
+            }
+
+            $minProperties = $this->toIntConstraint($schema['minProperties'] ?? null);
+            if ($minProperties !== null && $count < $minProperties) {
+                $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
+            }
+
+            $maxProperties = $this->toIntConstraint($schema['maxProperties'] ?? null);
+            if ($maxProperties !== null && $count > $maxProperties) {
+                $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
+            }
+
+            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+                $seen = [];
+                foreach ($valueArray as $item) {
+                    $fingerprint = $this->jsonValueFingerprint($item);
+                    if ($fingerprint === null) {
+                        $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+                        break;
+                    }
+                    if (array_key_exists($fingerprint, $seen)) {
+                        $errors[] = sprintf('%s must contain unique items', $path);
+                        break;
+                    }
+                    $seen[$fingerprint] = true;
                 }
             }
         }
@@ -10983,6 +11372,7 @@ final class UniqueScalars
 
         return match ($type) {
             'string' => is_string($value),
+            'array' => is_array($value) && array_is_list($value),
             default => true,
         };
     }
@@ -10998,10 +11388,51 @@ final class UniqueScalars
             return $value->toOpenApiValidationPayload();
         }
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars($value),
-            static fn(mixed $propertyValue): bool => $propertyValue !== null,
-        );
+        return get_object_vars($value);
+    }
+
+    /**
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
+     */
+    private function jsonValueFingerprint(mixed $value, int $depth = 0): ?string
+    {
+        if ($depth >= 256) {
+            return null;
+        }
+
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                return serialize($value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if ($value >= PHP_INT_MIN && $value < -(float)PHP_INT_MIN && floor($value) === $value) {
+                $value = (int)$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', $value));
+            }
+        }
+        $isObject = is_object($value) || (is_array($value) && !array_is_list($value));
+        if (is_object($value)) {
+            $value = $this->normalizeOpenApiStructuralValue($value);
+        }
+        if (!is_array($value)) {
+            return serialize($value);
+        }
+        if ($isObject) {
+            ksort($value, SORT_STRING);
+        }
+        $members = [];
+        foreach ($value as $key => $item) {
+            $fingerprint = $this->jsonValueFingerprint($item, $depth + 1);
+            if ($fingerprint === null) {
+                return null;
+            }
+            $members[$key] = $fingerprint;
+        }
+
+        return ($isObject ? 'object:' : 'array:') . serialize($members);
     }
 
     private function isGeneratedOpenApiDtoObject(mixed $value): bool
@@ -11057,6 +11488,32 @@ final class UniqueScalars
         return $path === 'payload'
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
     }
 }
 

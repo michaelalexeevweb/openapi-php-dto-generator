@@ -1180,7 +1180,7 @@ trait RendersRuntimeDto
         }
 
         if (is_int($value) || is_float($value)) {
-            return (string)$value;
+            return $this->numericLiteral($value);
         }
 
         if (is_string($value)) {

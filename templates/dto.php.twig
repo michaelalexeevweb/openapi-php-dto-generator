@@ -20,13 +20,13 @@ use {{ import }};
 {% endif %}
  *
 {% if sourceEndpoint is defined and sourceEndpoint is not null %}
- * Route: {{ sourceEndpoint }}
+ * Route: {{ sourceEndpoint|php_doc }}
 {% endif %}
 {% if sourceRelated is defined and sourceRelated is not null %}
- * From: {{ sourceRelated }}
+ * From: {{ sourceRelated|php_doc }}
 {% endif %}
 {% if sourceSpecLink is defined and sourceSpecLink is not null %}
- * Spec: @see {{ sourceSpecLink }}
+ * Spec: @see {{ sourceSpecLink|php_doc }}
 {% endif %}
 {% if (sourceEndpoint is defined and sourceEndpoint is not null) or (sourceRelated is defined and sourceRelated is not null) or (sourceSpecLink is defined and sourceSpecLink is not null) %}
  *
@@ -51,13 +51,13 @@ interface {{ className }}
 {% if (sourceEndpoint is defined and sourceEndpoint is not null) or (sourceRelated is defined and sourceRelated is not null) or (sourceSpecLink is defined and sourceSpecLink is not null) %}
  *
 {% if sourceEndpoint is defined and sourceEndpoint is not null %}
- * Route: {{ sourceEndpoint }}
+ * Route: {{ sourceEndpoint|php_doc }}
 {% endif %}
 {% if sourceRelated is defined and sourceRelated is not null %}
- * From: {{ sourceRelated }}
+ * From: {{ sourceRelated|php_doc }}
 {% endif %}
 {% if sourceSpecLink is defined and sourceSpecLink is not null %}
- * Spec: @see {{ sourceSpecLink }}
+ * Spec: @see {{ sourceSpecLink|php_doc }}
 {% endif %}
 {% endif %}
  */
@@ -75,19 +75,19 @@ interface {{ className }}
 {% if hasDoc %}
     /**
 {% if property.description is not null %}
-     * {{ property.description }}
+     * {{ property.description|php_doc }}
 {% endif %}
 {% if property.example is not null %}
 {% if property.description is not null %}
      *
 {% endif %}
-     * Example: {{ property.example }}
+     * Example: {{ property.example|php_doc }}
 {% endif %}
 {% if property.constraintsLine is not null %}
 {% if property.description is not null or property.example is not null %}
      *
 {% endif %}
-     * Constraints: {{ property.constraintsLine }}
+     * Constraints: {{ property.constraintsLine|php_doc }}
 {% endif %}
 {% if property.docVarType is not null %}
 {% if hasDocBody %}
@@ -119,16 +119,16 @@ interface {{ className }}
 {% for param in constructorDocParams %}
 {% set docType = param.docType is not null ? param.docType : param.type %}
 {% if param.description is not null and param.example is not null %}
-     * @param {{ docType }} ${{ param.name }} {{ param.description }} Example: {{ param.example }}
+     * @param {{ docType }} ${{ param.name }} {{ param.description|php_doc }} Example: {{ param.example|php_doc }}
 {% elseif param.description is not null %}
-     * @param {{ docType }} ${{ param.name }} {{ param.description }}
+     * @param {{ docType }} ${{ param.name }} {{ param.description|php_doc }}
 {% elseif param.example is not null %}
-     * @param {{ docType }} ${{ param.name }} Example: {{ param.example }}
+     * @param {{ docType }} ${{ param.name }} Example: {{ param.example|php_doc }}
 {% else %}
      * @param {{ docType }} ${{ param.name }}
 {% endif %}
 {% if param.constraintsLine is not null %}
-     * Constraints: {{ param.constraintsLine }}
+     * Constraints: {{ param.constraintsLine|php_doc }}
 {% endif %}
 {% endfor %}
      */
@@ -190,13 +190,13 @@ interface {{ className }}
 {% if hasDoc %}
     /**
 {% for line in property.docDescriptionLines %}
-     * {{ line }}
+     * {{ line|php_doc }}
 {% endfor %}
 {% if property.docDescriptionLines is not empty and (property.docReturnType is not null or property.expectedFormat is not null or property.deprecated) %}
      *
 {% endif %}
 {% if property.expectedFormat is not null %}
-     * Expected format: {{ property.expectedFormat }}
+     * Expected format: {{ property.expectedFormat|php_doc }}
 {% endif %}
 {% if property.docReturnType is not null %}
      * @return {{ property.docReturnType }}
@@ -510,7 +510,7 @@ interface {{ className }}
         $map['{{ property.name }}'] = [
             'getter' => '{{ property.methodName }}',
             'type' => '{{ property.isMap ? 'object' : property.returnType|replace({'?':''})|replace({'|null':''}) }}',
-            'nullable' => {{ property.returnType starts with '?' or ('|null' in property.returnType) ? 'true' : 'false' }},
+            'nullable' => {{ property.returnType == 'mixed' or property.returnType starts with '?' or ('|null' in property.returnType) ? 'true' : 'false' }},
             'metadata' => [
                 'openApiName' => '{{ property.openApiName|php_string }}',
                 'required' => {{ property.requiredLiteral }},

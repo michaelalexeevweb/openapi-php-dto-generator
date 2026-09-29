@@ -5409,7 +5409,7 @@ final class GenerateDtoCommandTest extends TestCase
     public function testCopyCommonServicesAbsolutePath(): void
     {
         $namespace = 'MyApp\Generated';
-        $absoluteDir = $this->outputDirectory . '/Absolute/Common';
+        $absoluteDir = $this->outputDirectory . '/Absolute/2026-output/Common';
 
         $this->generator->copyCommonServices(
             outputDirectory: $this->outputDirectory,
@@ -5423,12 +5423,11 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($servicePath);
         $content = (string)file_get_contents($servicePath);
 
-        // By default, the namespace is calculated as $namespace . '\' . $commonSubDir
-        // But since the path is absolute, it may look strange.
-        // In our case, GenerateDtoCommand tries to fix this.
-        // Here we are testing the service itself.
-        $expectedNamespace = 'namespace MyApp\Generated\\' . str_replace('/', '\\', ltrim($absoluteDir, '/')) . ';';
-        $this->assertStringContainsString($expectedNamespace, $content);
+        // Absolute paths may contain numeric segments and punctuation; the namespace must remain
+        // a legal PHP identifier rather than containing the literal filesystem spelling.
+        token_get_all($content, TOKEN_PARSE);
+        $this->assertStringContainsString('namespace MyApp\Generated\\', $content);
+        $this->assertStringNotContainsString('2026-output', $content);
 
         // Cleanup
         $this->deleteDirectory($this->outputDirectory . '/Absolute');

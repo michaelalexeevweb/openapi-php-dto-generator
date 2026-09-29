@@ -18,7 +18,7 @@ namespace {{ namespace }};
 {% endif %}
 {% if discriminatorProperty is not null %}
  *
- * Discriminated by `{{ discriminatorProperty }}`; the branch is chosen by the emitted interpreter, not by an attribute — Yii3 has
+ * Discriminated by `{{ discriminatorProperty|php_doc }}`; the branch is chosen by the emitted interpreter, not by an attribute — Yii3 has
  * no discriminator mapping of its own.
 {% endif %}
  */

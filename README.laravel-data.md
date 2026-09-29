@@ -187,6 +187,10 @@ A member takes the discriminator as a plain constructor parameter and forwards i
 inherited readonly property is a fatal, not a test failure. An unmapped discriminator value leaves the
 class unresolved and comes back as a 422, not an exception you have to translate.
 
+A member cannot belong to more than one discriminated-union morph base: PHP permits only one parent
+class. Such a schema now fails generation with the member and both bases named, before existing
+output is replaced. Give each union its own member schema instead of sharing one across morph bases.
+
 A `propertyName` that is not a PHP identifier — `pet_type` — gets a `#[MapName('pet_type')]` on the base
 alongside `#[PropertyForMorph]`. The morph runs before there is an object, and laravel-data looks the
 value up by the property name and by its input-mapped name, so both spellings have to be there.
@@ -241,3 +245,13 @@ a plain `Illuminate\Container\Container`, a config repository, the two singleton
 
 Copy it if you want the same in your own package's tests; in a real application none of it applies, since
 the framework provides all of it.
+
+### Blank strings and literal property names
+
+Generated rules validate present blank strings against the same native rules as other values. An
+unconstrained string can still be empty; a positive minLength, pattern, format or incompatible type
+rejects it. Optional absence and schema-declared nullability remain separate from an empty string.
+
+Property names containing `.` or `*` are rejected during generation because Laravel treats them
+as path/wildcard syntax. Rename such wire properties or select another generation mode. Generation
+fails before replacing existing output.

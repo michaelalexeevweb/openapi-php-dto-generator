@@ -846,7 +846,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymEmails';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Mailing.php');
-        $this->assertStringContainsString('#[Assert\All([new Assert\Email()])]', $content);
+        $this->assertStringContainsString('#[Assert\All([new Assert\Email(), new Assert\NotBlank(allowNull: true)])]', $content);
 
         require_once $this->outputDirectory . '/Mailing.php';
         $cls = $ns . '\Mailing';
@@ -855,6 +855,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertCount(0, $validator->validate(new $cls(emails: ['a@b.com', 'c@d.com'])));
         // One bad item fails the per-item Email constraint.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(emails: ['a@b.com', 'nope']))));
+        $this->assertGreaterThan(0, count($validator->validate(new $cls(emails: ['']))));
     }
 
     public function testWriteOnlyExposedInWriteGroupAndReadOnlyHidden(): void

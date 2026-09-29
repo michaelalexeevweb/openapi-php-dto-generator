@@ -1,0 +1,75 @@
+    /**
+     * Laravel skips ordinary rules for blank strings. OpenAPI treats them as present values, so an
+     * implicit rule checks only that skipped case, using the same native rules and translator.
+     *
+     * @param array<int, mixed> $rules
+     * @return array<int, mixed>
+     */
+    private static function withBlankStringValidation(array $rules): array
+    {
+        $rules[] = new class($rules) implements \Illuminate\Contracts\Validation\ImplicitRule, \Illuminate\Contracts\Validation\ValidatorAwareRule {
+            private ?\Illuminate\Validation\Validator $validator = null;
+            /** @var array<int, string> */
+            private array $messages = [];
+
+            /** @param array<int, mixed> $rules */
+            public function __construct(private readonly array $rules)
+            {
+            }
+
+            public function setValidator(\Illuminate\Validation\Validator $validator): static
+            {
+                $this->validator = $validator;
+
+                return $this;
+            }
+
+            /**
+             * @param string $attribute
+             * @param mixed $value
+             */
+            public function passes($attribute, $value): bool
+            {
+                if (!is_string($value) || trim($value) !== '') {
+                    return true;
+                }
+                if ($this->validator === null) {
+                    throw new \LogicException('The blank-string rule requires a validator.');
+                }
+
+                $validator = new class(
+                    translator: $this->validator->getTranslator(),
+                    data: ['value' => $value],
+                    rules: ['value' => $this->rules],
+                    attributes: ['value' => $attribute],
+                ) extends \Illuminate\Validation\Validator {
+                    /**
+                     * @param object|string $rule
+                     * @param string $attribute
+                     * @param mixed $value
+                     */
+                    protected function presentOrRuleIsImplicit($rule, $attribute, $value): bool
+                    {
+                        return $this->validatePresent($attribute, $value) || $this->isImplicit($rule);
+                    }
+                };
+                $valid = $validator->passes();
+                $this->messages = $validator->errors()->all();
+
+                return $valid;
+            }
+
+            /** @return array<int, string> */
+            public function message(): array
+            {
+                return $this->messages;
+            }
+
+            public function __toString(): string
+            {
+                return 'openapi_blank_string';
+            }
+        };
+
+        return $rules;
+    }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
+
 /**
  * The schema INTERPRETER: the walker four of the five modes carry inside the class they emit.
  *
@@ -140,7 +142,7 @@ trait RendersSchemaInterpreter
         // The emitted helpers reference these classes unqualified, so the DTO needs the matching
         // imports — which ones depends on the keyword blocks that were actually emitted.
         $imports = [];
-        foreach (['BackedEnum', 'DateTimeInterface', 'DateTimeImmutable'] as $referencedClass) {
+        foreach (['BackedEnum', 'DateTimeInterface', 'DateTimeImmutable', 'stdClass'] as $referencedClass) {
             if (preg_match('/\b' . $referencedClass . '\b/', $methods) === 1) {
                 $imports[] = $referencedClass;
             }
@@ -212,9 +214,7 @@ PHP,
         $hasMinItems = $this->schemaUsesKeyword($constraints, 'minItems');
         $hasMaxItems = $this->schemaUsesKeyword($constraints, 'maxItems');
         $hasUniqueItems = $this->schemaUsesKeyword($constraints, 'uniqueItems');
-        // `nullable` reaches the interpreter only where the mode has no other way to express it —
-        // symfony and laravel carry nullability in the PHP type and the filter drops the keyword, so
-        // this stays false there and the guard below is not emitted at all.
+        // Nullable modifies only the type check; independent assertions still inspect null.
         $hasNullable = $this->schemaUsesKeyword($constraints, 'nullable');
         $hasMinProperties = $this->schemaUsesKeyword($constraints, 'minProperties');
         $hasMaxProperties = $this->schemaUsesKeyword($constraints, 'maxProperties');
@@ -245,6 +245,11 @@ PHP,
         // those keywords they would be written but never read, so do not emit them at all.
         $needsObjectTracking = $hasAdditionalProperties || $hasUnevaluatedProperties;
         $needsItemIndexTracking = $hasUnevaluatedItems;
+        // An in-place applicator's branch evaluates positions too — `allOf: [{items: …}]` covers every
+        // item for an `unevaluatedItems` beside it. Only worth walking when both halves exist.
+        $hasApplicators = $hasAllOf || $hasAnyOf || $hasOneOf || $hasIf || $hasDependentSchemas;
+        $needsApplicatorItems = $hasUnevaluatedItems && $hasApplicators;
+        $needsApplicatorProperties = $hasUnevaluatedProperties && $hasApplicators;
         // prefixItems consumes the leading positions; `items` only needs the offset when both are
         // present in the same schema.
         $needsPrefixOffset = $hasPrefixItems && $hasItems;
@@ -272,7 +277,7 @@ PHP,
             || $needsStringValidation;
         $canHoldEnum = $valueKinds['enum'];
         $canHoldTemporal = $valueKinds['temporal'];
-        $needsStructuralNormalization = $hasRequired
+        $needsStructuralNormalization = $hasConst || $hasEnum || $hasRequired
             || $hasProperties
             || $hasPatternProperties
             || $hasPropertyNames
@@ -384,8 +389,25 @@ PHP
      */
     private function validateOpenApiNode(mixed \$value, array \$schema, string \$path, int \$depth): array
     {
+        if (\$depth > 0) {
+            return \$this->validateOpenApiNodeUnchecked(\$value, \$schema, \$path, \$depth);
+        }
+        try {
+            return \$this->validateOpenApiNodeUnchecked(\$value, \$schema, \$path, \$depth);
+        } catch (\\OverflowException \$error) {
+            return [\$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> \$schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed \$value, array \$schema, string \$path, int \$depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if (\$depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            return [];
+            throw new \\OverflowException(\$path . ' exceeds maximum validation depth.');
         }
 {$resolveRecursiveRef}
         \$errors = [];
@@ -394,15 +416,6 @@ PHP;
         // The local setup lines belong to the same statement group as `$errors = []`, so they are
         // appended to that section instead of becoming blank-line separated sections of their own.
         $prologue = [];
-        if ($hasNullable) {
-            // A null the schema explicitly allows satisfies the node outright. Every other keyword
-            // here describes a string, a number or a container, so running them against null only
-            // produces a second message about a value the document permits.
-            $prologue[] = '        if ($value === null && ($schema[\'nullable\'] ?? false) === true) {';
-            $prologue[] = '            return [];';
-            $prologue[] = '        }';
-            $prologue[] = '';
-        }
         if ($needsValueNormalization) {
             // With neither enums nor dates in play there is nothing to normalize, so skip the hop.
             $prologue[] = $canHoldEnum || $canHoldTemporal
@@ -420,24 +433,43 @@ PHP;
 
         if ($hasConst) {
             $sections[] = <<<'PHP'
-        if (array_key_exists('const', $schema) && $normalizedValue !== $schema['const']) {
-            $expected = json_encode($schema['const']);
-            $errors[] = sprintf('%s must equal %s', $path, $expected !== false ? $expected : var_export($schema['const'], true));
+        if (array_key_exists('const', $schema)) {
+            $fingerprint = $this->jsonValueFingerprint($normalizedValue);
+            if ($fingerprint === null) {
+                $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+            } elseif ($fingerprint !== $this->jsonValueFingerprint($schema['const'])) {
+                $expected = json_encode($schema['const']);
+                $errors[] = sprintf('%s must equal %s', $path, $expected !== false ? $expected : var_export($schema['const'], true));
+            }
         }
 PHP;
         }
 
         if ($hasEnum) {
             $sections[] = <<<'PHP'
-        if (is_array($schema['enum'] ?? null) && !in_array($normalizedValue, $schema['enum'], true)) {
-            $allowed = implode(', ', array_map(
-                static function (mixed $allowedValue): string {
-                    $json = json_encode($allowedValue);
-                    return $json !== false ? $json : var_export($allowedValue, true);
-                },
-                $schema['enum'],
-            ));
-            $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
+        if (is_array($schema['enum'] ?? null)) {
+            $fingerprint = $this->jsonValueFingerprint($normalizedValue);
+            $matches = false;
+            if ($fingerprint !== null) {
+                foreach ($schema['enum'] as $candidate) {
+                    if ($fingerprint === $this->jsonValueFingerprint($candidate)) {
+                        $matches = true;
+                        break;
+                    }
+                }
+            }
+            if ($fingerprint === null) {
+                $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+            } elseif (!$matches) {
+                $allowed = implode(', ', array_map(
+                    static function (mixed $allowedValue): string {
+                        $json = json_encode($allowedValue);
+                        return $json !== false ? $json : var_export($allowedValue, true);
+                    },
+                    $schema['enum'],
+                ));
+                $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
+            }
         }
 PHP;
         }
@@ -559,8 +591,11 @@ PHP
                 : <<<'PHP'
                     $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
 PHP;
+            $nullableTypeGuard = $hasNullable
+                ? " && !(\$value === null && (\$schema['nullable'] ?? false) === true)"
+                : '';
             $sections[] = <<<PHP
-        if (array_key_exists('type', \$schema)) {
+        if (array_key_exists('type', \$schema){$nullableTypeGuard}) {
             \$typeConstraint = \$schema['type'];
             if (is_string(\$typeConstraint)) {
                 if (!\$this->matchesOpenApiCallbackType(\$normalizedValue, \$typeConstraint)) {
@@ -600,11 +635,12 @@ PHP;
                     return <<<PHP
             \${$exclusiveKey} = \$schema['{$exclusiveKey}'] ?? null;
             if (is_numeric(\${$exclusiveKey})) {
-                \$bound = (float)\${$exclusiveKey};
+                \$bound = is_int(\${$exclusiveKey}) ? \${$exclusiveKey} : (float)\${$exclusiveKey};
                 if (!(\$normalizedValue {$comparison} \$bound)) {
                     \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\$bound));
                 }
-            } elseif (\${$reader} !== null) {
+            }
+            if (\${$reader} !== null) {
                 if ((\$schema['{$exclusiveKey}'] ?? null) === true) {
                     if (!(\$normalizedValue {$comparison} \${$reader})) {
                         \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\${$reader}));
@@ -620,8 +656,11 @@ PHP;
                 if ($hasExclusive) {
                     return <<<PHP
             \${$exclusiveKey} = \$schema['{$exclusiveKey}'] ?? null;
-            if (is_numeric(\${$exclusiveKey}) && !(\$normalizedValue {$comparison} (float)\${$exclusiveKey})) {
-                \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber((float)\${$exclusiveKey}));
+            if (is_numeric(\${$exclusiveKey})) {
+                \$bound = is_int(\${$exclusiveKey}) ? \${$exclusiveKey} : (float)\${$exclusiveKey};
+                if (!(\$normalizedValue {$comparison} \$bound)) {
+                    \$errors[] = sprintf('%s {$exclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\$bound));
+                }
             }
 
 PHP;
@@ -629,7 +668,7 @@ PHP;
 
                 if ($hasInclusive) {
                     return <<<PHP
-            \${$reader} = \$this->toFloatConstraint(\$schema['{$inclusiveKey}'] ?? null);
+            \${$reader} = \$this->toNumericConstraint(\$schema['{$inclusiveKey}'] ?? null);
             if (\${$reader} !== null && !(\$normalizedValue {$comparison}= \${$reader})) {
                 \$errors[] = sprintf('%s {$inclusiveMessage} %s', \$path, \$this->stringifyOpenApiNumber(\${$reader}));
             }
@@ -644,21 +683,27 @@ PHP;
             // there and inlined in the single-spelling one.
             $numericChecks = '';
             if ($hasMinimum && $hasExclusiveMinimum) {
-                $numericChecks .= "            \$minimum = \$this->toFloatConstraint(\$schema['minimum'] ?? null);\n\n";
+                $numericChecks .= "            \$minimum = \$this->toNumericConstraint(\$schema['minimum'] ?? null);\n\n";
             }
             $numericChecks .= $bound($hasMinimum, $hasExclusiveMinimum, 'minimum', 'exclusiveMinimum', 'minimum', '>', 'must be greater than', 'must be greater than or equal to');
 
             if ($hasMaximum && $hasExclusiveMaximum) {
-                $numericChecks .= "            \$maximum = \$this->toFloatConstraint(\$schema['maximum'] ?? null);\n\n";
+                $numericChecks .= "            \$maximum = \$this->toNumericConstraint(\$schema['maximum'] ?? null);\n\n";
             }
             $numericChecks .= $bound($hasMaximum, $hasExclusiveMaximum, 'maximum', 'exclusiveMaximum', 'maximum', '<', 'must be less than', 'must be less than or equal to');
 
             if ($hasMultipleOf) {
                 $numericChecks .= <<<'PHP'
-            $multipleOf = $this->toFloatConstraint($schema['multipleOf'] ?? null);
-            if ($multipleOf !== null && $multipleOf > 0.0) {
+            $multipleOf = $this->toNumericConstraint($schema['multipleOf'] ?? null);
+            if (is_int($normalizedValue) && is_int($multipleOf) && $multipleOf > 0) {
+                // Two integers: exact, never through a float ratio.
+                if ($normalizedValue % $multipleOf !== 0) {
+                    $errors[] = sprintf('%s must be a multiple of %s', $path, $multipleOf);
+                }
+            } elseif ($multipleOf !== null && $multipleOf > 0.0 && !$this->isDecimalOpenApiMultiple($normalizedValue, $multipleOf)) {
+                // A float computed in PHP is off by an ulp: a whole, NON-ZERO ratio within 1e-9 counts.
                 $ratio = $normalizedValue / $multipleOf;
-                if (abs($ratio - round($ratio)) > 1e-9) {
+                if (round($ratio) === 0.0 || abs($ratio - round($ratio)) > 1e-9) {
                     $errors[] = sprintf('%s must be a multiple of %s', $path, $this->stringifyOpenApiNumber($multipleOf));
                 }
             }
@@ -715,7 +760,7 @@ PHP;
 
             $patternCheck = $hasPattern ? <<<'PHP'
             if (is_string($pattern = $schema['pattern'] ?? null) && $pattern !== '') {
-                $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
+                $regex = $this->delimitOpenApiPattern($pattern);
                 set_error_handler(static fn(): bool => true);
                 try {
                     $match = preg_match($regex, $normalizedValue);
@@ -766,12 +811,14 @@ PHP;
 
             $mediaType = $schema['contentMediaType'] ?? null;
             if (is_string($mediaType) && $this->isOpenApiJsonMediaType($mediaType)) {
-                $parsed = json_decode($decoded, true);
+                // Objects stay stdClass: decoded to arrays, `[]` passed `type: object`.
+                $parsed = json_decode($decoded);
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     $errors[] = sprintf('%s is not valid %s content', $path, $mediaType);
                 } elseif (is_array($schema['contentSchema'] ?? null)) {
                     $errors = [
                         ...$errors,
+                        ...$this->openApiContentShapeErrors($parsed, $schema['contentSchema'], $path, $depth + 1),
                         ...$this->validateOpenApiNode($parsed, $schema['contentSchema'], $path, $depth + 1),
                     ];
                 }
@@ -784,10 +831,8 @@ PHP;
             $sections[] = <<<'PHP'
         if (is_array($value) || is_object($value)) {
             $structural = is_array($value) ? $value : $this->normalizeOpenApiStructuralValue($value);
-            $valueArray = is_array($structural) ? array_filter(
-                $structural,
-                static fn(mixed $propertyValue): bool => $propertyValue !== null,
-            ) : [];
+            // Presence belongs to the payload view. Null remains a real list item/object value.
+            $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
             if ($minItems !== null && is_array($value) && $count < $minItems) {
@@ -812,14 +857,10 @@ PHP;
             if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
-                    if (is_scalar($item) || $item === null) {
-                        $fingerprint = 's:' . var_export($item, true);
-                    } else {
-                        // A generated DTO keeps its state private, so compare the payload it
-                        // reports rather than the object, which would encode as {} every time.
-                        $comparable = $this->normalizeOpenApiStructuralValue($item);
-                        $json = json_encode($comparable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                        $fingerprint = is_string($json) ? 'j:' . $json : 'j:' . serialize($comparable);
+                    $fingerprint = $this->jsonValueFingerprint($item);
+                    if ($fingerprint === null) {
+                        $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+                        break;
                     }
                     if (array_key_exists($fingerprint, $seen)) {
                         $errors[] = sprintf('%s must contain unique items', $path);
@@ -884,9 +925,10 @@ PHP;
                 if (!is_string(\$pattern) || !is_array(\$propertySchema)) {
                     continue;
                 }
-                \$regex = '/' . str_replace('/', '\\/', \$pattern) . '/';
+                \$regex = \$this->delimitOpenApiPattern(\$pattern);
                 foreach (\$structuredValue as \$propertyName => \$propertyValue) {
-                    if (!is_string(\$propertyName) || preg_match(\$regex, \$propertyName) !== 1) {
+                    // `@`: a pattern PCRE cannot compile matches no key rather than raising a warning.
+                    if (!is_string(\$propertyName) || @preg_match(\$regex, \$propertyName) !== 1) {
                         continue;
                     }
 {$trackPatternMatched}                    \$errors = [
@@ -1137,7 +1179,7 @@ PHP;
                 <<<'PHP'
         if ($listValue && array_key_exists('unevaluatedItems', $schema)) {
             $unevaluatedItemsSchema = $schema['unevaluatedItems'];
-            foreach ($value as $index => $itemValue) {
+%s            foreach ($value as $index => $itemValue) {
                 if (array_key_exists($index, $evaluatedItemIndices)) {
                     continue;
                 }
@@ -1159,6 +1201,7 @@ PHP;
             }
         }
 PHP,
+                $needsApplicatorItems ? "            \$evaluatedItemIndices += \$this->collectOpenApiApplicatorItems(\$value, \$schema, \$depth);\n" : '',
                 $skipNestedDto('$itemValue'),
             );
         }
@@ -1170,6 +1213,9 @@ PHP,
             $unevaluatedProperties = $schema['unevaluatedProperties'] ?? null;
             $evaluatedProperties = [...$definedProperties, ...$patternMatchedProperties];
 PHP;
+            if ($needsApplicatorProperties) {
+                $sections[] = '            $evaluatedProperties += $this->collectOpenApiApplicatorProperties($value, $structuredValue, $schema, $depth);';
+            }
 
             if ($hasAdditionalProperties) {
                 $skipNestedDtoExtra = $skipNestedDto(
@@ -1198,18 +1244,33 @@ PHP;
             }
 
             if ($hasUnevaluatedProperties) {
-                $sections[] = <<<'PHP'
+                // The SCHEMA form as well: `unevaluatedProperties: {…}` requires each leftover value to
+                // match. Only `false` was read, so the schema form accepted anything.
+                $sections[] = sprintf(
+                    <<<'PHP'
             if ($unevaluatedProperties === false) {
                 foreach ($structuredValue as $propertyName => $_propertyValue) {
                     if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     if ($extraPropertySchema !== false) {
-                        $errors[] = sprintf('%s has unevaluated property "%s" which is not allowed', $path, $propertyName);
+                        $errors[] = sprintf('%%s has unevaluated property "%%s" which is not allowed', $path, $propertyName);
                     }
                 }
+            } elseif (is_array($unevaluatedProperties)) {
+                foreach ($structuredValue as $propertyName => $propertyValue) {
+                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                        continue;
+                    }
+%s                    $errors = [
+                        ...$errors,
+                        ...$this->validateOpenApiNode($propertyValue, $unevaluatedProperties, $path . '.' . $propertyName, $depth + 1),
+                    ];
+                }
             }
-PHP;
+PHP,
+                    $skipNestedDto('$propertyValue', '                    '),
+                );
             }
 
             // Appended to the PREVIOUS section rather than pushed as its own: the sections are joined
@@ -1417,10 +1478,73 @@ PHP
         }
 {$dtoPayloadView}
         // Any other object: only its public state is visible, under PHP property names.
-        return array_filter(
-            get_object_vars(\$value),
-            static fn(mixed \$propertyValue): bool => \$propertyValue !== null,
-        );
+        return get_object_vars(\$value);
+    }
+PHP;
+        }
+
+        if ($hasConst || $hasEnum || $hasUniqueItems) {
+            $equalityEnumUnwrap = $canHoldEnum
+                ? <<<'PHP'
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+PHP
+                : '';
+            // A hydrated date has no public state: through get_object_vars() every date was `{}`, so two
+            // distinct dates were equal under uniqueItems.
+            $equalityTemporalView = $canHoldTemporal
+                ? <<<'PHP'
+        if ($value instanceof DateTimeInterface) {
+            return 'date-time:' . $value->format('Y-m-d\TH:i:s.uP');
+        }
+
+PHP
+                : '';
+            $sections[] = <<<PHP
+
+    /**
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
+     */
+    private function jsonValueFingerprint(mixed \$value, int \$depth = 0): ?string
+    {
+        if (\$depth >= 256) {
+            return null;
+        }
+{$equalityEnumUnwrap}
+        if (is_float(\$value)) {
+            if (!is_finite(\$value)) {
+                return serialize(\$value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if (\$value >= PHP_INT_MIN && \$value < -(float)PHP_INT_MIN && floor(\$value) === \$value) {
+                \$value = (int)\$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', \$value));
+            }
+        }
+{$equalityTemporalView}        \$isObject = is_object(\$value) || (is_array(\$value) && !array_is_list(\$value));
+        if (is_object(\$value)) {
+            \$value = \$this->normalizeOpenApiStructuralValue(\$value);
+        }
+        if (!is_array(\$value)) {
+            return serialize(\$value);
+        }
+        if (\$isObject) {
+            ksort(\$value, SORT_STRING);
+        }
+        \$members = [];
+        foreach (\$value as \$key => \$item) {
+            \$fingerprint = \$this->jsonValueFingerprint(\$item, \$depth + 1);
+            if (\$fingerprint === null) {
+                return null;
+            }
+            \$members[\$key] = \$fingerprint;
+        }
+
+        return (\$isObject ? 'object:' : 'array:') . serialize(\$members);
     }
 PHP;
         }
@@ -1530,6 +1654,70 @@ PHP;
 PHP;
         }
 
+        if ($hasPattern || $hasPatternProperties || in_array('regex', $usedFormats, true)) {
+            $sections[] = <<<'PHP'
+
+    private function delimitOpenApiPattern(string $pattern, bool $unicode = true): string
+    {
+        $delimited = '#';
+        $length = strlen($pattern);
+        $inClass = false;
+        $classOpenedAt = -1;
+        for ($i = 0; $i < $length; $i++) {
+            $character = $pattern[$i];
+            if ($character === '\\' && $i + 1 < $length) {
+                $next = $pattern[$i + 1];
+                // ECMA-262 `\uXXXX` and `\u{X…}` are PCRE's `\x{…}`; PCRE has no `\u` at all.
+                if ($next === 'u' && preg_match('/\G(?:\{([0-9A-Fa-f]{1,6})\}|([0-9A-Fa-f]{4}))/', $pattern, $hex, 0, $i + 2) === 1) {
+                    $delimited .= '\\x{' . ($hex[1] !== '' ? $hex[1] : $hex[2]) . '}';
+                    $i += 1 + strlen($hex[0]);
+                    continue;
+                }
+                $i++;
+                // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
+                // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
+                $ascii = !$unicode ? null : ($inClass ? match ($next) {
+                    'd' => '0-9',
+                    'D' => '\x{0}-\x{2F}\x{3A}-\x{10FFFF}',
+                    'w' => 'A-Za-z0-9_',
+                    'W' => '\x{0}-\x{2F}\x{3A}-\x{40}\x{5B}-\x{5E}\x{60}\x{7B}-\x{10FFFF}',
+                    default => null,
+                } : match ($next) {
+                    'd' => '[0-9]',
+                    'D' => '[^0-9]',
+                    'w' => '[A-Za-z0-9_]',
+                    'W' => '[^A-Za-z0-9_]',
+                    'b' => '(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))',
+                    'B' => '(?:(?<=[A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<![A-Za-z0-9_])(?![A-Za-z0-9_]))',
+                    default => null,
+                });
+                $delimited .= $ascii ?? '\\' . $next;
+                continue;
+            }
+            if ($inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ':') {
+                // A POSIX class carries its own `]`; copied whole, it cannot close the outer class.
+                $end = strpos($pattern, ':]', $i + 2);
+                if ($end !== false) {
+                    $delimited .= substr($pattern, $i, $end + 2 - $i);
+                    $i = $end + 1;
+                    continue;
+                }
+            }
+            if (!$inClass && $character === '[') {
+                $inClass = true;
+                $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
+            } elseif ($inClass && $character === ']' && $i > $classOpenedAt + 1) {
+                // PCRE reads a `]` right after `[` or `[^` as a literal member, not as the end.
+                $inClass = false;
+            }
+            $delimited .= $character === '#' ? '\\#' : $character;
+        }
+
+        return $delimited . ($unicode ? '#u' : '#');
+    }
+PHP;
+        }
+
         // Read helpers follow their own keywords: lengths/counts need the int reader, the numeric
         // bounds need the float one.
         if ($hasMinLength || $hasMaxLength || $needsCollectionCountValidation) {
@@ -1552,9 +1740,73 @@ PHP;
         if ($needsNumericValidation) {
             $sections[] = <<<'PHP'
 
-    private function toFloatConstraint(mixed $value): ?float
+    private function toNumericConstraint(mixed $value): int|float|null
     {
-        return is_int($value) || is_float($value) ? (float)$value : null;
+        return is_int($value) || is_float($value) ? $value : null;
+    }
+PHP;
+        }
+
+        if ($hasMultipleOf) {
+            // Exact decimal `multipleOf` — see `DtoValidator::isDecimalMultiple()`.
+            $sections[] = <<<'PHP'
+
+    private function isDecimalOpenApiMultiple(int|float $value, int|float $of): bool
+    {
+        if (!is_finite((float)$value) || !is_finite((float)$of) || $of <= 0) {
+            return false;
+        }
+        [$valueDigits, $valueExponent] = $this->openApiDecimalParts($value);
+        [$ofDigits, $ofExponent] = $this->openApiDecimalParts($of);
+        if ($valueDigits === '0') {
+            return true;
+        }
+        $shift = $valueExponent - $ofExponent;
+        if ($shift < 0) {
+            // Scaling the value down must not cut off a non-zero digit.
+            if (strlen($valueDigits) <= -$shift || substr($valueDigits, $shift) !== str_repeat('0', -$shift)) {
+                return false;
+            }
+            $valueDigits = substr($valueDigits, 0, $shift);
+        } else {
+            $valueDigits .= str_repeat('0', $shift);
+        }
+        // Seventeen digits at most, so `$remainder * 10` cannot overflow; only an integer divisor
+        // can be longer, and next to a float value that is past exactness anyway.
+        if (strlen($ofDigits) > 17) {
+            return fmod((float)$value, (float)$of) === 0.0;
+        }
+        $divisor = (int)$ofDigits;
+        $remainder = 0;
+        foreach (str_split($valueDigits) as $digit) {
+            $remainder = ($remainder * 10 + (int)$digit) % $divisor;
+        }
+
+        return $remainder === 0;
+    }
+
+    /**
+     * @return array{0: string, 1: int} significant digits and the power of ten they are scaled by
+     */
+    private function openApiDecimalParts(int|float $number): array
+    {
+        if (is_int($number)) {
+            return [ltrim((string)$number, '-'), 0];
+        }
+        $number = abs($number);
+        $rendered = sprintf('%.16e', $number);
+        for ($precision = 0; $precision < 17; $precision++) {
+            $candidate = sprintf('%.' . $precision . 'e', $number);
+            if ((float)$candidate === $number) {
+                $rendered = $candidate;
+                break;
+            }
+        }
+        [$mantissa, $exponent] = explode('e', $rendered);
+        $fraction = strlen(explode('.', $mantissa . '.')[1]);
+        $digits = ltrim(str_replace('.', '', $mantissa), '0');
+
+        return [$digits === '' ? '0' : $digits, (int)$exponent - $fraction];
     }
 PHP;
         }
@@ -1562,7 +1814,7 @@ PHP;
         if ($needsNumericValidation) {
             $sections[] = <<<'PHP'
 
-    private function stringifyOpenApiNumber(float $value): string
+    private function stringifyOpenApiNumber(int|float $value): string
     {
         $rendered = json_encode($value);
         return is_string($rendered) ? $rendered : (string)$value;
@@ -1674,6 +1926,185 @@ PHP;
 PHP;
         }
 
+        if ($needsApplicatorItems || $needsApplicatorProperties) {
+            // The annotation half of the applicators — the same walk `DtoValidator` makes in
+            // `collectEvaluatedItems()` / `collectEvaluatedProperties()`: every `allOf` branch, the
+            // passing `anyOf` / `oneOf` branches, the arm of `if` that applied, the triggered
+            // `dependentSchemas`. A branch carrying its own `unevaluated*` has evaluated everything.
+            $patternArm = $hasPatternProperties
+                ? <<<'PHP'
+        if (is_array($branch['patternProperties'] ?? null)) {
+            foreach (array_keys($branch['patternProperties']) as $pattern) {
+                if (!is_string($pattern)) {
+                    continue;
+                }
+                $regex = $this->delimitOpenApiPattern($pattern);
+                foreach (array_keys($object) as $key) {
+                    if (@preg_match($regex, (string)$key) === 1) {
+                        $evaluated[(string)$key] = true;
+                    }
+                }
+            }
+        }
+
+PHP
+                : '';
+            $sections[] = <<<'PHP'
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, array<string, mixed>>
+     */
+    private function openApiAppliedBranches(mixed $value, mixed $object, array $schema, int $depth): array
+    {
+        $branches = [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            if (is_array($branch)) {
+                $branches[] = $branch;
+            }
+        }
+        foreach (['anyOf', 'oneOf'] as $unionKey) {
+            foreach (is_array($schema[$unionKey] ?? null) ? $schema[$unionKey] : [] as $branch) {
+                if (is_array($branch) && $this->validateOpenApiNode($value, $branch, '', $depth + 1) === []) {
+                    $branches[] = $branch;
+                }
+            }
+        }
+        if (is_array($schema['if'] ?? null)) {
+            if ($this->validateOpenApiNode($value, $schema['if'], '', $depth + 1) === []) {
+                $branches[] = $schema['if'];
+                if (is_array($schema['then'] ?? null)) {
+                    $branches[] = $schema['then'];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $branches[] = $schema['else'];
+            }
+        }
+        if (is_array($object) && is_array($schema['dependentSchemas'] ?? null)) {
+            foreach ($schema['dependentSchemas'] as $trigger => $branch) {
+                if (is_string($trigger) && array_key_exists($trigger, $object) && is_array($branch)) {
+                    $branches[] = $branch;
+                }
+            }
+        }
+
+        return $branches;
+    }
+PHP;
+            if ($needsApplicatorItems) {
+                $sections[] = <<<'PHP'
+
+    /**
+     * @param array<int, mixed> $value
+     * @param array<string, mixed> $schema
+     * @return array<int, true>
+     */
+    private function collectOpenApiApplicatorItems(array $value, array $schema, int $depth): array
+    {
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+        $evaluated = [];
+        foreach ($this->openApiAppliedBranches($value, null, $schema, $depth) as $branch) {
+            $prefixCount = is_array($branch['prefixItems'] ?? null) ? count($branch['prefixItems']) : 0;
+            $coversAll = array_key_exists('unevaluatedItems', $branch) && $branch['unevaluatedItems'] !== false;
+            foreach ($value as $index => $itemValue) {
+                if (
+                    $coversAll
+                    || $index < $prefixCount
+                    || (is_array($branch['items'] ?? null) && $index >= $prefixCount)
+                    || (is_array($branch['contains'] ?? null) && $this->validateOpenApiNode($itemValue, $branch['contains'], '', $depth + 1) === [])
+                ) {
+                    $evaluated[$index] = true;
+                }
+            }
+            $evaluated += $this->collectOpenApiApplicatorItems($value, $branch, $depth + 1);
+        }
+
+        return $evaluated;
+    }
+PHP;
+            }
+            if ($needsApplicatorProperties) {
+                $sections[] = sprintf(<<<'PHP'
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, true>
+     */
+    private function collectOpenApiApplicatorProperties(mixed $value, mixed $object, array $schema, int $depth): array
+    {
+        if (!is_array($object) || $depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+        $evaluated = [];
+        foreach ($this->openApiAppliedBranches($value, $object, $schema, $depth) as $branch) {
+            $coversAll = (array_key_exists('unevaluatedProperties', $branch) && $branch['unevaluatedProperties'] !== false)
+                || (array_key_exists('additionalProperties', $branch) && $branch['additionalProperties'] !== false);
+            foreach (array_keys($object) as $key) {
+                if ($coversAll || (is_array($branch['properties'] ?? null) && array_key_exists($key, $branch['properties']))) {
+                    $evaluated[(string)$key] = true;
+                }
+            }
+%s            $evaluated += $this->collectOpenApiApplicatorProperties($value, $object, $branch, $depth + 1);
+        }
+
+        return $evaluated;
+    }
+PHP, preg_replace('/^(?=.)/m', '    ', $patternArm) ?? $patternArm);
+            }
+        }
+
+        if ($hasContentSchema) {
+            // The one wire-shape question the type check cannot answer — a JSON array where only
+            // `object` is allowed — can be answered for an embedded document, decoded with its
+            // objects as stdClass. Same walk as `DtoValidator::contentShapeErrors()`.
+            $sections[] = <<<'PHP'
+
+    /**
+     * @return array<int, string>
+     */
+    private function openApiContentShapeErrors(mixed $value, mixed $schema, string $path, int $depth): array
+    {
+        if (!is_array($schema) || $depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            return [];
+        }
+
+        $type = $schema['type'] ?? null;
+        $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        if (is_array($value) && in_array('object', $types, true) && !in_array('array', $types, true)) {
+            return [sprintf('%s must be of type %s', $path, implode('|', array_filter($types, 'is_string')))];
+        }
+
+        $errors = [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            $errors = [...$errors, ...$this->openApiContentShapeErrors($value, $branch, $path, $depth + 1)];
+        }
+
+        if ($value instanceof stdClass) {
+            $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+            $extra = is_array($schema['patternProperties'] ?? null) ? null : ($schema['additionalProperties'] ?? null);
+            foreach (get_object_vars($value) as $name => $member) {
+                $errors = [
+                    ...$errors,
+                    ...$this->openApiContentShapeErrors($member, $properties[$name] ?? $extra, $path . '.' . $name, $depth + 1),
+                ];
+            }
+        } elseif (is_array($value)) {
+            $prefix = is_array($schema['prefixItems'] ?? null) ? $schema['prefixItems'] : [];
+            foreach ($value as $index => $member) {
+                $errors = [
+                    ...$errors,
+                    ...$this->openApiContentShapeErrors($member, $prefix[$index] ?? $schema['items'] ?? null, $path . '[' . $index . ']', $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+PHP;
+        }
+
         if ($hasContentEncoding) {
             // Identity codecs (7bit/8bit/binary) and unknown ones share the permissive default, so
             // only the transforming codecs the constant mentions need an arm.
@@ -1728,10 +2159,21 @@ PHP;
         return preg_replace("/\n{3,}/", "\n\n", $body) ?? $body;
     }
 
+    /** @param array<string, mixed> $constraints */
+    private function enumRequiresJsonEquality(array $constraints): bool
+    {
+        foreach ($constraints['enum'] ?? [] as $value) {
+            if (is_int($value) || is_float($value) || is_array($value) || is_object($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
-     * `allOf` whose branches are plain constraint fragments (no $ref, no inline object, no nested
-     * composition) is just a split-up constraint set — merge it so the scalar keywords reach the
-     * Symfony attributes instead of being dropped as an unsupported composition keyword.
+     * Fold only compatible fragments. Different values for the same keyword remain independent
+     * assertions; nullable stays scoped to its own branch instead of granting every branch null.
      *
      * @param array<string, mixed> $constraints
      * @return array<string, mixed>
@@ -1739,21 +2181,58 @@ PHP;
     private function foldScalarAllOfConstraints(array $constraints): array
     {
         $branches = $constraints['allOf'] ?? null;
-        if (!is_array($branches) || $branches === []) {
+        if (!is_array($branches) || $branches === [] || !$this->allOfHasPlainBranches($branches)) {
             return $constraints;
         }
-
         $merged = [];
+        foreach ($constraints as $key => $value) {
+            if ($key !== 'allOf') {
+                $merged[$key] = $value;
+            }
+        }
+        if (array_key_exists('nullable', $merged)) {
+            return $constraints;
+        }
         foreach ($branches as $branch) {
-            if (!is_array($branch) || !$this->canFlattenAllOfPropertyItem($branch)) {
+            if (!is_array($branch) || array_key_exists('nullable', $branch)) {
                 return $constraints;
             }
-            $merged = array_replace_recursive($merged, $branch);
+            foreach ($branch as $key => $value) {
+                // Applicators can interact with siblings (if/then, contains/minContains, items).
+                // Only independent value assertions can move out of their branch.
+                if (
+                    !in_array(
+                        needle: $key,
+                        haystack: [
+                            'type', 'enum', 'const', 'minLength', 'maxLength', 'pattern', 'format',
+                            'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                            'minItems', 'maxItems', 'uniqueItems', 'minProperties', 'maxProperties',
+                        ],
+                        strict: true,
+                    )
+                ) {
+                    return $constraints;
+                }
+                if (array_key_exists($key, $merged) && $merged[$key] !== $value) {
+                    return $constraints;
+                }
+                $merged[$key] = $value;
+            }
         }
 
-        unset($constraints['allOf']);
+        return $merged;
+    }
 
-        return array_replace_recursive($merged, $constraints);
+    /** @param array<mixed> $branches */
+    private function allOfHasPlainBranches(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            if (!is_array($branch) || !$this->canFlattenAllOfPropertyItem($branch)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1933,7 +2412,7 @@ PHP,
 
     private function isValidOpenApiRegexFormat(string $value): bool
     {
-        $regex = '#' . str_replace('#', '\#', $value) . '#';
+        $regex = $this->delimitOpenApiPattern($value, unicode: false);
         set_error_handler(static fn(): bool => true);
         try {
             return preg_match($regex, '') !== false;
@@ -2044,7 +2523,7 @@ PHP,
         'contentSchema',
     ];
 
-    /** Recursed into, but their own boolean value is left alone — see above. */
+    /** Recursed into; of their own booleans only `true` is rewritten — see the expansion below. */
     private const array INTERPRETER_RECURSE_ONLY_KEYS = [
         'items',
         'additionalProperties',
@@ -2103,7 +2582,11 @@ PHP,
         }
 
         foreach (self::INTERPRETER_RECURSE_ONLY_KEYS as $key) {
-            if (is_array($constraints[$key] ?? null)) {
+            // `false` is read as it is. `true` is not "absent": it EVALUATES every item or extra key,
+            // which `unevaluatedItems` / `unevaluatedProperties` read — and only the array arm tracks it.
+            if (($constraints[$key] ?? null) === true) {
+                $constraints[$key] = [];
+            } elseif (is_array($constraints[$key] ?? null)) {
                 $constraints[$key] = $this->expandBooleanSubschemasForInterpreter($constraints[$key]);
             }
         }
@@ -2170,6 +2653,54 @@ PHP,
         }
 
         return "[\n" . implode("\n", $lines) . "\n" . $indent . ']';
+    }
+
+    /**
+     * Whether PCRE compiles the schema pattern. A native rule is only emitted for one that does: one
+     * that does not raised a `preg_match()` warning at validation time — an ErrorException, a 500, in
+     * Laravel — so it is left to the interpreter, which reports it as a validation error instead.
+     */
+    private function patternCompiles(string $pattern): bool
+    {
+        $regex = DtoValidator::delimitPattern($pattern);
+
+        set_error_handler(static fn(): bool => true);
+        try {
+            return preg_match($regex, '') !== false;
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    /**
+     * What an `allOf` branch EVALUATES, with nothing it asserts: each position it addresses maps to
+     * `true`. `additionalProperties: false` and the like are left out — they are assertions.
+     */
+    private function evaluationShadow(mixed $branch): mixed
+    {
+        if (!is_array($branch)) {
+            return true;
+        }
+
+        $shadow = [];
+        foreach (['properties', 'patternProperties'] as $mapKey) {
+            if (is_array($branch[$mapKey] ?? null)) {
+                $shadow[$mapKey] = array_map(static fn(mixed $_schema): bool => true, $branch[$mapKey]);
+            }
+        }
+        foreach (['additionalProperties', 'unevaluatedProperties', 'items', 'unevaluatedItems'] as $singleKey) {
+            if (array_key_exists($singleKey, $branch) && $branch[$singleKey] !== false) {
+                $shadow[$singleKey] = true;
+            }
+        }
+        if (is_array($branch['prefixItems'] ?? null)) {
+            $shadow['prefixItems'] = array_map(static fn(mixed $_schema): bool => true, $branch['prefixItems']);
+        }
+        if (is_array($branch['allOf'] ?? null)) {
+            $shadow['allOf'] = array_map($this->evaluationShadow(...), $branch['allOf']);
+        }
+
+        return $shadow === [] ? true : $shadow;
     }
 
     /**
@@ -2323,19 +2854,21 @@ PHP,
                 case 'oneOf':
                 case 'anyOf':
                 case 'allOf':
-                    // `anyOf` and `allOf` are kept only NESTED (`$allowScalarKeywords` is what every
-                    // recursive call sets). On a property both are already covered without the
-                    // callback: `anyOf` becomes `#[Assert\AtLeastOneOf]`, and `allOf` is either folded
-                    // into scalar attributes by `foldScalarAllOfConstraints()` or becomes a class the
-                    // `#[Assert\Valid]` cascade walks. Letting them through there would report every
-                    // violation twice. Below a container neither is true — no attribute nests and no
-                    // class is written — and until 2.15.11 `allOf` was dropped here with nothing to
-                    // replace it: `items: {allOf: [$ref M]}` emitted no callback at all and every
-                    // value under it was accepted.
+                    // Property-level anyOf uses AtLeastOneOf; object allOf uses the nested DTO
+                    // cascade. Plain allOf fragments that could not be folded retain independent
+                    // assertions here. Below a container no attribute or child DTO covers them.
                     if ($key === 'anyOf' && !$allowScalarKeywords) {
                         break;
                     }
-                    if ($key === 'allOf' && !$belowContainer) {
+                    if ($key === 'allOf' && !$belowContainer && (!is_array($value) || !$this->allOfHasPlainBranches($value))) {
+                        // The nested DTO checks these branches, but an `unevaluated*` beside them still
+                        // needs what they EVALUATED: keep that shadow, every subschema `true`.
+                        if (
+                            is_array($value)
+                            && (array_key_exists('unevaluatedProperties', $constraints) || array_key_exists('unevaluatedItems', $constraints))
+                        ) {
+                            $filtered[$key] = array_map($this->evaluationShadow(...), $value);
+                        }
                         break;
                     }
                     if (!is_array($value)) {
@@ -2407,9 +2940,15 @@ PHP,
                         $filtered[$key] = $value;
                     }
                     break;
-                case 'type':
                 case 'const':
+                    $filtered[$key] = $value;
+                    break;
                 case 'enum':
+                    if ($allowScalarKeywords || $this->schemaAllowsNull($constraints) || $this->enumRequiresJsonEquality($constraints)) {
+                        $filtered[$key] = $value;
+                    }
+                    break;
+                case 'type':
                 case 'minLength':
                 case 'maxLength':
                 case 'pattern':
@@ -2423,10 +2962,12 @@ PHP,
                 case 'multipleOf':
                 case 'minItems':
                 case 'maxItems':
-                case 'uniqueItems':
                     if ($allowScalarKeywords) {
                         $filtered[$key] = $value;
                     }
+                    break;
+                case 'uniqueItems':
+                    $filtered[$key] = $value;
                     break;
                 case 'minProperties':
                 case 'maxProperties':

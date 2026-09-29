@@ -37,8 +37,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     // so two coroutines racing on the first request for the same class compute the
     // same value and write the same value. There is no read-modify-write anywhere in
     // here, so a lost update cannot lose anything. What must NOT move into this block
-    // is anything derived from a REQUEST; that is why the decoded-body cache below is
-    // an instance field with a request-scoped key, not a static one.
+    // is anything derived from a REQUEST; decoded payloads are local to each call.
     // -----------------------------------------------------------------------
 
     /** @var array<class-string, ReflectionClass<object>> */
@@ -77,6 +76,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     contentJson: bool,
      *     formEncodedString: bool,
      *     arrayItemsNullable: bool,
+     *     nestedArrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
@@ -128,16 +128,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @var array<string, array<string, string>>
      */
     private static array $fileImportsCache = [];
-
-    // -----------------------------------------------------------------------
-    // Instance cache: last parsed request body (avoids re-parsing the same
-    // JSON content multiple times within a single deserialization call, since
-    // getBodyData() is invoked once per constructor parameter).
-    // -----------------------------------------------------------------------
-
-    private ?string $bodyDataCacheKey = null;
-    /** @var array<string, mixed> */
-    private array $bodyDataCacheValue = [];
 
     private DtoValidatorInterface $constraintValidator;
 
@@ -511,6 +501,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // source.
         /** @var array<string, list<string>>|null $queryValueLists */
         $queryValueLists = null;
+        /** @var array<string, list<string>>|null $reservedQueryValueLists */
+        $reservedQueryValueLists = null;
         // `false` is the memoized "this body cannot be recovered from" — distinct from `null`,
         // which still means "not looked at yet".
         /** @var array<string, list<string>>|false|null $formValueLists */
@@ -607,8 +599,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 && ($paramMeta['parameterStyle'] === null || $paramMeta['parameterStyle'] === 'form')
             ) {
                 if ($rawSource === 'query') {
-                    $queryValueLists ??= $this->getQueryValueLists($request);
-                    $lists = $queryValueLists;
+                    if ($paramMeta['allowReserved']) {
+                        $reservedQueryValueLists ??= $this->getQueryValueLists($request, allowReserved: true);
+                        $lists = $reservedQueryValueLists;
+                    } else {
+                        $queryValueLists ??= $this->getQueryValueLists($request);
+                        $lists = $queryValueLists;
+                    }
                 } else {
                     $formValueLists ??= $this->getFormValueLists($request) ?? false;
                     $lists = $formValueLists === false ? null : $formValueLists;
@@ -621,6 +618,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     }
                 }
             }
+
+            // What the CAST treats the value as. It is the source, except for a JSON-content parameter:
+            // once decoded that value is JSON and must be cast as strictly as the body — a query
+            // source would accept `"42"` for an integer. `$rawSource` keeps the provenance flags.
+            $castSource = $rawSource;
 
             // Every branch in here is gated on a parameter source, a serialization style or a
             // delimiter. `plainBodyOnly` means the class declares none of those, so not one of
@@ -659,7 +661,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     }
 
                     try {
-                        $rawValue = json_decode($rawValue, associative: true, flags: JSON_THROW_ON_ERROR);
+                        // Objects stay stdClass, so `{"0":1}` is still an object and `[1]` a list.
+                        $rawValue = json_decode($rawValue, flags: JSON_THROW_ON_ERROR);
+                        $castSource = 'json';
                     } catch (JsonException) {
                         $errors[] = sprintf('Parameter "%s" must be valid JSON.', $requestFieldName);
                         // Keep positional arg alignment; the collected error aborts before use.
@@ -670,15 +674,22 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
                 // OpenAPI path serialization styles (matrix/label) embed the value in the path
                 // segment itself. Decode those raw strings before normal type casting.
-                if ($rawWasProvided && is_string($rawValue)) {
-                    $rawValue = $this->normalizeSerializedParameterValue(
-                        rawValue: $rawValue,
-                        paramName: $requestFieldName,
-                        source: $rawSource,
-                        paramMeta: $paramMeta,
-                        parameterStyle: $paramMeta['parameterStyle'],
-                        parameterExplode: $paramMeta['parameterExplode'],
-                    );
+                if ($rawWasProvided && $castSource !== 'json' && is_string($rawValue)) {
+                    try {
+                        $rawValue = $this->normalizeSerializedParameterValue(
+                            rawValue: $rawValue,
+                            paramName: $requestFieldName,
+                            source: $rawSource,
+                            paramMeta: $paramMeta,
+                            parameterStyle: $paramMeta['parameterStyle'],
+                            parameterExplode: $paramMeta['parameterExplode'],
+                        );
+                    } catch (RuntimeException $e) {
+                        $errors[] = $e->getMessage();
+                        // Keep positional arg alignment; the collected error aborts before use.
+                        $args[] = null;
+                        continue;
+                    }
                 }
 
                 // OpenAPI delimited-array serialization: a single query/header/cookie string
@@ -687,6 +698,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // skip this and are cast as-is.
                 if (
                     $rawWasProvided
+                    && $castSource !== 'json'
                     && $paramMeta['arrayDelimiter'] !== null
                     && is_string($rawValue)
                 ) {
@@ -759,7 +771,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         paramName: $requestFieldName,
                         typeName: $paramMeta['typeNames'][0],
                         allowsNull: $paramMeta['allowsNull'],
-                        source: $rawSource,
+                        source: $castSource,
                         arrayItemType: $paramMeta['arrayItemType'],
                         paramPath: $requestFieldName,
                         schemaAllowsNull: $paramMeta['schemaAllowsNull'],
@@ -769,6 +781,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
+                        nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
                     );
                 } else {
                     $value = $this->castUnionValue(
@@ -776,7 +789,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         typeNames: $paramMeta['typeNames'],
                         rawValue: $rawValue,
                         rawWasProvided: $rawWasProvided,
-                        rawSource: $rawSource,
+                        rawSource: $castSource,
                         arrayItemType: $paramMeta['arrayItemType'],
                         schemaAllowsNull: $paramMeta['schemaAllowsNull'],
                         dtoReflection: $reflection,
@@ -785,6 +798,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
+                        nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
                     );
                 }
             } catch (RuntimeException $e) {
@@ -886,6 +900,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     contentJson: bool,
      *     formEncodedString: bool,
      *     arrayItemsNullable: bool,
+     *     nestedArrayItemsNullable: bool,
      *   }>,
      *   inRequestProperties: array<string, ReflectionProperty|null>,
      *   inPathProperties: array<string, ReflectionProperty|null>,
@@ -976,6 +991,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $typeNames[] = 'mixed';
             }
 
+            // A schema with no `type` admits every JSON value, null included: optionality has no say.
+            // What else it asserts — `enum`, `const`, `not` — the constraint check still runs on null.
+            if (
+                $typeNames === ['mixed']
+                && !array_key_exists('type', $fieldConstraints ?? [])
+                && !array_key_exists('nullable', $fieldConstraints ?? [])
+            ) {
+                $schemaAllowsNull = true;
+            }
+
             $arrayItemType = in_array('array', $typeNames, true)
                 ? $this->resolveArrayItemType(reflection: $reflection, paramName: $paramName)
                 : null;
@@ -983,6 +1008,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 ? $this->resolveNestedArrayItemType(reflection: $reflection, paramName: $paramName)
                 : null;
             $arrayItemsNullable = $this->resolveArrayItemsNullable($fieldConstraints);
+            // One hop further: the `?Node` of `array<array<?Node>>`. Without it the inner null was cast
+            // as an object and refused before the constraints, which allow it, were ever read.
+            $itemSchema = $fieldConstraints['items'] ?? $fieldConstraints['additionalProperties'] ?? null;
+            $nestedArrayItemsNullable = is_array($itemSchema) && $this->resolveArrayItemsNullable($itemSchema);
 
             // Pre-compute temporal format for DateTimeImmutable fields.
             $temporalFormat = in_array(DateTimeImmutable::class, $typeNames, true)
@@ -1063,6 +1092,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'contentJson' => $contentJson,
                 'formEncodedString' => $formEncodedString,
                 'arrayItemsNullable' => $arrayItemsNullable,
+                'nestedArrayItemsNullable' => $nestedArrayItemsNullable,
             ];
         }
 
@@ -1278,6 +1308,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $parameterStyle,
         ?bool $parameterExplode,
     ): mixed {
+        // An OBJECT in `simple` or non-exploded `form` style is one comma list: `role,admin,name,Rex`
+        // alternates key and value, exploded `simple` spells pairs `role=admin,name=Rex`. Left to the
+        // array delimiter below, a map became the list of its tokens and a DTO did not hydrate.
+        // Exploded `form` spreads the keys over the query itself, so there is no value to parse here.
+        if (
+            ($parameterStyle === 'simple' || ($parameterStyle === 'form' && $parameterExplode !== true))
+            && $this->parameterExpectsAssociativeValue($paramMeta)
+        ) {
+            return $this->parseDelimitedObjectValue(rawValue: $rawValue, keyValuePairs: $parameterStyle === 'simple' && $parameterExplode === true)
+                ?? throw new RuntimeException($this->finalizeParamMessage(
+                    "param \"{$paramName}\" expects an object serialized as comma-separated key/value pairs",
+                ));
+        }
+
         if ($source !== 'path' || !is_string($parameterStyle)) {
             return $rawValue;
         }
@@ -1306,6 +1350,45 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return $this->parseSerializedPathListValue($tokens, $paramName);
+    }
+
+    /**
+     * The comma spelling of an object; null when the string cannot be one — an odd token count, a
+     * pair without `=`, an empty key.
+     *
+     * @return array<string, string>|null
+     */
+    private function parseDelimitedObjectValue(string $rawValue, bool $keyValuePairs): ?array
+    {
+        if ($rawValue === '') {
+            return [];
+        }
+
+        $tokens = explode(',', $rawValue);
+        $object = [];
+        if ($keyValuePairs) {
+            foreach ($tokens as $token) {
+                $pair = explode('=', $token, 2);
+                if (count($pair) !== 2 || $pair[0] === '') {
+                    return null;
+                }
+                $object[$pair[0]] = $pair[1];
+            }
+
+            return $object;
+        }
+
+        if (count($tokens) % 2 !== 0) {
+            return null;
+        }
+        for ($i = 0, $count = count($tokens); $i < $count; $i += 2) {
+            if ($tokens[$i] === '') {
+                return null;
+            }
+            $object[$tokens[$i]] = $tokens[$i + 1];
+        }
+
+        return $object;
     }
 
     /**
@@ -1705,6 +1788,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $arrayItemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
+        bool $nestedArrayItemsNullable = false,
     ): mixed {
         // A missing value here always belongs to a required parameter: optional
         // missing params are short-circuited in deserialize() before this call,
@@ -1742,6 +1826,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     arrayItemsNullable: $arrayItemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
+                    nestedArrayItemsNullable: $nestedArrayItemsNullable,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -1767,16 +1852,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $contentType = (string)$request->headers->get('Content-Type', '');
-        $cacheKey = $contentType . "\n" . $content;
-
-        // Fast path for repeated reads of the same request body.
-        if ($cacheKey === $this->bodyDataCacheKey) {
-            return $this->bodyDataCacheValue;
-        }
-
         if (!$this->isJsonMediaType($contentType)) {
-            $this->bodyDataCacheKey = $cacheKey;
-            $this->bodyDataCacheValue = [];
             return [];
         }
 
@@ -1794,12 +1870,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        $result = $this->stdClassToArray($decoded);
-
-        $this->bodyDataCacheKey = $cacheKey;
-        $this->bodyDataCacheValue = $result;
-
-        return $result;
+        return $this->stdClassToArray($decoded);
     }
 
     /**
@@ -1810,15 +1881,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * QUERY_STRING for the one caller that needs them (see the deserialize() loop).
      *
      * Bracketed keys are skipped: `ids[]=1&ids[]=2` is PHP's own spelling and `parse_str()` has
-     * already built that array, so collecting it again would double it. Decoding matches
-     * `$request->query`, where `+` is a space — deliberately unlike {@see getRawQueryData()}, which
-     * preserves `+` because `allowReserved` needs the untouched view.
+     * already built that array, so collecting it again would double it. Decoding normally matches
+     * `$request->query`; allowReserved instead preserves literal plus signs, like getRawQueryData().
      *
      * @return array<string, list<string>>
      */
-    private function getQueryValueLists(Request $request): array
+    private function getQueryValueLists(Request $request, bool $allowReserved = false): array
     {
-        return self::collectRepeatedValues((string)$request->server->get('QUERY_STRING', ''));
+        return self::collectRepeatedValues((string)$request->server->get('QUERY_STRING', ''), $allowReserved);
     }
 
     /**
@@ -1853,14 +1923,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /**
      * Every occurrence of each bare key in one `a=1&b=2` string, in order.
      *
-     * One parser, two callers — the query string and the form body are the same text in the same
-     * encoding, and the four decisions it makes (skip empty pairs, skip bracketed keys, treat a
-     * valueless key as empty, decode `+` as a space) have to agree between them. A second copy is
-     * how the source waterfall above ended up with a half nothing executed.
+     * Query and form callers share the same pair handling. Only allowReserved query parameters
+     * preserve literal plus signs; ordinary query parameters and urlencoded bodies decode spaces.
      *
      * @return array<string, list<string>>
      */
-    private static function collectRepeatedValues(string $encoded): array
+    private static function collectRepeatedValues(string $encoded, bool $allowReserved = false): array
     {
         if ($encoded === '') {
             return [];
@@ -1878,7 +1946,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 continue;
             }
 
-            $lists[urldecode($key)][] = $eqPos === false ? '' : urldecode(substr($pair, $eqPos + 1));
+            $value = $eqPos === false ? '' : substr($pair, $eqPos + 1);
+            $decodedKey = $allowReserved ? rawurldecode($key) : urldecode($key);
+            $lists[$decodedKey][] = $allowReserved ? rawurldecode($value) : urldecode($value);
         }
 
         return $lists;
@@ -2238,6 +2308,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $arrayItemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
+        bool $nestedArrayItemsNullable = false,
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -2259,9 +2330,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        // Free-form value (schema-less property → `mixed`): accept any non-null value as-is.
+        // Free-form value (schema-less property → `mixed`): accept any non-null value as-is. A JSON
+        // object stays stdClass: as an array `{}` became `[]` and `{"0":"x"}` a list on the way back.
         if ($typeName === 'mixed') {
-            return $value instanceof stdClass ? $this->stdClassToArray($value) : $value;
+            return $value;
         }
 
         // JSON should stay strict: no implicit scalar conversions.
@@ -2367,6 +2439,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     itemsNullable: $arrayItemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
+                    nestedArrayItemsNullable: $nestedArrayItemsNullable,
                 );
             }
         }
@@ -2449,6 +2522,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 itemsNullable: $arrayItemsNullable,
                 arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 nestedArrayItemType: $nestedArrayItemType,
+                nestedArrayItemsNullable: $nestedArrayItemsNullable,
             );
         }
 
@@ -2539,6 +2613,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $itemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
+        bool $nestedArrayItemsNullable = false,
     ): array {
         $normalized = [];
         $errors = [];
@@ -2553,6 +2628,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     itemsNullable: $itemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
+                    nestedArrayItemsNullable: $nestedArrayItemsNullable,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -2574,6 +2650,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $itemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
+        bool $nestedArrayItemsNullable = false,
     ): mixed {
         // A null element is accepted only when the items schema declares it nullable
         // (items: {nullable: true} or type containing null); otherwise it falls through
@@ -2602,6 +2679,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // `mixed` there, which stays true.
                 arrayItemType: $nestedArrayItemType,
                 paramPath: $itemPath,
+                arrayItemsNullable: $nestedArrayItemsNullable,
                 // An `array` item is the MAP form — a list of maps is `array<array<string, V>>` — and
                 // JSON decodes a map to stdClass, so the item must accept one and must not be a JSON
                 // array. A `list` item is the opposite: `array<array<int>>` items arrive as JSON
@@ -2640,6 +2718,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($kind === 'dto') {
             if ($itemValue instanceof stdClass) {
                 $itemValue = $this->stdClassToArray($itemValue);
+            } elseif (is_array($itemValue) && $itemValue !== [] && array_is_list($itemValue)) {
+                // The rule the single nested DTO already follows: a JSON array is not an object. Items
+                // and `deserializeValue()` took `[1,2]` as an empty DTO and dropped the numbers. `[]`
+                // stays allowed — it is also how `{}` arrives from a pre-decoded body.
+                throw new RuntimeException(
+                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: 'array'),
+                );
             }
             if (!is_array($itemValue)) {
                 throw new RuntimeException(
@@ -2809,7 +2894,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             // OpenAPI 3.1: type: [string, null]
             $typeConstraint = $fieldConstraints['type'] ?? null;
-            if (is_array($typeConstraint) && in_array('null', $typeConstraint, true)) {
+            if ($typeConstraint === 'null' || (is_array($typeConstraint) && in_array('null', $typeConstraint, true))) {
                 return true;
             }
         }
@@ -2847,7 +2932,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $type = $itemSchema['type'] ?? null;
 
-        return is_array($type) && in_array('null', $type, true);
+        return $type === 'null' || (is_array($type) && in_array('null', $type, true));
     }
 
     /**
@@ -3319,6 +3404,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
+                        nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
                     )
                     : $this->castUnionValue(
                         paramName: $name,
@@ -3334,6 +3420,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
+                        nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
                     );
             } catch (RuntimeException $e) {
                 foreach (explode("\n", $e->getMessage()) as $message) {
@@ -3412,10 +3499,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /**
      * Whether a body key is claimed by one of the object's `patternProperties`.
      *
-     * A deliberate twin of `DtoValidator::keyMatchesPattern()`: the two services are independent by
-     * design — generated runtime code uses either without the other — and this is eight lines rather
-     * than a shared dependency between them. An invalid pattern in the document matches nothing
-     * instead of raising, which is what the twin does too.
+     * Uses the validator's delimiter handling so an escaped delimiter means the same thing during
+     * hydration and validation. An invalid pattern matches nothing instead of raising.
      *
      * The key is typed `string|int` because that is what a decoded body hands back: a JSON key of
      * digits (`{"0":…}`) becomes an int the moment PHP holds the array, whatever the PHPDoc says.
@@ -3427,7 +3512,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $subject = (string)$key;
 
         foreach ($patterns as $pattern) {
-            $regex = '#' . str_replace('#', '\#', $pattern) . '#u';
+            $regex = DtoValidator::delimitPattern($pattern);
             set_error_handler(static fn(): bool => true);
             try {
                 $matched = preg_match($regex, $subject) === 1;

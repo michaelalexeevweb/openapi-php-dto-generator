@@ -13,13 +13,13 @@ use {{ import }};
 {% if (sourceEndpoint is defined and sourceEndpoint is not null) or (sourceRelated is defined and sourceRelated is not null) or (sourceSpecLink is defined and sourceSpecLink is not null) %}
  *
 {% if sourceEndpoint is defined and sourceEndpoint is not null %}
- * Route: {{ sourceEndpoint }}
+ * Route: {{ sourceEndpoint|php_doc }}
 {% endif %}
 {% if sourceRelated is defined and sourceRelated is not null %}
- * From: {{ sourceRelated }}
+ * From: {{ sourceRelated|php_doc }}
 {% endif %}
 {% if sourceSpecLink is defined and sourceSpecLink is not null %}
- * Spec: @see {{ sourceSpecLink }}
+ * Spec: @see {{ sourceSpecLink|php_doc }}
 {% endif %}
 {% endif %}
  */
@@ -28,7 +28,7 @@ enum {{ enumName }}: {{ backingType }}
 {% for case in cases %}
 {% if case.description is not null %}
     /**
-     * {{ case.description }}
+     * {{ case.description|php_doc }}
      */
 {% endif %}
     case {{ case.name }} = {{ case.value }};

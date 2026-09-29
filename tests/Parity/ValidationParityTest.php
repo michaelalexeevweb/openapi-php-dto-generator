@@ -9,6 +9,7 @@ use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
+use Illuminate\Validation\ValidationException;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
@@ -425,6 +426,493 @@ final class ValidationParityTest extends TestCase
         }
 
         return $provided;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('schemaAssertionCases')]
+    public function testSchemaAssertionsAcrossModes(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, self::probeSpec($schema), 'schema-assertion-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function schemaAssertionCases(): iterable
+    {
+        $cases = [
+            'nullable const null' => [['type' => ['string', 'null'], 'const' => null], '{"f":null}', '{"f":"red"}'],
+            'nullable enum includes null' => [['type' => ['string', 'null'], 'enum' => ['red', null]], '{"f":null}', '{"f":"blue"}'],
+            'nullable not const' => [['type' => ['string', 'null'], 'not' => ['const' => 'red']], '{"f":null}', '{"f":"red"}'],
+            'nullable const' => [['type' => ['string', 'null'], 'const' => 'red'], '{"f":"red"}', '{"f":null}'],
+            'nullable enum' => [['type' => ['string', 'null'], 'enum' => ['red', 'blue']], '{"f":"red"}', '{"f":null}'],
+            'nullable not' => [['type' => ['string', 'null'], 'not' => ['type' => 'null']], '{"f":"red"}', '{"f":null}'],
+            'nullable conditional' => [
+                ['type' => ['string', 'null'], 'if' => ['type' => 'null'], 'then' => ['const' => 'red']],
+                '{"f":"red"}', '{"f":null}',
+            ],
+            'nullable ignores string length' => [['type' => ['string', 'null'], 'minLength' => 3], '{"f":null}', '{"f":"r"}'],
+            'legacy nullable const' => [['type' => 'string', 'nullable' => true, 'const' => 'red'], '{"f":"red"}', '{"f":null}'],
+            'legacy nullable ignores length' => [['type' => 'string', 'nullable' => true, 'minLength' => 3], '{"f":null}', '{"f":"r"}'],
+            'allOf conditional scope' => [
+                ['type' => 'string', 'allOf' => [['if' => ['const' => 'red']], ['then' => ['const' => 'green']], ['minLength' => 3]]],
+                '{"f":"red"}', '{"f":"r"}',
+            ],
+            'allOf parent bound' => [['type' => 'integer', 'minimum' => 1, 'allOf' => [['minimum' => 10]]], '{"f":11}', '{"f":5}'],
+            'allOf preserves nullable scope' => [['nullable' => true, 'allOf' => [['type' => 'string'], ['minLength' => 1]]], '{"f":"red"}', '{"f":null}'],
+        ];
+        foreach ([false, true] as $reverse) {
+            $bounds = [['type' => 'integer', 'minimum' => 10], ['minimum' => 1]];
+            $enums = [['type' => 'string', 'enum' => ['red']], ['enum' => ['red', 'blue']]];
+            $cases['allOf enums ' . (int)$reverse] = [['allOf' => $reverse ? array_reverse($enums) : $enums], '{"f":"red"}', '{"f":"blue"}'];
+            $patterns = [['type' => 'string', 'pattern' => '^a'], ['pattern' => 'z$']];
+            $cases['allOf bounds ' . (int)$reverse] = [['allOf' => $reverse ? array_reverse($bounds) : $bounds], '{"f":11}', '{"f":5}'];
+            $cases['allOf patterns ' . (int)$reverse] = [['allOf' => $reverse ? array_reverse($patterns) : $patterns], '{"f":"az"}', '{"f":"ab"}'];
+        }
+        // A mixed outer list keeps hydration independent of the nested assertion under test.
+        foreach ([
+            'nulls count toward maximum' => [['type' => 'array', 'maxItems' => 1], '[[null]]', '[[null,null]]'],
+            'nulls count toward minimum' => [['type' => 'array', 'minItems' => 2], '[[null,1]]', '[[null]]'],
+            'nulls participate in uniqueness' => [['type' => 'array', 'uniqueItems' => true], '[[null,1]]', '[[null,null]]'],
+            'null object properties count' => [['type' => 'object', 'minProperties' => 1], '[{"x":null}]', '[{}]'],
+        ] as $key => [$inner, $valid, $invalid]) {
+            $cases[$key] = [['type' => 'array', 'items' => [], 'contains' => $inner], '{"f":' . $valid . '}', '{"f":' . $invalid . '}'];
+        }
+        foreach ($cases as $key => [$schema, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $schema, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('numericAndEqualityCases')]
+    public function testNumericAndEqualityAssertions(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, self::probeSpec($schema), 'numeric-equality-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function numericAndEqualityCases(): iterable
+    {
+        $cases = [
+            'large unique numbers' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[9007199254740993,9007199254740992.0]', '[9007199254740992,9007199254740992.0]'],
+            'int64 unique boundary' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[9223372036854775807,9223372036854775808.0]', '[-9223372036854775808,-9223372036854775808.0]'],
+            'nested inclusive minimum' => [['type' => 'array', 'items' => [], 'contains' => ['type' => 'integer', 'minimum' => 10, 'exclusiveMinimum' => 1]], '[10]', '[5]'],
+            'nested inclusive maximum' => [['type' => 'array', 'items' => [], 'contains' => ['type' => 'integer', 'maximum' => 1, 'exclusiveMaximum' => 10]], '[1]', '[5]'],
+            'precise fractional minimum' => [['type' => 'number', 'minimum' => 0.1234567890123456], '0.1234567890123457', '0.1234567890123455'],
+            'number enum' => [['type' => 'number', 'enum' => [1]], '1.0', '2'],
+            'number const' => [['const' => 1], '1.0', '"1"'],
+            'boolean const' => [['const' => false], 'false', '0'],
+            'array const' => [['type' => 'array', 'items' => ['type' => 'integer'], 'const' => [1, 2]], '[1,2]', '[2,1]'],
+            'object const' => [['type' => 'object', 'const' => ['a' => 1, 'b' => 2]], '{"b":2,"a":1.0}', '{"a":1,"b":3}'],
+            'mixed enum' => [['enum' => [1, false]], '1.0', '"1"'],
+            'structural enum' => [['enum' => [['a' => 1, 'b' => 2]]], '{"b":2,"a":1.0}', '{"a":1,"b":3}'],
+            'unique numbers' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[1,"1",true,null]', '[1,1.0]'],
+            'unique negative zero' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[0,false]', '[0,-0.0]'],
+            'unique object keys' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[{"a":1},{"a":2}]', '[{"a":1,"b":2},{"b":2,"a":1.0}]'],
+            'unique list order' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[[1,2],[2,1]]', '[[1,2],[1.0,2]]'],
+            'inclusive minimum survives' => [['type' => 'integer', 'minimum' => 10, 'exclusiveMinimum' => 1], '10', '5'],
+            'inclusive maximum survives' => [['type' => 'integer', 'maximum' => 1, 'exclusiveMaximum' => 10], '1', '5'],
+            'boolean exclusive minimum' => [['type' => 'integer', 'minimum' => 10, 'exclusiveMinimum' => true], '11', '10'],
+            'boolean exclusive maximum' => [['type' => 'integer', 'maximum' => 10, 'exclusiveMaximum' => true], '9', '10'],
+            'int32 upper bound' => [['type' => 'integer', 'format' => 'int32', 'minimum' => 0], '2147483647', '2147483648'],
+            'int32 lower bound' => [['type' => 'integer', 'format' => 'int32', 'maximum' => 0], '-2147483648', '-2147483649'],
+            'uint32 upper bound' => [['type' => 'integer', 'format' => 'uint32', 'minimum' => 0], '4294967295', '4294967296'],
+            'uint32 lower bound' => [['type' => 'integer', 'format' => 'uint32', 'maximum' => 100], '0', '-1'],
+            'tiny multiple' => [['type' => 'number', 'multipleOf' => 0.00000000001], '2e-11', '2.5e-11'],
+            'tiny minimum' => [['type' => 'number', 'minimum' => 0.00000000002], '3e-11', '1e-11'],
+            'tiny maximum' => [['type' => 'number', 'maximum' => 0.00000000002], '1e-11', '3e-11'],
+            // Fractions divide in decimal, not by a float ratio within 1e-9.
+            'tiny value multipleOf' => [['type' => 'number', 'multipleOf' => 0.1], '0.3', '1e-12'],
+            'decimal multipleOf' => [['type' => 'number', 'multipleOf' => 0.05], '1.35', '1.351'],
+            'nested decimal multipleOf' => [['type' => 'array', 'items' => [], 'contains' => ['type' => 'number', 'multipleOf' => 0.1]], '[0.7]', '[1e-12]'],
+            // Two integers divide exactly; a float ratio cannot tell 2^53 + 1 from its neighbours.
+            'integer multipleOf' => [['type' => 'integer', 'multipleOf' => 3], '9007199254740993', '9007199254740994'],
+            'nested integer multipleOf' => [['type' => 'array', 'items' => [], 'contains' => ['type' => 'integer', 'multipleOf' => 3]], '[4611686018427387906]', '[4611686018427387905]'],
+            // Hydrated dates have no public state: every date fingerprinted as `{}` and was a duplicate.
+            'unique dates' => [['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date'], 'uniqueItems' => true], '["2020-01-01","2020-01-02"]', '["2020-01-01","2020-01-01"]'],
+            'unique date-times' => [['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time'], 'uniqueItems' => true], '["2020-01-01T00:00:00+00:00","2021-01-01T00:00:00+00:00"]', '["2020-01-01T00:00:00+00:00","2020-01-01T00:00:00+00:00"]'],
+            'unique objects with dates' => [['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['d' => ['type' => 'string', 'format' => 'date-time']]], 'uniqueItems' => true], '[{"d":"2020-01-01T00:00:00+00:00"},{"d":"2021-01-01T00:00:00+00:00"}]', '[{"d":"2020-01-01T00:00:00+00:00"},{"d":"2020-01-01T00:00:00+00:00"}]'],
+        ];
+        foreach ([9007199254740992, PHP_INT_MAX - 1] as $bound) {
+            foreach (['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum'] as $keyword) {
+                $above = str_contains($keyword, 'Minimum') || $keyword === 'minimum';
+                $exclusive = str_starts_with($keyword, 'exclusive');
+                $valid = $exclusive ? $bound + ($above ? 1 : -1) : $bound;
+                $invalid = $exclusive ? $bound : $bound + ($above ? -1 : 1);
+                $inner = ['type' => 'integer', $keyword => $bound];
+                $cases[$keyword . ' ' . $bound] = [
+                    ['type' => 'array', 'items' => [], 'contains' => $inner],
+                    '[' . $valid . ']', '[' . $invalid . ']',
+                ];
+            }
+        }
+        foreach ($cases as $key => [$schema, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $schema, '{"f":' . $valid . '}', '{"f":' . $invalid . '}'];
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('patternAndNullCases')]
+    public function testPatternAndNullAssertions(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, self::probeSpec($schema), 'pattern-null-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function patternAndNullCases(): iterable
+    {
+        $cases = [
+            'empty pattern' => [['type' => 'string', 'pattern' => '^[A-Z]+$'], 'A', ''],
+            'empty allowed' => [['type' => 'string', 'pattern' => '^A*$'], '', 'B'],
+            'slash' => [['type' => 'string', 'pattern' => '^a/b$'], 'a/b', 'ab'],
+            'escaped slash' => [['type' => 'string', 'pattern' => '^a\/b$'], 'a/b', 'ab'],
+            'hash' => [['type' => 'string', 'pattern' => '^a#b$'], 'a#b', 'ab'],
+            'escaped hash' => [['type' => 'string', 'pattern' => '^a\#b$'], 'a#b', 'ab'],
+            'backslash hash' => [['type' => 'string', 'pattern' => '^a\\\#b$'], 'a\#b', 'a#b'],
+            'delimiter class' => [['type' => 'string', 'pattern' => '^[#/]+$'], '#/', 'a'],
+            'unicode' => [['type' => 'string', 'pattern' => '^.$'], 'ж', 'жж'],
+            'emoji' => [['type' => 'string', 'pattern' => '^.$'], '🐈', '🐈🐈'],
+            // ECMA-262 `\d` `\w` `\b` stay ASCII; PHP's `u` modifier alone made them Unicode.
+            // ECMA-262 `\u` escapes: PCRE has none, `\x{…}` is its spelling.
+            'unicode escape' => [['type' => 'string', 'pattern' => '^\u0041\u{1F408}$'], 'A🐈', 'B🐈'],
+            'unicode escape class' => [['type' => 'string', 'pattern' => '^[\u0430-\u044F]+$'], 'кот', 'cat'],
+            'ascii digit' => [['type' => 'string', 'pattern' => '^\d{2}$'], '42', '٤٢'],
+            'ascii word' => [['type' => 'string', 'pattern' => '^\w+$'], 'cat_1', 'кот'],
+            'ascii word class' => [['type' => 'string', 'pattern' => '^[\w-]+$'], 'a-b', 'а-б'],
+            'ascii non-digit' => [['type' => 'string', 'pattern' => '^\D$'], '٣', '3'],
+            'ascii boundary' => [['type' => 'string', 'pattern' => '\bcat'], 'жcat', 'acat'],
+            'null type' => [['type' => 'null'], null, 'red'],
+            'null type const' => [['type' => 'null', 'const' => null], null, 'red'],
+            'null array type' => [['type' => ['null']], null, 'red'],
+            'null items' => [['type' => 'array', 'items' => ['type' => 'null']], [null], ['red']],
+            'null map' => [['type' => 'object', 'additionalProperties' => ['type' => 'null']], ['a' => null], ['a' => 'red']],
+        ];
+        foreach (['escaped slash', 'hash', 'escaped hash', 'backslash hash', 'delimiter class', 'unicode', 'emoji', 'ascii digit', 'ascii word class', 'null type', 'null array type'] as $key) {
+            [$inner, $valid, $invalid] = $cases[$key];
+            $cases['contains ' . $key] = [['type' => 'array', 'items' => [], 'contains' => $inner], [$valid], [$invalid]];
+        }
+        $cases['unicode property pattern'] = [['type' => 'object', 'patternProperties' => ['^.$' => ['type' => 'integer']], 'additionalProperties' => false], ['ж' => 1], ['жж' => 1]];
+        $cases['unicode escape property pattern'] = [['type' => 'object', 'patternProperties' => ['^\u0061$' => ['type' => 'integer']], 'additionalProperties' => false], ['a' => 1], ['b' => 1]];
+        $cases['ascii property pattern'] = [['type' => 'object', 'patternProperties' => ['^\w+$' => ['type' => 'integer']], 'additionalProperties' => false], ['cat' => 1], ['кот' => 1]];
+        $cases['escaped property pattern'] = [['type' => 'object', 'patternProperties' => ['^a\#b$' => ['type' => 'integer']], 'additionalProperties' => false], ['a#b' => 1], ['ab' => 1]];
+        $cases['regex format delimiter'] = [['type' => 'string', 'format' => 'regex'], '^a\#b$', '('];
+        foreach (['email' => 'cat@example.com', 'idn-email' => 'cat@example.com', 'uuid' => '123e4567-e89b-42d3-a456-426614174000', 'hostname' => 'example.com', 'ipv4' => '127.0.0.1', 'ipv6' => '::1'] as $format => $valid) {
+            $cases['empty ' . $format] = [['type' => 'string', 'format' => $format], $valid, ''];
+            $cases['nullable ' . $format] = [['type' => ['string', 'null'], 'format' => $format], null, ''];
+        }
+        $cases['nullable pattern'] = [['type' => ['string', 'null'], 'pattern' => '^A+$'], null, ''];
+        foreach ($cases as $key => [$schema, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $schema, json_encode(['f' => $valid], JSON_THROW_ON_ERROR), json_encode(['f' => $invalid], JSON_THROW_ON_ERROR)];
+            }
+        }
+    }
+
+    public function testRuntimeRootPatternPreservesEscapedDelimiter(): void
+    {
+        $spec = self::probeSpec(['type' => 'string']);
+        $spec['components']['schemas']['Probe']['patternProperties'] = ['^a\#b$' => ['type' => 'integer']];
+        $spec['components']['schemas']['Probe']['additionalProperties'] = false;
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->runtimeVerdict($spec, 'root-escaped-pattern', '{"f":"ok","a#b":1}', '{"f":"ok","other":1}'),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('emptySchemaCases')]
+    public function testEmptySchemasKeepTheirMeaning(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        mixed $accepted,
+        mixed $rejected,
+        bool $hasAcceptedValue,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => $hasAcceptedValue, 'invalid' => false],
+            actual: $this->verdict(
+                mode: $mode,
+                spec: self::probeSpec($schema),
+                key: 'empty-schema-' . $key,
+                validJson: json_encode(['f' => $accepted], JSON_THROW_ON_ERROR),
+                invalidJson: json_encode(['f' => $rejected], JSON_THROW_ON_ERROR),
+            ),
+        );
+    }
+
+    public static function emptySchemaCases(): iterable
+    {
+        $cases = [
+            'not empty' => [['type' => 'string', 'not' => []], 'red', 'blue', false],
+            'not annotated' => [['type' => 'string', 'not' => ['title' => 'Anything']], 'red', 'blue', false],
+            'not false control' => [['type' => 'string', 'minLength' => 2, 'not' => false], 'red', 'x', true],
+            'if empty' => [['type' => 'string', 'if' => [], 'then' => ['minLength' => 3]], 'red', 'x', true],
+            'if annotated' => [['type' => 'string', 'if' => ['description' => 'Anything'], 'then' => ['minLength' => 3]], 'red', 'x', true],
+            'if empty ignores else' => [['type' => 'string', 'if' => [], 'then' => ['minLength' => 3], 'else' => false], 'red', 'x', true],
+            'then empty' => [['type' => 'string', 'if' => ['const' => 'red'], 'then' => [], 'else' => false], 'red', 'blue', true],
+            'else empty' => [['type' => 'string', 'if' => ['const' => 'red'], 'then' => false, 'else' => []], 'blue', 'red', true],
+            'items empty evaluated' => [['type' => 'array', 'items' => [], 'unevaluatedItems' => false, 'maxItems' => 1], [1], [1, 2], true],
+            'items annotated evaluated' => [['type' => 'array', 'items' => ['title' => 'Anything'], 'unevaluatedItems' => false, 'maxItems' => 1], [1], [1, 2], true],
+            'contains empty minimum' => [['type' => 'array', 'contains' => []], [1], [], true],
+            'contains empty maximum' => [['type' => 'array', 'contains' => [], 'maxContains' => 1], [1], [1, 2], true],
+            'contains empty evaluates' => [['type' => 'array', 'contains' => [], 'unevaluatedItems' => false], [1], [], true],
+            'prefix empty' => [['type' => 'array', 'prefixItems' => [[]], 'items' => false], [1], [1, 2], true],
+            'oneOf empty' => [['oneOf' => [[], ['type' => 'string', 'minLength' => 3]]], 'x', 'red', true],
+            'anyOf empty' => [['type' => 'string', 'maxLength' => 4, 'anyOf' => [[], ['minLength' => 3]]], 'x', 'lengthy', true],
+            'allOf empty control' => [['type' => 'string', 'allOf' => [[], ['minLength' => 3]]], 'red', 'x', true],
+            'properties empty evaluated' => [['type' => 'array', 'contains' => ['type' => 'object', 'properties' => ['a' => []], 'additionalProperties' => false]], [['a' => 1]], [['b' => 1]], true],
+            'properties true evaluated' => [['type' => 'array', 'contains' => ['type' => 'object', 'properties' => ['a' => true], 'additionalProperties' => false]], [['a' => 1]], [['b' => 1]], true],
+            'patternProperties empty evaluated' => [['type' => 'object', 'patternProperties' => ['^a$' => []], 'additionalProperties' => false], ['a' => 1], ['b' => 1], true],
+            'patternProperties true evaluated' => [['type' => 'object', 'patternProperties' => ['^a$' => true], 'additionalProperties' => false], ['a' => 1], ['b' => 1], true],
+            'content object' => [['type' => 'string', 'contentMediaType' => 'application/json', 'contentSchema' => ['type' => 'object']], '{}', '[]', true],
+            'content array' => [['type' => 'string', 'contentMediaType' => 'application/json', 'contentSchema' => ['type' => 'array']], '[]', '{}', true],
+            'content numeric keys' => [['type' => 'string', 'contentMediaType' => 'application/json', 'contentSchema' => ['type' => 'object', 'properties' => ['a' => ['type' => 'array']]]], '{"a":[1]}', '{"a":{"0":1}}', true],
+            'content object props' => [['type' => 'string', 'contentMediaType' => 'application/json', 'contentSchema' => ['type' => 'object', 'required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]]], '{"a":1}', '{"a":"x"}', true],
+            // An applicator's own `unevaluated*` is an annotation the location above must read.
+            'nested unevaluatedItems' => [['type' => 'array', 'allOf' => [['unevaluatedItems' => ['type' => 'string']]], 'unevaluatedItems' => false], ['x'], [1], true],
+            'branch items evaluated' => [['type' => 'array', 'allOf' => [['items' => ['type' => 'integer']]], 'unevaluatedItems' => false], [1, 2], ['x'], true],
+            'oneOf branch prefix' => [['type' => 'array', 'oneOf' => [['prefixItems' => [['type' => 'integer']]], ['prefixItems' => [['type' => 'string']]]], 'unevaluatedItems' => false], [1], [1, 2], true],
+            'nested unevaluatedProperties' => [['type' => 'array', 'contains' => ['type' => 'object', 'allOf' => [['unevaluatedProperties' => ['type' => 'integer']]], 'unevaluatedProperties' => false]], [['a' => 1]], [['a' => 'x']], true],
+            'branch properties evaluated' => [['type' => 'array', 'contains' => ['type' => 'object', 'allOf' => [['properties' => ['a' => ['type' => 'integer']]]], 'unevaluatedProperties' => false]], [['a' => 1]], [['a' => 1, 'b' => 2]], true],
+            'if arm properties' => [['type' => 'array', 'contains' => ['type' => 'object', 'if' => ['required' => ['a']], 'then' => ['properties' => ['b' => ['type' => 'integer']]], 'properties' => ['a' => ['type' => 'integer']], 'unevaluatedProperties' => false]], [['a' => 1, 'b' => 2]], [['b' => 2]], true],
+            'additional empty evaluated' => [['type' => 'object', 'additionalProperties' => [], 'unevaluatedProperties' => false, 'maxProperties' => 1], ['a' => 1], ['a' => 1, 'b' => 2], true],
+        ];
+        foreach ($cases as $key => [$schema, $valid, $invalid, $hasValid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . '/' . $mode->value => [$mode, $key, $schema, $valid, $invalid, $hasValid];
+            }
+        }
+    }
+
+    #[DataProvider('interpreterPropertyNames')]
+    public function testLaravelInterpreterSeparatesObjectAndPropertySchemas(GenerationMode $mode, string $name, bool $withRoot): void
+    {
+        $spec = self::probeSpec(['type' => 'string']);
+        $root = [
+            'type' => 'object',
+            'required' => [$name],
+            'properties' => [
+                $name => ['type' => 'string', 'not' => ['const' => 'bad']],
+                'marker' => ['type' => 'integer'],
+            ],
+        ];
+        if ($withRoot) {
+            $root['not'] = ['required' => ['marker'], 'properties' => ['marker' => ['const' => 0]]];
+        }
+        $spec['components']['schemas']['Probe'] = $root;
+        $valid = json_encode([$name => 'good', 'marker' => 1], JSON_THROW_ON_ERROR);
+        $invalid = json_encode([$name => 'bad', 'marker' => 1], JSON_THROW_ON_ERROR);
+        $key = 'interpreter-name-' . $name . '-' . (int)$withRoot;
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, $key, $valid, $invalid),
+        );
+        if ($withRoot) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $spec, $key . '-root', $valid, json_encode([$name => 'good', 'marker' => 0], JSON_THROW_ON_ERROR)),
+            );
+        }
+    }
+
+    public static function interpreterPropertyNames(): iterable
+    {
+        foreach ([GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+            foreach (['x-openapi-object', 'properties', 'fields', 'object', 'not'] as $name) {
+                foreach ([false, true] as $root) {
+                    yield $mode->value . '/' . $name . '/' . (int)$root => [$mode, $name, $root];
+                }
+            }
+        }
+    }
+
+    public function testNullOnlyPresenceAcrossModes(): void
+    {
+        foreach (GenerationMode::cases() as $mode) {
+            $required = self::probeSpec(['type' => 'null']);
+            // Symfony's default serializer supplies null for omitted nullable constructor arguments.
+            // Pin that separate presence limitation; null type/value validation remains strict.
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => $mode === GenerationMode::Symfony],
+                actual: $this->verdict($mode, $required, 'required-null-presence', '{"f":null}', '{}'),
+                message: $mode->value,
+            );
+            $optional = $required;
+            $optional['components']['schemas']['Probe']['required'] = [];
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $optional, 'optional-null-presence', '{}', '{"f":"red"}'),
+                message: $mode->value,
+            );
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $optional, 'optional-null-value', '{"f":null}', '{"f":false}'),
+                message: $mode->value,
+            );
+        }
+    }
+
+    /**
+     * A nullable `$ref` enum: the member check is `Rule::enum()`, the only one it has. Dropping that rule
+     * for nullable properties still refused `"x"` — at hydration, as a `CannotCastEnum` 500 instead of a
+     * 422 — so the verdict alone cannot see it; the exception class is what is asserted.
+     */
+    public function testLaravelDataRejectsANullableRefEnumMemberInValidation(): void
+    {
+        $spec = self::probeSpec(['oneOf' => [['$ref' => '#/components/schemas/Shade'], ['type' => 'null']]]);
+        $spec['components']['schemas']['Shade'] = ['type' => 'string', 'enum' => ['red', 'blue']];
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, 'nullable-ref-enum'), 'laravel-data');
+        LaravelDataContainer::boot();
+
+        $outcome = static fn(string $json): string => (string)LaravelDataContainer::withRequest(
+            $json,
+            static function (LaravelRequest $request) use ($fqcn): string {
+                try {
+                    $fqcn::from($request);
+                } catch (Throwable $exception) {
+                    return $exception::class;
+                }
+
+                return 'accepted';
+            },
+        );
+
+        $this->assertSame('accepted', $outcome('{"f":"red"}'));
+        $this->assertSame('accepted', $outcome('{"f":null}'));
+        $this->assertSame(ValidationException::class, $outcome('{"f":"x"}'));
+    }
+
+    /**
+     * laravel-data copies a mapped wire key to its PHP name and keeps both, so the root object counted
+     * `wire-name` twice and `{"wire-name":"good"}` met `minProperties: 2`.
+     */
+    public function testAMappedPropertyCountsOnceTowardsTheObject(): void
+    {
+        $spec = self::probeSpec(['type' => 'string']);
+        $spec['components']['schemas']['Probe'] = [
+            'type' => 'object',
+            'minProperties' => 2,
+            'required' => ['wire-name'],
+            'properties' => ['wire-name' => ['type' => 'string'], 'marker' => ['type' => 'integer']],
+        ];
+        foreach (GenerationMode::cases() as $mode) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $spec, 'mapped-root-count', '{"wire-name":"good","marker":1}', '{"wire-name":"good"}'),
+                message: $mode->value,
+            );
+        }
+    }
+
+    /**
+     * A `$ref` to a component that is `{type: null}` is the null schema, not an empty object.
+     */
+    public function testAReferencedNullSchemaAcceptsOnlyNull(): void
+    {
+        foreach (['null', ['null']] as $index => $type) {
+            $spec = self::probeSpec(['$ref' => '#/components/schemas/Nothing']);
+            $spec['components']['schemas']['Nothing'] = ['type' => $type];
+            foreach (GenerationMode::cases() as $mode) {
+                foreach (['"x"', '{}', '0'] as $invalid) {
+                    $this->assertSame(
+                        expected: ['valid' => true, 'invalid' => false],
+                        actual: $this->verdict($mode, $spec, 'ref-null-' . $index . '-' . $invalid, '{"f":null}', '{"f":' . $invalid . '}'),
+                        message: $mode->value . ' ' . $invalid,
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * A pattern PCRE cannot compile is refused as a validation error in every mode. The native rules
+     * of Laravel and Yii3 raised a `preg_match()` warning instead — a 500 under Laravel.
+     */
+    public function testAnUncompilablePatternIsAValidationError(): void
+    {
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ([['pattern' => '^(a$'], ['type' => 'array', 'items' => ['type' => 'string', 'pattern' => '^(a$']]] as $index => $schema) {
+                $spec = self::probeSpec($schema + ['type' => 'string']);
+                $value = $index === 0 ? '"a"' : '["a"]';
+                $this->assertSame(
+                    expected: ['valid' => false, 'invalid' => false],
+                    actual: $this->verdict($mode, $spec, 'uncompilable-' . $index, '{"f":' . $value . '}', '{"f":' . $value . '}'),
+                    message: $mode->value . ' ' . $index,
+                );
+            }
+        }
+    }
+
+    /**
+     * Null where the schema does not allow it, and null where it does, inside a list.
+     */
+    public function testNullIsJudgedByTheSchemaNotTheMode(): void
+    {
+        foreach (GenerationMode::cases() as $mode) {
+            // yii3: the hydrator casts `null` to the declared `string` before any rule runs — the
+            // documented cast divergence (support matrix, "`null` for a required non-nullable").
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => $mode === GenerationMode::Yii3],
+                actual: $this->verdict($mode, self::probeSpec(['type' => 'string']), 'required-string-null', '{"f":"a"}', '{"f":null}'),
+                message: $mode->value . ' required string',
+            );
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, self::probeSpec(['type' => 'array', 'items' => ['type' => ['string', 'null']]]), 'nullable-items', '{"f":[null,"a"]}', '{"f":[1]}'),
+                message: $mode->value . ' nullable items',
+            );
+        }
+    }
+
+    public function testSymfonyStrictContextRequiresNullableKeys(): void
+    {
+        foreach (['null', ['string', 'null']] as $index => $type) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->symfonyVerdict(
+                    spec: self::probeSpec(['type' => $type]),
+                    key: 'strict-null-presence-' . $index,
+                    validJson: '{"f":null}',
+                    invalidJson: '{}',
+                    context: ['require_all_properties' => true],
+                ),
+            );
+        }
     }
 
     /**
@@ -1762,7 +2250,7 @@ final class ValidationParityTest extends TestCase
      * @param array<string, mixed> $spec
      * @return array{valid: bool, invalid: bool}
      */
-    private function symfonyVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
+    private function symfonyVerdict(array $spec, string $key, string $validJson, string $invalidJson, array $context = []): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, $key), 'symfony');
 
@@ -1784,9 +2272,9 @@ final class ValidationParityTest extends TestCase
         );
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
-        $accepts = static function (string $json) use ($serializer, $validator, $fqcn): bool {
+        $accepts = static function (string $json) use ($serializer, $validator, $fqcn, $context): bool {
             try {
-                $dto = $serializer->deserialize($json, $fqcn, 'json');
+                $dto = $serializer->deserialize($json, $fqcn, 'json', $context);
             } catch (Throwable) {
                 return false;
             }

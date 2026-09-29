@@ -118,10 +118,10 @@ easy to get wrong and are therefore worth knowing:
 | `nullable` ONLY when the schema says so | optional is not nullable. `sometimes` already covers the absent key; a key that IS there carrying `null` is a value the schema never allowed, so `slug` above rejects it and `summary` (declared `nullable`) accepts it |
 | `required_with:<parent>` for a nested required property | a dotted rule is evaluated even when the parent is null, so it must ask its question only when the parent has a value |
 | the ARRAY form, never a pipe string | a `\|` inside a `regex` pattern would split the rule list |
-| `Rule::in([...])`, never `in:a,b` | a value containing a comma breaks the string form |
+| `const` and inline `enum` use the interpreter | JSON equality preserves scalar types and structures; `Rule::in` coerces values |
 | `Rule::enum(Status::class)` | pins the backing type and the members in one rule, with the generated enum as the single source of the values |
 | `array` **and** `list` | `array` alone accepts an associative array; `list` is what says "JSON array" |
-| `min:` / `max:` only when the type is pinned | the same rule means length, value or count depending on the type rule beside it, so an unpinned `oneOf` gets no bounds — the interpreter takes them instead |
+| `min:` / `max:` for integer bounds, lengths and counts | the same rule means length, value or count depending on the type rule beside it, so an unpinned `oneOf` gets no bounds — the interpreter takes them instead. Numeric bounds on `number` also use the interpreter because Laravel rounds floats when converting them to strings |
 | …and never for an EXCLUSIVE bound | `min:` is inclusive and Laravel has no exclusive spelling. A `minimum: 3` carrying `exclusiveMinimum: true` (the OpenAPI 3.0 form) therefore goes to the interpreter WHOLE. Emitting `min:3` for it also took the keyword away from the interpreter, and the boundary value was accepted where every other mode refused it |
 | no `distinct` for `uniqueItems` | the rule is right about WHETHER and wrong about HOW MANY: it reports once per offending ELEMENT, so one duplicated pair produced two `validation.distinct` messages where every other mode reports the array's single violation once. `uniqueItems` belongs to the interpreter in every mode — which already owned it for object items, since `distinct` cannot compare those |
 | an `int` property is hydrated through a coercion | `42.0` IS an integer per JSON Schema 2020-12 §6.1.1, Laravel's `integer` rule agrees, and PHP still decodes it to a float — so `fromValidated()` converts a zero-fraction float rather than dying with a TypeError after a passing validation |
@@ -248,3 +248,13 @@ That hop is measured OUTSIDE the package instead, in the demo application, again
 the controller type-hints the generated `TestPostRequestFormRequest`, the container resolves it, and a
 failure comes back as Laravel's own 422 with its error bag — including the cases only the interpreter can
 catch and the one that needs the raw body. Everything the FormRequest delegates to is covered here.
+
+### Blank strings and literal property names
+
+Generated rules validate present blank strings against the same native rules as other values. An
+unconstrained string can still be empty; a positive minLength, pattern, format or incompatible type
+rejects it. Optional absence and schema-declared nullability remain separate from an empty string.
+
+Property names containing `.` or `*` are rejected during generation because Laravel treats them
+as path/wildcard syntax. Rename such wire properties or select another generation mode. Generation
+fails before replacing existing output.

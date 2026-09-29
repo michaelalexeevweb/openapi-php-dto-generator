@@ -90,6 +90,24 @@ final class DtoDeserializerParameterStyleTest extends TestCase
                                 ],
                             ],
                             [
+                                'name' => 'reservedItems',
+                                'in' => 'query',
+                                'allowReserved' => true,
+                                'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            ],
+                            [
+                                'name' => 'decodedItems',
+                                'in' => 'query',
+                                'allowReserved' => false,
+                                'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            ],
+                            [
+                                'name' => 'reservedLater',
+                                'in' => 'query',
+                                'allowReserved' => true,
+                                'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+                            ],
+                            [
                                 'name' => 'reserved',
                                 'in' => 'query',
                                 'required' => false,
@@ -534,5 +552,40 @@ final class DtoDeserializerParameterStyleTest extends TestCase
 
         $this->assertSame('a+b', $dto->getReserved());
         $this->assertSame('a b', $dto->getNotReserved());
+    }
+
+    /**
+     * @param list<string> $encoded
+     * @param list<string> $reserved
+     * @param list<string> $decoded
+     */
+    #[DataProvider('reservedArrayValues')]
+    public function testRepeatedQueryArraysRespectEachDecodingMode(array $encoded, array $reserved, array $decoded): void
+    {
+        $pairs = [];
+        foreach (['reservedItems', 'decodedItems', 'reservedLater'] as $name) {
+            foreach ($encoded as $value) {
+                $pairs[] = $name . '=' . $value;
+            }
+        }
+        $dto = $this->deserializer->deserialize($this->styleRequest(implode('&', $pairs)), 'StyleRuntime\StylesGetQueryParams');
+        $this->assertSame($reserved, $dto->getReservedItems());
+        $this->assertSame($decoded, $dto->getDecodedItems());
+        $this->assertSame($reserved, $dto->getReservedLater());
+        $this->assertTrue($dto->isReservedItemsInQuery());
+    }
+
+    public static function reservedArrayValues(): array
+    {
+        return [
+            'one plus' => [['a+b'], ['a+b'], ['a b']],
+            'repeated plus' => [['a+b', 'c+d', 'a+b'], ['a+b', 'c+d', 'a+b'], ['a b', 'c d', 'a b']],
+            'encoded plus' => [['a%2Bb', '%2B'], ['a+b', '+'], ['a+b', '+']],
+            'encoded space' => [['a%20b', '%20'], ['a b', ' '], ['a b', ' ']],
+            'mixed encoding' => [['a+b', 'c%2Bd', 'e%20f'], ['a+b', 'c+d', 'e f'], ['a b', 'c+d', 'e f']],
+            'encoded separators' => [['a%26b', 'c%3Dd'], ['a&b', 'c=d'], ['a&b', 'c=d']],
+            'one empty' => [[''], [], []],
+            'empty member' => [['', 'a+b'], ['', 'a+b'], ['', 'a b']],
+        ];
     }
 }

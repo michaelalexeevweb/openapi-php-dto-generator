@@ -9550,7 +9550,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $map['impossible'] = [
             'getter' => 'getImpossible',
             'type' => 'mixed',
-            'nullable' => false,
+            'nullable' => true,
             'metadata' => [
                 'openApiName' => 'impossible',
                 'required' => false,
@@ -9626,7 +9626,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $map['forbiddenKey'] = [
             'getter' => 'getForbiddenKey',
             'type' => 'mixed',
-            'nullable' => false,
+            'nullable' => true,
             'metadata' => [
                 'openApiName' => 'forbiddenKey',
                 'required' => false,
@@ -9645,7 +9645,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
         $map['neverMatches'] = [
             'getter' => 'getNeverMatches',
             'type' => 'mixed',
-            'nullable' => false,
+            'nullable' => true,
             'metadata' => [
                 'openApiName' => 'neverMatches',
                 'required' => false,

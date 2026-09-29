@@ -113,16 +113,16 @@ final class GenerateLaravelDtoTest extends TestCase
         // Keyed by the OpenAPI names — that is what the payload carries.
         // `present`, not `required`: Laravel's `required` rejects `""`, `[]`, `{}` and null, which are
         // all legal values for a required property. See the parity suite.
-        $this->assertStringContainsString("'id' => ['present', 'integer', 'min:1']", $article);
-        $this->assertStringContainsString("'title' => ['present', 'string', 'min:3', 'max:80']", $article);
+        $this->assertStringContainsString("'id' => self::withBlankStringValidation(['present', 'integer', 'min:1'])", $article);
+        $this->assertStringContainsString("'title' => self::withBlankStringValidation(['present', 'string', 'min:3', 'max:80'])", $article);
         // Optional: `sometimes` is what makes PATCH work. NO `nullable` — the schema never said so,
         // and optionality is about the key being absent, not about null being a legal value.
-        $this->assertStringContainsString("'slug' => ['sometimes', 'string', 'regex:/^[a-z|0-9-]+\$/']", $article);
+        $this->assertStringContainsString("'slug' => self::withBlankStringValidation(['sometimes', 'string', 'regex:#^[a-z|0-9-]+\$#u'])", $article);
         // One rule per enum, pinning backing type and members together.
-        $this->assertStringContainsString("'status' => ['present', Rule::enum(Status::class)]", $article);
+        $this->assertStringContainsString("'status' => self::withBlankStringValidation(['present', Rule::enum(Status::class)])", $article);
         $this->assertStringContainsString('use Illuminate\Validation\Rule;', $article);
         // `array` alone accepts an associative array, so a JSON array needs `list` too.
-        $this->assertStringContainsString("'tags' => ['sometimes', 'array', 'list']", $article);
+        $this->assertStringContainsString("'tags' => self::withBlankStringValidation(['sometimes', 'array', 'list'])", $article);
         // The date-time formats are the ones every mode accepts.
         $this->assertStringContainsString("'date_format:Y-m-d\\TH:i:sP,", $article);
 
@@ -140,8 +140,8 @@ final class GenerateLaravelDtoTest extends TestCase
 
         // A nested property's presence belongs to the interpreter — no rule expresses "required only
         // if the parent has a value" — so only the value rules are emitted for the dotted path.
-        $this->assertStringContainsString("'tags.*.name' => ['string', 'min:2']", $article);
-        $this->assertStringContainsString("'scores.*' => ['integer', 'min:0']", $article);
+        $this->assertStringContainsString("'tags.*.name' => self::withBlankStringValidation(['string', 'min:2'])", $article);
+        $this->assertStringContainsString("'scores.*' => self::withBlankStringValidation(['integer', 'min:0'])", $article);
     }
 
     public function testFromValidatedHydratesEnumsDatesAndNestedDtos(): void
@@ -707,7 +707,7 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertStringContainsString('use Symfony\Component\HttpFoundation\File\UploadedFile;', $dto);
         $this->assertStringContainsString('private readonly UploadedFile $doc', $dto);
         // The payload must BE a file, or the type hint would be enforced by a TypeError at 500.
-        $this->assertStringContainsString("'doc' => ['present', 'file']", $dto);
+        $this->assertStringContainsString("'doc' => self::withBlankStringValidation(['present', 'file'])", $dto);
         $this->assertNull($this->lintError($target . '/UploadPostRequest.php'));
     }
 

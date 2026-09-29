@@ -208,28 +208,28 @@ final class SymfonyConstraintMatrixTest extends TestCase
             'uniqueItems' => [
                 'class' => 'Uniq',
                 'schema' => ['type' => 'array', 'items' => ['type' => 'string'], 'uniqueItems' => true],
-                'attribute' => '#[Assert\Unique]',
+                'attribute' => '#[Assert\Callback]',
                 'valid' => ['a', 'b'],
                 'invalid' => ['a', 'a'],
             ],
             'const' => [
                 'class' => 'ConstField',
                 'schema' => ['type' => 'string', 'const' => 'locked'],
-                'attribute' => "#[Assert\\EqualTo(value: 'locked')]",
+                'attribute' => '#[Assert\Callback]',
                 'valid' => 'locked',
                 'invalid' => 'WRONG',
             ],
             'constInt' => [
                 'class' => 'ConstInt',
                 'schema' => ['type' => 'integer', 'const' => 5],
-                'attribute' => '#[Assert\EqualTo(value: 5)]',
+                'attribute' => '#[Assert\Callback]',
                 'valid' => 5,
                 'invalid' => 6,
             ],
             'constBool' => [
                 'class' => 'ConstBool',
                 'schema' => ['type' => 'boolean', 'const' => true],
-                'attribute' => '#[Assert\EqualTo(value: true)]',
+                'attribute' => '#[Assert\Callback]',
                 'valid' => true,
                 'invalid' => false,
             ],
@@ -1077,7 +1077,7 @@ final class SymfonyConstraintMatrixTest extends TestCase
         );
     }
 
-    public function testEnumWithBoolOrNullMembersFallsBackToChoiceConstraint(): void
+    public function testEnumWithBoolOrNullMembersUsesInlineConstraints(): void
     {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
@@ -1110,8 +1110,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $this->assertFileDoesNotExist($this->outputDirectory . '/FlagsMixed.php');
         $this->assertFileDoesNotExist($this->outputDirectory . '/FlagsNullableText.php');
         $this->assertStringContainsString('#[Assert\Choice(choices: [true, false])]', $content);
-        $this->assertStringContainsString("#[Assert\\Choice(choices: [1, 'a', true])]", $content);
-        $this->assertStringContainsString("#[Assert\\Choice(choices: ['a', 'b', null])]", $content);
+        $this->assertStringNotContainsString('#[Assert\Choice(choices: [1,', $content);
+        $this->assertStringContainsString('#[Assert\Callback]', $content);
 
         require_once $path;
         $fqcn = $namespace . '\Flags';
@@ -1120,7 +1120,7 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $this->assertCount(0, $validator->validate(new $fqcn(boolOnly: true, mixed: 'a', nullableText: null)));
 
         $violations = $validator->validate(new $fqcn(boolOnly: false, mixed: 'zzz', nullableText: 'c'));
-        $this->assertGreaterThan(0, count($violations));
+        $this->assertCount(2, $violations);
     }
 
     public function testFormatRegexIsValidatedInCallback(): void

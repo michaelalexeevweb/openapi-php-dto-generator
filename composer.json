@@ -48,7 +48,7 @@
         "phpstan/phpstan": "^2.1",
         "ergebnis/phpstan-rules": "^2.13",
         "phpstan/phpstan-strict-rules": "^2.0",
-        "squizlabs/php_codesniffer": "^4.0",
+        "squizlabs/php_codesniffer": "^4.0.2",
         "slevomat/coding-standard": "^8.29",
         "friendsofphp/php-cs-fixer": "^3.95",
         "symfony/validator": "^7.4",
@@ -108,9 +108,6 @@
         },
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
-        },
-        "audit": {
-            "block-insecure": false
         }
     }
 }

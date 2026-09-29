@@ -19,19 +19,19 @@ use {{ import }};
 {% endif %}
 {% if sourceEndpoint is not null %}
  *
- * Route: {{ sourceEndpoint }}
+ * Route: {{ sourceEndpoint|php_doc }}
 {% endif %}
 {% if sourceRelated is not null %}
- * From: {{ sourceRelated }}
+ * From: {{ sourceRelated|php_doc }}
 {% endif %}
 {% if sourceSpecLink is not null %}
- * @see {{ sourceSpecLink }}
+ * @see {{ sourceSpecLink|php_doc }}
 {% endif %}
 {% if morphBase is not null %}
  *
  * laravel-data mode: the abstract base of a discriminated union. It is never built directly — a payload
  * naming one of the members is hydrated into that member, chosen by `morph()` from
- * `{{ morphBase.propertyName }}`. The other modes emit an interface here; laravel-data cannot hydrate one,
+ * `{{ morphBase.propertyName|php_doc }}`. The other modes emit an interface here; laravel-data cannot hydrate one,
  * and `PropertyMorphableData` is its own answer to the same question.
 {% elseif unionMembers is null %}
  *
@@ -105,7 +105,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
-     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ param.docDescription : '' }}
+     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
 {% endfor %}
      */
 {% endif %}
@@ -163,6 +163,11 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endfor %}
         ];
     }
+{% if rules is not empty %}
+
+{% include 'laravel.blank-strings.php.twig' %}
+
+{% endif %}
 {% if objectShapePaths is not empty %}
 
     /**
@@ -204,13 +209,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
 
-            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS as $property => $schema) {
-{% if hasObjectConstraints %}
-                // The object's own rules share this map under a reserved key — see below.
-                if ($property === 'x-openapi-object' || !array_key_exists($property, $payload)) {
-{% else %}
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
-{% endif %}
                     continue;
                 }
 
@@ -225,7 +225,19 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             // whole payload, and the message goes in without a field name because that is what it is
             // about. `properties` and `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['x-openapi-object'], '', 0) as $error) {
+{% if inputAliasesLiteral is not null %}
+            // laravel-data copies a mapped wire key to its PHP name and keeps both
+            // (MapPropertiesDataPipe), so the object would count that property twice. The copy is the
+            // pipe's, never the client's: it overwrites whatever the client sent under that name.
+            $aliases = array_filter(
+                {{ inputAliasesLiteral }},
+                static fn(string $wireName): bool => array_key_exists($wireName, $payload),
+                ARRAY_FILTER_USE_KEY,
+            );
+            $payload = array_diff_key($payload, array_flip($aliases));
+
+{% endif %}
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
                 $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
             }
 {% endif %}

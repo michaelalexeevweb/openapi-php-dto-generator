@@ -283,6 +283,11 @@ map of lists, map of maps. THREE levels down it stops, and the declaration says 
 — becomes `array<string, mixed>` and keeps whatever the client sent, at property level, inside
 `items`, and through a `$ref` to such a component.
 
+A property with NO schema at all (`{}`, or `true`) is `mixed` and holds any JSON value as decoded: a
+JSON object stays a `stdClass`, so `{}` and `{"0":"x"}` round-trip as objects, and `null` is accepted
+whether the property is required or not — `{}` asserts nothing about it. Whatever else the schema
+states (`enum`, `const`, `not`) is still checked.
+
 ## Framework-agnostic deserialization (PSR-7)
 
 `deserialize()` accepts a Symfony `Request` — which also covers **Laravel** (its
@@ -372,8 +377,16 @@ class UserController
 - The per-class caches are static and populated without locking, which is safe in a long-running
   runtime (Swoole / RoadRunner / FrankenPHP): every entry is derived from the class alone, so two
   coroutines racing on the first request for one class compute and store the same value. Nothing
-  request-scoped is cached that way — the decoded body lives on the instance.
+  request-scoped is cached — the decoded body is local to each deserialization call, including when
+  the same service handles identical request bodies.
 
 The schema semantics every mode shares (list vs object, branch order in `oneOf`/`anyOf`,
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
 [Validation Notes](README.validation.md).
+
+### Cyclic objects during normalization
+
+`DtoNormalizer` rejects cyclic object graphs with a `RuntimeException`, including `stdClass` values
+inside free-form fields and arrays. The same object may appear in separate sibling branches; that is
+not a cycle and is serialized normally. This guard concerns objects constructed by application code:
+JSON input cannot itself contain object references.

@@ -595,16 +595,6 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return $result;
         }
 
-        // A map field serialized as an object (via the DTO's toArray()). Keep it an object so dense
-        // integer-like keys survive JSON encoding; normalize the values recursively.
-        if ($value instanceof stdClass) {
-            $object = new stdClass();
-            foreach ((array)$value as $key => $item) {
-                $object->{$key} = $this->normalizeValue($item, $visited);
-            }
-            return $object;
-        }
-
         if ($value instanceof BackedEnum) {
             return $value->value;
         }
@@ -636,6 +626,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 );
             }
             $visited[$objectId] = true;
+        }
+
+        // A map field serialized as an object (via the DTO's toArray()). Keep it an object so dense
+        // integer-like keys survive JSON encoding; normalize the values recursively.
+        if ($value instanceof stdClass) {
+            $object = new stdClass();
+            foreach ((array)$value as $key => $item) {
+                $object->{$key} = $this->normalizeValue($item, $visited);
+            }
+            return $object;
         }
 
         $toArrayUnavailable = false;

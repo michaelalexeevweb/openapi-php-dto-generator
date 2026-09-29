@@ -60,15 +60,35 @@ Parameters:
 `--directory` is regenerated, not merged into: anything the run did not emit is removed, so the
 directory should hold generated code only.
 
-**A failed run changes nothing.** The whole document is rendered in memory and checked before the
-first file is written, so a typo in a `$ref` — or any other error — leaves the previous generation
-exactly as it was. Fix the spec and run again.
+**Outputs are staged before publication.** Rendering and all file writes finish in temporary locations
+before the previous output is replaced. This includes explicit reference outputs and vendored common
+services. A preparation failure leaves existing files intact; a publication failure restores the saved
+outputs. Write failures are reported as errors, never as a successful generation.
 
-**A successful run rewrites in place**, which is worth knowing if the directory is one a live process
-is already serving from: during the write burst at the end of the run, a worker starting up can look
-for a class in the moment it is being replaced. Regenerate where you build — in CI, or into the
-release directory being prepared — and let the deploy swap the finished tree in, rather than running
-the command against a directory that is currently under load.
+The output root must be a real directory, not a symlink. Links inside an old output are removed as
+links; the generator never recursively deletes their targets. Reference outputs outside the main
+output directory preserve unrelated files.
+
+The output directory itself is kept — its permissions, ownership and inode — so it may be a mount
+point, and its parent does not need to be writable: staging and backup are hidden `.openapi-*`
+directories inside it, and only its contents are swapped.
+
+Publication uses filesystem renames and retains backups until every output is installed. Multiple
+output roots do not switch atomically as a group, and process termination or a filesystem failure
+that also prevents rollback can require recovery from the reported backup paths. Generate in CI or
+an inactive release directory, then deploy the finished tree. Do not run concurrent generators against
+the same output paths.
+
+### Schema and output collisions
+
+Referenced schemas from different documents must have distinct generated class names. Even identical
+schema definitions in two files are separate identities: the generator reports a collision instead of
+silently reusing the first. `--ref` and `--ref-namespace` change output locations, but do not make the
+internal class-name registry support duplicate names. Repeated references to the same canonical
+file and schema remain supported, including recursive references.
+
+DTOs, enums and Laravel FormRequests must also have distinct generated classes and output files.
+Collisions stop generation before publication, preserving the previous output.
 
 ## Requirements
 

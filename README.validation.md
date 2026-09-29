@@ -8,6 +8,11 @@ Back to the [README](README.md).
 
 A few behaviours worth knowing when validating against the schema:
 
+- **`const`, `enum` and `uniqueItems` compare JSON values.** Numbers `1` and `1.0` are equal; strings and booleans are distinct from numbers. Object key order is ignored, list order is preserved. Integer identity remains exact beyond 2^53 while values fit PHP integers. Equality traversal that exceeds its depth limit is rejected.
+- **Numeric bounds are independent.** In OpenAPI 3.1, `minimum: 10` together with `exclusiveMinimum: 1` requires both `>= 10` and `> 1`; the same applies to maximum bounds. The boolean OpenAPI 3.0 spelling still modifies its matching inclusive bound. Integer format bounds also remain active beside explicit bounds.
+- **Nullable values still satisfy every independent assertion.** `type: [string, "null"]` or `nullable: true` permits null for the type check; `const`, `enum`, `not`, conditionals and composition still apply. A nullable string with `const: red` rejects null. String and numeric keywords such as `minLength` and `minimum` do not apply to null.
+- **`allOf` keeps each branch independently.** Repeating `minimum: 10` and `minimum: 1` means both must hold, regardless of branch order. Folding must not replace the stricter branch or spread `nullable` into another branch.
+- **Null is a collection member.** `[null, null]` has two items and violates `uniqueItems: true`; `{ "x": null }` has one property. Missing DTO fields are distinguished through presence metadata.
 - **`type: array` means a JSON array (list).** A value passes only when it is a PHP list (sequential integer keys from `0`). An associative array is treated as a JSON object, not an array — so a getter returning `array_filter(...)` (which may leave non-contiguous keys) should wrap the result in `array_values(...)`.
 - **`oneOf` / `anyOf` pick the first matching branch.** Branches are tried in declaration order and the first one that validates wins. When several branches accept the same input (e.g. `oneOf: [string, integer]` given `"123"`), order your schema branches from most specific to least specific.
 - **`unevaluatedProperties` / `unevaluatedItems` (JSON Schema 2019-09/2020-12, OpenAPI 3.1).** Like `additionalProperties: false` / a suffix `items`, but annotation-aware: a key or index counts as "evaluated" when it is covered by this schema *or* by any in-place applicator that actually applies (`allOf`, a passing `anyOf`/`oneOf` branch, the taken `if`/`then`/`else` arm, a triggered `dependentSchemas`) — recursively, to any nesting depth. Only what is left over is checked. They are enforced on the non-materialized paths (raw lists, inline maps); a composed object with named properties is materialized into a dedicated nested DTO where unknown keys are impossible by construction.
@@ -35,6 +40,15 @@ A few behaviours worth knowing when validating against the schema:
   beyond ±2^63 is refused with `must be within integer range (…)`. Nothing legal is lost, because both
   int64 extremes FIT an int and arrive from `json_decode()` as `integer`, never as a float — which is
   precisely what `uint64` cannot say about its own maximum.
+- **`type: number` is a PHP `float`.** An integer past 2^53 sent to a `number` field is rounded when
+  it is hydrated, before any keyword runs, so `const: 9007199254740993` on such a field refuses its own
+  value. `type: integer` keeps it exact — declare the field `integer` when it only carries integers.
+- **`const` / `enum` cannot tell `{}` from `[]`, or `{"0":"a"}` from `["a"]`.** The document is read
+  into PHP arrays, where the two are one value; the same holds for a hydrated map in every mode but
+  runtime. Avoid object `const`/`enum` members whose keys are empty or `0..n-1`.
+- **`multipleOf` is decimal.** `0.3` is a multiple of `0.1` and `1e-12` is not: both numbers are read
+  at their shortest decimal spelling and divided exactly. A float computed in PHP (`3 * 1e-8`, one ulp
+  off) still passes when its ratio is a whole, non-zero number within `1e-9`.
 - **An `integer` bound is exact past 2^53.** `maximum: 9007199254740992` refuses `9007199254740993`: the comparison stays on integers while both the value and the bound are integers, instead of casting through a float that cannot tell the two apart.
 - **`idn-email` means the DOMAIN too.** `a@пример.рф` validates, not just `ф@example.com`. PHP's own
   filter allows Unicode before the `@` and requires ASCII after it, so the domain is checked with the

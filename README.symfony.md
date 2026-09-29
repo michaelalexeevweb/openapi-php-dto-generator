@@ -75,6 +75,20 @@ In a Symfony controller the DTO is validated and populated automatically:
 public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
 ```
 
+For required nullable fields (including `type: null`), enable `require_all_properties` in the
+serializer context. Symfony otherwise supplies `null` for an omitted nullable constructor argument,
+so validation cannot distinguish a missing key from an explicit null. Optional fields remain optional:
+they are populated through setters.
+
+```php
+public function create(
+    #[MapRequestPayload(serializationContext: ['require_all_properties' => true])] User $user,
+): Response { /* ... */ }
+```
+
+For direct Serializer calls, pass `['require_all_properties' => true]` as the fourth argument to
+`deserialize()`, or configure it in the normalizer's default context.
+
 ## OpenAPI → Symfony attribute mapping
 
 | OpenAPI | Symfony attribute |
@@ -86,9 +100,9 @@ public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
 | `multipleOf` | `#[Assert\DivisibleBy]` |
 | `pattern` | `#[Assert\Regex]` |
 | `minItems` / `maxItems`, `minProperties` / `maxProperties` | `#[Assert\Count]` |
-| `uniqueItems` | `#[Assert\Unique]` |
-| `const` | `#[Assert\EqualTo]` |
-| `enum` | generated PHP backed `enum` when values are string/int only; otherwise inline `#[Assert\Choice]` |
+| `uniqueItems` | callback with JSON equality |
+| `const` | callback with JSON equality |
+| `enum` | generated PHP backed enum when representable; inline Choice for non-nullable string/bool members; callback for numeric, structural and nullable enums |
 | `format: email` / `uuid` / `url` / `ipv4`,`ipv6` / `hostname` | `#[Assert\Email]` / `Uuid` / `Url` / `Ip` / `Hostname` |
 | `format: int32` / `uint32` | `#[Assert\Range]` (bounds) |
 | `format: date` / `date-time` | `DateTimeImmutable` property; the getter returns the formatted string and `getXAsDateTime()` the object (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
@@ -110,7 +124,7 @@ own callback and are reached via the `#[Assert\Valid]` cascade.
 | OpenAPI | Callback check |
 |---|---|
 | `required` (inside a subschema) | property presence |
-| `const` (inside a subschema) | equality |
+| `const` | callback with JSON equality |
 | `properties`, `patternProperties`, `propertyNames` | recursion into matching properties / key names |
 | `additionalProperties: false` / schema | extra keys rejected / validated |
 | `unevaluatedProperties: false`, `unevaluatedItems: false` | keys / indices not covered above rejected |

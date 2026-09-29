@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
+
 /**
  * Laravel-mode emitter: a plain DTO that carries a `rules()` array for `illuminate/validation`.
  *
@@ -219,7 +221,7 @@ trait RendersLaravelDto
             'interpreterConstsBlock' => $interpreter['consts'],
             // Emit the object-level pass only where the document actually states something about the
             // object: otherwise every class with an interpreter would carry three inert lines.
-            'hasObjectConstraints' => array_key_exists(self::LARAVEL_OBJECT_CONSTRAINTS_KEY, $interpreterConstraints),
+            'hasObjectConstraints' => $interpreterConstraints['object'] !== [],
             'interpreterMethodsBlock' => $interpreter['methods'],
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),
@@ -507,7 +509,10 @@ trait RendersLaravelDto
         }
 
         $enumClass = $this->laravelEnumClass($property);
-        if ($enumClass !== null) {
+        // A nullable INLINE enum goes to the interpreter: its member list decides whether null is one
+        // of them, which `nullable` + `Rule::enum()` cannot say. A nullable `$ref` enum has no inline
+        // list to hand over, so `Rule::enum()` stays its only member check.
+        if ($enumClass !== null && (!$nullable || !array_key_exists('enum', $constraints))) {
             // `Rule::enum()` pins the backing type AND the members in one first-party rule; the
             // generated enum is the single source of the allowed values.
             $rules[] = sprintf('Rule::enum(%s::class)', $this->shortClassName($enumClass));
@@ -584,6 +589,21 @@ trait RendersLaravelDto
         }
 
         return $rules;
+    }
+
+    /**
+     * An ITEM's rules: its schema's, and `nullable` first when that schema admits null. At the
+     * property level presence decides that; an item has no presence, so `[null, "a"]` against
+     * `type: [string, null]` failed the item's `string` rule.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function laravelItemRules(array $schema): array
+    {
+        $rules = $this->laravelRulesForSchema($schema);
+
+        return $rules !== [] && $this->schemaAllowsNull($schema) ? ["'nullable'", ...$rules] : $rules;
     }
 
     /**
@@ -672,9 +692,9 @@ trait RendersLaravelDto
             }
         }
 
-        if (array_key_exists('pattern', $schema) && is_string($schema['pattern'])) {
+        if (array_key_exists('pattern', $schema) && is_string($schema['pattern']) && $this->patternCompiles($schema['pattern'])) {
             // Array form + explicit delimiters: a pattern containing `|` must not split the list.
-            $rules[] = sprintf("'regex:/%s/'", str_replace(['\\', "'"], ['\\\\', "\\'"], $schema['pattern']));
+            $rules[] = $this->phpStringLiteral('regex:' . DtoValidator::delimitPattern($schema['pattern']));
             $consumed[] = 'pattern';
         }
 
@@ -683,16 +703,7 @@ trait RendersLaravelDto
             $consumed[] = 'multipleOf';
         }
 
-        if (array_key_exists('enum', $schema) && is_array($schema['enum']) && $schema['enum'] !== []) {
-            // `Rule::in([...])`, never `in:a,b` — a value containing a comma breaks the string form.
-            $rules[] = sprintf('Rule::in(%s)', $this->laravelValueListLiteral($schema['enum']));
-            $consumed[] = 'enum';
-        }
-
-        if (array_key_exists('const', $schema)) {
-            $rules[] = sprintf('Rule::in(%s)', $this->laravelValueListLiteral([$schema['const']]));
-            $consumed[] = 'const';
-        }
+        // const and inline enum need JSON equality; Rule::in coerces scalars and loses structures.
 
         return ['rules' => $rules, 'consumed' => $consumed];
     }
@@ -728,7 +739,7 @@ trait RendersLaravelDto
             return [];
         }
 
-        $rules = is_array($itemSchema) ? $this->laravelRulesForSchema($itemSchema) : [];
+        $rules = is_array($itemSchema) ? $this->laravelItemRules($itemSchema) : [];
 
         // `uniqueItems` is NOT emitted as `distinct`, and that is measured rather than assumed. The rule
         // works — but it reports per offending ELEMENT, so one duplicated pair produced TWO
@@ -781,7 +792,7 @@ trait RendersLaravelDto
         }
 
         $path = $pathPrefix . '.*';
-        $rules = $this->laravelRulesForSchema($nested);
+        $rules = $this->laravelItemRules($nested);
         $paths = $rules === [] ? [] : [$path => $rules];
 
         // The item's own PROPERTIES, where it is an object no class was generated for — a `$ref` two
@@ -835,6 +846,14 @@ trait RendersLaravelDto
     {
         $rules = [];
         $consumed = [];
+        // Laravel casts numeric values to strings before comparing their size. PHP's precision
+        // setting rounds floats there, so numeric bounds on non-integer values stay in the callback.
+        $type = $schema['type'] ?? null;
+        $type = is_array($type) ? $this->laravelSoleNonNullType($type) : $type;
+        if ($minKey === 'minimum' && $type !== 'integer') {
+            return ['rules' => [], 'consumed' => []];
+        }
+
         $min = $schema[$minKey] ?? null;
         $max = $schema[$maxKey] ?? null;
 
@@ -881,33 +900,15 @@ trait RendersLaravelDto
         };
     }
 
-    /**
-     * @param array<int, mixed> $values
-     */
-    private function laravelValueListLiteral(array $values): string
-    {
-        $parts = [];
-        foreach ($values as $value) {
-            $parts[] = match (true) {
-                is_string($value) => "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'",
-                is_int($value) || is_float($value) => $this->laravelNumberLiteral($value),
-                is_bool($value) => $value ? 'true' : 'false',
-                default => 'null',
-            };
-        }
-
-        return '[' . implode(', ', $parts) . ']';
-    }
-
     private function laravelNumberLiteral(int|float $value): string
     {
         if (is_int($value)) {
             return (string)$value;
         }
 
-        $rendered = rtrim(rtrim(sprintf('%.10F', $value), '0'), '.');
+        $rendered = json_encode($value);
 
-        return $rendered === '' ? '0' : $rendered;
+        return is_string($rendered) ? $rendered : (string)$value;
     }
 
     /**
@@ -932,7 +933,7 @@ trait RendersLaravelDto
      */
     private function laravelRulesLiteral(array $rules): string
     {
-        return '[' . implode(', ', $rules) . ']';
+        return $rules === [] ? '[]' : 'self::withBlankStringValidation([' . implode(', ', $rules) . '])';
     }
 
     /**
@@ -1326,25 +1327,24 @@ trait RendersLaravelDto
      * is not emitted at all here (`payloadIsHydratedObject: false`), because in Laravel the payload IS an
      * array: validation runs before anything is hydrated.
      *
-     * @param array<string, mixed> $constraints the schema literal, keyed by OpenAPI property name
+     * @param array{fields: array<string, mixed>, object: array<string, mixed>} $constraints
      * @param array<string, mixed> $recursiveSchemas self-referential schemas a marker re-enters
      * @return array{consts: string, methods: string, imports: array<int, string>}
      */
     private function renderLaravelInterpreterBlock(array $constraints, array $recursiveSchemas = []): array
     {
-        if ($constraints === []) {
+        if ($constraints['fields'] === [] && $constraints['object'] === []) {
             return ['consts' => '', 'methods' => '', 'imports' => []];
         }
 
-        // This mode's literal is keyed by PROPERTY NAME — one schema per property, walked one at a
-        // time by `withValidator()` — where the other two hand the interpreter a single schema with a
-        // `properties` map inside it. So the boolean expansion has to be applied per entry: the
-        // shared one below descends by schema KEY and would read `containsFalse` as an unknown one.
-        foreach ($constraints as $property => $schema) {
+        // The envelope separates payload names from root assertions. Its slots are storage, not
+        // schema keywords, so expand each schema before handing the envelope to the shared renderer.
+        foreach ($constraints['fields'] as $property => $schema) {
             if (is_array($schema)) {
-                $constraints[$property] = $this->expandBooleanSubschemasForInterpreter($schema);
+                $constraints['fields'][$property] = $this->expandBooleanSubschemasForInterpreter($schema);
             }
         }
+        $constraints['object'] = $this->expandBooleanSubschemasForInterpreter($constraints['object']);
 
         // No enum/temporal normalization: the validator runs on the raw request payload, where those
         // values are still the scalars the client sent.
@@ -1402,14 +1402,6 @@ trait RendersLaravelDto
     }
 
     /**
-     * The key the object's OWN rules live under, inside a map otherwise keyed by property name.
-     *
-     * Chosen so no payload can collide with it: `x-` is reserved for extensions in OpenAPI, and the
-     * emitted loop skips this key explicitly rather than relying on the collision being impossible.
-     */
-    private const string LARAVEL_OBJECT_CONSTRAINTS_KEY = 'x-openapi-object';
-
-    /**
      * The object-wide keywords this mode carries. `properties` and `required` are excluded: the rule
      * map owns them, and repeating them here would report every violation twice.
      */
@@ -1440,7 +1432,7 @@ trait RendersLaravelDto
      *        as a fresh class expanded it one level with the pruning of a level the dotted rules cover —
      *        which they do not, because `laravelNestedRules()` cannot expand a cycle either. A child
      *        violating `minimum` was then enforced by nobody.
-     * @return array<string, mixed>
+     * @return array{fields: array<string, mixed>, object: array<string, mixed>}
      */
     private function laravelInterpreterConstraints(array $properties, string $ownerClass): array
     {
@@ -1459,21 +1451,12 @@ trait RendersLaravelDto
             $constraints[$property['openApiName']] = $folded;
         }
 
-        // What the document says about the OBJECT rather than about one property — `minProperties`,
-        // `dependentRequired`, `not`, a top-level conditional. This map is keyed by PROPERTY and the
-        // emitted loop reads `$payload[$key]`, so the object's own rules live under a reserved key that
-        // no payload can carry; `withValidator()` skips it in the loop and runs it against the whole
-        // payload instead. Until 2.15.16 they were emitted nowhere in this mode and checked by nothing,
-        // while Symfony, yii3 and (from the same release) runtime refused the same payloads.
-        //
-        // `properties` and `required` are not in the set: Laravel's rule map already owns them, and
-        // repeating them here is how one violation becomes two messages.
-        $objectLevel = $this->laravelObjectLevelConstraints($ownerClass);
-        if ($objectLevel !== []) {
-            $constraints[self::LARAVEL_OBJECT_CONSTRAINTS_KEY] = $objectLevel;
-        }
-
-        return $constraints;
+        // Root assertions and property assertions occupy separate slots. Every JSON property name
+        // is legal here, including the old sentinel and the names of these storage slots themselves.
+        return [
+            'fields' => $constraints,
+            'object' => $this->laravelObjectLevelConstraints($ownerClass),
+        ];
     }
 
     /**
@@ -1612,14 +1595,6 @@ trait RendersLaravelDto
         foreach (array_keys($schema) as $keyword) {
             if (in_array($keyword, $consumed, true) || in_array($keyword, self::LARAVEL_ANNOTATION_KEYWORDS, true)) {
                 continue;
-            }
-
-            // `uniqueItems` is `distinct` for scalar members only; over objects it stays here.
-            if ($keyword === 'uniqueItems') {
-                $itemType = $schema['items']['type'] ?? null;
-                if ($itemType !== null && $itemType !== 'object' && !array_key_exists('$ref', $schema['items'] ?? [])) {
-                    continue;
-                }
             }
 
             // A container is unenforced only when its CONTENTS are.
@@ -1793,6 +1768,12 @@ trait RendersLaravelDto
             // `bag.test must be of type string`. What no rule expresses (a `required` list inside the
             // branch) survives the pruning and is reported once.
             if ($keyword === 'allOf' && is_array($value)) {
+                // Unfolded scalar branches have independent assertions, without native rules.
+                if ($this->allOfHasPlainBranches($value)) {
+                    $pruned[$keyword] = $value;
+                    continue;
+                }
+
                 $branches = [];
                 foreach ($value as $branch) {
                     if (!is_array($branch)) {

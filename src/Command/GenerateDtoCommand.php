@@ -222,6 +222,14 @@ final class GenerateDtoCommand extends Command
         'unevaluatedProperties',
     ];
 
+    private bool $deferOutputPublication = false;
+
+    /** @var array<string, string> */
+    private array $pendingOutputFiles = [];
+
+    /** @var list<string> */
+    private array $ownedOutputDirectories = [];
+
     public ?Environment $twig = null;
 
     /** @var array<string, array<mixed>> */
@@ -237,6 +245,9 @@ final class GenerateDtoCommand extends Command
      * @var array<string, string>
      */
     private array $localSchemaReferences = [];
+
+    /** @var array<string, true> canonical external document and schema pointer */
+    private array $registeredExternalSchemas = [];
 
     /** @var array<string, true> */
     public array $parentClasses = [];
@@ -312,6 +323,15 @@ final class GenerateDtoCommand extends Command
     public array $rawSchemasByClass = [];
 
     public ?string $rootSpecFile = null;
+
+    /**
+     * The first spelling seen for each FILE, keyed by device and inode. `realpath()` keeps the case it
+     * was given, so on a case-insensitive filesystem `items.json` and `ITEMS.json` — one file — came
+     * back as two, and their schemas collided with themselves. A hard link is the same question.
+     *
+     * @var array<string, string>
+     */
+    private array $canonicalSourceFiles = [];
 
     /**
      * How many `extractValidationConstraints()` frames are on the stack — see the note there. Zero
@@ -488,6 +508,7 @@ final class GenerateDtoCommand extends Command
         try {
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
 
+            $this->deferOutputPublication = true;
             $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace, mode: $mode);
 
             if ($dtoGeneratorDirectory !== null) {
@@ -499,9 +520,14 @@ final class GenerateDtoCommand extends Command
                     withPsr7: $withPsr7,
                 );
             }
+            (new GeneratedFilePublisher())->publish($this->pendingOutputFiles, $this->ownedOutputDirectories);
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
             return Command::FAILURE;
+        } finally {
+            $this->deferOutputPublication = false;
+            $this->pendingOutputFiles = [];
+            $this->ownedOutputDirectories = [];
         }
 
         if ($withPsr7) {
@@ -815,8 +841,7 @@ final class GenerateDtoCommand extends Command
             $commonDir = rtrim($workingDirectory . '/' . ltrim($dtoGeneratorDirectory, '/'), '/');
         }
 
-        $this->ensureDirectoryExists($commonDir);
-        $this->deleteDirectoryContents($commonDir);
+        $pendingFiles = [];
 
         $filesToCopy = [
             'Contract/GeneratedDtoInterface.php',
@@ -845,44 +870,49 @@ final class GenerateDtoCommand extends Command
         foreach ($filesToCopy as $relativePath) {
             $sourcePath = realpath($sourceBase . '/' . $relativePath);
             if ($sourcePath === false) {
-                continue;
+                throw new RuntimeException(sprintf('Runtime service source not found: %s', $relativePath));
             }
 
             $content = file_get_contents($sourcePath);
             if ($content === false) {
-                continue;
+                throw new RuntimeException(sprintf('Cannot read runtime service: %s', $sourcePath));
             }
 
             // Move all files to a single Common namespace, removing Contract/Service separation
-            $content = preg_replace(
-                '/namespace OpenapiPhpDtoGenerator\\\(Contract|Service);/',
-                'namespace ' . $targetNamespace . ';',
-                $content,
+            $content = preg_replace_callback(
+                pattern: '/namespace OpenapiPhpDtoGenerator\\\(Contract|Service);/',
+                callback: static fn(): string => 'namespace ' . $targetNamespace . ';',
+                subject: $content,
             ) ?? $content;
 
-            $content = preg_replace(
-                '/use OpenapiPhpDtoGenerator\\\(Contract|Service)\\\/',
-                'use ' . $targetNamespace . '\\',
-                $content,
+            $content = preg_replace_callback(
+                pattern: '/use OpenapiPhpDtoGenerator\\\(Contract|Service)\\\/',
+                callback: static fn(): string => 'use ' . $targetNamespace . '\\',
+                subject: $content,
             ) ?? $content;
 
             // Remove self-namespace imports (same namespace as target)
             $content = preg_replace(
-                '/^use ' . preg_quote($targetNamespace, '/') . '\\\[^;]+;\n/m',
-                '',
-                $content,
+                pattern: '/^use ' . preg_quote($targetNamespace, '/') . '\\\[^;]+;\n/m',
+                replacement: '',
+                subject: $content,
             ) ?? $content;
 
             $fileName = basename($relativePath);
-            file_put_contents($commonDir . '/' . $fileName, $content);
+            $pendingFiles[$commonDir . '/' . $fileName] = $content;
         }
+        $this->publishGeneratedFiles($pendingFiles, [$commonDir]);
     }
 
     private function initializeGeneration(string $outputDirectory, string $namespace, ?string $rootSpecFile): void
     {
+        $this->pendingOutputFiles = [];
+        $this->ownedOutputDirectories = [];
         $this->dtoSchemas = [];
         $this->enumSchemas = [];
         $this->localSchemaReferences = [];
+        $this->registeredExternalSchemas = [];
+        $this->rawSchemasByClass = [];
         $this->documentSelfUri = null;
         $this->generationWarnings = [];
         $this->requestPayloadClasses = [];
@@ -899,7 +929,8 @@ final class GenerateDtoCommand extends Command
         $this->endpointByClass = [];
         $this->deprecatedByClass = [];
         $this->relatedByClass = [];
-        $this->rootSpecFile = $rootSpecFile;
+        $this->canonicalSourceFiles = [];
+        $this->rootSpecFile = $rootSpecFile === null ? null : $this->canonicalSourceFile($rootSpecFile);
         $this->baseOutputDirectory = $outputDirectory;
         $this->baseNamespace = $namespace;
     }
@@ -914,12 +945,48 @@ final class GenerateDtoCommand extends Command
         }
 
         // Keep BC for copyCommonServices direct calls.
-        return rtrim($namespace, '\\') . '\\' . str_replace('/', '\\', $dtoGeneratorDirectory);
+        return rtrim($namespace, '\\') . '\\' . $this->directoryToNamespace($dtoGeneratorDirectory);
+    }
+
+    /**
+     * A property that is a `$ref` to the null schema gets that schema inline.
+     *
+     * Such a component materializes nothing and no framework rule carries `type: null`, so only the
+     * interpreter checks it — and the interpreter reads the extracted constraints, where a bare
+     * `$ref` extracts to nothing. Resolved against the OWNER's file, which is what makes a reference
+     * from an external document land on the right one.
+     */
+    private function inlineNullSchemaReferences(): void
+    {
+        foreach ($this->dtoSchemas as $className => $schema) {
+            if (!is_array($schema['properties'] ?? null)) {
+                continue;
+            }
+            $sourceFile = $this->getSchemaSourceFile($className);
+            $properties = [];
+            foreach ($schema['properties'] as $name => $propertySchema) {
+                $ref = is_array($propertySchema) ? ($propertySchema['$ref'] ?? null) : null;
+                $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
+                if ($alias === null || !in_array($alias['type'] ?? null, ['null', ['null']], true)) {
+                    $properties[$name] = $propertySchema;
+                    continue;
+                }
+                $inlined = [];
+                foreach ($propertySchema as $keyword => $value) {
+                    if ($keyword !== '$ref') {
+                        $inlined[$keyword] = $value;
+                    }
+                }
+                $properties[$name] = $inlined + $alias;
+            }
+            $this->dtoSchemas[$className]['properties'] = $properties;
+        }
     }
 
     private function finalizeGeneration(): int
     {
         $this->expandNestedSchemas();
+        $this->inlineNullSchemaReferences();
         $this->detectParentClasses();
         $this->detectUnionInterfaces();
 
@@ -940,12 +1007,14 @@ final class GenerateDtoCommand extends Command
         // was never emitted, which fatals on the next request. Buffering makes a failed generation
         // leave the previous output exactly as it was.
         //
-        // It also shrinks the window in which a concurrently loading worker sees no file at all,
-        // from the whole run down to the write burst at the end.
+        // The publisher stages these bytes, then replaces the output with rollback on failure.
+        // Multiple output roots still require an inactive build directory during publication.
         /** @var array<string, string> $pendingFiles absolute path => file contents */
         $pendingFiles = [];
 
         $generatedCount = 0;
+        /** @var array<string, true> $generatedClasses */
+        $generatedClasses = [];
 
         foreach ($this->dtoSchemas as $className => $schemaDefinition) {
             // A component schema whose top-level type is `array` is a type alias (a list), not an
@@ -970,7 +1039,14 @@ final class GenerateDtoCommand extends Command
                 schemaMetadata: $schemaMetadata,
             );
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . '.php';
-            $pendingFiles[$filePath] = $classCode;
+            $this->queueGeneratedClass(
+                namespace: $namespace,
+                className: $className,
+                filePath: $filePath,
+                content: $classCode,
+                files: $pendingFiles,
+                classes: $generatedClasses,
+            );
             $generatedCount++;
 
             // Laravel mode also emits the first-party entry point for an INCOMING payload, so the
@@ -978,7 +1054,14 @@ final class GenerateDtoCommand extends Command
             if ($this->laravelEmitsFormRequestFor($className)) {
                 $formRequestPath = rtrim($outputDirectory, DIRECTORY_SEPARATOR)
                     . DIRECTORY_SEPARATOR . $className . 'FormRequest.php';
-                $pendingFiles[$formRequestPath] = $this->renderLaravelFormRequestClass($namespace, $className);
+                $this->queueGeneratedClass(
+                    namespace: $namespace,
+                    className: $className . 'FormRequest',
+                    filePath: $formRequestPath,
+                    content: $this->renderLaravelFormRequestClass($namespace, $className),
+                    files: $pendingFiles,
+                    classes: $generatedClasses,
+                );
                 $generatedCount++;
             }
         }
@@ -995,7 +1078,14 @@ final class GenerateDtoCommand extends Command
                 descriptions: $enumDefinition['descriptions'],
             );
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $enumName . '.php';
-            $pendingFiles[$filePath] = $enumCode;
+            $this->queueGeneratedClass(
+                namespace: $namespace,
+                className: $enumName,
+                filePath: $filePath,
+                content: $enumCode,
+                files: $pendingFiles,
+                classes: $generatedClasses,
+            );
             $generatedCount++;
         }
 
@@ -1003,14 +1093,29 @@ final class GenerateDtoCommand extends Command
         // before a single byte has been written.
         $this->assertEveryLocalReferenceResolved();
 
-        $this->prepareOutputDirectory($this->baseOutputDirectory);
-
-        foreach ($pendingFiles as $filePath => $fileContents) {
-            $this->ensureDirectoryExists(dirname($filePath));
-            file_put_contents($filePath, $fileContents);
-        }
+        $this->publishGeneratedFiles($pendingFiles, [$this->baseOutputDirectory]);
 
         return $generatedCount;
+    }
+
+    /**
+     * @param array<string, string> $files
+     * @param array<string, true> $classes
+     */
+    private function queueGeneratedClass(
+        string $namespace,
+        string $className,
+        string $filePath,
+        string $content,
+        array &$files,
+        array &$classes,
+    ): void {
+        $fqcn = strtolower(trim($namespace, '\\') . '\\' . $className);
+        if (array_key_exists($filePath, $files) || array_key_exists($fqcn, $classes)) {
+            throw new RuntimeException(sprintf('Generated class/output collision for %s at %s.', $className, $filePath));
+        }
+        $classes[$fqcn] = true;
+        $files[$filePath] = $content;
     }
 
     /**
@@ -1123,6 +1228,27 @@ final class GenerateDtoCommand extends Command
         'null',
     ];
 
+    /**
+     * Keywords that assert nothing. A subschema made only of these (or of nothing, `{}`) is the
+     * always-true schema — which is not the same thing as a subschema the validator cannot read.
+     */
+    private const array ANNOTATION_ONLY_KEYWORDS = [
+        'title',
+        'description',
+        '$comment',
+        'examples',
+        'example',
+        'default',
+        'deprecated',
+        'readOnly',
+        'writeOnly',
+        'externalDocs',
+        'xml',
+        '$id',
+        '$anchor',
+        '$schema',
+    ];
+
     /** Keys whose value is a single subschema. */
     private const array SUBSCHEMA_KEYS = [
         'items',
@@ -1221,6 +1347,22 @@ final class GenerateDtoCommand extends Command
     {
         $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
         $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
+        if (in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)) {
+            $this->assertLaravelPropertyNamesAreUnambiguous($schemaDefinition);
+        }
+
+        // Registries are keyed by generated class name. A different document is not the same
+        // schema, even when its definition happens to look identical or its namespace is mapped.
+        foreach ([$this->schemaSourceFiles, $this->enumSourceFiles] as $sources) {
+            if (array_key_exists($className, $sources) && $sources[$className] !== $sourceFile) {
+                $previousSource = $sources[$className] ?? 'the in-memory document';
+                $nextSource = $sourceFile ?? 'the in-memory document';
+                throw new RuntimeException(
+                    message: 'Schema source collision for ' . $className . ': ' . $previousSource . ' and '
+                    . $nextSource . '. Use distinct schema names; namespace mappings do not disambiguate the registry.',
+                );
+            }
+        }
 
         // Keep the raw definition (including enums, which otherwise return early below) so a
         // referencing property can later read keywords declared on the target, e.g. `default`.
@@ -1253,6 +1395,10 @@ final class GenerateDtoCommand extends Command
             return;
         }
 
+        if (array_key_exists($className, $this->enumSchemas)) {
+            throw new RuntimeException(sprintf('Enum/DTO name collision for %s.', $className));
+        }
+
         if (array_key_exists($className, $this->dtoSchemas)) {
             if ($this->dtoSchemas[$className] !== $schemaDefinition) {
                 throw new RuntimeException(sprintf('DTO schema name collision for %s.', $className));
@@ -1269,6 +1415,54 @@ final class GenerateDtoCommand extends Command
         $this->schemaNamespaces[$className] = $namespace;
         $this->schemaOutputDirectories[$className] = $outputDirectory;
         $this->collectDiscriminatorMetadata(className: $className, schemaDefinition: $schemaDefinition);
+    }
+
+    /** @param array<string, mixed> $schema */
+    private function assertLaravelPropertyNamesAreUnambiguous(array $schema): void
+    {
+        // Every place a property is NAMED, not only where it is declared: `required` and both sides
+        // of `dependentRequired` become Laravel paths too, and `a.b` there read as a nested key.
+        $names = is_array($schema['properties'] ?? null) ? array_keys($schema['properties']) : [];
+        foreach (is_array($schema['required'] ?? null) ? $schema['required'] : [] as $name) {
+            $names[] = $name;
+        }
+        foreach (is_array($schema['dependentRequired'] ?? null) ? $schema['dependentRequired'] : [] as $trigger => $dependents) {
+            $names[] = $trigger;
+            foreach (is_array($dependents) ? $dependents : [] as $name) {
+                $names[] = $name;
+            }
+        }
+        foreach ($names as $name) {
+            if (is_scalar($name) && strpbrk((string)$name, '.*') !== false) {
+                throw new RuntimeException(
+                    message: 'Laravel validation cannot safely represent property name "' . $name . '". '
+                    . 'Rename properties containing dots or asterisks, or use another generation mode.',
+                );
+            }
+        }
+        foreach (self::SUBSCHEMA_MAP_KEYS as $key) {
+            if (is_array($schema[$key] ?? null)) {
+                foreach ($schema[$key] as $child) {
+                    if (is_array($child)) {
+                        $this->assertLaravelPropertyNamesAreUnambiguous($child);
+                    }
+                }
+            }
+        }
+        foreach (self::SUBSCHEMA_LIST_KEYS as $key) {
+            if (is_array($schema[$key] ?? null)) {
+                foreach ($schema[$key] as $child) {
+                    if (is_array($child)) {
+                        $this->assertLaravelPropertyNamesAreUnambiguous($child);
+                    }
+                }
+            }
+        }
+        foreach (['items', 'additionalProperties', 'not', 'if', 'then', 'else', 'contains'] as $key) {
+            if (is_array($schema[$key] ?? null)) {
+                $this->assertLaravelPropertyNamesAreUnambiguous($schema[$key]);
+            }
+        }
     }
 
     private function resolveNamespaceForSourceFile(?string $sourceFile): string
@@ -1588,7 +1782,21 @@ final class GenerateDtoCommand extends Command
             throw new RuntimeException(sprintf('Referenced OpenAPI file not found: %s', $ref));
         }
 
-        return [$absoluteFile, '#' . $pointerPart];
+        return [$this->canonicalSourceFile($absoluteFile), '#' . $pointerPart];
+    }
+
+    /**
+     * One name per file, whatever spelling reached it — see `$canonicalSourceFiles`.
+     */
+    private function canonicalSourceFile(string $realPath): string
+    {
+        $stat = @stat($realPath);
+        // No inode (Windows reports 0): the path is all there is to go on.
+        if ($stat === false || $stat['ino'] === 0) {
+            return $realPath;
+        }
+
+        return $this->canonicalSourceFiles[$stat['dev'] . ':' . $stat['ino']] ??= $realPath;
     }
 
     /**
@@ -1711,10 +1919,11 @@ final class GenerateDtoCommand extends Command
      */
     private function registerExternalSchema(string $externalFile, string $schemaName): void
     {
-        $className = $this->schemaClassName($schemaName);
-        if (array_key_exists($className, $this->dtoSchemas) || array_key_exists($className, $this->enumSchemas)) {
+        $reference = $externalFile . '#/components/schemas/' . $schemaName;
+        if (array_key_exists($reference, $this->registeredExternalSchemas)) {
             return;
         }
+        $className = $this->schemaClassName($schemaName);
 
         $definition = $this->externalSchemasOf($externalFile)[$schemaName] ?? null;
         if (!is_array($definition)) {
@@ -1731,6 +1940,9 @@ final class GenerateDtoCommand extends Command
                 $externalFile,
             ));
         }
+
+        // Mark before walking children so local and cross-document cycles terminate.
+        $this->registeredExternalSchemas[$reference] = true;
 
         if ($this->isPureExternalSchemaAlias($definition)) {
             $aliasRef = $definition['$ref'];
@@ -2836,6 +3048,7 @@ final class GenerateDtoCommand extends Command
         // NOTE: property-level enums are usually materialized to PHP backed enums and therefore
         // don't need an explicit enum validator here. If enum synthesis is not possible
         // (`x-php-inline-enum=true`, e.g. bool/null members), keep enum as an inline constraint.
+        // Nullable PHP enum types also need it: permitting null by type does not add an enum member.
 
         $constraints = [];
         foreach ($allowedKeys as $key) {
@@ -2847,7 +3060,11 @@ final class GenerateDtoCommand extends Command
         }
 
         if (
-            ($propertySchema['x-php-inline-enum'] ?? false) === true
+            (
+                ($propertySchema['x-php-inline-enum'] ?? false) === true
+                || $this->schemaAllowsNull($propertySchema)
+                || !$this->canGenerateBackedEnumFromSchema($propertySchema)
+            )
             && is_array($propertySchema['enum'] ?? null)
             && $propertySchema['enum'] !== []
         ) {
@@ -2875,6 +3092,12 @@ final class GenerateDtoCommand extends Command
             $branchConstraints = [];
             $hasUnvalidatableBranch = false;
             foreach ($variants as $variant) {
+                // The always-true branch COUNTS: in `oneOf` it matches alongside any other branch.
+                if ($this->isVacuousSubschema($variant)) {
+                    $branchConstraints[] = true;
+
+                    continue;
+                }
                 if (!is_array($variant)) {
                     continue;
                 }
@@ -2957,6 +3180,10 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
                 $extracted = $this->extractValidationConstraints($branch);
+                // These branches do not own PHP enum types; each membership assertion must survive.
+                if (is_array($branch['enum'] ?? null)) {
+                    $extracted['enum'] = $branch['enum'];
+                }
                 if ($extracted !== []) {
                     $branches[] = $extracted;
                 }
@@ -2975,7 +3202,8 @@ final class GenerateDtoCommand extends Command
         // match it" can never hold. It was dropped, and the property accepted anything. `not: false`
         // is the mirror — nothing matches `false`, so the keyword constrains nothing — and it stays
         // dropped, which is the same answer the empty-extraction guard below gives.
-        if ($not === true) {
+        if ($this->isVacuousSubschema($not)) {
+            // `not: {}` is `not: true`: the empty schema matches everything, so nothing passes.
             $constraints['not'] = true;
         } elseif (is_array($not)) {
             $extractedNot = $this->extractValidationConstraints($not);
@@ -3003,8 +3231,8 @@ final class GenerateDtoCommand extends Command
                 $constraints['nullable'] = true;
             }
             $constraints['type'] = count($nonNullTypes) === 1 ? $nonNullTypes[0] : $nonNullTypes;
-            if ($constraints['type'] === []) {
-                unset($constraints['type']);
+            if ($nonNullTypes === [] && in_array('null', $propertySchema['type'], true)) {
+                $constraints['type'] = 'null';
             }
         }
 
@@ -3422,6 +3650,33 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * `{}`, `true`, or a subschema of annotations only: it matches every value.
+     *
+     * Such a subschema extracts to `[]` exactly like an unreadable `$ref`, and every guard that drops
+     * an empty extraction dropped it too — `not: {}` then refused nothing and `if: {}` never applied its
+     * `then`. The two have to be told apart BEFORE the extraction erases the difference.
+     */
+    private function isVacuousSubschema(mixed $schema): bool
+    {
+        if ($schema === true) {
+            return true;
+        }
+        if (!is_array($schema)) {
+            return false;
+        }
+        foreach (array_keys($schema) as $keyword) {
+            if (
+                !is_string($keyword)
+                || (!in_array($keyword, self::ANNOTATION_ONLY_KEYWORDS, true) && !str_starts_with($keyword, 'x-'))
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Recursively re-extracts subschema-bearing constraint keys so that $ref-only / otherwise
      * unvalidatable subschemas don't survive verbatim into the generated constraints (the
      * validator can't resolve $ref and would either silently skip or — for `if` — falsely match).
@@ -3434,6 +3689,13 @@ final class GenerateDtoCommand extends Command
         // Single-subschema keys: drop the key entirely when it extracts to nothing.
         foreach (['items', 'contains', 'propertyNames', 'if', 'then', 'else', 'contentSchema'] as $key) {
             if (!array_key_exists($key, $constraints) || !is_array($constraints[$key])) {
+                continue;
+            }
+            // The always-true schema is not "nothing": `if: {}` always applies `then`, `contains: {}`
+            // still wants one item, `items: {}` evaluates every item for `unevaluatedItems`.
+            if ($this->isVacuousSubschema($constraints[$key])) {
+                $constraints[$key] = true;
+
                 continue;
             }
             $extracted = $this->extractValidationConstraints($constraints[$key]);
@@ -3449,6 +3711,12 @@ final class GenerateDtoCommand extends Command
         // anything" — a no-op for these keywords — so the key is dropped.
         foreach (['additionalProperties', 'unevaluatedProperties', 'unevaluatedItems'] as $boolOrSchemaKey) {
             if (!array_key_exists($boolOrSchemaKey, $constraints) || !is_array($constraints[$boolOrSchemaKey])) {
+                continue;
+            }
+            // `additionalProperties: {}` evaluates the extra keys, which `unevaluatedProperties` reads.
+            if ($this->isVacuousSubschema($constraints[$boolOrSchemaKey])) {
+                $constraints[$boolOrSchemaKey] = true;
+
                 continue;
             }
             $extracted = $this->extractValidationConstraints($constraints[$boolOrSchemaKey]);
@@ -3472,6 +3740,13 @@ final class GenerateDtoCommand extends Command
                 // nothing and is dropped like any subschema that scrubs to empty.
                 if ($subSchema === false) {
                     $scrubbed[$name] = false;
+
+                    continue;
+                }
+                // `true` / `{}` checks nothing but still EVALUATES the key: `additionalProperties:
+                // false` and `unevaluatedProperties` must not see it as an extra one.
+                if ($this->isVacuousSubschema($subSchema)) {
+                    $scrubbed[$name] = true;
 
                     continue;
                 }
@@ -3539,10 +3814,8 @@ final class GenerateDtoCommand extends Command
      */
     private function resolvePropertyType(array $propertySchema, string $ownerClassName, string $propertyName): array
     {
-        $nullable = (bool)($propertySchema['nullable'] ?? false);
-
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
-        $nullable = (bool)($propertySchema['nullable'] ?? false);
+        $nullable = $this->schemaAllowsNull($propertySchema);
 
         // B: a $ref pointing to a scalar property of an external schema is inlined as that scalar,
         // so we neither emit a bogus class name nor pull in the whole external document.
@@ -3930,7 +4203,7 @@ final class GenerateDtoCommand extends Command
                     default => 'mixed',
                 };
 
-                return ['array<' . $itemPrefix . $mapped . '>', $nullable];
+                return ['array<' . $this->composePhpTypeHint($mapped, $itemNullable) . '>', $nullable];
             }
 
             return ['array', $nullable];
@@ -4362,7 +4635,13 @@ final class GenerateDtoCommand extends Command
      */
     private function isScalarAliasSchema(array $schema): bool
     {
-        if (!in_array($schema['type'] ?? null, ['string', 'integer', 'number', 'boolean'], true)) {
+        // `null` is a scalar too: a component `{type: null}` was materialized as an empty DTO, and a
+        // `$ref` to it then refused the one value the schema allows.
+        $type = $schema['type'] ?? null;
+        if ($type === ['null']) {
+            $type = 'null';
+        }
+        if (!in_array($type, ['string', 'integer', 'number', 'boolean', 'null'], true)) {
             return false;
         }
 
@@ -5147,7 +5426,7 @@ final class GenerateDtoCommand extends Command
      *
      * A conditional block that emits nothing still leaves its separator behind, and the templates have
      * enough of those that chasing the whitespace tag by tag is how one gets fixed and the next four
-     * appear. Both rules are mechanical and neither can change meaning:
+     * appear. Only whitespace tokens outside literals and comments are rewritten:
      *
      *   - never two blank lines in a row;
      *   - never a blank line right before a closing brace.
@@ -5157,9 +5436,24 @@ final class GenerateDtoCommand extends Command
      */
     private static function normalizeEmittedBlankLines(string $php): string
     {
-        $php = (string)preg_replace("/\n{3,}/", "\n\n", $php);
+        $tokens = token_get_all($php);
+        $result = '';
+        foreach ($tokens as $index => $token) {
+            if (!is_array($token)) {
+                $result .= $token;
+                continue;
+            }
+            $text = $token[1];
+            if ($token[0] === T_WHITESPACE) {
+                $text = (string)preg_replace("/\n{3,}/", "\n\n", $text);
+                if (($tokens[$index + 1] ?? null) === '}') {
+                    $text = (string)preg_replace("/\n[ \t]*\n([ \t]*)$/", "\n$1", $text);
+                }
+            }
+            $result .= $text;
+        }
 
-        return (string)preg_replace("/\n\n(\\s*\\})/", "\n$1", $php);
+        return $result;
     }
 
     /**
@@ -5193,6 +5487,11 @@ final class GenerateDtoCommand extends Command
         $this->twig->addFilter(new TwigFilter(
             'php_string',
             fn(string $value): string => $this->escapeSingleQuoted($value),
+        ));
+
+        $this->twig->addFilter(new TwigFilter(
+            name: 'php_doc',
+            callable: static fn(string $value): string => str_replace('*/', '* /', $value),
         ));
 
         return $this->twig;
@@ -5744,51 +6043,23 @@ final class GenerateDtoCommand extends Command
         return $propertyName;
     }
 
-    private function prepareOutputDirectory(string $outputDirectory): void
+    /**
+     * @param array<string, string> $files
+     * @param list<string> $ownedDirectories
+     */
+    private function publishGeneratedFiles(array $files, array $ownedDirectories): void
     {
-        if (is_dir($outputDirectory)) {
-            $this->deleteDirectoryContents($outputDirectory);
+        if (!$this->deferOutputPublication) {
+            (new GeneratedFilePublisher())->publish($files, $ownedDirectories);
             return;
         }
-
-        if (!mkdir($outputDirectory, 0o775, true) && !is_dir($outputDirectory)) {
-            throw new RuntimeException(sprintf('Cannot create directory: %s', $outputDirectory));
-        }
-    }
-
-    private function ensureDirectoryExists(string $directory): void
-    {
-        if (is_dir($directory)) {
-            return;
-        }
-
-        if (!mkdir($directory, 0o775, true) && !is_dir($directory)) {
-            throw new RuntimeException(sprintf('Cannot create directory: %s', $directory));
-        }
-    }
-
-    private function deleteDirectoryContents(string $directory): void
-    {
-        $entries = scandir($directory);
-        if ($entries === false) {
-            throw new RuntimeException(sprintf('Cannot read directory: %s', $directory));
-        }
-
-        foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') {
-                continue;
+        foreach ($files as $path => $content) {
+            if (array_key_exists($path, $this->pendingOutputFiles)) {
+                throw new RuntimeException(sprintf('Generated output file collision: %s', $path));
             }
-
-            $path = $directory . DIRECTORY_SEPARATOR . $entry;
-
-            if (is_dir($path)) {
-                $this->deleteDirectoryContents($path);
-                rmdir($path);
-                continue;
-            }
-
-            unlink($path);
+            $this->pendingOutputFiles[$path] = $content;
         }
+        $this->ownedOutputDirectories = [...$this->ownedOutputDirectories, ...$ownedDirectories];
     }
 
     /**
@@ -5889,7 +6160,7 @@ final class GenerateDtoCommand extends Command
 
         $type = $schema['type'] ?? null;
 
-        return is_array($type) && in_array('null', $type, true);
+        return $type === 'null' || (is_array($type) && in_array('null', $type, true));
     }
 
     /**
@@ -5916,11 +6187,15 @@ final class GenerateDtoCommand extends Command
     /**
      * Whether a union's branches already have one that accepts null, so it is not added twice.
      *
-     * @param array<int, array<string, mixed>> $branches
+     * @param array<int, array<string, mixed>|true> $branches
      */
     private function unionBranchesAcceptNull(array $branches): bool
     {
         foreach ($branches as $branch) {
+            // The always-true branch accepts null like everything else.
+            if ($branch === true) {
+                return true;
+            }
             $type = $branch['type'] ?? null;
             if ($type === 'null' || (is_array($type) && in_array('null', $type, true))) {
                 return true;
@@ -7315,7 +7590,7 @@ final class GenerateDtoCommand extends Command
 
         // Normalize multiline descriptions
         $description = trim($description);
-        return preg_replace('/\s+/', ' ', $description);
+        return str_replace('*/', '* /', preg_replace('/\s+/', ' ', $description) ?? $description);
     }
 
     /**
@@ -7341,12 +7616,12 @@ final class GenerateDtoCommand extends Command
                 return null;
             }
 
-            return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+            return str_replace('*/', '* /', preg_replace('/\s+/', ' ', $normalized) ?? $normalized);
         }
 
         if (is_int($example) || is_float($example) || is_bool($example) || is_array($example)) {
             $encoded = json_encode($example, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return is_string($encoded) ? $encoded : null;
+            return is_string($encoded) ? str_replace('*/', '* /', $encoded) : null;
         }
 
         return null;

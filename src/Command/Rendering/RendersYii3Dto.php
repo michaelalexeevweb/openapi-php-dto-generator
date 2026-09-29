@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use RuntimeException;
 
 /**
@@ -622,12 +623,12 @@ trait RendersYii3Dto
         ) {
             $bound = $constraints[$keyword] ?? null;
             if (is_numeric($bound) && !$this->yii3BoundIsExclusiveByModifier($constraints, $keyword)) {
-                $attributes[] = $this->yii3Rule($rule, [$this->yii3NumberLiteral($bound)], $ruleImports);
+                $attributes[] = $this->yii3Rule($rule, [$this->yii3NumberLiteral($bound), "type: 'original'"], $ruleImports);
             }
         }
 
         $pattern = $constraints['pattern'] ?? null;
-        if (is_string($pattern) && $pattern !== '') {
+        if (is_string($pattern) && $pattern !== '' && $this->patternCompiles($pattern)) {
             $attributes[] = $this->yii3Rule('Regex', [$this->yii3RegexLiteral($pattern)], $ruleImports);
         }
 
@@ -1041,13 +1042,13 @@ PHP;
     private function yii3NumberLiteral(mixed $value): string
     {
         return is_float($value) || str_contains((string)$value, '.')
-            ? (string)(float)$value
+            ? $this->numericLiteral((float)$value)
             : (string)(int)$value;
     }
 
     private function yii3RegexLiteral(string $pattern): string
     {
-        return "'/" . str_replace(['\\', "'", '/'], ['\\\\', "\\'", '\/'], $pattern) . "/'";
+        return $this->phpStringLiteral(DtoValidator::delimitPattern($pattern));
     }
 
     /**
@@ -1303,6 +1304,10 @@ PHP;
 
         foreach (['minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minItems', 'maxItems'] as $keyword) {
             if (array_key_exists($keyword, $schema) && !$this->yii3BoundIsExclusiveByModifier($schema, $keyword)) {
+                // An uncompilable pattern got no rule (see `patternCompiles()`): the interpreter keeps it.
+                if ($keyword === 'pattern' && (!is_string($schema['pattern']) || $schema['pattern'] === '' || !$this->patternCompiles($schema['pattern']))) {
+                    continue;
+                }
                 $covered[] = $keyword;
             }
         }
