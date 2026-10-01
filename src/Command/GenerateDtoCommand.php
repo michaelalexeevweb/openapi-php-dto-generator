@@ -653,6 +653,20 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A `$ref` fragment is a URI fragment, so its JSON pointer arrives percent-encoded (RFC 6901 §6):
+     * `#/components/schemas/Big%20Cat` names `Big Cat`. Read as written, it named nothing.
+     */
+    private function decodeRefFragment(string $ref): string
+    {
+        $hash = strpos($ref, '#');
+        if ($hash === false || !str_contains($ref, '%')) {
+            return $ref;
+        }
+
+        return substr($ref, 0, $hash + 1) . rawurldecode(substr($ref, $hash + 1));
+    }
+
+    /**
      * Recursively rewrites every `$ref` pointer containing `#/$defs/` (local or
      * external-file) to the `#/components/schemas/` form. Subschema-local `$defs`
      * pointers (`.../Foo/$defs/Bar`, no leading `#/`) are intentionally left untouched.
@@ -666,8 +680,11 @@ final class GenerateDtoCommand extends Command
 
         $result = [];
         foreach ($node as $key => $value) {
-            if ($key === '$ref' && is_string($value) && str_contains($value, '#/$defs/')) {
-                $result[$key] = str_replace('#/$defs/', '#/components/schemas/', $value);
+            if ($key === '$ref' && is_string($value)) {
+                $value = $this->decodeRefFragment($value);
+                $result[$key] = str_contains($value, '#/$defs/')
+                    ? str_replace('#/$defs/', '#/components/schemas/', $value)
+                    : $value;
                 continue;
             }
             $result[$key] = $this->rewriteDefsRefs($value);
@@ -965,7 +982,19 @@ final class GenerateDtoCommand extends Command
             $sourceFile = $this->getSchemaSourceFile($className);
             $properties = [];
             foreach ($schema['properties'] as $name => $propertySchema) {
+                if (is_array($propertySchema)) {
+                    $propertySchema = $this->canonicalNullableRefContainers($propertySchema);
+                }
                 $ref = is_array($propertySchema) ? ($propertySchema['$ref'] ?? null) : null;
+                // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
+                // component does; the flag lived on the target, where the property never looked.
+                if (
+                    is_string($ref)
+                    && !array_key_exists('nullable', $propertySchema)
+                    && ($this->localComponentDefinition($ref)['nullable'] ?? null) === true
+                ) {
+                    $propertySchema['nullable'] = true;
+                }
                 $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
                 if ($alias === null || !in_array($alias['type'] ?? null, ['null', ['null']], true)) {
                     $properties[$name] = $propertySchema;
@@ -981,6 +1010,63 @@ final class GenerateDtoCommand extends Command
             }
             $this->dtoSchemas[$className]['properties'] = $properties;
         }
+    }
+
+    /**
+     * The schema a LOCAL `#/components/schemas/X` reference names, as the document wrote it.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function localComponentDefinition(string $ref): ?array
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
+        // The RAW schema: an enum component's registered form keeps its members, not its `nullable`.
+        $definition = $this->rawSchemasByClass[$className] ?? $this->dtoSchemas[$className] ?? null;
+
+        return is_array($definition) ? $definition : null;
+    }
+
+    /**
+     * Inside a container, `anyOf` / `oneOf` of a `$ref` and `{type: null}` is the nullable reference
+     * — the same schema as `{$ref: X, nullable: true}`. Only that spelling was typed, so the union
+     * one left the items `mixed` and they stayed the decoded `stdClass`.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function canonicalNullableRefContainers(array $schema): array
+    {
+        foreach (['items', 'additionalProperties'] as $key) {
+            $value = $schema[$key] ?? null;
+            if (!is_array($value)) {
+                continue;
+            }
+            foreach (['anyOf', 'oneOf'] as $unionKey) {
+                $branches = $value[$unionKey] ?? null;
+                if (!is_array($branches) || count($branches) !== 2) {
+                    continue;
+                }
+                $refs = array_values(array_filter($branches, static fn(mixed $b): bool => is_array($b) && array_keys($b) === ['$ref']));
+                $nulls = array_values(array_filter($branches, static fn(mixed $b): bool => is_array($b) && ($b['type'] ?? null) === 'null' && count($b) === 1));
+                if (count($refs) === 1 && count($nulls) === 1) {
+                    $rest = [];
+                    foreach ($value as $keyword => $member) {
+                        if ($keyword !== $unionKey) {
+                            $rest[$keyword] = $member;
+                        }
+                    }
+                    $value = ['$ref' => $refs[0]['$ref'], 'nullable' => true] + $rest;
+                    break;
+                }
+            }
+            $schema[$key] = $this->canonicalNullableRefContainers($value);
+        }
+
+        return $schema;
     }
 
     private function finalizeGeneration(): int
@@ -3071,6 +3157,27 @@ final class GenerateDtoCommand extends Command
             $constraints['enum'] = $propertySchema['enum'];
         }
 
+        // A DELIBERATE DEVIATION from OpenAPI 3.0.3 (README.validation): `nullable: true` admits null
+        // even where an `enum` or `const` beside it does not list it. The 3.0.3 text lets those keywords
+        // refuse null, but a document writing `nullable` next to them means "or null" — and 2.15.48
+        // read it that way. Only the 3.0 KEYWORD: the 3.1 spelling `type: [x, "null"]` is JSON Schema,
+        // where `enum` decides on its own, so the member has to be listed there.
+        if (($propertySchema['nullable'] ?? null) === true) {
+            if (is_array($constraints['enum'] ?? null) && !in_array(null, $constraints['enum'], true)) {
+                $constraints['enum'] = [...$constraints['enum'], null];
+            }
+            if (array_key_exists('const', $constraints) && $constraints['const'] !== null) {
+                $const = $constraints['const'];
+                $withoutConst = [];
+                foreach ($constraints as $keyword => $value) {
+                    if ($keyword !== 'const') {
+                        $withoutConst[$keyword] = $value;
+                    }
+                }
+                $constraints = $withoutConst + ['enum' => [$const, null]];
+            }
+        }
+
         // A `string` + `format: binary` property is materialized as an UploadedFile, not a
         // string. Forwarding `type: string` would make the validator reject the uploaded file
         // ("param must be of type string") at deserialization time; the file is validated by its
@@ -3650,6 +3757,32 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * An item's enum members, kept in the constraints although the item became a PHP enum.
+     *
+     * The enum TYPE is the check only where something casts to it, and not every mode does: yii3's
+     * hydrator left the items strings, so `["z"]` passed, and Laravel refused it at hydration — a
+     * ValueError, a 500 — because no `field.*` rule existed. The members let the interpreter judge an
+     * item whatever it holds; a hydrated enum compares by its backing value.
+     *
+     * @param array<string, mixed> $extracted
+     * @param array<string, mixed> $itemSchema
+     * @return array<string, mixed>
+     */
+    private function withItemEnumMembers(array $extracted, array $itemSchema): array
+    {
+        if (array_key_exists('enum', $extracted)) {
+            return $extracted;
+        }
+        $members = $itemSchema['enum'] ?? null;
+        $ref = $itemSchema['$ref'] ?? null;
+        if (!is_array($members) && is_string($ref) && str_starts_with($ref, '#/components/schemas/')) {
+            $members = $this->nestedScalarRefDefinition($ref, null)['enum'] ?? null;
+        }
+
+        return is_array($members) && $members !== [] ? ['enum' => $members] + $extracted : $extracted;
+    }
+
+    /**
      * `{}`, `true`, or a subschema of annotations only: it matches every value.
      *
      * Such a subschema extracts to `[]` exactly like an unreadable `$ref`, and every guard that drops
@@ -3699,6 +3832,9 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
             $extracted = $this->extractValidationConstraints($constraints[$key]);
+            if ($key === 'items') {
+                $extracted = $this->withItemEnumMembers($extracted, $constraints[$key]);
+            }
             if ($extracted === []) {
                 unset($constraints[$key]);
             } else {
@@ -3720,6 +3856,9 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
             $extracted = $this->extractValidationConstraints($constraints[$boolOrSchemaKey]);
+            if ($boolOrSchemaKey === 'additionalProperties') {
+                $extracted = $this->withItemEnumMembers($extracted, $constraints[$boolOrSchemaKey]);
+            }
             if ($extracted === []) {
                 unset($constraints[$boolOrSchemaKey]);
             } else {

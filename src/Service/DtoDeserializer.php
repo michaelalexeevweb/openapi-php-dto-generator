@@ -1947,7 +1947,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             $value = $eqPos === false ? '' : substr($pair, $eqPos + 1);
-            $decodedKey = $allowReserved ? rawurldecode($key) : urldecode($key);
+            // `allowReserved` is about the VALUE; a parameter name is decoded the way a form decodes it.
+            $decodedKey = urldecode($key);
             $lists[$decodedKey][] = $allowReserved ? rawurldecode($value) : urldecode($value);
         }
 
@@ -1980,13 +1981,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $eqPos = strpos($pair, '=');
             if ($eqPos === false) {
                 // No value: ?key → key => ''
-                $this->assignRawQueryValue($result, rawurldecode($pair), '');
+                $this->assignRawQueryValue($result, urldecode($pair), '');
                 continue;
             }
 
             $this->assignRawQueryValue(
                 result: $result,
-                key: rawurldecode(substr($pair, 0, $eqPos)),
+                // The name decodes as in a form (`+` is a space); only the value keeps a literal `+`.
+                key: urldecode(substr($pair, 0, $eqPos)),
                 value: rawurldecode(substr($pair, $eqPos + 1)),
             );
         }

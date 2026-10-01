@@ -940,7 +940,12 @@ PHP;
         );
         $attributes = [];
 
-        if ($this->propertyIsRequiredOnInput($property) && !$property['nullable']) {
+        // A schema with no `type` admits null like any other JSON value — the runtime rule since
+        // 2.15.49. What else it asserts (`enum`, `const`, `not`) the callback still judges.
+        $untyped = $property['type'] === 'mixed'
+            && !array_key_exists('type', $constraints)
+            && !array_key_exists('nullable', $constraints);
+        if ($this->propertyIsRequiredOnInput($property) && !$property['nullable'] && !$untyped) {
             $attributes[] = '#[Assert\NotNull]';
         }
 

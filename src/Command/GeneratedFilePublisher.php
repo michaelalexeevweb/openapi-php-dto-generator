@@ -280,8 +280,26 @@ final class GeneratedFilePublisher
                 $prefix = substr($cwd, 0, 2) . '/';
             }
         }
+        // `..` after a symlink means the link TARGET's parent, as the OS reads it — not the
+        // directory the link sits in. Resolve the existing part up to the last `..`; what follows
+        // either does not exist yet or is the output itself, which is never resolved, so a linked
+        // output root is still refused.
+        $segments = explode('/', $path);
+        $lastParent = array_search('..', array_reverse($segments, true), true);
+        if ($lastParent !== false) {
+            $resolved = realpath($prefix . implode('/', array_slice($segments, 0, $lastParent + 1)));
+            if ($resolved !== false) {
+                $resolved = $windows ? str_replace('\\', '/', $resolved) : $resolved;
+                $prefix = '/';
+                if ($windows && preg_match('~^([a-zA-Z]:/)~', $resolved, $match) === 1) {
+                    $prefix = $match[1];
+                    $resolved = substr($resolved, strlen($match[1]));
+                }
+                $segments = [...explode('/', $resolved), ...array_slice($segments, $lastParent + 1)];
+            }
+        }
         $parts = [];
-        foreach (explode('/', $path) as $part) {
+        foreach ($segments as $part) {
             if ($part === '..') {
                 array_pop($parts);
             } elseif ($part !== '' && $part !== '.') {

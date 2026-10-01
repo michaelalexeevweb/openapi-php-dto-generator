@@ -10,7 +10,7 @@ A few behaviours worth knowing when validating against the schema:
 
 - **`const`, `enum` and `uniqueItems` compare JSON values.** Numbers `1` and `1.0` are equal; strings and booleans are distinct from numbers. Object key order is ignored, list order is preserved. Integer identity remains exact beyond 2^53 while values fit PHP integers. Equality traversal that exceeds its depth limit is rejected.
 - **Numeric bounds are independent.** In OpenAPI 3.1, `minimum: 10` together with `exclusiveMinimum: 1` requires both `>= 10` and `> 1`; the same applies to maximum bounds. The boolean OpenAPI 3.0 spelling still modifies its matching inclusive bound. Integer format bounds also remain active beside explicit bounds.
-- **Nullable values still satisfy every independent assertion.** `type: [string, "null"]` or `nullable: true` permits null for the type check; `const`, `enum`, `not`, conditionals and composition still apply. A nullable string with `const: red` rejects null. String and numeric keywords such as `minLength` and `minimum` do not apply to null.
+- **Nullable values still satisfy every independent assertion.** `type: [string, "null"]` permits null for the type check; `const`, `enum`, `not`, conditionals and composition still apply, so `type: [string, "null"], enum: [a, b]` rejects null — list `null` among the members to allow it. String and numeric keywords such as `minLength` and `minimum` do not apply to null. The 3.0 `nullable: true` keyword is the exception for `enum` and `const`, below.
 - **`allOf` keeps each branch independently.** Repeating `minimum: 10` and `minimum: 1` means both must hold, regardless of branch order. Folding must not replace the stricter branch or spread `nullable` into another branch.
 - **Null is a collection member.** `[null, null]` has two items and violates `uniqueItems: true`; `{ "x": null }` has one property. Missing DTO fields are distinguished through presence metadata.
 - **`type: array` means a JSON array (list).** A value passes only when it is a PHP list (sequential integer keys from `0`). An associative array is treated as a JSON object, not an array — so a getter returning `array_filter(...)` (which may leave non-contiguous keys) should wrap the result in `array_values(...)`.
@@ -60,6 +60,13 @@ A few behaviours worth knowing when validating against the schema:
   for a nullable reference in 3.0, the ecosystem's tools read it the same way, and obeying the letter
   would quietly change the type of a property thousands of documents describe correctly. In 3.1 the
   siblings are permitted by the specification itself, so there the behaviour needs no defence.
+- **In 3.0, `nullable: true` admits null beside an `enum` or `const` that does not list it — a
+  deliberate deviation.** OpenAPI 3.0.3 says `nullable` only adds null to `type` and that other
+  keywords "may disallow the use of null", so `nullable: true, type: string, enum: [a, b]` would refuse
+  `null`. It accepts `null` here, inline and through a `$ref` to such a component: a document writing
+  `nullable` next to an `enum` means "one of these, or null", the ecosystem's tools read it that way,
+  and 2.15.48 did too. Members other than null are still checked. The 3.1 spelling
+  `type: [string, "null"]` is plain JSON Schema and stays strict — there `enum` must list `null` itself.
 - **A malformed `required` or an unknown `type` stops generation.** `required` must be a list of
   property names — written as a bare string it used to drop the requirement in silence, leaving the
   property optional — and a `type` must be one JSON Schema defines, since an unrecognised one left the

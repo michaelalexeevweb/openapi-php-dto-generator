@@ -118,6 +118,18 @@ final class CriticalRegressionTest extends TestCase
         self::assertSame(['out'], array_values(array_diff(scandir($this->root . '/parent'), ['.', '..'])));
     }
 
+    /**
+     * `..` after a symlink is the TARGET's parent, as the OS resolves it — not the link's directory.
+     */
+    public function testAParentSegmentAfterASymlinkFollowsTheTarget(): void
+    {
+        mkdir($this->root . '/real/deep', 0o777, true);
+        symlink($this->root . '/real/deep', $this->root . '/link');
+        (new GenerateDtoCommand())->generateFromArray($this->spec([]), $this->root . '/link/../out', 'Safe');
+        self::assertContains('Probe.php', scandir($this->root . '/real/out'));
+        self::assertFalse(file_exists($this->root . '/out'));
+    }
+
     public function testFailedExternalWritePreservesTheEntirePreviousGeneration(): void
     {
         mkdir($this->root . '/out');

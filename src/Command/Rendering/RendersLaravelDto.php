@@ -1701,6 +1701,16 @@ trait RendersLaravelDto
             ));
         }
 
+        // `nullable` qualifies `type`: the rule covers it only together with a type rule. A `type` left
+        // to the interpreter (an enum-typed property gets no `string` rule) needs its `nullable` too,
+        // or the interpreter's type check refuses the null the `nullable` rule just let through.
+        if (array_key_exists('type', $schema) && !in_array('type', $consumed, true)) {
+            $consumed = array_values(array_filter(
+                $consumed,
+                static fn(string $keyword): bool => $keyword !== 'nullable',
+            ));
+        }
+
         $itemRules = $this->laravelItemRulesForProperty($property);
         foreach ($itemRules as $ruleSet) {
             if (in_array("'distinct'", $ruleSet, true)) {

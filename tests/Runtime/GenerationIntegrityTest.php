@@ -128,6 +128,17 @@ final class GenerationIntegrityTest extends TestCase
         $deserializer->deserialize(request: $request('{"f":"x"}'), dtoClass: $namespace . '\Probe');
     }
 
+    /**
+     * A `$ref` fragment is percent-encoded like any URI fragment (RFC 6901 §6).
+     */
+    public function testAPercentEncodedPointerResolves(): void
+    {
+        $document = $this->document(['Probe' => ['type' => 'object', 'properties' => ['c' => ['$ref' => '#/$defs/Big%20Cat']]]]);
+        $document['$defs'] = ['Big Cat' => ['type' => 'object', 'properties' => ['n' => ['type' => 'string']]]];
+        self::assertSame(2, (new GenerateDtoCommand())->generateFromArray($document, $this->root . '/out', 'Integrity'));
+        self::assertSame(['.', '..', 'BigCat.php', 'Probe.php'], scandir($this->root . '/out'));
+    }
+
     public function testRepeatedExternalReferencesAndRecursiveSchemaAreRegisteredOnce(): void
     {
         $item = ['type' => 'object', 'properties' => ['children' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']]]];

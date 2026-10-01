@@ -3,6 +3,25 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.50 — 2026-10-01
+
+- Accept null in untyped Symfony properties
+- Check enum items in every mode
+- Type nullable reference unions in containers
+- Decode percent-encoded reference pointers
+- Read reserved parameters under form names
+- Follow symlinks before parent segments
+- Run CI on Node 24 actions
+- Accept null for 3.0 nullable enums
+
+In 3.0 `nullable: true` admits `null` again beside an `enum` or `const` that does not list it — inline,
+as 2.15.48 did, and now through a `$ref` to such a component too. This deviates from the letter of
+OpenAPI 3.0.3 on purpose; see README.validation. 3.1 `type: [x, "null"]` stays strict.
+
+Laravel and laravel-data now refuse an invalid enum ITEM in validation (422) instead of at hydration;
+yii3 refuses it at all. Regenerate DTOs. yii3 still casts `null` to a declared `string` (or a union with
+one) before validation — see the support matrix.
+
 ## 2.15.49 — 2026-10-01
 
 - Stage output; roll back failed publication

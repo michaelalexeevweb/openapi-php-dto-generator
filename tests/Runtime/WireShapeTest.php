@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Request;
@@ -155,9 +156,12 @@ final class WireShapeTest extends TestCase
         self::assertSame('{"picked":"a"}', $roundTrip('{"picked":"a"}'));
     }
 
-    public function testANullableDtoTwoContainersDownAcceptsNull(): void
+    /**
+     * @param array<string, mixed> $node
+     */
+    #[DataProvider('nullableNodeSpellings')]
+    public function testANullableDtoTwoContainersDownAcceptsNull(array $node): void
     {
-        $node = ['$ref' => '#/components/schemas/Node', 'nullable' => true];
         $list = static fn(array $inner): array => ['type' => 'array', 'items' => $inner];
         $map = static fn(array $inner): array => ['type' => 'object', 'additionalProperties' => $inner];
         $namespace = $this->generate(schemas: [
@@ -180,12 +184,53 @@ final class WireShapeTest extends TestCase
         self::assertNull($dto->getMapList()['k'][0]);
         self::assertNull($dto->getMapMap()['k']['j']);
 
+        // One container down as well: the items are DTOs, not the decoded stdClass.
+        $flat = $this->generate(schemas: [
+            'Node' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+            'Probe' => ['type' => 'object', 'properties' => ['list' => $list($node)]],
+        ]);
+        $items = $deserializer->deserialize(request: self::jsonRequest('{"list":[null,{"name":"b"}]}'), dtoClass: $flat . '\Probe')->getList();
+        self::assertNull($items[0]);
+        self::assertSame('b', $items[1]->getName());
+
         // Not nullable, the same null is still refused.
         $strict = $this->generate(schemas: [
             'Node' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
             'Probe' => ['type' => 'object', 'properties' => ['listList' => $list($list(['$ref' => '#/components/schemas/Node']))]],
         ]);
         $this->assertRejected(static fn(): mixed => $deserializer->deserialize(request: self::jsonRequest('{"listList":[[null]]}'), dtoClass: $strict . '\Probe'));
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function nullableNodeSpellings(): iterable
+    {
+        yield 'nullable sibling' => [['$ref' => '#/components/schemas/Node', 'nullable' => true]];
+        yield 'anyOf with null' => [['anyOf' => [['$ref' => '#/components/schemas/Node'], ['type' => 'null']]]];
+        yield 'oneOf with null' => [['oneOf' => [['type' => 'null'], ['$ref' => '#/components/schemas/Node']]]];
+    }
+
+    /**
+     * `allowReserved` keeps a literal `+` in the VALUE; the parameter NAME still decodes as in a form.
+     */
+    public function testAReservedParameterIsFoundUnderAFormEncodedName(): void
+    {
+        $namespace = $this->generateSpec(spec: [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/widgets' => ['get' => [
+                'parameters' => [
+                    ['name' => 'pet name', 'in' => 'query', 'allowReserved' => true, 'schema' => ['type' => 'string']],
+                    ['name' => 'pet tags', 'in' => 'query', 'allowReserved' => true, 'schema' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                ],
+                'responses' => ['200' => ['description' => 'OK']],
+            ]]],
+        ]);
+        $class = $this->parameterClass($namespace, 'QueryParams');
+        $dto = (new DtoDeserializer())->deserialize(request: Request::create(uri: '/widgets?pet+name=a+b&pet%20tags=c+d&pet+tags=e'), dtoClass: $class);
+        self::assertSame('a+b', $dto->getPetName());
+        self::assertSame(['c+d', 'e'], $dto->getPetTags());
     }
 
     private function parameterClass(string $namespace, string $suffix): string

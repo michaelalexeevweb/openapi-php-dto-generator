@@ -460,7 +460,8 @@ final class ValidationParityTest extends TestCase
                 '{"f":"red"}', '{"f":null}',
             ],
             'nullable ignores string length' => [['type' => ['string', 'null'], 'minLength' => 3], '{"f":null}', '{"f":"r"}'],
-            'legacy nullable const' => [['type' => 'string', 'nullable' => true, 'const' => 'red'], '{"f":"red"}', '{"f":null}'],
+            // The 3.0 `nullable` keyword admits null beside `const` — the documented deviation.
+            'legacy nullable const' => [['type' => 'string', 'nullable' => true, 'const' => 'red'], '{"f":null}', '{"f":"blue"}'],
             'legacy nullable ignores length' => [['type' => 'string', 'nullable' => true, 'minLength' => 3], '{"f":null}', '{"f":"r"}'],
             'allOf conditional scope' => [
                 ['type' => 'string', 'allOf' => [['if' => ['const' => 'red']], ['then' => ['const' => 'green']], ['minLength' => 3]]],
@@ -896,6 +897,119 @@ final class ValidationParityTest extends TestCase
                 actual: $this->verdict($mode, self::probeSpec(['type' => 'array', 'items' => ['type' => ['string', 'null']]]), 'nullable-items', '{"f":[null,"a"]}', '{"f":[1]}'),
                 message: $mode->value . ' nullable items',
             );
+        }
+    }
+
+    /**
+     * Mode divergences found by the 2.15.49 audit — each pair is the spec's own verdict, asked of all
+     * five modes.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('modeDivergenceCases')]
+    public function testModeDivergencesFoundByTheAudit(GenerationMode $mode, string $key, array $spec, string $validJson, string $invalidJson): void
+    {
+        // yii3 casts `null` to a declared `string` member before any rule runs — documented in the
+        // support matrix, pinned here so the day it changes the row can go.
+        $castByHydrator = $mode === GenerationMode::Yii3 && str_contains($key, 'union refuses null');
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => $castByHydrator],
+            actual: $this->verdict($mode, $spec, 'divergence-' . $key, $validJson, $invalidJson),
+        );
+    }
+
+    public static function modeDivergenceCases(): iterable
+    {
+        $optional = static function (array $schema): array {
+            $spec = self::probeSpec($schema);
+            $spec['components']['schemas']['Probe']['required'] = [];
+
+            return $spec;
+        };
+        $withShade = static function (array $schema): array {
+            $spec = self::probeSpec($schema);
+            $spec['components']['schemas']['Shade'] = ['type' => 'string', 'enum' => ['red', 'blue']];
+
+            return $spec;
+        };
+        $cases = [
+            'untyped accepts null' => [self::probeSpec(['not' => ['const' => 5]]), '{"f":null}', '{"f":5}'],
+            'union refuses null' => [self::probeSpec(['oneOf' => [['type' => 'string'], ['type' => 'integer']]]), '{"f":"a"}', '{"f":null}'],
+            'anyOf union refuses null' => [self::probeSpec(['anyOf' => [['type' => 'string'], ['type' => 'integer']]]), '{"f":1}', '{"f":null}'],
+            'optional nullable enum member' => [$optional(['type' => ['string', 'null'], 'enum' => ['red', 'blue', null]]), '{}', '{"f":"green"}'],
+            'optional nullable enum null' => [$optional(['type' => ['string', 'null'], 'enum' => ['red', 'blue', null]]), '{"f":null}', '{"f":"green"}'],
+            'nullable array enum items' => [self::probeSpec(['type' => ['array', 'null'], 'items' => ['type' => 'string', 'enum' => ['a', 'b']]]), '{"f":["a"]}', '{"f":["z"]}'],
+            'item object maxProperties' => [self::probeSpec(['type' => 'array', 'items' => ['type' => 'object', 'maxProperties' => 1]]), '{"f":[{"a":1}]}', '{"f":[{"a":1,"b":2}]}'],
+            'item object minProperties' => [self::probeSpec(['type' => 'array', 'items' => ['type' => 'object', 'minProperties' => 2]]), '{"f":[{"a":1,"b":2}]}', '{"f":[{"a":1}]}'],
+            'enum items' => [self::probeSpec(['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]]), '{"f":["a"]}', '{"f":["z"]}'],
+            'enum ref items' => [$withShade(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shade']]), '{"f":["red"]}', '{"f":["green"]}'],
+            'enum map values' => [self::probeSpec(['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['a', 'b']]]), '{"f":{"k":"a"}}', '{"f":{"k":"z"}}'],
+            'allOf enum and const' => [self::probeSpec(['allOf' => [['type' => 'string', 'enum' => ['a', 'b']], ['const' => 'a']]]), '{"f":"a"}', '{"f":"b"}'],
+        ];
+        foreach ($cases as $key => [$spec, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . '/' . $mode->value => [$mode, $key, $spec, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * An enum ITEM is refused by Laravel's validator, not by the hydrator afterwards: no `field.*`
+     * rule existed, so `["z"]` passed validation and died in `fromValidated()` — a 500, not a 422.
+     */
+    public function testLaravelRefusesAnEnumItemInValidation(): void
+    {
+        $fqcn = $this->generate(
+            spec: self::probeSpec(['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]]),
+            namespace: $this->namespaceFor(GenerationMode::Laravel, 'enum-item-validation'),
+            mode: 'laravel',
+        );
+        $factory = new Factory(new Translator(new ArrayLoader(), 'en'));
+        foreach (['{"f":["a"]}' => false, '{"f":["z"]}' => true] as $json => $fails) {
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$fqcn, 'rules']);
+            $validator = $factory->make(json_decode($json, true), $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+            $this->assertSame($fails, $validator->fails(), $json);
+        }
+    }
+
+    /**
+     * The documented deviation from OpenAPI 3.0.3 (README.validation): the 3.0 `nullable: true`
+     * keyword admits null next to an `enum` / `const` that does not list it, inline and through a
+     * `$ref`. The 3.1 spelling stays JSON Schema: there `enum` decides alone.
+     */
+    #[DataProvider('nullableEnumSpellings')]
+    public function testNullableKeywordAdmitsNullBesideEnum(GenerationMode $mode, string $key, string $version, array $property, bool $nullAccepted): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['openapi'] = $version;
+        $spec['components']['schemas']['EnumView'] = ['nullable' => true, 'type' => 'string', 'enum' => ['a', 'b']];
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'nullable-enum-' . $key, '{"f":"a"}', '{"f":"z"}'),
+            message: $key . ' members',
+        );
+        $this->assertSame(
+            expected: ['valid' => $nullAccepted, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'nullable-enum-null-' . $key, '{"f":null}', '{"f":"z"}'),
+            message: $key . ' null',
+        );
+    }
+
+    public static function nullableEnumSpellings(): iterable
+    {
+        $cases = [
+            '3.0 inline enum' => ['3.0.3', ['nullable' => true, 'type' => 'string', 'enum' => ['a', 'b']], true],
+            '3.0 ref enum' => ['3.0.3', ['$ref' => '#/components/schemas/EnumView'], true],
+            '3.0 inline const' => ['3.0.3', ['nullable' => true, 'type' => 'string', 'const' => 'a'], true],
+            '3.1 type list enum' => ['3.1.0', ['type' => ['string', 'null'], 'enum' => ['a', 'b']], false],
+            '3.1 type list enum with null' => ['3.1.0', ['type' => ['string', 'null'], 'enum' => ['a', 'b', null]], true],
+        ];
+        foreach ($cases as $key => [$version, $property, $nullAccepted]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . '/' . $mode->value => [$mode, $key, $version, $property, $nullAccepted];
+            }
         }
     }
 
