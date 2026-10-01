@@ -139,6 +139,33 @@ final class GenerationIntegrityTest extends TestCase
         self::assertSame(['.', '..', 'BigCat.php', 'Probe.php'], scandir($this->root . '/out'));
     }
 
+    /**
+     * An inline object registered twice — once before the reference normalization, once after — is
+     * one schema, not a collision with itself. A `$ref` to a `nullable` component, or to the null
+     * schema, inside it was normalized in the first copy only.
+     */
+    #[DataProvider('normalizedReferenceTargets')]
+    public function testAnInlineObjectWithANormalizedReferenceIsNotACollision(array $target): void
+    {
+        $document = $this->document([
+            'Kitten' => $target,
+            'Basket' => ['type' => 'object', 'properties' => [
+                'cushion' => ['type' => 'object', 'properties' => ['kitten' => ['$ref' => '#/components/schemas/Kitten']]],
+            ]],
+        ]);
+        foreach (GenerateDtoCommand::ATTRIBUTE_MODES as $mode) {
+            $out = $this->root . '/out-' . $mode;
+            self::assertGreaterThan(0, (new GenerateDtoCommand())->generateFromArray($document, $out, 'Integrity', $mode), $mode);
+        }
+    }
+
+    public static function normalizedReferenceTargets(): iterable
+    {
+        yield 'nullable object' => [['type' => 'object', 'nullable' => true, 'properties' => ['id' => ['type' => 'integer']]]];
+        yield 'nullable enum' => [['type' => 'string', 'nullable' => true, 'enum' => ['a', 'b']]];
+        yield 'null schema' => [['type' => 'null']];
+    }
+
     public function testRepeatedExternalReferencesAndRecursiveSchemaAreRegisteredOnce(): void
     {
         $item = ['type' => 'object', 'properties' => ['children' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']]]];

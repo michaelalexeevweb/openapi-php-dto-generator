@@ -3,6 +3,14 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.51 — 2026-10-01
+
+- Normalized inline object no longer collides
+
+An inline object holding a `$ref` to a `nullable` component (2.15.50) or to the null schema (2.15.49)
+was registered once normalized and once raw, and generation stopped with `DTO schema name collision`.
+Every registration is normalized the same way now.
+
 ## 2.15.50 — 2026-10-01
 
 - Accept null in untyped Symfony properties

@@ -333,6 +333,9 @@ final class GenerateDtoCommand extends Command
      */
     private array $canonicalSourceFiles = [];
 
+    /** Set once the registered schemas went through `inlineNullSchemaReferences()`. */
+    private bool $referencesNormalized = false;
+
     /**
      * How many `extractValidationConstraints()` frames are on the stack — see the note there. Zero
      * means the next call is the outermost one and owns the `$ref` inlining.
@@ -947,6 +950,7 @@ final class GenerateDtoCommand extends Command
         $this->deprecatedByClass = [];
         $this->relatedByClass = [];
         $this->canonicalSourceFiles = [];
+        $this->referencesNormalized = false;
         $this->rootSpecFile = $rootSpecFile === null ? null : $this->canonicalSourceFile($rootSpecFile);
         $this->baseOutputDirectory = $outputDirectory;
         $this->baseNamespace = $namespace;
@@ -976,40 +980,59 @@ final class GenerateDtoCommand extends Command
     private function inlineNullSchemaReferences(): void
     {
         foreach ($this->dtoSchemas as $className => $schema) {
-            if (!is_array($schema['properties'] ?? null)) {
+            $this->dtoSchemas[$className] = $this->withNormalizedReferences($schema, $this->getSchemaSourceFile($className));
+        }
+        // From here on every registration is normalized on the way in — see `registerSchema()`.
+        $this->referencesNormalized = true;
+    }
+
+    /**
+     * The schema with each property's reference normalized: a nullable-reference union in a
+     * container, the `nullable` of a referenced 3.0 component, a reference to the null schema
+     * inlined. Idempotent — applied to its own result it changes nothing — which is what lets
+     * `registerSchema()` compare a re-registration against the stored, already normalized copy.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function withNormalizedReferences(array $schema, ?string $sourceFile): array
+    {
+        if (!is_array($schema['properties'] ?? null)) {
+            return $schema;
+        }
+        $properties = [];
+        foreach ($schema['properties'] as $name => $propertySchema) {
+            if (!is_array($propertySchema)) {
+                $properties[$name] = $propertySchema;
                 continue;
             }
-            $sourceFile = $this->getSchemaSourceFile($className);
-            $properties = [];
-            foreach ($schema['properties'] as $name => $propertySchema) {
-                if (is_array($propertySchema)) {
-                    $propertySchema = $this->canonicalNullableRefContainers($propertySchema);
-                }
-                $ref = is_array($propertySchema) ? ($propertySchema['$ref'] ?? null) : null;
-                // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
-                // component does; the flag lived on the target, where the property never looked.
-                if (
-                    is_string($ref)
-                    && !array_key_exists('nullable', $propertySchema)
-                    && ($this->localComponentDefinition($ref)['nullable'] ?? null) === true
-                ) {
-                    $propertySchema['nullable'] = true;
-                }
-                $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
-                if ($alias === null || !in_array($alias['type'] ?? null, ['null', ['null']], true)) {
-                    $properties[$name] = $propertySchema;
-                    continue;
-                }
-                $inlined = [];
-                foreach ($propertySchema as $keyword => $value) {
-                    if ($keyword !== '$ref') {
-                        $inlined[$keyword] = $value;
-                    }
-                }
-                $properties[$name] = $inlined + $alias;
+            $propertySchema = $this->canonicalNullableRefContainers($propertySchema);
+            $ref = $propertySchema['$ref'] ?? null;
+            // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
+            // component does; the flag lived on the target, where the property never looked.
+            if (
+                is_string($ref)
+                && !array_key_exists('nullable', $propertySchema)
+                && ($this->localComponentDefinition($ref)['nullable'] ?? null) === true
+            ) {
+                $propertySchema['nullable'] = true;
             }
-            $this->dtoSchemas[$className]['properties'] = $properties;
+            $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
+            if ($alias === null || !in_array($alias['type'] ?? null, ['null', ['null']], true)) {
+                $properties[$name] = $propertySchema;
+                continue;
+            }
+            $inlined = [];
+            foreach ($propertySchema as $keyword => $value) {
+                if ($keyword !== '$ref') {
+                    $inlined[$keyword] = $value;
+                }
+            }
+            $properties[$name] = $inlined + $alias;
         }
+        $schema['properties'] = $properties;
+
+        return $schema;
     }
 
     /**
@@ -1483,6 +1506,13 @@ final class GenerateDtoCommand extends Command
 
         if (array_key_exists($className, $this->enumSchemas)) {
             throw new RuntimeException(sprintf('Enum/DTO name collision for %s.', $className));
+        }
+
+        // Once the stored schemas are normalized (`inlineNullSchemaReferences()`), a schema registered
+        // later — an inline object met again while rendering, or for the first time — is normalized
+        // the same way, so the same schema compares equal and a new one is not left raw.
+        if ($this->referencesNormalized) {
+            $schemaDefinition = $this->withNormalizedReferences($schemaDefinition, $sourceFile);
         }
 
         if (array_key_exists($className, $this->dtoSchemas)) {
