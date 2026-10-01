@@ -111,7 +111,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertSame($statusClass::from(1), $holder->getStatus());
 
         // An unknown enum value is rejected when coercing to the backed enum.
-        $this->expectExceptionMessageMatches('/backed enum|not a valid backing value/i');
+        $this->expectExceptionMessageMatches('/backed enum|not a valid backing value|must be one of the following values/i');
         $serializer->denormalize(['status' => 5], $holderClass);
     }
 
@@ -486,7 +486,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $outDir = $this->outputDirectory . '/out';
 
         $application = new Application();
-        $application->add(new GenerateDtoCommand());
+        $application->addCommand(new GenerateDtoCommand());
         $tester = new CommandTester($application->find('openapi:generate-dto'));
         $exit = $tester->execute([
             '--file' => $specPath,
@@ -984,7 +984,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         ]));
 
         $application = new Application();
-        $application->add(new GenerateDtoCommand());
+        $application->addCommand(new GenerateDtoCommand());
         $tester = new CommandTester($application->find('openapi:generate-dto'));
         $exit = $tester->execute([
             '--file' => $specPath,

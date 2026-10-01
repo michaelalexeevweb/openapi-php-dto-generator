@@ -16,6 +16,15 @@ jobs:
         php-version:
           - '8.3'
           - '8.4'
+        symfony:
+          - '7'
+        include:
+          # `config.platform.php` pins resolution to 8.3, which keeps Symfony on 7.x everywhere.
+          # Symfony 8 needs PHP >= 8.4.1, so it is exercised by lifting the pin on this job only.
+          - php-version: '8.4'
+            symfony: '8'
+
+    name: tests (PHP ${{ matrix.php-version }}, Symfony ${{ matrix.symfony }})
 
     steps:
       - name: Checkout
@@ -31,8 +40,15 @@ jobs:
       - name: Validate composer.json
         run: composer validate --strict --no-check-lock
 
+      - name: Resolve for the job's PHP
+        if: matrix.symfony == '8'
+        run: composer config platform.php 8.4.1
+
       - name: Install dependencies
         run: composer update --prefer-dist --no-progress
+
+      - name: Show the resolved Symfony
+        run: composer show symfony/console | grep -E '^versions'
 
       - name: Audit dependencies
         run: composer audit --no-interaction

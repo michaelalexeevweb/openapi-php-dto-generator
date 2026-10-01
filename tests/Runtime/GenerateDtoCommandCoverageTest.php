@@ -65,7 +65,7 @@ final class GenerateDtoCommandCoverageTest extends TestCase
     {
         $application = new Application();
         $command = new GenerateDtoCommand();
-        $application->add($command);
+        $application->addCommand($command);
 
         return new CommandTester($command);
     }

@@ -3,6 +3,16 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.52 — 2026-10-01
+
+- Allow Symfony 8 components
+- Allow Laravel 13 in development
+- CI runs on Symfony 8
+
+`symfony/console`, `http-foundation`, `mime` and `yaml` accept `^7.4 || ^8.0`, so an application on
+Symfony 8 can install the package; Symfony 8 itself needs PHP 8.4.1+. The package's own code needed no
+change; the suite passes on both majors, and a CI job now resolves Symfony 8 to keep it that way.
+
 ## 2.15.51 — 2026-10-01
 
 - Normalized inline object no longer collides

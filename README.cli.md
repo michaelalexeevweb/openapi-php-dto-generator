@@ -93,6 +93,6 @@ Collisions stop generation before publication, preserving the previous output.
 ## Requirements
 
 - PHP 8.3+
-- Symfony 7.4 components (`console`, `http-foundation`, `mime`, `yaml`)
+- Symfony 7.4 or 8.x components (`console`, `http-foundation`, `mime`, `yaml`; 8.x needs PHP 8.4.1+)
 
 A mode's own dependencies are listed in its guide — see the [README](README.md#five-modes).

@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.51
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.52
 ```
 
 ---
@@ -236,7 +236,8 @@ from the parity test suites, so a row that stops being true fails a test.
 
 ## Requirements
 
-PHP 8.3+ and the Symfony 7.4 components `console`, `http-foundation`, `mime`, `yaml`. Each mode's own
+PHP 8.3+ and the Symfony 7.4 or 8.x components `console`, `http-foundation`, `mime`, `yaml` (8.x
+needs PHP 8.4.1+). Each mode's own
 dependencies are in its guide.
 
 ## What it does not do
