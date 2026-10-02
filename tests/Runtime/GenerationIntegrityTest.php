@@ -166,6 +166,26 @@ final class GenerationIntegrityTest extends TestCase
         yield 'null schema' => [['type' => 'null']];
     }
 
+    /**
+     * An escape ECMA-262 does not define keeps its PCRE meaning, and the run says so.
+     */
+    public function testAPcreOnlyEscapeIsReported(): void
+    {
+        $generator = new GenerateDtoCommand();
+        $generator->generateFromArray($this->document(['Probe' => ['type' => 'object', 'properties' => [
+            'gap' => ['type' => 'string', 'pattern' => '^\h+$'],
+            'code' => ['type' => 'string', 'pattern' => '^\w+\v\\\h$'],
+        ], 'patternProperties' => ['^a\Rb$' => ['type' => 'string']]]]), $this->root . '/out', 'Integrity');
+
+        $warnings = array_values(array_filter(
+            $generator->getGenerationWarnings(),
+            static fn(string $warning): bool => str_contains($warning, 'ECMA-262'),
+        ));
+        self::assertCount(2, $warnings);
+        self::assertStringContainsString('uses \h', $warnings[0]);
+        self::assertStringContainsString('uses \R', $warnings[1]);
+    }
+
     public function testRepeatedExternalReferencesAndRecursiveSchemaAreRegisteredOnce(): void
     {
         $item = ['type' => 'object', 'properties' => ['children' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']]]];

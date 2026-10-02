@@ -7,6 +7,10 @@ Validator / Serializer attributes**. There is no library runtime: `symfony/valid
 and `symfony/serializer` (de)serializes them — or a controller maps them automatically with
 `#[MapRequestPayload]` / `#[MapQueryString]`.
 
+**Symfony 7.4.6 or newer, or 8.x** for `symfony/serializer` and `symfony/property-info`. On 7.4.0–7.4.5
+a `DateTimeImmutable` constructor argument is handed the raw string and `#[MapRequestPayload]` answers
+with other status codes — measured by installing the lowest versions; CI keeps that floor installed.
+
 Required properties are constructor arguments and stay `readonly`. Optional ones are set by the
 serializer through a setter, and that setter records that the payload carried the key — which is
 what makes PATCH semantics work (see [below](#presence-tracking-patch--partial-updates)).

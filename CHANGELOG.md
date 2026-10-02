@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.54 — 2026-10-02
+
+- Refuse publishing unparsable PHP
+- Warn on PCRE-only regex escapes
+- Raise floors to Laravel 11.1, serializer 7.4.6
+- CI installs the lowest dependencies
+
+Every generated PHP file is parsed before anything is written; a broken one stops generation with the
+file named and the previous output intact. A `pattern` escape ECMA-262 does not define (`\h`, `\R`,
+`\N`, …) keeps its PCRE meaning and now produces a warning.
+
+The declared floors were never installed until now, and two were wrong: Laravel's `list` rule arrived in
+11.1, not 11.0, and Symfony's serializer and property-info hydrate dates correctly from 7.4.6. The
+dependency constraints and the mode guides say so, and a CI job installs exactly those floors.
+
 ## 2.15.53 — 2026-10-02
 
 - Keep ECMA vertical tab in regex

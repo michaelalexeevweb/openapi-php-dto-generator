@@ -9,12 +9,19 @@
          failOnRisky="true"
          beStrictAboutOutputDuringTests="true"
          cacheDirectory=".phpunit.cache">
+    <php>
+        <!-- The full suite peaks just above PHP's default 128M; pinned so a plain `vendor/bin/phpunit`
+             behaves the same on every machine and in CI. -->
+        <ini name="memory_limit" value="512M"/>
+    </php>
     <testsuites>
         <testsuite name="OpenAPI Generator Test Suite">
             <directory>tests</directory>
         </testsuite>
     </testsuites>
-    <source>
+    <!-- `failOnDeprecation` judges OUR code: a deprecation raised inside vendor (an old transitive
+         package on the lowest-dependency job) is the dependency's business, not a failure here. -->
+    <source restrictDeprecations="true">
         <include>
             <directory>src</directory>
         </include>

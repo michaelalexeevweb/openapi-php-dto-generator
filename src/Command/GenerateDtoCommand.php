@@ -1459,6 +1459,7 @@ final class GenerateDtoCommand extends Command
         if (in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)) {
             $this->assertLaravelPropertyNamesAreUnambiguous($schemaDefinition);
         }
+        $this->warnAboutPcreOnlyEscapes($schemaDefinition, $className);
 
         // Registries are keyed by generated class name. A different document is not the same
         // schema, even when its definition happens to look identical or its namespace is mapped.
@@ -8283,6 +8284,41 @@ final class GenerateDtoCommand extends Command
         }
 
         return $schema;
+    }
+
+    /**
+     * Escapes PCRE defines and ECMA-262 does not. A schema `pattern` is ECMA-262 — under its `u` flag
+     * `\h` is a syntax error, without it a plain `h` — while PHP reads `\h` as horizontal whitespace.
+     * The PCRE meaning is almost certainly what the author meant, so it is kept; the warning says the
+     * pattern would be refused or read differently by a JavaScript validator.
+     */
+    private const string PCRE_ONLY_ESCAPES = 'hHVRNKAzZGXCQEeago';
+
+    /**
+     * @param array<array-key, mixed> $schema
+     */
+    private function warnAboutPcreOnlyEscapes(array $schema, string $className): void
+    {
+        foreach ($schema as $keyword => $value) {
+            $patterns = match (true) {
+                $keyword === 'pattern' && is_string($value) => [$value],
+                $keyword === 'patternProperties' && is_array($value) => array_map('strval', array_keys($value)),
+                default => [],
+            };
+            foreach ($patterns as $pattern) {
+                if (preg_match('/(?<!\\\)(?:\\\\\\\)*\\\([' . self::PCRE_ONLY_ESCAPES . '])/', $pattern, $match) === 1) {
+                    $this->addGenerationWarning(sprintf(
+                        'Pattern "%s" in %s uses \%s, which ECMA-262 does not define; it is checked with its PCRE meaning.',
+                        $pattern,
+                        $className,
+                        $match[1],
+                    ));
+                }
+            }
+            if (is_array($value)) {
+                $this->warnAboutPcreOnlyEscapes($value, $className);
+            }
+        }
     }
 
     /**

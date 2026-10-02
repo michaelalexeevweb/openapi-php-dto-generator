@@ -5426,8 +5426,16 @@ final class GenerateDtoCommandTest extends TestCase
         // Absolute paths may contain numeric segments and punctuation; the namespace must remain
         // a legal PHP identifier rather than containing the literal filesystem spelling.
         token_get_all($content, TOKEN_PARSE);
-        $this->assertStringContainsString('namespace MyApp\Generated\\', $content);
-        $this->assertStringNotContainsString('2026-output', $content);
+        $this->assertSame(1, preg_match('/^namespace ([^;]+);/m', $content, $match));
+        $derived = $match[1];
+        foreach (explode('\\', $derived) as $segment) {
+            $this->assertMatchesRegularExpression('/^[A-Za-z_][A-Za-z0-9_]*$/', $segment, $derived);
+        }
+        // An absolute directory becomes a namespace by its whole path, which is machine-specific —
+        // so only both ends are fixed: the base namespace and the directory's own segments, with
+        // `2026-output` turned into an identifier rather than dropped or left as written.
+        $this->assertStringStartsWith('MyApp\Generated\\', $derived);
+        $this->assertStringEndsWith('\Absolute\Value2026Output\Common', $derived);
 
         // Cleanup
         $this->deleteDirectory($this->outputDirectory . '/Absolute');

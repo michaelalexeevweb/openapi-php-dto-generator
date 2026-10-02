@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command;
 
+use ParseError;
 use RuntimeException;
 use Throwable;
 
@@ -21,6 +22,8 @@ final class GeneratedFilePublisher
      */
     public function publish(array $files, array $ownedDirectories): void
     {
+        $this->assertGeneratedPhpParses($files);
+
         $normalizedFiles = [];
         foreach ($files as $path => $content) {
             $normalizedFiles[$this->absolutePath($path)] = $content;
@@ -161,6 +164,41 @@ final class GeneratedFilePublisher
                 $this->remove($operation['backup']);
             } catch (RuntimeException $error) {
                 error_log($error->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Every generated PHP file must parse before anything on disk changes.
+     *
+     * The same check as `php -l`, in process: `TOKEN_PARSE` runs the real parser and throws the real
+     * ParseError. A broken file means a generator bug — a schema description once closed a docblock
+     * and turned into code — and publishing it would replace working classes with ones that fatal
+     * on the next autoload. Loading the classes is left out on purpose: the generator often runs
+     * where the target framework is not installed.
+     *
+     * @param array<string, string> $files
+     */
+    private function assertGeneratedPhpParses(array $files): void
+    {
+        foreach ($files as $path => $content) {
+            if (!str_ends_with($path, '.php')) {
+                continue;
+            }
+            try {
+                if (token_get_all($content, TOKEN_PARSE) === []) {
+                    continue; // an empty file: nothing to parse
+                }
+            } catch (ParseError $error) {
+                throw new RuntimeException(
+                    message: sprintf(
+                        'Generated file %s is not valid PHP (%s on line %d). Nothing was written. This is a generator bug — please report it with a minimal document.',
+                        $path,
+                        $error->getMessage(),
+                        $error->getLine(),
+                    ),
+                    previous: $error,
+                );
             }
         }
     }

@@ -130,6 +130,26 @@ final class CriticalRegressionTest extends TestCase
         self::assertFalse(file_exists($this->root . '/out'));
     }
 
+    /**
+     * Broken PHP is never published: the previous output stays, and the error names the file.
+     */
+    public function testUnparsablePhpIsRejectedBeforeAnythingIsWritten(): void
+    {
+        mkdir($this->root . '/out');
+        file_put_contents($this->root . '/out/old.php', 'old');
+        try {
+            (new GeneratedFilePublisher())->publish(files: [
+                $this->root . '/out/Good.php' => "<?php\n\nfinal class Good {}\n",
+                $this->root . '/out/Broken.php' => "<?php\n\n/** a */ b */\nfinal class Broken {}\n",
+                $this->root . '/out/notes.txt' => 'not php, not parsed',
+            ], ownedDirectories: [$this->root . '/out']);
+            self::fail('Unparsable PHP was published.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('Broken.php is not valid PHP', $error->getMessage());
+        }
+        self::assertSame(['old.php'], array_values(array_diff(scandir($this->root . '/out'), ['.', '..'])));
+    }
+
     public function testFailedExternalWritePreservesTheEntirePreviousGeneration(): void
     {
         mkdir($this->root . '/out');

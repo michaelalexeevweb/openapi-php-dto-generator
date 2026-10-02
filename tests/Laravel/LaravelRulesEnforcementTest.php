@@ -11,6 +11,7 @@ use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Stringable;
 
 /**
  * The generated `rules()` driven through the REAL `illuminate/validation` validator.
@@ -125,7 +126,14 @@ final class LaravelRulesEnforcementTest extends TestCase
             sprintf(
                 "%s: the valid payload must pass\n rules: %s\n errors: %s",
                 $key,
-                json_encode(array_map(static fn(array $set): array => array_map('strval', $set), $rules)),
+                // A rule OBJECT is Stringable only on newer Laravel (Rules\Enum is not on 11.1): its class names it.
+                json_encode(array_map(
+                    static fn(array $set): array => array_map(
+                        static fn(mixed $rule): string => $rule instanceof Stringable || !is_object($rule) ? (string)$rule : $rule::class,
+                        $set,
+                    ),
+                    $rules,
+                )),
                 json_encode($factory->make($valid, $rules)->errors()->all()),
             ),
         );

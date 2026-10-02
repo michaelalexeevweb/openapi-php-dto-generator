@@ -22,13 +22,21 @@ jobs:
           - '8.4'
         symfony:
           - '7'
+        dependencies:
+          - 'highest'
         include:
           # `config.platform.php` pins resolution to 8.3, which keeps Symfony on 7.x everywhere.
           # Symfony 8 needs PHP >= 8.4.1, so it is exercised by lifting the pin on this job only.
           - php-version: '8.4'
             symfony: '8'
+            dependencies: 'highest'
+          # The declared FLOORS, installed for real: a constraint nobody resolves is a guess. This
+          # found `list` missing from Laravel 11.0 and dates hydrating wrong on serializer 7.4.0-7.4.5.
+          - php-version: '8.3'
+            symfony: '7'
+            dependencies: 'lowest'
 
-    name: tests (PHP ${{ matrix.php-version }}, Symfony ${{ matrix.symfony }})
+    name: tests (PHP ${{ matrix.php-version }}, Symfony ${{ matrix.symfony }}, ${{ matrix.dependencies }})
 
     steps:
       - name: Checkout
@@ -49,21 +57,26 @@ jobs:
         run: composer config platform.php 8.4.1
 
       - name: Install dependencies
-        run: composer update --prefer-dist --no-progress
+        run: composer update --prefer-dist --no-progress ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
 
       - name: Show the resolved Symfony
         run: composer show symfony/console | grep -E '^versions'
 
       - name: Audit dependencies
+        # The lowest set is there to prove the floors, not to be audited or style-checked.
+        if: matrix.dependencies == 'highest'
         run: composer audit --no-interaction
 
       - name: Run PHPStan
+        if: matrix.dependencies == 'highest'
         run: composer phpstan
 
       - name: Run PHP CodeSniffer
+        if: matrix.dependencies == 'highest'
         run: composer cs
 
       - name: Run PHP CS Fixer
+        if: matrix.dependencies == 'highest'
         run: composer cs-fixer
 
       - name: Run PHPUnit

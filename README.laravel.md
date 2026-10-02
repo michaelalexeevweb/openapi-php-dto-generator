@@ -13,7 +13,8 @@ composer openapi:generate-dto -- \
 **Nothing to install.** The emitted code needs `FormRequest` and `illuminate/validation`, which ship
 with the framework — no `spatie/laravel-data`, and no runtime dependency on this package either.
 
-**Laravel 11 or newer.** The one rule that pins the floor is `list`, added in 11 — it is the only way to
+**Laravel 11.1 or newer.** The one rule that pins the floor is `list`, added in 11.1 (not 11.0 — measured
+by installing it) — it is the only way to
 say "a JSON array, not an associative one", and without it `type: array` has no faithful rule at all.
 Everything else the mode emits (`Rule::enum`, `multiple_of`) is older.
 

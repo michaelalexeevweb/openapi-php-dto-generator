@@ -46,6 +46,11 @@ A few behaviours worth knowing when validating against the schema:
 - **`const` / `enum` cannot tell `{}` from `[]`, or `{"0":"a"}` from `["a"]`.** The document is read
   into PHP arrays, where the two are one value; the same holds for a hydrated map in every mode but
   runtime. Avoid object `const`/`enum` members whose keys are empty or `0..n-1`.
+- **A PCRE-only escape in a `pattern` keeps its PCRE meaning, with a warning.** `\h`, `\R`, `\N`, `\K`,
+  `\A`, `\z` and the like are not ECMA-262: under its `u` flag they are a syntax error, without it plain
+  letters. The author almost certainly meant the PHP reading (`\h` = horizontal whitespace), so that is
+  what is checked — and generation warns, because a JavaScript validator would refuse or read the same
+  pattern differently. `\d`, `\w`, `\b` and `\v`, which BOTH define, are given their ECMA-262 meaning.
 - **`multipleOf` is decimal.** `0.3` is a multiple of `0.1` and `1e-12` is not: both numbers are read
   at their shortest decimal spelling and divided exactly. A float computed in PHP (`3 * 1e-8`, one ulp
   off) still passes when its ratio is a whole, non-zero number within `1e-9`.
