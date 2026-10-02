@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 30629 lines
+# yii3 mode — 80 files, 30634 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -21295,6 +21295,11 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
                     continue;
                 }
                 $i++;
+                // ECMA-262 `\v` is the one vertical TAB; PCRE's is a class that also holds `\n` and `\r`.
+                if ($next === 'v') {
+                    $delimited .= '\\x{B}';
+                    continue;
+                }
                 // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
                 // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
                 $ascii = !$unicode ? null : ($inClass ? match ($next) {

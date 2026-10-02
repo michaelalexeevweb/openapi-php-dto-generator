@@ -3,6 +3,14 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.53 — 2026-10-02
+
+- Keep ECMA vertical tab in regex
+
+`\v` in a schema `pattern` is the vertical tab (U+000B) in ECMA-262, while PCRE reads it as a class of
+vertical whitespace — `\n` and `\r` included — so `^\v$` matched a line break. It is translated to
+the one character now, in the runtime validator and the generated interpreter. Regenerate DTOs.
+
 ## 2.15.52 — 2026-10-01
 
 - Allow Symfony 8 components

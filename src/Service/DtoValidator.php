@@ -57,6 +57,11 @@ final class DtoValidator implements DtoValidatorInterface
                     continue;
                 }
                 $i++;
+                // ECMA-262 `\v` is the one vertical TAB; PCRE's is a class that also holds `\n` and `\r`.
+                if ($next === 'v') {
+                    $delimited .= '\x{B}';
+                    continue;
+                }
                 // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
                 // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
                 $ascii = $unicode ? ($inClass ? self::ASCII_CLASS_ESCAPES : self::ASCII_ATOM_ESCAPES)[$next] ?? null : null;
