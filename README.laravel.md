@@ -18,6 +18,11 @@ by installing it) — it is the only way to
 say "a JSON array, not an associative one", and without it `type: array` has no faithful rule at all.
 Everything else the mode emits (`Rule::enum`, `multiple_of`) is older.
 
+> **Empty strings are changed before validation.** Laravel's default middleware converts `""` to
+> `null`. A required string with `minLength: 1` can therefore report **"must be a string"** instead of
+> a length error. See [blank strings and middleware configuration](#blank-strings-and-literal-property-names)
+> before integrating the generated FormRequest.
+
 Every schema becomes a DTO. A DTO that describes an INCOMING payload also gets a `FormRequest`:
 
 | File | What it is |
@@ -289,6 +294,41 @@ FormRequest never sees the empty string the client sent. For `title: {type: stri
 client then reads `The title field must be a string.` — true of the `null` it was turned into, not of the
 `""` it sent. The 422 is right either way; for messages about the value as sent, exclude the API routes
 from that middleware.
+
+For example, this schema requires a non-empty string:
+
+```yaml
+title:
+  type: string
+  minLength: 1
+```
+
+| Input sent by the client | With the default middleware | Without empty-string conversion |
+|---|---|---|
+| `{"title": ""}` | `null` reaches validation; string-type error | `""` reaches validation; minimum-length error |
+| `{"title": null}` | string-type error | string-type error |
+
+Both inputs are rejected. A nullable string behaves differently: conversion can make an empty string
+pass as `null`, even when `minLength` would reject the original string.
+
+To preserve empty strings on API routes in Laravel 11.1+, add the following inside the existing
+`withMiddleware` callback in `bootstrap/app.php`:
+
+```php
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+
+// Inside Application::configure(...)->withMiddleware(...):
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->convertEmptyStringsToNull(except: [
+        fn (Request $request): bool => $request->is('api/*'),
+    ]);
+})
+```
+
+Adjust the path condition to match your API routes. This applies to every field on those routes:
+clients must send an explicit JSON `null` when they mean null. The generated rules still reject `null`
+for non-nullable strings. Laravel's separate `TrimStrings` middleware continues to trim whitespace.
 
 Property names containing `.` or `*` are rejected during generation because Laravel treats them
 as path/wildcard syntax. Rename such wire properties or select another generation mode. Generation

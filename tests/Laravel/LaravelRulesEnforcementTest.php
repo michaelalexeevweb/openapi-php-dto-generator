@@ -53,6 +53,91 @@ final class LaravelRulesEnforcementTest extends TestCase
         @rmdir($this->outputDirectory);
     }
 
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('contactContainerProvider')]
+    public function testReferencedContactUnionKeepsBranchValidation(string $key, array $propertySchema): void
+    {
+        $schemas = [
+            'Contact' => [
+                'oneOf' => [
+                    ['$ref' => '#/components/schemas/EmailContact'],
+                    ['$ref' => '#/components/schemas/PhoneContact'],
+                ],
+                'discriminator' => [
+                    'propertyName' => 'type',
+                    'mapping' => [
+                        'email' => '#/components/schemas/EmailContact',
+                        'phone' => '#/components/schemas/PhoneContact',
+                    ],
+                ],
+            ],
+        ];
+        foreach (['email', 'phone'] as $type) {
+            $schemas[ucfirst($type) . 'Contact'] = [
+                'type' => 'object',
+                'required' => ['type', 'value'],
+                'additionalProperties' => false,
+                'properties' => [
+                    'type' => ['type' => 'string', 'enum' => [$type]],
+                    'value' => $type === 'email'
+                        ? ['type' => 'string', 'format' => 'email']
+                        : ['type' => 'string', 'pattern' => '^\+?[0-9]{7,15}$'],
+                ],
+            ];
+        }
+        $fqcn = $this->generateProbe(
+            'referenced-contact-union-' . $key,
+            $propertySchema,
+            $schemas,
+        );
+        $rules = call_user_func([$fqcn, 'rules']);
+        $email = ['type' => 'email', 'value' => 'a@example.com'];
+        $valid = ['f' => match ($key) {
+            'object' => $email,
+            'map' => ['primary' => $email],
+            default => [$email, ['type' => 'phone', 'value' => '+421905531575']],
+        }];
+        $validator = $this->validatorFactory()->make($valid, $rules);
+        call_user_func([$fqcn, 'withValidator'], $validator);
+        self::assertTrue($validator->passes(), json_encode($validator->errors()->all()));
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        self::assertSame($valid, json_decode(json_encode($dto->toArray(), JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR));
+
+        foreach (
+            [
+                ['type' => 'email', 'value' => 'invalid'],
+                ['type' => 'phone', 'value' => 'invalid'],
+                ['type' => 'email'],
+                ['type' => 'website', 'value' => 'a@example.com'],
+                ['type' => 'email', 'value' => 'a@example.com', 'extra' => true],
+            ] as $contact
+        ) {
+            $validator = $this->validatorFactory()->make(['f' => match ($key) {
+                'object' => $contact,
+                'map' => ['primary' => $contact],
+                default => [$contact],
+            }], $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator);
+            self::assertTrue($validator->fails(), json_encode($contact));
+        }
+    }
+
+    /**
+     * @return array<string, array{string, array<string, mixed>}>
+     */
+    public static function contactContainerProvider(): array
+    {
+        $ref = ['$ref' => '#/components/schemas/Contact'];
+
+        return [
+            'list' => ['list', ['type' => 'array', 'items' => $ref]],
+            'object' => ['object', $ref],
+            'map' => ['map', ['type' => 'object', 'additionalProperties' => $ref]],
+        ];
+    }
+
     private function validatorFactory(): Factory
     {
         return new Factory(new Translator(new ArrayLoader(), 'en'));

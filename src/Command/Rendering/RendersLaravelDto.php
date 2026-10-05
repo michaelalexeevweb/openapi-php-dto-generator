@@ -2243,6 +2243,16 @@ trait RendersLaravelDto
         array $visitedClasses,
         bool $insideRecursiveFold = false,
     ): array {
+        $definition = $this->dtoSchemas[$className] ?? [];
+        if (array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
+            // Dotted rules cannot select a union member. Keep each branch's complete schema,
+            // including its enum, required keys and closed-object constraints, in the interpreter.
+            return $this->extractValidationConstraints($this->inlineNestedContainerValidation(
+                schema: $definition,
+                belowMaterialization: true,
+            ));
+        }
+
         $properties = [];
         $required = [];
 

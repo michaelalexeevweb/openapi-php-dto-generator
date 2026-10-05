@@ -3,6 +3,19 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.56 — 2026-10-05
+
+- Nested Laravel union members keep their validation constraints
+- Explain Laravel empty-string conversion before FormRequest validation
+
+Laravel and laravel-data parents now validate the full branches of a referenced `oneOf` or `anyOf`,
+including formats, patterns, enum values, required keys and closed objects. Previously a union's
+interface had no properties to fold, so invalid nested values could pass validation. Regression tests
+cover a union held as an object, list item and map value. Regenerate DTOs.
+
+README.laravel highlights `ConvertEmptyStringsToNull` and shows how to preserve empty strings on API
+routes. This is a documentation change; middleware configuration is left to the application.
+
 ## 2.15.55 — 2026-10-05
 
 - Hand-built Laravel DTO keeps its fields
