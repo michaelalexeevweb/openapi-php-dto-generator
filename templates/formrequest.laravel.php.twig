@@ -54,6 +54,38 @@ final class {{ className }} extends FormRequest
     }
 {% endif %}
 
+{% if pathParameters is not empty or headerParameters is not empty or cookieParameters is not empty %}
+    /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+{% for name in pathParameters %}
+        $value = $this->route()?->originalParameter('{{ name|php_string }}');
+        if ($value !== null) {
+            $data['{{ name|php_string }}'] = $value;
+        }
+{% endfor %}
+{% for name in headerParameters %}
+        if ($this->headers->has('{{ name|php_string }}')) {
+            $data['{{ name|php_string }}'] = $this->header('{{ name|php_string }}');
+        }
+{% endfor %}
+{% for name in cookieParameters %}
+        if ($this->cookies->has('{{ name|php_string }}')) {
+            $data['{{ name|php_string }}'] = $this->cookie('{{ name|php_string }}');
+        }
+{% endfor %}
+
+        return $data;
+    }
+
+{% endif %}
     /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.

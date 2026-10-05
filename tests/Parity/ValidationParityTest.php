@@ -1016,6 +1016,57 @@ final class ValidationParityTest extends TestCase
         }
     }
 
+    /**
+     * laravel-data reports an object-level error under a usable key, without a leading space.
+     */
+    public function testLaravelDataKeysObjectLevelErrors(): void
+    {
+        $spec = self::probeSpec(['type' => 'string']);
+        $spec['components']['schemas']['Probe'] = [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'minProperties' => 1,
+            'properties' => ['code' => ['type' => 'string']],
+        ];
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, 'object-error-keys'), 'laravel-data');
+        LaravelDataContainer::boot();
+        $errors = static fn(string $json): mixed => LaravelDataContainer::withRequest(
+            $json,
+            static function (LaravelRequest $request) use ($fqcn): array {
+                try {
+                    $fqcn::from($request);
+                } catch (ValidationException $exception) {
+                    return $exception->errors();
+                }
+
+                return [];
+            },
+        );
+
+        $this->assertSame(['bad' => ['payload has additional property "bad" which is not allowed.']], $errors('{"bad":1}'));
+        $this->assertSame(['payload' => ['payload must have at least 1 property.']], $errors('{}'));
+    }
+
+    /**
+     * A JSON string or 0/1 where the schema says integer, number or boolean: refused by the modes that
+     * check the JSON type, accepted by the three whose framework rules (or hydrator) are lenient — the
+     * support matrix row "a numeric string for `type: integer`". Laravel accepts rather than answering a
+     * 500 after validation, which is what it did before 2.15.55.
+     */
+    public function testLenientScalarsArePinnedPerMode(): void
+    {
+        $lenient = [GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3];
+        foreach ([['integer', '5', '"5"'], ['number', '1.5', '"1.5"'], ['boolean', 'true', '1'], ['boolean', 'false', '"0"']] as [$type, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                $this->assertSame(
+                    expected: ['valid' => true, 'invalid' => in_array($mode, $lenient, true)],
+                    actual: $this->verdict($mode, self::probeSpec(['type' => $type]), 'lenient-' . $type . $invalid, '{"f":' . $valid . '}', '{"f":' . $invalid . '}'),
+                    message: $mode->value . ' ' . $type . ' ' . $invalid,
+                );
+            }
+        }
+    }
+
     public function testSymfonyStrictContextRequiresNullableKeys(): void
     {
         foreach (['null', ['string', 'null']] as $index => $type) {

@@ -222,8 +222,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
 {% if inputAliasesLiteral is not null %}
             // laravel-data copies a mapped wire key to its PHP name and keeps both
@@ -237,8 +237,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             $payload = array_diff_key($payload, array_flip($aliases));
 
 {% endif %}
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
 {% endif %}
 {% endif %}
@@ -330,6 +330,24 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         }
 
         return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
+    }
+{% endif %}
+{% if hasObjectConstraints and interpreterMethodsBlock is not empty %}
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 {% endif %}
 {% if interpreterMethodsBlock is not empty %}

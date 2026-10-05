@@ -19,6 +19,16 @@ use Illuminate\Http\Request;
 class FormRequest extends Request
 {
     /**
+     * What the real class validates: the query string and the body, as `all()` merges them.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        return $this->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function validated(): array

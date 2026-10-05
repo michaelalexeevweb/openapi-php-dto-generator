@@ -232,6 +232,7 @@ trait RendersLaravelDto
             'ignoredKeys' => $ignoredKeys,
             'needsJsonObjectHelper' => $this->laravelNeedsJsonObjectHelper($properties),
             'needsIntCoercionHelper' => $this->laravelNeedsIntCoercionHelper($params),
+            'scalarCoercionHelpers' => $this->laravelScalarCoercionHelpers($params),
             'objectShapePaths' => $objectShapePaths,
             'unionMembers' => null,
             'interfaceExtends' => [],
@@ -268,6 +269,7 @@ trait RendersLaravelDto
             'ignoredKeys' => [],
             'needsJsonObjectHelper' => false,
             'needsIntCoercionHelper' => false,
+            'scalarCoercionHelpers' => [],
             'objectShapePaths' => [],
             'interpreterConstsBlock' => '',
             'hasObjectConstraints' => false,
@@ -332,6 +334,8 @@ trait RendersLaravelDto
             'readOnly' => ($property['readOnly'] ?? false) === true,
             'openApiName' => $property['openApiName'],
             'default' => $defaultLiteral,
+            // The bare expression after ` = `, which the constructor compares an argument against.
+            'defaultExpression' => $defaultLiteral === '' ? null : substr($defaultLiteral, strlen(' = ')),
             'docDescription' => $this->resolveSymfonyDocDescription($property),
             'getter' => 'get' . ucfirst($property['name']),
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
@@ -360,6 +364,7 @@ trait RendersLaravelDto
             'isDtoList' => $itemClass !== null,
             'toArrayExpression' => $this->laravelToArrayExpression($property),
             'needsIntCoercion' => $this->laravelPropertyAcceptsInt($declaredType),
+            'scalarCoercion' => $this->laravelScalarCoercion($declaredType),
         ];
     }
 
@@ -971,9 +976,20 @@ trait RendersLaravelDto
         // A JSON `42.0` is an integer per the spec and passes validation, but PHP decodes it to a float
         // and an `int` property cannot hold it — the constructor threw a TypeError, i.e. a 500 after a
         // successful validation. Coerce exactly the values the spec calls integers.
-        if ($this->laravelPropertyAcceptsInt($param['declaredType'])) {
-            $raw = sprintf('self::toIntIfIntegral(%s)', $raw);
-        }
+        //
+        // A property of ONE scalar type also takes what Laravel's rules let through as that type: a
+        // query, path or header value is a string on the wire (`?page=5`), and the body rules are lenient
+        // the same way (`integer` passes `"5"`). Handed over as it came, an `int` property threw a
+        // TypeError — a 500 after the validator said yes. A union such as `int|string` is left alone:
+        // there `"5"` is a legitimate string.
+        $raw = match ($this->laravelScalarCoercion($param['declaredType'])) {
+            'int' => sprintf('self::toIntValue(%s)', $raw),
+            'float' => sprintf('self::toFloatValue(%s)', $raw),
+            'bool' => sprintf('self::toBoolValue(%s)', $raw),
+            default => $this->laravelPropertyAcceptsInt($param['declaredType'])
+                ? sprintf('self::toIntIfIntegral(%s)', $raw)
+                : $raw,
+        };
 
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
@@ -1641,12 +1657,27 @@ trait RendersLaravelDto
         }
         sort($imports);
 
+        // Laravel validates the query string and the body only. A parameter declared `in: path`,
+        // `header` or `cookie` is elsewhere, and without being brought in its `present` rule failed
+        // on every request — the FormRequest answered 422 whatever was sent.
+        $located = ['path' => [], 'header' => [], 'cookie' => []];
+        $properties = $this->dtoSchemas[$dtoClassName]['properties'] ?? [];
+        foreach (is_array($properties) ? $properties : [] as $name => $schema) {
+            $in = is_array($schema) ? ($schema['x-parameter-in'] ?? null) : null;
+            if (is_string($name) && is_string($in) && array_key_exists($in, $located)) {
+                $located[$in][] = $name;
+            }
+        }
+
         return $this->renderPhpTemplate('formrequest.laravel.php.twig', [
             'namespace' => $namespace,
             'imports' => $imports,
             'className' => $dtoClassName . 'FormRequest',
             'dtoClassName' => $dtoClassName,
             'hasInterpreter' => $hasInterpreter,
+            'pathParameters' => $located['path'],
+            'headerParameters' => $located['header'],
+            'cookieParameters' => $located['cookie'],
             'sourceEndpoint' => $this->endpointByClass[$dtoClassName] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($dtoClassName),
         ]);
@@ -2260,6 +2291,36 @@ trait RendersLaravelDto
         $members = explode('|', str_replace('?', '', $declaredType));
 
         return in_array('int', $members, true) && !in_array('float', $members, true);
+    }
+
+    /**
+     * The one scalar a declared type holds besides null — `int`, `float` or `bool` — or null for
+     * anything else, a union included.
+     */
+    private function laravelScalarCoercion(string $declaredType): ?string
+    {
+        $members = array_values(array_diff(explode('|', str_replace('?', '', $declaredType)), ['null']));
+
+        return count($members) === 1 && in_array($members[0], ['int', 'float', 'bool'], true) ? $members[0] : null;
+    }
+
+    /**
+     * The scalar coercion helpers the class's hydrator calls.
+     *
+     * @param array<int, array<string, mixed>> $params
+     * @return array<int, string>
+     */
+    private function laravelScalarCoercionHelpers(array $params): array
+    {
+        $kinds = [];
+        foreach ($params as $param) {
+            $kind = $param['scalarCoercion'] ?? null;
+            if (is_string($kind) && !in_array($kind, $kinds, true)) {
+                $kinds[] = $kind;
+            }
+        }
+
+        return $kinds;
     }
 
     /**

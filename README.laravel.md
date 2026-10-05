@@ -216,6 +216,34 @@ leaves it out. `toArray()` asks the presence flag for every other optional prope
 that flag is false forever, which is why 2.15.36 through 2.15.41 dropped the field from every response
 built in code (fixed in 2.15.42).
 
+A response built with the constructor writes every optional field it was given: an argument that differs
+from its default counts as provided. One EQUAL to its default — an explicit `null` where the default is
+`null` — cannot be told apart from an omitted one by the constructor, so name it when the output must
+carry it (before 2.15.55 a hand-built instance wrote no optional field at all):
+
+```php
+(new JobResponse(id: 1, title: 'A', url: 'https://example.test'))->toArray(); // id, title, url
+(new JobResponse(id: 1, title: 'A'))->withProvided('notes')->toArray();      // id, title, notes: null
+```
+
+### Path, header and cookie parameters
+
+Laravel validates the query string and the body. The generated FormRequest adds a parameter declared
+`in: path`, `in: header` or `in: cookie` to its validation data under the OpenAPI name — a path parameter
+as it appeared in the URL, before route model binding — so its rules see it; before 2.15.55 its `present`
+rule failed on every request. A value of one scalar type (`integer`, `number`, `boolean`) arrives as a
+string and is hydrated into the declared PHP type.
+
+Laravel's own type rules are lenient in the BODY too: `integer` passes `"5"`, `boolean` passes `0`, `1`,
+`"0"` and `"1"`. Such a value is accepted and hydrated as the declared type rather than failing with a 500;
+the strict variants that would refuse it arrived in Laravel 12.22, above this mode's floor.
+
+### Errors about the object itself
+
+A keyword about the whole payload — `additionalProperties: false`, `minProperties`, `dependentRequired`,
+a root `not` or conditional — reports under the property it names (`"bad"`, `"region"`) or under
+`payload`, with the sentence starting `payload …` as in Symfony mode.
+
 ## What this mode does not do
 
 | | Why |
@@ -255,6 +283,12 @@ catch and the one that needs the raw body. Everything the FormRequest delegates 
 Generated rules validate present blank strings against the same native rules as other values. An
 unconstrained string can still be empty; a positive minLength, pattern, format or incompatible type
 rejects it. Optional absence and schema-declared nullability remain separate from an empty string.
+
+Laravel's default `ConvertEmptyStringsToNull` middleware turns `""` into `null` BEFORE validation, so a
+FormRequest never sees the empty string the client sent. For `title: {type: string, minLength: 1}` the
+client then reads `The title field must be a string.` — true of the `null` it was turned into, not of the
+`""` it sent. The 422 is right either way; for messages about the value as sent, exclude the API routes
+from that middleware.
 
 Property names containing `.` or `*` are rejected during generation because Laravel treats them
 as path/wildcard syntax. Rename such wire properties or select another generation mode. Generation

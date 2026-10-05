@@ -79,9 +79,11 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% endif %}
 {% if optionalParams is not empty %}
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -109,6 +111,13 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         private readonly {{ param.declaredType }} ${{ param.name }}{{ param.default }},
 {% endfor %}
     ) {
+{% for param in optionalParams %}
+{% if param.defaultExpression is not null %}
+        if (${{ param.name }} !== {{ param.defaultExpression|raw }}) {
+            $this->providedOpenApiKeys[] = '{{ param.openApiName|php_string }}';
+        }
+{% endif %}
+{% endfor %}
     }
 {% endif %}
 
@@ -187,11 +196,11 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
 {% endif %}
 {% endif %}
@@ -335,7 +344,39 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     }
 {% endif %}
 {% endfor %}
+{% if optionalParams is not empty %}
 
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+{% endif %}
+
+{% if hasObjectConstraints and interpreterMethodsBlock is not empty %}
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
+    }
+
+{% endif %}
 {% if interpreterMethodsBlock is not empty %}
 {{ interpreterMethodsBlock|raw }}
 
@@ -351,6 +392,47 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+{% endif %}
+{% if 'int' in scalarCoercionHelpers %}
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+{% endif %}
+{% if 'float' in scalarCoercionHelpers %}
+    /**
+     * A `float` property's value as Laravel's `numeric` rule accepted it, numeric strings included.
+     */
+    private static function toFloatValue(mixed $value): mixed
+    {
+        return is_int($value) || (is_string($value) && is_numeric($value)) ? (float)$value : $value;
+    }
+
+{% endif %}
+{% if 'bool' in scalarCoercionHelpers %}
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
     }
 
 {% endif %}

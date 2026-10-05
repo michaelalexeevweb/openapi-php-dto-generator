@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 20431 lines
+# laravel mode — 106 files, 21822 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -619,6 +619,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -748,7 +749,7 @@ final class ApiTest2PatchRequest
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            idPatchTest2: self::toIntIfIntegral($data['idPatchTest2']),
+            idPatchTest2: self::toIntValue($data['idPatchTest2']),
             namePatchTest2: $data['namePatchTest2'],
         );
 
@@ -775,6 +776,24 @@ final class ApiTest2PatchRequest
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -846,6 +865,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -977,7 +997,7 @@ final class ApiTest2PostRequest
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            idPostTest2: self::toIntIfIntegral($data['idPostTest2']),
+            idPostTest2: self::toIntValue($data['idPostTest2']),
             namePostTest2: $data['namePostTest2'],
             surnamePostTest2: $data['surnamePostTest2'],
         );
@@ -1010,6 +1030,24 @@ final class ApiTest2PostRequest
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -1237,6 +1275,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -1269,9 +1310,11 @@ use function trim;
 final class ApiTestCatsActionsGetQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -1286,6 +1329,12 @@ final class ApiTestCatsActionsGetQueryParams
         private readonly ?int $page = null,
         private readonly ?int $limit = null,
     ) {
+        if ($page !== null) {
+            $this->providedOpenApiKeys[] = 'page';
+        }
+        if ($limit !== null) {
+            $this->providedOpenApiKeys[] = 'limit';
+        }
     }
 
     /**
@@ -1387,9 +1436,9 @@ final class ApiTestCatsActionsGetQueryParams
     {
         $dto = new self(
             id: $data['id'],
-            actionId: self::toIntIfIntegral($data['actionId']),
-            page: ($data['page'] ?? null) === null ? null : self::toIntIfIntegral($data['page']),
-            limit: ($data['limit'] ?? null) === null ? null : self::toIntIfIntegral($data['limit']),
+            actionId: self::toIntValue($data['actionId']),
+            page: ($data['page'] ?? null) === null ? null : self::toIntValue($data['page']),
+            limit: ($data['limit'] ?? null) === null ? null : self::toIntValue($data['limit']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -1427,6 +1476,18 @@ final class ApiTestCatsActionsGetQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -1436,6 +1497,24 @@ final class ApiTestCatsActionsGetQueryParams
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -1496,6 +1575,28 @@ final class ApiTestCatsActionsGetQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('id');
+        if ($value !== null) {
+            $data['id'] = $value;
+        }
+        $value = $this->route()?->originalParameter('actionId');
+        if ($value !== null) {
+            $data['actionId'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -1516,6 +1617,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -1548,9 +1652,11 @@ use function trim;
 final class ApiTestCatsActionsPostQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -1565,6 +1671,12 @@ final class ApiTestCatsActionsPostQueryParams
         private readonly ?int $page = null,
         private readonly ?int $limit = null,
     ) {
+        if ($page !== null) {
+            $this->providedOpenApiKeys[] = 'page';
+        }
+        if ($limit !== null) {
+            $this->providedOpenApiKeys[] = 'limit';
+        }
     }
 
     /**
@@ -1666,9 +1778,9 @@ final class ApiTestCatsActionsPostQueryParams
     {
         $dto = new self(
             id: $data['id'],
-            actionId: self::toIntIfIntegral($data['actionId']),
-            page: ($data['page'] ?? null) === null ? null : self::toIntIfIntegral($data['page']),
-            limit: ($data['limit'] ?? null) === null ? null : self::toIntIfIntegral($data['limit']),
+            actionId: self::toIntValue($data['actionId']),
+            page: ($data['page'] ?? null) === null ? null : self::toIntValue($data['page']),
+            limit: ($data['limit'] ?? null) === null ? null : self::toIntValue($data['limit']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -1706,6 +1818,18 @@ final class ApiTestCatsActionsPostQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -1715,6 +1839,24 @@ final class ApiTestCatsActionsPostQueryParams
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -1775,6 +1917,28 @@ final class ApiTestCatsActionsPostQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('id');
+        if ($value !== null) {
+            $data['id'] = $value;
+        }
+        $value = $this->route()?->originalParameter('actionId');
+        if ($value !== null) {
+            $data['actionId'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -1795,6 +1959,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -1827,9 +1994,11 @@ use function trim;
 final class ApiTestDogsTagsGetQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -1844,6 +2013,12 @@ final class ApiTestDogsTagsGetQueryParams
         private readonly ?int $page = null,
         private readonly ?int $limit = null,
     ) {
+        if ($page !== null) {
+            $this->providedOpenApiKeys[] = 'page';
+        }
+        if ($limit !== null) {
+            $this->providedOpenApiKeys[] = 'limit';
+        }
     }
 
     /**
@@ -1945,9 +2120,9 @@ final class ApiTestDogsTagsGetQueryParams
     {
         $dto = new self(
             id: $data['id'],
-            tagId: self::toIntIfIntegral($data['tagId']),
-            page: ($data['page'] ?? null) === null ? null : self::toIntIfIntegral($data['page']),
-            limit: ($data['limit'] ?? null) === null ? null : self::toIntIfIntegral($data['limit']),
+            tagId: self::toIntValue($data['tagId']),
+            page: ($data['page'] ?? null) === null ? null : self::toIntValue($data['page']),
+            limit: ($data['limit'] ?? null) === null ? null : self::toIntValue($data['limit']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -1985,6 +2160,18 @@ final class ApiTestDogsTagsGetQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -1994,6 +2181,24 @@ final class ApiTestDogsTagsGetQueryParams
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -2054,6 +2259,28 @@ final class ApiTestDogsTagsGetQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('id');
+        if ($value !== null) {
+            $data['id'] = $value;
+        }
+        $value = $this->route()?->originalParameter('tagId');
+        if ($value !== null) {
+            $data['tagId'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -2074,6 +2301,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -2106,9 +2336,11 @@ use function trim;
 final class ApiTestDogsTagsPatchQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -2123,6 +2355,12 @@ final class ApiTestDogsTagsPatchQueryParams
         private readonly ?int $page = null,
         private readonly ?int $limit = null,
     ) {
+        if ($page !== null) {
+            $this->providedOpenApiKeys[] = 'page';
+        }
+        if ($limit !== null) {
+            $this->providedOpenApiKeys[] = 'limit';
+        }
     }
 
     /**
@@ -2224,9 +2462,9 @@ final class ApiTestDogsTagsPatchQueryParams
     {
         $dto = new self(
             id: $data['id'],
-            tagId: self::toIntIfIntegral($data['tagId']),
-            page: ($data['page'] ?? null) === null ? null : self::toIntIfIntegral($data['page']),
-            limit: ($data['limit'] ?? null) === null ? null : self::toIntIfIntegral($data['limit']),
+            tagId: self::toIntValue($data['tagId']),
+            page: ($data['page'] ?? null) === null ? null : self::toIntValue($data['page']),
+            limit: ($data['limit'] ?? null) === null ? null : self::toIntValue($data['limit']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -2264,6 +2502,18 @@ final class ApiTestDogsTagsPatchQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -2273,6 +2523,24 @@ final class ApiTestDogsTagsPatchQueryParams
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -2330,6 +2598,28 @@ final class ApiTestDogsTagsPatchQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestDogsTagsPatchQueryParams::rules();
+    }
+
+    /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('id');
+        if ($value !== null) {
+            $data['id'] = $value;
+        }
+        $value = $this->route()?->originalParameter('tagId');
+        if ($value !== null) {
+            $data['tagId'] = $value;
+        }
+
+        return $data;
     }
 
     /**
@@ -2539,6 +2829,24 @@ final class ApiTestFileDeleteQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('id');
+        if ($value !== null) {
+            $data['id'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -2742,6 +3050,24 @@ final class ApiTestFilePatchQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestFilePatchQueryParams::rules();
+    }
+
+    /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('id');
+        if ($value !== null) {
+            $data['id'] = $value;
+        }
+
+        return $data;
     }
 
     /**
@@ -2969,6 +3295,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -3093,7 +3420,7 @@ final class ApiTestJobs200
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            accepted: $data['accepted'],
+            accepted: self::toBoolValue($data['accepted']),
         );
 
         return $dto;
@@ -3102,6 +3429,15 @@ final class ApiTestJobs200
     public function getAccepted(): bool
     {
         return $this->accepted;
+    }
+
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
     }
 
     /**
@@ -3634,6 +3970,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -3758,7 +4095,7 @@ final class ApiTestLegacy200
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            ok: $data['ok'],
+            ok: self::toBoolValue($data['ok']),
         );
 
         return $dto;
@@ -3767,6 +4104,15 @@ final class ApiTestLegacy200
     public function getOk(): bool
     {
         return $this->ok;
+    }
+
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
     }
 
     /**
@@ -3789,6 +4135,8 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function in_array;
 use function is_string;
 use function trim;
@@ -3818,9 +4166,11 @@ use function trim;
 final class ApiTestLegacyPostQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -3829,6 +4179,9 @@ final class ApiTestLegacyPostQueryParams
     public function __construct(
         private readonly ?bool $legacyFlag = null,
     ) {
+        if ($legacyFlag !== null) {
+            $this->providedOpenApiKeys[] = 'legacyFlag';
+        }
     }
 
     /**
@@ -3926,7 +4279,7 @@ final class ApiTestLegacyPostQueryParams
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            legacyFlag: ($data['legacyFlag'] ?? null) === null ? null : $data['legacyFlag'],
+            legacyFlag: ($data['legacyFlag'] ?? null) === null ? null : self::toBoolValue($data['legacyFlag']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -3941,6 +4294,27 @@ final class ApiTestLegacyPostQueryParams
     public function isLegacyFlagProvided(): bool
     {
         return in_array('legacyFlag', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
     }
 
     /**
@@ -4217,6 +4591,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -4341,7 +4716,7 @@ final class ApiTestRepresentations200
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            ok: $data['ok'],
+            ok: self::toBoolValue($data['ok']),
         );
 
         return $dto;
@@ -4350,6 +4725,15 @@ final class ApiTestRepresentations200
     public function getOk(): bool
     {
         return $this->ok;
+    }
+
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
     }
 
     /**
@@ -5340,6 +5724,28 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParamsFormRequest ext
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('matrixIds');
+        if ($value !== null) {
+            $data['matrixIds'] = $value;
+        }
+        $value = $this->route()?->originalParameter('labelIds');
+        if ($value !== null) {
+            $data['labelIds'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -5365,6 +5771,7 @@ use stdClass;
 use function array_is_list;
 use function array_keys;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
 use function get_object_vars;
@@ -5401,9 +5808,11 @@ use function trim;
 final class ApiTestSerializationGetQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -5430,6 +5839,39 @@ final class ApiTestSerializationGetQueryParams
         private readonly ?string $session = null,
         private readonly ?ApiTestSerializationGetQueryParamsFilter $filter = null,
     ) {
+        if ($exploded !== null) {
+            $this->providedOpenApiKeys[] = 'exploded';
+        }
+        if ($joined !== null) {
+            $this->providedOpenApiKeys[] = 'joined';
+        }
+        if ($spaced !== null) {
+            $this->providedOpenApiKeys[] = 'spaced';
+        }
+        if ($piped !== null) {
+            $this->providedOpenApiKeys[] = 'piped';
+        }
+        if ($nested !== null) {
+            $this->providedOpenApiKeys[] = 'nested';
+        }
+        if ($flag !== null) {
+            $this->providedOpenApiKeys[] = 'flag';
+        }
+        if ($strict !== null) {
+            $this->providedOpenApiKeys[] = 'strict';
+        }
+        if ($raw !== null) {
+            $this->providedOpenApiKeys[] = 'raw';
+        }
+        if ($xCodes !== null) {
+            $this->providedOpenApiKeys[] = 'X-Codes';
+        }
+        if ($session !== null) {
+            $this->providedOpenApiKeys[] = 'session';
+        }
+        if ($filter !== null) {
+            $this->providedOpenApiKeys[] = 'filter';
+        }
     }
 
     /**
@@ -5643,7 +6085,7 @@ final class ApiTestSerializationGetQueryParams
             spaced: ($data['spaced'] ?? null) === null ? null : $data['spaced'],
             piped: ($data['piped'] ?? null) === null ? null : $data['piped'],
             nested: ($data['nested'] ?? null) === null ? null : $data['nested'],
-            flag: ($data['flag'] ?? null) === null ? null : $data['flag'],
+            flag: ($data['flag'] ?? null) === null ? null : self::toBoolValue($data['flag']),
             strict: ($data['strict'] ?? null) === null ? null : $data['strict'],
             raw: ($data['raw'] ?? null) === null ? null : $data['raw'],
             xCodes: ($data['X-Codes'] ?? null) === null ? null : $data['X-Codes'],
@@ -5784,6 +6226,27 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
+    }
+
+    /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
      * `{}` rather than `[]`. A list stays a list.
      */
@@ -5867,6 +6330,8 @@ namespace GoldenCorpus;
 use DateTimeImmutable;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function in_array;
 use function is_string;
 use function trim;
@@ -5897,9 +6362,11 @@ use function trim;
 final class ApiTestSerializationGetQueryParamsFilter
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -5908,6 +6375,9 @@ final class ApiTestSerializationGetQueryParamsFilter
     public function __construct(
         private readonly ?DateTimeImmutable $since = null,
     ) {
+        if ($since !== null) {
+            $this->providedOpenApiKeys[] = 'since';
+        }
     }
 
     /**
@@ -6032,6 +6502,18 @@ final class ApiTestSerializationGetQueryParamsFilter
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -6096,6 +6578,26 @@ final class ApiTestSerializationGetQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        if ($this->headers->has('X-Codes')) {
+            $data['X-Codes'] = $this->header('X-Codes');
+        }
+        if ($this->cookies->has('session')) {
+            $data['session'] = $this->cookie('session');
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -6116,6 +6618,8 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function in_array;
 use function is_string;
 use function trim;
@@ -6145,9 +6649,11 @@ use function trim;
 final class ApiTestSharedPathGetQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -6156,6 +6662,9 @@ final class ApiTestSharedPathGetQueryParams
     public function __construct(
         private readonly ?string $cursor = null,
     ) {
+        if ($cursor !== null) {
+            $this->providedOpenApiKeys[] = 'cursor';
+        }
     }
 
     /**
@@ -6271,6 +6780,18 @@ final class ApiTestSharedPathGetQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -6342,6 +6863,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -6374,9 +6898,11 @@ use function trim;
 final class ApiTestTenantsDeleteQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -6387,6 +6913,12 @@ final class ApiTestTenantsDeleteQueryParams
         private readonly ?string $region = null,
         private readonly ?string $tenantQuery = null,
     ) {
+        if ($region !== null) {
+            $this->providedOpenApiKeys[] = 'region';
+        }
+        if ($tenantQuery !== null) {
+            $this->providedOpenApiKeys[] = 'tenant';
+        }
     }
 
     /**
@@ -6486,7 +7018,7 @@ final class ApiTestTenantsDeleteQueryParams
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            tenant: self::toIntIfIntegral($data['tenant']),
+            tenant: self::toIntValue($data['tenant']),
             region: ($data['region'] ?? null) === null ? null : $data['region'],
             tenantQuery: ($data['tenant'] ?? null) === null ? null : $data['tenant'],
         );
@@ -6521,6 +7053,18 @@ final class ApiTestTenantsDeleteQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -6530,6 +7074,24 @@ final class ApiTestTenantsDeleteQueryParams
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -6589,6 +7151,24 @@ final class ApiTestTenantsDeleteQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('tenant');
+        if ($value !== null) {
+            $data['tenant'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -6609,6 +7189,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -6641,9 +7224,11 @@ use function trim;
 final class ApiTestTenantsGetQueryParams
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -6655,6 +7240,15 @@ final class ApiTestTenantsGetQueryParams
         private readonly ?string $tenantQuery = null,
         private readonly ?bool $verbose = null,
     ) {
+        if ($region !== null) {
+            $this->providedOpenApiKeys[] = 'region';
+        }
+        if ($tenantQuery !== null) {
+            $this->providedOpenApiKeys[] = 'tenant';
+        }
+        if ($verbose !== null) {
+            $this->providedOpenApiKeys[] = 'verbose';
+        }
     }
 
     /**
@@ -6755,10 +7349,10 @@ final class ApiTestTenantsGetQueryParams
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            tenant: self::toIntIfIntegral($data['tenant']),
-            region: ($data['region'] ?? null) === null ? null : self::toIntIfIntegral($data['region']),
+            tenant: self::toIntValue($data['tenant']),
+            region: ($data['region'] ?? null) === null ? null : self::toIntValue($data['region']),
             tenantQuery: ($data['tenant'] ?? null) === null ? null : $data['tenant'],
-            verbose: ($data['verbose'] ?? null) === null ? null : $data['verbose'],
+            verbose: ($data['verbose'] ?? null) === null ? null : self::toBoolValue($data['verbose']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -6801,6 +7395,18 @@ final class ApiTestTenantsGetQueryParams
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -6810,6 +7416,33 @@ final class ApiTestTenantsGetQueryParams
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
+     * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
+     * `"0"`, `"1"`.
+     */
+    private static function toBoolValue(mixed $value): mixed
+    {
+        return in_array($value, [0, 1, '0', '1'], true) ? (bool)(int)$value : $value;
     }
 
     /**
@@ -6873,6 +7506,24 @@ final class ApiTestTenantsGetQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Laravel validates the query string and the body; a path, header or cookie parameter lives
+     * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
+     * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+        $value = $this->route()?->originalParameter('tenant');
+        if ($value !== null) {
+            $data['tenant'] = $value;
+        }
+
+        return $data;
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -6900,6 +7551,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function count;
 use function explode;
@@ -7068,9 +7720,11 @@ final class ApplicatorRefs
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -7095,6 +7749,45 @@ final class ApplicatorRefs
         private readonly ?ApplicatorRefsConditional $conditional = null,
         private readonly ?ApplicatorRefsKeyed $keyed = null,
     ) {
+        if ($positions !== null) {
+            $this->providedOpenApiKeys[] = 'positions';
+        }
+        if ($rest !== null) {
+            $this->providedOpenApiKeys[] = 'rest';
+        }
+        if ($closedPair !== null) {
+            $this->providedOpenApiKeys[] = 'closedPair';
+        }
+        if ($impossible !== null) {
+            $this->providedOpenApiKeys[] = 'impossible';
+        }
+        if ($vacuous !== null) {
+            $this->providedOpenApiKeys[] = 'vacuous';
+        }
+        if ($имя !== null) {
+            $this->providedOpenApiKeys[] = 'имя';
+        }
+        if ($名前 !== null) {
+            $this->providedOpenApiKeys[] = '名前';
+        }
+        if ($forbiddenKey !== null) {
+            $this->providedOpenApiKeys[] = 'forbiddenKey';
+        }
+        if ($neverMatches !== null) {
+            $this->providedOpenApiKeys[] = 'neverMatches';
+        }
+        if ($closedFirstSlot !== null) {
+            $this->providedOpenApiKeys[] = 'closedFirstSlot';
+        }
+        if ($poisonedKey !== null) {
+            $this->providedOpenApiKeys[] = 'poisonedKey';
+        }
+        if ($conditional !== null) {
+            $this->providedOpenApiKeys[] = 'conditional';
+        }
+        if ($keyed !== null) {
+            $this->providedOpenApiKeys[] = 'keyed';
+        }
     }
 
     /**
@@ -7476,6 +8169,18 @@ final class ApplicatorRefs
     public function isKeyedProvided(): bool
     {
         return in_array('keyed', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
     }
 
     /**
@@ -7886,6 +8591,8 @@ use Illuminate\Validation\Validator;
 
 use function array_key_exists;
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function floor;
 use function get_object_vars;
 use function in_array;
@@ -7895,6 +8602,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function mb_strlen;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -7948,9 +8656,11 @@ final class ApplicatorRefsConditional
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -7959,6 +8669,9 @@ final class ApplicatorRefsConditional
     public function __construct(
         private readonly ?string $label = null,
     ) {
+        if ($label !== null) {
+            $this->providedOpenApiKeys[] = 'label';
+        }
     }
 
     /**
@@ -8081,11 +8794,11 @@ final class ApplicatorRefsConditional
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
     }
@@ -8111,6 +8824,34 @@ final class ApplicatorRefsConditional
     public function isLabelProvided(): bool
     {
         return in_array('label', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -8289,6 +9030,8 @@ use Illuminate\Validation\Validator;
 
 use function array_key_exists;
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function floor;
 use function get_object_vars;
 use function in_array;
@@ -8298,6 +9041,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function mb_strlen;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -8348,9 +9092,11 @@ final class ApplicatorRefsKeyed
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -8359,6 +9105,9 @@ final class ApplicatorRefsKeyed
     public function __construct(
         private readonly ?string $trigger = null,
     ) {
+        if ($trigger !== null) {
+            $this->providedOpenApiKeys[] = 'trigger';
+        }
     }
 
     /**
@@ -8481,11 +9230,11 @@ final class ApplicatorRefsKeyed
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
     }
@@ -8511,6 +9260,34 @@ final class ApplicatorRefsKeyed
     public function isTriggerProvided(): bool
     {
         return in_array('trigger', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -8680,11 +9457,14 @@ use Illuminate\Validation\Validator;
 
 use function array_key_exists;
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function get_object_vars;
 use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -8726,9 +9506,11 @@ final class ApplicatorRefsPoisonedKey
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -8737,6 +9519,9 @@ final class ApplicatorRefsPoisonedKey
     public function __construct(
         private readonly ?string $trigger = null,
     ) {
+        if ($trigger !== null) {
+            $this->providedOpenApiKeys[] = 'trigger';
+        }
     }
 
     /**
@@ -8859,11 +9644,11 @@ final class ApplicatorRefsPoisonedKey
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
     }
@@ -8889,6 +9674,34 @@ final class ApplicatorRefsPoisonedKey
     public function isTriggerProvided(): bool
     {
         return in_array('trigger', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -8995,6 +9808,9 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -9025,9 +9841,11 @@ use function trim;
 final class AwkwardNames
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -9039,6 +9857,12 @@ final class AwkwardNames
         private readonly ?string $backSlash = null,
         private readonly ?int $bothS = null,
     ) {
+        if ($backSlash !== null) {
+            $this->providedOpenApiKeys[] = 'back\slash';
+        }
+        if ($bothS !== null) {
+            $this->providedOpenApiKeys[] = 'both\\\'s';
+        }
     }
 
     /**
@@ -9142,7 +9966,7 @@ final class AwkwardNames
             plain: $data['plain'],
             itS: $data['it\'s'],
             backSlash: ($data['back\slash'] ?? null) === null ? null : $data['back\slash'],
-            bothS: ($data['both\\\'s'] ?? null) === null ? null : self::toIntIfIntegral($data['both\\\'s']),
+            bothS: ($data['both\\\'s'] ?? null) === null ? null : self::toIntValue($data['both\\\'s']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -9180,6 +10004,18 @@ final class AwkwardNames
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * JSON Schema 2020-12 §6.1.1 counts a number with a zero fractional part as an integer, so `42.0` is
      * a valid `integer` payload — and PHP decodes it to a float an `int` property cannot hold. A real
      * fractional part is left alone: validation has already rejected it.
@@ -9189,6 +10025,24 @@ final class AwkwardNames
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -9794,6 +10648,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
 use function get_object_vars;
@@ -9845,9 +10700,11 @@ final class ChainLink
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -9860,6 +10717,9 @@ final class ChainLink
         private readonly string $code,
         private readonly ?array $tags = null,
     ) {
+        if ($tags !== null) {
+            $this->providedOpenApiKeys[] = 'tags';
+        }
     }
 
     /**
@@ -10091,6 +10951,18 @@ final class ChainLink
     public function isTagsProvided(): bool
     {
         return in_array('tags', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
     }
 
     /**
@@ -10748,6 +11620,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -10876,7 +11749,7 @@ final class Circle implements Shape
     {
         $dto = new self(
             kind: $data['kind'],
-            radius: self::toIntIfIntegral($data['radius']),
+            radius: self::toIntValue($data['radius']),
         );
 
         return $dto;
@@ -10902,6 +11775,24 @@ final class Circle implements Shape
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -10931,6 +11822,7 @@ use function array_is_list;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
 use function get_object_vars;
@@ -10965,9 +11857,11 @@ use function trim;
 final class ContainerAliases
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -10985,6 +11879,15 @@ final class ContainerAliases
         private readonly ?array $mapOfLists = null,
         private readonly ?array $plain = null,
     ) {
+        if ($listOfMaps !== null) {
+            $this->providedOpenApiKeys[] = 'listOfMaps';
+        }
+        if ($mapOfLists !== null) {
+            $this->providedOpenApiKeys[] = 'mapOfLists';
+        }
+        if ($plain !== null) {
+            $this->providedOpenApiKeys[] = 'plain';
+        }
     }
 
     /**
@@ -11236,6 +12139,18 @@ final class ContainerAliases
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
      * `{}` rather than `[]`. A list stays a list.
      */
@@ -11295,6 +12210,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
 use function get_object_vars;
@@ -11347,9 +12263,11 @@ final class Containers
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -11369,6 +12287,15 @@ final class Containers
         private readonly ?array $timestamps = null,
         private readonly ?array $tagsByKey = null,
     ) {
+        if ($datesByDay !== null) {
+            $this->providedOpenApiKeys[] = 'datesByDay';
+        }
+        if ($timestamps !== null) {
+            $this->providedOpenApiKeys[] = 'timestamps';
+        }
+        if ($tagsByKey !== null) {
+            $this->providedOpenApiKeys[] = 'tagsByKey';
+        }
     }
 
     /**
@@ -11700,6 +12627,18 @@ final class Containers
     public function isTagsByKeyProvided(): bool
     {
         return in_array('tagsByKey', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
     }
 
     /**
@@ -12068,6 +13007,7 @@ namespace GoldenCorpus;
 
 use Illuminate\Validation\Rule;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -12199,7 +13139,7 @@ final class Discriminator1
         $dto = new self(
             type: DiscriminatorType::from($data['type']),
             name: ($data['name'] ?? null) === null ? null : $data['name'],
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
         );
 
         return $dto;
@@ -12233,6 +13173,24 @@ final class Discriminator1
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -12255,6 +13213,7 @@ namespace GoldenCorpus;
 
 use Illuminate\Validation\Rule;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -12388,7 +13347,7 @@ final class Discriminator2
         $dto = new self(
             type: DiscriminatorType::from($data['type']),
             name: ($data['name'] ?? null) === null ? null : $data['name'],
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             nAme2: $data['NAme'],
         );
 
@@ -12425,6 +13384,24 @@ final class Discriminator2
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -13015,6 +13992,7 @@ use stdClass;
 use function array_is_list;
 use function array_keys;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
 use function get_object_vars;
@@ -13049,9 +14027,11 @@ use function trim;
 final class ItemBounds
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -13067,6 +14047,12 @@ final class ItemBounds
         private readonly ?array $scoresByKey = null,
         private readonly ?array $codes = null,
     ) {
+        if ($scoresByKey !== null) {
+            $this->providedOpenApiKeys[] = 'scoresByKey';
+        }
+        if ($codes !== null) {
+            $this->providedOpenApiKeys[] = 'codes';
+        }
     }
 
     /**
@@ -13306,6 +14292,18 @@ final class ItemBounds
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
      * `{}` rather than `[]`. A list stays a list.
      */
@@ -13359,6 +14357,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function bin2hex;
 use function explode;
@@ -13433,9 +14432,11 @@ final class NestedContainers
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -13461,6 +14462,24 @@ final class NestedContainers
         private readonly ?array $enumRows = null,
         private readonly ?array $tagRows = null,
     ) {
+        if ($listsByKey !== null) {
+            $this->providedOpenApiKeys[] = 'listsByKey';
+        }
+        if ($mapsByKey !== null) {
+            $this->providedOpenApiKeys[] = 'mapsByKey';
+        }
+        if ($dateRows !== null) {
+            $this->providedOpenApiKeys[] = 'dateRows';
+        }
+        if ($numRows !== null) {
+            $this->providedOpenApiKeys[] = 'numRows';
+        }
+        if ($enumRows !== null) {
+            $this->providedOpenApiKeys[] = 'enumRows';
+        }
+        if ($tagRows !== null) {
+            $this->providedOpenApiKeys[] = 'tagRows';
+        }
     }
 
     /**
@@ -13803,6 +14822,18 @@ final class NestedContainers
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * @param array<string, mixed> $schema
      * @return array<int, string>
      */
@@ -14018,6 +15049,7 @@ use stdClass;
 use function array_is_list;
 use function array_keys;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
 use function get_object_vars;
@@ -14052,9 +15084,11 @@ use function trim;
 final class NullableContainerValues
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -14072,6 +15106,15 @@ final class NullableContainerValues
         private readonly ?array $listOfNullable31 = null,
         private readonly ?array $mapOfNullable31 = null,
     ) {
+        if ($mapOfNullable !== null) {
+            $this->providedOpenApiKeys[] = 'mapOfNullable';
+        }
+        if ($listOfNullable31 !== null) {
+            $this->providedOpenApiKeys[] = 'listOfNullable31';
+        }
+        if ($mapOfNullable31 !== null) {
+            $this->providedOpenApiKeys[] = 'mapOfNullable31';
+        }
     }
 
     /**
@@ -14328,6 +15371,18 @@ final class NullableContainerValues
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
      * `{}` rather than `[]`. A list stays a list.
      */
@@ -14381,6 +15436,8 @@ use Illuminate\Validation\Validator;
 
 use function array_key_exists;
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function count;
 use function floor;
 use function get_object_vars;
@@ -14391,6 +15448,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function mb_strlen;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -14450,9 +15508,11 @@ final class ObjectWideRules
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -14463,6 +15523,12 @@ final class ObjectWideRules
         private readonly ?string $code = null,
         private readonly ?string $extra = null,
     ) {
+        if ($code !== null) {
+            $this->providedOpenApiKeys[] = 'code';
+        }
+        if ($extra !== null) {
+            $this->providedOpenApiKeys[] = 'extra';
+        }
     }
 
     /**
@@ -14587,11 +15653,11 @@ final class ObjectWideRules
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
     }
@@ -14634,6 +15700,34 @@ final class ObjectWideRules
     public function isExtraProvided(): bool
     {
         return in_array('extra', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -15029,7 +16123,9 @@ use Illuminate\Validation\Validator;
 use function array_diff;
 use function array_key_exists;
 use function array_keys;
+use function array_unique;
 use function array_values;
+use function filter_var;
 use function floor;
 use function in_array;
 use function is_finite;
@@ -15075,9 +16171,11 @@ final class ReadOnlyFields
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -15089,6 +16187,15 @@ final class ReadOnlyFields
         private readonly ?DateTimeImmutable $writtenAt = null,
         private readonly ?string $secret = null,
     ) {
+        if ($serverId !== null) {
+            $this->providedOpenApiKeys[] = 'serverId';
+        }
+        if ($writtenAt !== null) {
+            $this->providedOpenApiKeys[] = 'writtenAt';
+        }
+        if ($secret !== null) {
+            $this->providedOpenApiKeys[] = 'secret';
+        }
     }
 
     /**
@@ -15278,6 +16385,18 @@ final class ReadOnlyFields
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * @param array<string, mixed> $schema
      * @return array<int, string>
      */
@@ -15322,6 +16441,24 @@ final class ReadOnlyFields
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -15348,6 +16485,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -15473,7 +16611,7 @@ final class RetiredShape
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            legacyId: self::toIntIfIntegral($data['legacyId']),
+            legacyId: self::toIntValue($data['legacyId']),
         );
 
         return $dto;
@@ -15494,6 +16632,24 @@ final class RetiredShape
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -15538,6 +16694,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -15666,7 +16823,7 @@ final class Square implements Shape
     {
         $dto = new self(
             kind: $data['kind'],
-            side: self::toIntIfIntegral($data['side']),
+            side: self::toIntValue($data['side']),
         );
 
         return $dto;
@@ -15695,6 +16852,24 @@ final class Square implements Shape
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -15714,6 +16889,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -15841,7 +17017,7 @@ final class Tag
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             name: $data['name'],
         );
 
@@ -15871,6 +17047,24 @@ final class Tag
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -15890,6 +17084,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -16015,7 +17210,7 @@ final class Test
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
         );
 
         return $dto;
@@ -16036,6 +17231,24 @@ final class Test
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -16066,8 +17279,10 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_unique;
 use function array_values;
 use function explode;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function in_array;
@@ -16130,9 +17345,11 @@ final class Test2
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -16151,6 +17368,12 @@ final class Test2
         private readonly ?User $user = null,
         private readonly ?Test2UserType $userType = null,
     ) {
+        if ($user !== null) {
+            $this->providedOpenApiKeys[] = 'user';
+        }
+        if ($userType !== null) {
+            $this->providedOpenApiKeys[] = 'userType';
+        }
     }
 
     /**
@@ -16371,7 +17594,7 @@ final class Test2
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             name: $data['name'],
             tags: array_map(static fn(array $item): Tag => Tag::fromValidated($item), ($data['tags'] ?? [])),
             types: Test2Types::from($data['types']),
@@ -16424,6 +17647,18 @@ final class Test2
     public function isUserTypeProvided(): bool
     {
         return in_array('userType', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
     }
 
     /**
@@ -16516,6 +17751,24 @@ final class Test2
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -16565,6 +17818,8 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function in_array;
 use function is_string;
 use function trim;
@@ -16593,9 +17848,11 @@ use function trim;
 final class Test2UserType
 {
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -16604,6 +17861,9 @@ final class Test2UserType
     public function __construct(
         private readonly ?string $region = null,
     ) {
+        if ($region !== null) {
+            $this->providedOpenApiKeys[] = 'region';
+        }
     }
 
     /**
@@ -16719,6 +17979,18 @@ final class Test2UserType
     }
 
     /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -16740,6 +18012,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use function filter_var;
 use function floor;
 use function is_finite;
 use function is_float;
@@ -16869,7 +18142,7 @@ final class TestPatchRequest
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             name: $data['name'],
             surname: $data['surname'],
         );
@@ -16902,6 +18175,24 @@ final class TestPatchRequest
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -16980,6 +18271,7 @@ use function array_keys;
 use function array_pop;
 use function array_unique;
 use function array_values;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -17049,9 +18341,11 @@ final class TestPostRequest
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -17064,6 +18358,12 @@ final class TestPostRequest
         private readonly ?string $homepage = null,
         private readonly ?string $endpoint = null,
     ) {
+        if ($homepage !== null) {
+            $this->providedOpenApiKeys[] = 'homepage';
+        }
+        if ($endpoint !== null) {
+            $this->providedOpenApiKeys[] = 'endpoint';
+        }
     }
 
     /**
@@ -17196,7 +18496,7 @@ final class TestPostRequest
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             name: $data['name'],
             code: self::toIntIfIntegral($data['code']),
             homepage: ($data['homepage'] ?? null) === null ? null : $data['homepage'],
@@ -17240,6 +18540,18 @@ final class TestPostRequest
     public function isEndpointProvided(): bool
     {
         return in_array('endpoint', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
     }
 
     /**
@@ -17535,6 +18847,24 @@ final class TestPostRequest
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -18607,9 +19937,11 @@ final class UnionUnderContainer
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
-     * The payload keys that were actually sent, which is what `isXxxProvided()` reads. Not a constructor
-     * parameter: the constructor takes the schema's properties and nothing else. `fromValidated()` is the
-     * only hydrator and sets this itself; a hand-built instance simply reports nothing as provided.
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
+     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
      *
      * @var array<int, string>
      */
@@ -18621,6 +19953,15 @@ final class UnionUnderContainer
         private readonly ?array $chainAllOf = null,
         private readonly ?array $listOfUnions = null,
     ) {
+        if ($chain !== null) {
+            $this->providedOpenApiKeys[] = 'chain';
+        }
+        if ($chainAllOf !== null) {
+            $this->providedOpenApiKeys[] = 'chainAllOf';
+        }
+        if ($listOfUnions !== null) {
+            $this->providedOpenApiKeys[] = 'listOfUnions';
+        }
     }
 
     /**
@@ -18875,6 +20216,18 @@ final class UnionUnderContainer
     public function isListOfUnionsProvided(): bool
     {
         return in_array('listOfUnions', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
     }
 
     /**
@@ -19642,6 +20995,7 @@ use stdClass;
 
 use function array_shift;
 use function explode;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -19871,7 +21225,7 @@ final class User
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             name: $data['name'],
             pet: ($data['pet'] ?? null) === null ? null : throw new RuntimeException('Property "pet" is typed as Animal2, a union with no discriminator: the document does not say which member a payload is, so it cannot be hydrated. Add a discriminator to Animal2, or type the property as one member.'),
             createdAt: new DateTimeImmutable($data['createdAt']),
@@ -19924,6 +21278,24 @@ final class User
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -19952,6 +21324,7 @@ use stdClass;
 use function array_key_exists;
 use function array_shift;
 use function explode;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -20233,7 +21606,7 @@ final class User2
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntIfIntegral($data['id']),
+            id: self::toIntValue($data['id']),
             name: $data['name'],
             pet: ($data['pet'] ?? null) === null ? null : User2Pet::fromValidated($data['pet']),
             createdAt: new DateTimeImmutable($data['createdAt']),
@@ -20351,6 +21724,24 @@ final class User2
         return is_float($value) && is_finite($value) && floor($value) === $value
             ? (int)$value
             : $value;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**

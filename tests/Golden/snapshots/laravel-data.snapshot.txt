@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15083 lines
+# laravel-data mode — 80 files, 15151 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5100,6 +5100,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function mb_strlen;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -5273,13 +5274,29 @@ final class ApplicatorRefsConditional extends Data
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -5453,6 +5470,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function mb_strlen;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -5623,13 +5641,29 @@ final class ApplicatorRefsKeyed extends Data
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -5790,6 +5824,7 @@ use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -5951,13 +5986,29 @@ final class ApplicatorRefsPoisonedKey extends Data
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**
@@ -10102,6 +10153,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function mb_strlen;
+use function preg_match;
 use function sprintf;
 use function str_ends_with;
 use function trim;
@@ -10285,13 +10337,29 @@ final class ObjectWideRules extends Data
 
             // What the document states about the OBJECT rather than about one property:
             // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
-            // whole payload, and the message goes in without a field name because that is what it is
-            // about. `properties` and `required` are not in this schema — the rule map owns them — so
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
-            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], '', 0) as $error) {
-                $validator->errors()->add('', str_ends_with($error, '.') ? $error : $error . '.');
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
         });
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
     }
 
     /**

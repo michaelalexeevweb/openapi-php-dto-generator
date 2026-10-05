@@ -652,18 +652,22 @@ final class GenerateLaravelDtoTest extends TestCase
 
         $hasOptional = (string)file_get_contents($target . '/HasOptional.php');
         // A plain private property, NOT a constructor parameter: the constructor takes the schema's
-        // properties and nothing else, and `fromValidated()` — the only hydrator — fills this in.
+        // properties and nothing else; `fromValidated()` sets it from the payload.
         $this->assertStringContainsString('private array $providedOpenApiKeys = [];', $hasOptional);
         $this->assertStringNotContainsString('$providedOpenApiKeys = [],', $hasOptional);
         $this->assertStringContainsString('$dto->providedOpenApiKeys = array_keys($data);', $hasOptional);
         $this->assertStringContainsString('public function isBProvided(): bool', $hasOptional);
         $this->assertNull($this->lintError($target . '/HasOptional.php'));
 
-        // Hand-construction stays possible and stays honest: nothing was sent, so nothing is provided.
+        // Hand-construction counts what it was given: an argument other than the default is provided,
+        // an omitted one is not — so a response built in code keeps its fields (2.15.55).
         require_once $target . '/HasOptional.php';
         /** @var object $handBuilt */
         $handBuilt = new ('LvPresenceShape\HasOptional')(a: 'x', b: 7);
-        $this->assertFalse($handBuilt->isBProvided());
+        $this->assertTrue($handBuilt->isBProvided());
+        /** @var object $withoutB */
+        $withoutB = new ('LvPresenceShape\HasOptional')(a: 'x');
+        $this->assertFalse($withoutB->isBProvided());
     }
 
     /**

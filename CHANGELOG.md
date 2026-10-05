@@ -3,6 +3,29 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.55 — 2026-10-05
+
+- Hand-built Laravel DTO keeps its fields
+- FormRequest reads path, header, cookie parameters
+- Laravel scalar strings hydrate, not 500
+- Object-level Laravel errors get a key
+
+Laravel and laravel-data modes:
+
+- a DTO built with the constructor writes every optional field it was given in `toArray()`; it wrote none
+  before. An argument equal to its default (an explicit `null`) needs `withProvided('name')`;
+- the generated FormRequest adds `in: path` (as written in the URL, before route model binding),
+  `in: header` and `in: cookie` parameters to its validation data — their `present` rule failed on every
+  request before;
+- a value Laravel's `integer`, `numeric` or `boolean` rule accepts as a string (`?page=5`, or `"5"` in a
+  body) is hydrated into the declared type instead of throwing a `TypeError`. The body leniency is
+  Laravel's own and now listed in the support matrix;
+- an error about the object itself is keyed by the property it names, or `payload`, and reads
+  `payload …` — it was keyed `""` and started with a space.
+
+`ConvertEmptyStringsToNull` and its effect on `minLength` messages are explained in README.laravel.
+Regenerate DTOs.
+
 ## 2.15.54 — 2026-10-02
 
 - Refuse publishing unparsable PHP

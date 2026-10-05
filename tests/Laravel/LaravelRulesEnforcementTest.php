@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Laravel;
 
+use Illuminate\Routing\Route;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
@@ -255,6 +256,136 @@ final class LaravelRulesEnforcementTest extends TestCase
         }
 
         return $provided;
+    }
+
+    /**
+     * A response built in code keeps every optional field it was given: the constructor counts an
+     * argument that differs from its default as provided, and `withProvided()` names one that does not.
+     */
+    public function testAHandBuiltDtoSerializesTheFieldsItWasGiven(): void
+    {
+        $fqcn = $this->generateProbeClass('LvRuleHandBuilt', [
+            'type' => 'object',
+            'required' => ['id'],
+            'properties' => [
+                'id' => ['type' => 'integer'],
+                'url' => ['type' => ['string', 'null']],
+                'note' => ['type' => ['string', 'null']],
+            ],
+        ]);
+
+        $dto = new $fqcn(id: 1, url: 'https://example.test');
+        $this->assertSame(['id' => 1, 'url' => 'https://example.test'], $dto->toArray());
+        $this->assertSame(['id' => 1, 'url' => 'https://example.test', 'note' => null], $dto->withProvided('note')->toArray());
+        $this->assertSame(['id' => 1], call_user_func([$fqcn, 'fromValidated'], ['id' => 1])->toArray());
+    }
+
+    /**
+     * An error about the object itself carries a key a client can use and no leading space: the
+     * undeclared or the dependent property it names, else `payload`.
+     */
+    public function testObjectLevelErrorsHaveAKeyAndAWholeSentence(): void
+    {
+        $fqcn = $this->generateProbeClass('LvRuleObjectErrors', [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'minProperties' => 1,
+            'dependentRequired' => ['code' => ['region']],
+            'properties' => ['code' => ['type' => 'string'], 'region' => ['type' => 'string']],
+        ]);
+        $factory = $this->validatorFactory();
+        $errors = static function (string $json) use ($factory, $fqcn): array {
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$fqcn, 'rules']);
+            $validator = $factory->make(json_decode($json, true), $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+
+            return $validator->errors()->toArray();
+        };
+
+        $this->assertSame(['bad' => ['payload has additional property "bad" which is not allowed.']], $errors('{"bad":1}'));
+        $this->assertSame(['payload' => ['payload must have at least 1 property.']], $errors('{}'));
+        $this->assertSame(['region' => ['field "region" is required when code is present.']], $errors('{"code":"a"}'));
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return class-string
+     */
+    private function generateProbeClass(string $namespace, array $schema): string
+    {
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+        (new GenerateDtoCommand())->generateFromArray(
+            openApi: ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => ['Probe' => $schema]]],
+            outputDirectory: $target,
+            namespace: $namespace,
+            mode: 'laravel',
+        );
+        require_once $target . '/Probe.php';
+
+        /** @var class-string $fqcn */
+        $fqcn = $namespace . '\Probe';
+
+        return $fqcn;
+    }
+
+    /**
+     * A path, header or cookie parameter is not in Laravel's validation data — only the query and the
+     * body are. The generated FormRequest brings them in, or its `present` rule refused every request;
+     * and the string the wire carries hydrates into the declared `int`.
+     */
+    public function testAFormRequestValidatesPathHeaderAndCookieParameters(): void
+    {
+        $namespace = 'LvRuleParams';
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+        (new GenerateDtoCommand())->generateFromArray([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/api/widgets/{id}' => ['get' => [
+                'operationId' => 'getWidget',
+                'parameters' => [
+                    ['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer', 'minimum' => 1]],
+                    ['name' => 'X-Batch', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'integer']],
+                    ['name' => 'flavour', 'in' => 'cookie', 'required' => true, 'schema' => ['type' => 'string', 'minLength' => 2]],
+                ],
+                'responses' => ['200' => ['description' => 'OK']],
+            ]]],
+        ], $target, $namespace, 'laravel');
+        if (!class_exists(\Illuminate\Foundation\Http\FormRequest::class)) {
+            require_once __DIR__ . '/Stub/form-request.php';
+        }
+        $files = glob($target . '/*QueryParams*.php') ?: [];
+        foreach ($files as $file) {
+            require_once $file;
+        }
+        $dtoClass = $namespace . '\\' . basename((string)current(array_filter($files, static fn(string $f): bool => !str_contains($f, 'FormRequest'))), '.php');
+        $formRequestClass = $dtoClass . 'FormRequest';
+
+        $request = function (string $uri, array $headers, array $cookies) use ($formRequestClass): object {
+            $request = $formRequestClass::create(uri: $uri, method: 'GET', cookies: $cookies, server: $headers);
+            $route = new Route(methods: ['GET'], uri: 'api/widgets/{id}', action: []);
+            $route->bind($request);
+            $request->setRouteResolver(static fn(): Route => $route);
+
+            return $request;
+        };
+        $factory = $this->validatorFactory();
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$dtoClass, 'rules']);
+
+        $valid = $request('/api/widgets/7', ['HTTP_X_BATCH' => '3'], ['flavour' => 'mint']);
+        $validator = $factory->make($valid->validationData(), $rules);
+        $this->assertTrue($validator->passes(), json_encode($validator->errors()->all()));
+        $dto = call_user_func([$dtoClass, 'fromValidated'], $validator->validated());
+        $this->assertSame(7, $dto->getId());
+        $this->assertSame(3, $dto->getXBatch());
+
+        $invalid = $request('/api/widgets/0', ['HTTP_X_BATCH' => 'x'], ['flavour' => 'm']);
+        $failed = array_keys($factory->make($invalid->validationData(), $rules)->errors()->toArray());
+        sort($failed);
+        $this->assertSame(['X-Batch', 'flavour', 'id'], $failed);
     }
 
     /**
