@@ -140,21 +140,119 @@ final class UnhydratableUnionParityTest extends TestCase
         }
     }
 
+    public function testInlineObjectUnionMembersAreDiagnosedInEveryMode(): void
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach ([false, true] as $nested) {
+                foreach (GenerationMode::cases() as $mode) {
+                    $spec = self::inlineContactSpec($keyword);
+                    if ($nested) {
+                        $branches = $spec['components']['schemas']['Shape'][$keyword];
+                        $spec['components']['schemas']['Shape'][$keyword] = [['anyOf' => $branches]];
+                    }
+                    $suffix = 'Inline' . ucfirst($keyword) . ($nested ? 'Nested' : '');
+                    $warnings = $this->generate($mode, $spec, $suffix);
+                    $matching = array_values(array_filter(
+                        $warnings,
+                        static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
+                    ));
+                    self::assertCount(3, $matching, $mode->value . ': ' . implode(' ', $warnings));
+                    foreach ($matching as $warning) {
+                        self::assertStringContainsString('Add a discriminator to Shape', $warning);
+                    }
+                    $this->deleteRecursively($this->outputDirectory);
+                }
+            }
+        }
+    }
+
+    public function testLaravelInlineUnionNeverCallsAnInterfaceFactory(): void
+    {
+        foreach (['shape', 'many', 'byName'] as $field) {
+            $suffix = 'InlineHydration' . ucfirst($field);
+            $this->generate(GenerationMode::Laravel, self::inlineContactSpec('oneOf'), $suffix);
+            $namespace = 'UnionWarn' . GenerationMode::Laravel->tag() . $suffix;
+            $directory = $this->outputDirectory;
+            spl_autoload_register($loader = static function (string $class) use ($directory, $namespace): void {
+                if (!str_starts_with($class, $namespace . chr(92))) {
+                    return;
+                }
+                $file = $directory . '/' . substr($class, strlen($namespace) + 1) . '.php';
+                if (is_file($file)) {
+                    require $file;
+                }
+            });
+            try {
+                $probe = $namespace . chr(92) . 'Probe';
+                $contact = ['type' => 'email', 'value' => 'a@example.com'];
+                $payload = ['shape' => null, 'many' => [], 'byName' => [], 'ok' => ['r' => 1]];
+                $empty = $probe::fromValidated($payload);
+                self::assertSame([], $empty->getMany());
+                self::assertSame([], $empty->getByName());
+                self::assertNull($empty->getShape());
+                $payload[$field] = match ($field) {
+                    'shape' => $contact,
+                    'many' => [$contact],
+                    default => ['primary' => $contact],
+                };
+                try {
+                    $probe::fromValidated($payload);
+                    self::fail('Inline object unions need a discriminator for hydration.');
+                } catch (RuntimeException $thrown) {
+                    self::assertStringContainsString('Property "' . $field . '"', $thrown->getMessage());
+                    self::assertStringContainsString('Add a discriminator to Shape', $thrown->getMessage());
+                }
+            } finally {
+                spl_autoload_unregister($loader);
+                $this->deleteRecursively($directory);
+            }
+        }
+    }
+
     /**
+     * @return array<string, mixed>
+     */
+    private static function inlineContactSpec(string $keyword): array
+    {
+        $spec = self::spec();
+        $spec['components']['schemas']['Shape'] = [
+            'type' => 'object',
+            'required' => ['type', 'value'],
+            'additionalProperties' => false,
+            'properties' => [
+                'type' => ['type' => 'string', 'enum' => ['email', 'phone']],
+                'value' => ['type' => 'string'],
+            ],
+            $keyword => [
+                ['properties' => ['type' => ['type' => 'string', 'enum' => ['email']], 'value' => ['type' => 'string', 'format' => 'email']]],
+                ['properties' => ['type' => ['type' => 'string', 'enum' => ['phone']], 'value' => ['type' => 'string', 'pattern' => '^\+?[0-9]{7,15}$']]],
+            ],
+        ];
+        $spec['components']['schemas']['Probe']['properties']['shape']['nullable'] = true;
+        $spec['components']['schemas']['Probe']['properties']['byName'] = [
+            'type' => 'object',
+            'additionalProperties' => ['$ref' => '#/components/schemas/Shape'],
+        ];
+
+        return $spec;
+    }
+
+    /**
+     * @param array<string, mixed>|null $spec
      * @return array<int, string>
      */
-    private function generate(GenerationMode $mode): array
+    private function generate(GenerationMode $mode, ?array $spec = null, string $suffix = ''): array
     {
-        $this->outputDirectory = sys_get_temp_dir() . '/union-warn-' . strtolower($mode->tag()) . '-' . getmypid();
+        $this->outputDirectory = sys_get_temp_dir() . '/union-warn-' . strtolower($mode->tag()) . $suffix . '-' . getmypid();
         if (!is_dir($this->outputDirectory)) {
             mkdir($this->outputDirectory, 0o755, true);
         }
 
         $generator = new GenerateDtoCommand();
         $generator->generateFromArray(
-            self::spec(),
+            $spec ?? self::spec(),
             $this->outputDirectory,
-            'UnionWarn' . $mode->tag(),
+            'UnionWarn' . $mode->tag() . $suffix,
             $mode->value,
         );
 

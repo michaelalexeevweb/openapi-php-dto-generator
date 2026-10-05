@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.57 — 2026-10-05
+
+- Inline and nested object unions report missing discriminators
+- Empty Laravel union lists and maps hydrate without errors
+
+Generation-time warnings now cover inline and nested `oneOf` / `anyOf` object branches as well as
+referenced members, in every mode. Laravel hydration reports the missing discriminator explicitly
+instead of calling an interface's nonexistent `fromValidated()` factory. Object-union hydration still
+requires a discriminator; this release does not add structural branch selection.
+
+Laravel now attempts member hydration only for actual list or map entries, so empty containers succeed.
+Regression tests cover inline and nested unions, direct values, lists, maps and nullable nulls.
+Regenerate DTOs.
+
 ## 2.15.56 — 2026-10-05
 
 - Nested Laravel union members keep their validation constraints

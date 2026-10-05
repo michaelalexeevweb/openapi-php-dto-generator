@@ -6574,7 +6574,7 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Whether a union's variants are `$ref`s to schemas of their own — the case that becomes an interface.
+     * Whether a union has referenced, inline or nested object members that become an interface.
      * A union of SCALARS becomes a PHP union type (`int|string`) instead, which hydrates fine.
      */
     private function collectsObjectUnionMembers(mixed $variants): bool
@@ -6584,7 +6584,22 @@ final class GenerateDtoCommand extends Command
         }
 
         foreach ($variants as $variant) {
-            if (!is_array($variant) || !is_string($variant['$ref'] ?? null)) {
+            if (!is_array($variant)) {
+                continue;
+            }
+
+            // Inline objects and nested unions are materialized by collectUnionTypes() too.
+            // They produce the same interface as referenced members, so hydration needs the
+            // same diagnostic instead of calling a factory that interface does not have.
+            if (
+                $this->isInlineObjectVariant($variant)
+                || $this->collectsObjectUnionMembers($variant['oneOf'] ?? null)
+                || $this->collectsObjectUnionMembers($variant['anyOf'] ?? null)
+            ) {
+                return true;
+            }
+
+            if (!is_string($variant['$ref'] ?? null)) {
                 continue;
             }
 

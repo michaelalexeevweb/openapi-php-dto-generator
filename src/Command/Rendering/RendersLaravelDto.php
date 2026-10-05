@@ -1012,10 +1012,6 @@ trait RendersLaravelDto
                 $this->shortClassName($itemClass),
                 $containerRaw,
             ),
-            $itemClass !== null && $this->isUnhydratableUnionClass($itemClass) => $this->laravelUnhydratableUnionThrow(
-                unionClass: $itemClass,
-                wireName: $property['openApiName'],
-            ),
             // The ITEM is built exactly the way a scalar nested value is — through the one place
             // that knows a discriminated union base is an interface with no `fromValidated()` to
             // call. Emitting `%1$s::fromValidated($item)` here was the array half of that same
