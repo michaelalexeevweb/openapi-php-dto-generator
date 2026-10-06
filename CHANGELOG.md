@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.58 — 2026-10-06
+
+- Referenced array aliases keep their validation
+- `allOf` around an array alias keeps its nullability
+
+A property, list item or map value that `$ref`s a `type: array` component was typed as the aliased list,
+but its constraints were read from the bare reference, which carries none. Laravel and laravel-data
+emitted no `array`/`list` or item rules, so a string passed validation and hydration failed with a
+`TypeError` (HTTP 500); Symfony, runtime and Yii3 lost item and bound checks. The alias is now inlined
+for validation in every mode, while types and class names are unchanged. `allOf: [{$ref: Alias}]`
+is typed like the plain reference, including a nullable alias. Regenerate DTOs.
+
 ## 2.15.57 — 2026-10-05
 
 - Inline and nested object unions report missing discriminators

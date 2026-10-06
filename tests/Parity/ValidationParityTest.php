@@ -1476,6 +1476,109 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A property that is a `$ref` to a `type: array` component means the same as the array written inline.
+     *
+     * The property was TYPED through the alias (`array<Item>`), but its constraints were read from the
+     * bare `$ref`, which carries none. Laravel and laravel-data then emitted `['sometimes']` with no
+     * `array`/`list` rule: `{"f": "x"}` passed validation and hydration died on `array_map()` — a 500
+     * after the validator said yes — while an object or a list of the wrong scalars was accepted outright.
+     * Symfony, runtime and Yii3 read a class's constraints from its registered schema, where the same
+     * bare `$ref` was scrubbed, so Symfony accepted the list of wrong scalars too.
+     *
+     * Held to the inline spelling in every mode, directly on the property and one container down.
+     *
+     * @param array<string, mixed> $aliasSchema
+     * @param array<int, string> $invalidValues
+     */
+    #[DataProvider('arrayAliasProvider')]
+    public function testAnArrayAliasValidatesLikeTheInlineArray(array $aliasSchema, string $validValue, array $invalidValues): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $item = [
+            'type' => 'object',
+            'required' => ['value'],
+            'properties' => ['value' => ['type' => 'string', 'format' => 'email']],
+        ];
+        $containers = [
+            'property' => [static fn(array $schema): array => $schema, '%s'],
+            'list item' => [static fn(array $schema): array => ['type' => 'array', 'items' => $schema], '[%s]'],
+            'map value' => [static fn(array $schema): array => ['type' => 'object', 'additionalProperties' => $schema], '{"k":%s}'],
+        ];
+
+        foreach ($containers as $container => [$wrap, $payload]) {
+            $inline = self::probeSpec($wrap($aliasSchema));
+            $inline['components']['schemas']['Item'] = $item;
+            $aliased = self::probeSpec($wrap(['$ref' => '#/components/schemas/Items']));
+            $aliased['components']['schemas']['Items'] = $aliasSchema;
+            $aliased['components']['schemas']['Item'] = $item;
+            $validJson = '{"f":' . sprintf($payload, $validValue) . '}';
+
+            foreach ($invalidValues as $index => $invalidValue) {
+                $invalidJson = '{"f":' . sprintf($payload, $invalidValue) . '}';
+                $key = 'array-alias-' . md5(json_encode([$aliasSchema, $container], JSON_THROW_ON_ERROR)) . '-' . $index;
+                foreach (GenerationMode::cases() as $mode) {
+                    $expected = $this->verdict($mode, $inline, $key . '-inline', $validJson, $invalidJson);
+                    $this->assertSame(
+                        expected: $expected,
+                        actual: $this->verdict($mode, $aliased, $key . '-alias', $validJson, $invalidJson),
+                        message: $mode->value . ' ' . $invalidJson,
+                    );
+                    // The equivalence alone would hold if both spellings accepted everything.
+                    if ($container === 'property' && in_array($mode, [GenerationMode::Laravel, GenerationMode::LaravelData], true)) {
+                        $this->assertSame(['valid' => true, 'invalid' => false], $expected, $mode->value . ' ' . $invalidJson);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string, array<int, string>}>
+     */
+    public static function arrayAliasProvider(): array
+    {
+        $objects = ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']];
+        $notAList = ['"x"', '{"k":{"value":"a@example.com"}}', '[{"value":"invalid"}]'];
+
+        return [
+            'list of objects' => [$objects, '[{"value":"a@example.com"}]', $notAList],
+            'nullable list of objects' => [[...$objects, 'nullable' => true], 'null', $notAList],
+            'list of strings' => [
+                ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1],
+                '["a"]',
+                ['"x"', '[1]', '[]'],
+            ],
+        ];
+    }
+
+    /**
+     * An array alias whose items lead back to it has no finite inline form. Generation has to stop at
+     * the repeat limit instead of inlining it forever, and the levels it does inline are still checked.
+     */
+    public function testASelfReferentialArrayAliasGenerates(): void
+    {
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/Nodes']);
+        $spec['components']['schemas']['Nodes'] = [
+            'type' => 'array',
+            'items' => [
+                'type' => 'object',
+                'properties' => ['children' => ['$ref' => '#/components/schemas/Nodes']],
+            ],
+        ];
+
+        foreach (GenerationMode::cases() as $mode) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $spec, 'self-alias', '{"f":[{"children":[]}]}', '{"f":"x"}'),
+                message: $mode->value,
+            );
+        }
+    }
+
+    /**
      * A REQUIRED property that is nullable through a `$ref` — `oneOf: [$ref, {type: null}]`, the only way
      * a document can say "this nested object may be null".
      *

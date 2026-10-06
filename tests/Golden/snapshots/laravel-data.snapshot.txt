@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15399 lines
+# laravel-data mode — 80 files, 15404 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7690,9 +7690,14 @@ final class ContainerAliases extends Data
     {
         return [
             'listOfLists' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'listOfLists.*' => self::withBlankStringValidation(['array', 'list']),
+            'listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
             'listOfMaps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
             'mapOfLists' => self::withBlankStringValidation(['sometimes', 'array']),
-            'plain' => self::withBlankStringValidation(['sometimes']),
+            'mapOfLists.*' => self::withBlankStringValidation(['array', 'list']),
+            'mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
+            'plain' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'plain.*' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
 

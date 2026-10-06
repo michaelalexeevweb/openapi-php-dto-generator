@@ -2779,6 +2779,7 @@ final class GenerateDtoCommand extends Command
             // inline one — otherwise it is silently dropped and the values are never checked.
             $propertySchema = $this->inlineFreeFormObjectRef($propertySchema);
             $propertySchema = $this->inlineScalarAliasRef($propertySchema, $ownerClassName);
+            $propertySchema = $this->unwrapArrayAliasAllOf($propertySchema);
             if (is_array($propertySchema['items'] ?? null)) {
                 // An `items: {$ref: Alias}` names the same alias one level down.
                 $propertySchema['items'] = $this->inlineScalarAliasRef($propertySchema['items'], $ownerClassName);
@@ -3458,6 +3459,20 @@ final class GenerateDtoCommand extends Command
         // alone said otherwise: a property of an inlined object read as depth 0, so its own `$ref`
         // was left for the scrubber to drop and the values under it went unchecked again.
         $belowMaterialization = $belowMaterialization || $depth >= 2;
+
+        // A `$ref` to a `type: array` component is inlined at EVERY level, materialized or not: such a
+        // reference is typed as the aliased list and never becomes a class, so no class validates it
+        // either. Left as a bare `$ref` it was scrubbed, and the property, list item or map value lost
+        // its `type`, `items` and bounds in every mode — Laravel emitted no `array`/`list` rule at all.
+        // Counted in `$seenRefs`, so an alias whose items lead back to it stops at `REF_REPEAT_LIMIT`.
+        $ref = $this->referenceOrSingleRefAllOf($schema);
+        if ($ref !== null && ($seenRefs[$ref] ?? 0) < self::REF_REPEAT_LIMIT) {
+            $inlined = $this->inlineArrayAliasForConstraints($schema);
+            if ($inlined !== $schema) {
+                $seenRefs[$ref] = ($seenRefs[$ref] ?? 0) + 1;
+                $schema = $inlined;
+            }
+        }
 
         if ($belowMaterialization) {
             $ref = $schema['$ref'] ?? null;
@@ -5244,6 +5259,90 @@ final class GenerateDtoCommand extends Command
         [$type] = $this->resolvePropertyType($definition, $className, $propertyName);
 
         return $type;
+    }
+
+    /**
+     * A `$ref` to a `type: array` component, replaced by that component — for the CONSTRAINTS only.
+     *
+     * `resolveArrayAliasRefType()` types such a reference as the aliased list, but the constraints were
+     * still read from the bare `$ref`, which carries none. Laravel and laravel-data then emitted no
+     * `array`/`list` rule and no item rules: `{"f": "x"}` passed validation and hydration died on
+     * `array_map()`, and Symfony mode accepted a list of the wrong scalars.
+     *
+     * The type and the item class names keep coming from the alias itself, so a document that relied
+     * on them generates the same classes as before. Sibling keywords win over the referenced schema,
+     * as in `inlineFreeFormObjectRef()`. `allOf: [{$ref: Alias}]` is the same reference, spelled longer.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function inlineArrayAliasForConstraints(array $schema): array
+    {
+        $ref = $this->referenceOrSingleRefAllOf($schema);
+        $prefix = '#/components/schemas/';
+        if ($ref === null || !str_starts_with($ref, $prefix)) {
+            return $schema;
+        }
+
+        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+        if (!is_array($definition) || ($definition['type'] ?? null) !== 'array') {
+            return $schema;
+        }
+
+        if (array_key_exists('$ref', $schema)) {
+            unset($schema['$ref']);
+        } else {
+            unset($schema['allOf']);
+        }
+
+        return $schema + $definition;
+    }
+
+    /**
+     * `allOf: [{$ref: ArrayAlias}]` rewritten to the plain `$ref`, so the property is typed and validated
+     * through the alias exactly as the short spelling is. Left wrapped, a required property never learned
+     * that the alias is nullable: it was typed `array`, the rules lacked `nullable`, and a valid `null`
+     * was refused.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function unwrapArrayAliasAllOf(array $propertySchema): array
+    {
+        if (array_key_exists('$ref', $propertySchema) || !$this->isSingleRefAllOf($propertySchema)) {
+            return $propertySchema;
+        }
+
+        $ref = $this->referenceOrSingleRefAllOf($propertySchema);
+        if ($ref === null || $this->inlineArrayAliasForConstraints(['$ref' => $ref]) === ['$ref' => $ref]) {
+            return $propertySchema;
+        }
+
+        unset($propertySchema['allOf']);
+        $propertySchema['$ref'] = $ref;
+        // `withNormalizedReferences()` copies a 3.0 component's `nullable` onto a plain `$ref` only.
+        if (!array_key_exists('nullable', $propertySchema) && ($this->localComponentDefinition($ref)['nullable'] ?? null) === true) {
+            $propertySchema['nullable'] = true;
+        }
+
+        return $propertySchema;
+    }
+
+    /**
+     * The `$ref` a schema consists of: its own, or the one inside a single-reference `allOf`.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function referenceOrSingleRefAllOf(array $schema): ?string
+    {
+        $ref = $schema['$ref'] ?? null;
+        if (!is_string($ref) && $this->isSingleRefAllOf($schema)) {
+            /** @var array<int, array<string, mixed>> $allOf */
+            $allOf = $schema['allOf'];
+            $ref = $allOf[0]['$ref'];
+        }
+
+        return is_string($ref) ? $ref : null;
     }
 
     private function resolveBinaryRefType(string $ref, ?string $currentSourceFile = null): ?string

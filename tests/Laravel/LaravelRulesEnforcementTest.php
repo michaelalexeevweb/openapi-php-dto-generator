@@ -87,6 +87,7 @@ final class LaravelRulesEnforcementTest extends TestCase
                 ],
             ];
         }
+        $schemas['Contacts'] = ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Contact']];
         $fqcn = $this->generateProbe(
             'referenced-contact-union-' . $key,
             $propertySchema,
@@ -133,8 +134,59 @@ final class LaravelRulesEnforcementTest extends TestCase
 
         return [
             'list' => ['list', ['type' => 'array', 'items' => $ref]],
+            'alias' => ['alias', ['$ref' => '#/components/schemas/Contacts']],
             'object' => ['object', $ref],
             'map' => ['map', ['type' => 'object', 'additionalProperties' => $ref]],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('arrayAliasProvider')]
+    public function testReferencedArrayAliasKeepsContainerAndItemValidation(string $key, array $propertySchema): void
+    {
+        $fqcn = $this->generateProbe('array-alias-' . $key, $propertySchema, [
+            'Emails' => [
+                'type' => 'array',
+                'nullable' => true,
+                'minItems' => 1,
+                'maxItems' => 2,
+                'uniqueItems' => true,
+                'items' => ['type' => 'string', 'format' => 'email'],
+            ],
+        ]);
+        $rules = call_user_func([$fqcn, 'rules']);
+        foreach ([null, ['a@example.com'], ['a@example.com', 'b@example.com']] as $value) {
+            $payload = ['f' => $key === 'nested' && $value !== null ? [$value] : $value];
+            $validator = $this->validatorFactory()->make($payload, $rules);
+            if (method_exists($fqcn, 'withValidator')) {
+                call_user_func([$fqcn, 'withValidator'], $validator);
+            }
+            self::assertTrue($validator->passes(), json_encode($validator->errors()->all()));
+            $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+            self::assertSame($payload, $dto->toArray());
+        }
+        foreach (['wrong', 1, ['primary' => 'a@example.com'], [], ['invalid'], ['a@example.com', 'a@example.com'], ['a@example.com', 'b@example.com', 'c@example.com']] as $value) {
+            $validator = $this->validatorFactory()->make(['f' => $key === 'nested' ? [$value] : $value], $rules);
+            if (method_exists($fqcn, 'withValidator')) {
+                call_user_func([$fqcn, 'withValidator'], $validator);
+            }
+            self::assertTrue($validator->fails(), json_encode($value));
+        }
+    }
+
+    /**
+     * @return array<string, array{string, array<string, mixed>}>
+     */
+    public static function arrayAliasProvider(): array
+    {
+        $ref = ['$ref' => '#/components/schemas/Emails'];
+
+        return [
+            'ref' => ['ref', $ref],
+            'allOf' => ['allOf', ['allOf' => [$ref]]],
+            'nested' => ['nested', ['type' => 'array', 'nullable' => true, 'items' => $ref]],
         ];
     }
 

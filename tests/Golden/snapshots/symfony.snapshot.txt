@@ -1,4 +1,4 @@
-# symfony mode — 80 files, 11559 lines
+# symfony mode — 80 files, 11893 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5160,6 +5160,25 @@ namespace GoldenCorpus;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
+
+use function array_is_list;
+use function array_key_exists;
+use function array_keys;
+use function floor;
+use function get_object_vars;
+use function is_array;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function mb_strlen;
+use function method_exists;
+use function sprintf;
+use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5173,6 +5192,50 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ContainerAliases
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'properties' => [
+            'listOfLists' => [
+                'items' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'string',
+                        'minLength' => 2,
+                    ],
+                ],
+            ],
+            'listOfMaps' => [],
+            'mapOfLists' => [
+                'additionalProperties' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'string',
+                        'minLength' => 2,
+                    ],
+                ],
+            ],
+            'plain' => [
+                'items' => [
+                    'type' => 'string',
+                ],
+            ],
+        ],
+    ];
+
+    private const array OPENAPI_PHP_TO_NAME_MAP = [
+        'listOfLists' => 'listOfLists',
+        'listOfMaps' => 'listOfMaps',
+        'mapOfLists' => 'mapOfLists',
+        'plain' => 'plain',
+    ];
+
+    private const array OPENAPI_PROVIDED_FLAGS = [
+        'listOfMaps' => 'listOfMapsProvided',
+        'mapOfLists' => 'mapOfListsProvided',
+        'plain' => 'plainProvided',
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
     /**
      * @var ?array<array<string, mixed>>
      */
@@ -5194,6 +5257,7 @@ final class ContainerAliases
     /**
      * @var ?array<string>
      */
+    #[Assert\All([new Assert\Length(min: 2)])]
     #[Groups(['read', 'write'])]
     private ?array $plain = null;
 
@@ -5297,6 +5361,276 @@ final class ContainerAliases
     public function isPlainProvided(): bool
     {
         return $this->plainProvided;
+    }
+
+    #[Assert\Callback]
+    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
+    {
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
+        }
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload — machinery for the generated validation, not an API to
+     * call. It is public only because an enclosing DTO is a different class and needs this view of
+     * a nested one. For output, use the Symfony serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        foreach (self::OPENAPI_PHP_TO_NAME_MAP as $phpName => $openApiName) {
+            // A required property always exists. An optional one belongs in the payload only when
+            // it was actually provided — its presence flag says so, which is also what keeps the
+            // flags themselves out of the payload (iterating the object's properties would put
+            // them in and trip `additionalProperties: false`).
+            $flag = self::OPENAPI_PROVIDED_FLAGS[$phpName] ?? null;
+            if ($flag !== null && $this->{$flag} !== true) {
+                continue;
+            }
+            $payload[$openApiName] = $this->{$phpName};
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (\OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = $typeConstraint === 'array' && is_array($normalizedValue)
+                        ? sprintf('%s must be a JSON array (list with sequential keys), got an associative array', $path)
+                        : sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['minLength'])) {
+            $length = mb_strlen($normalizedValue);
+            $minLength = $this->toIntConstraint($schema['minLength'] ?? null);
+            if ($minLength !== null && $length < $minLength) {
+                $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
+            }
+        }
+
+        $definedProperties = [];
+        $patternMatchedProperties = [];
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                $definedProperties[$propertyName] = true;
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
+        if ($listValue && is_array($schema['items'] ?? null)) {
+            foreach ($value as $index => $itemValue) {
+                if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($structuredValue)) {
+            $extraPropertySchema = $schema['additionalProperties'] ?? null;
+            $unevaluatedProperties = $schema['unevaluatedProperties'] ?? null;
+            $evaluatedProperties = [...$definedProperties, ...$patternMatchedProperties];
+
+            if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
+                foreach ($structuredValue as $propertyName => $propertyValue) {
+                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                        continue;
+                    }
+                    if ($extraPropertySchema === false) {
+                        $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
+                        continue;
+                    }
+                    if ($this->isGeneratedOpenApiDtoObject($propertyValue)) {
+                        $evaluatedProperties[$propertyName] = true;
+                        continue;
+                    }
+                    $errors = [
+                        ...$errors,
+                        ...$this->validateOpenApiNode($propertyValue, $extraPropertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                    ];
+                    $evaluatedProperties[$propertyName] = true;
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'array' => is_array($value) && array_is_list($value),
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return get_object_vars($value);
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
     }
 }
 

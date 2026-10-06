@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 22065 lines
+# laravel mode — 106 files, 22070 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -11900,9 +11900,14 @@ final class ContainerAliases
     {
         return [
             'listOfLists' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'listOfLists.*' => self::withBlankStringValidation(['array', 'list']),
+            'listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
             'listOfMaps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
             'mapOfLists' => self::withBlankStringValidation(['sometimes', 'array']),
-            'plain' => self::withBlankStringValidation(['sometimes']),
+            'mapOfLists.*' => self::withBlankStringValidation(['array', 'list']),
+            'mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
+            'plain' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'plain.*' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
 

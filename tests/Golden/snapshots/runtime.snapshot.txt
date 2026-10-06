@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23502 lines
+# runtime mode — 80 files, 23503 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -13157,9 +13157,10 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
     public static function getConstraints(): array
     {
         $constraints = [];
-        $constraints['listOfLists'] = ['type' => 'array'];
+        $constraints['listOfLists'] = ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]]];
         $constraints['listOfMaps'] = ['type' => 'array'];
-        $constraints['mapOfLists'] = ['type' => 'object'];
+        $constraints['mapOfLists'] = ['type' => 'object', 'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]]];
+        $constraints['plain'] = ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]];
 
         return $constraints;
     }
