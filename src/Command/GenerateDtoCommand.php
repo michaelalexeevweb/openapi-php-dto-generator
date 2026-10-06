@@ -1017,6 +1017,12 @@ final class GenerateDtoCommand extends Command
             ) {
                 $propertySchema['nullable'] = true;
             }
+            // The same for an array alias reached through other components or spelled
+            // `type: [array, "null"]`: it is typed as the list, so its null has to arrive here.
+            $arrayAlias = is_string($ref) ? $this->arrayAliasDefinition($ref) : null;
+            if (!array_key_exists('nullable', $propertySchema) && $arrayAlias !== null && $this->schemaAllowsNull($arrayAlias)) {
+                $propertySchema['nullable'] = true;
+            }
             $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
             if ($alias === null || !in_array($alias['type'] ?? null, ['null', ['null']], true)) {
                 $properties[$name] = $propertySchema;
@@ -1134,7 +1140,7 @@ final class GenerateDtoCommand extends Command
             // as a value (a property, an array item, a `$ref` target) it resolves to a map so the
             // payload survives — but the class itself is also how a response schema is named, so
             // deleting it would take away a type the application may reference.
-            if (($schemaDefinition['type'] ?? null) === 'array' || $this->isScalarAliasSchema($schemaDefinition)) {
+            if ($this->isArrayAliasComponent($schemaDefinition) || $this->isScalarAliasSchema($schemaDefinition)) {
                 continue;
             }
 
@@ -4270,6 +4276,11 @@ final class GenerateDtoCommand extends Command
             }
 
             $itemNullable = $this->schemaAllowsNull($items);
+            // An item that names a nullable array alias admits null like the alias does.
+            if (!$itemNullable && is_string($items['$ref'] ?? null)) {
+                $itemAlias = $this->arrayAliasDefinition($items['$ref']);
+                $itemNullable = $itemAlias !== null && $this->schemaAllowsNull($itemAlias);
+            }
             $itemPrefix = $itemNullable ? '?' : '';
 
             if (array_key_exists('$ref', $items) && is_string($items['$ref'])) {
@@ -4971,7 +4982,9 @@ final class GenerateDtoCommand extends Command
             return 'mixed';
         }
 
-        $type = $schema['type'] ?? null;
+        // `type: [array, "null"]` is a list too; the null is the caller's `?`. Read as `mixed`, a list
+        // of nullable lists became `array<?mixed>` and runtime mode emitted `?mixed`, a fatal error.
+        $type = $this->soleTypeBesidesNull($schema['type'] ?? null);
 
         if ($type === 'array') {
             $items = $schema['items'] ?? null;
@@ -5010,7 +5023,7 @@ final class GenerateDtoCommand extends Command
         int $remainingDepth,
         ?string $currentSourceFile = null,
     ): string {
-        $type = $schema['type'] ?? null;
+        $type = $this->soleTypeBesidesNull($schema['type'] ?? null);
 
         if ($type === 'array' || $type === 'object' || $this->isMapLikeObjectSchema($schema)) {
             return $this->resolveNestedContainerDocType($schema, $remainingDepth - 1, $currentSourceFile);
@@ -5099,6 +5112,10 @@ final class GenerateDtoCommand extends Command
                 propertyName: $propertyName . 'Value',
             );
             if ($aliasValueType !== null) {
+                // A nullable array alias admits null as a value, as it does as a property or an item.
+                $valueAlias = $this->arrayAliasDefinition($additionalProperties['$ref']);
+                $valueNullable = $valueNullable || ($valueAlias !== null && $this->schemaAllowsNull($valueAlias));
+
                 return $this->composePhpTypeHint($aliasValueType, $valueNullable);
             }
         }
@@ -5251,7 +5268,8 @@ final class GenerateDtoCommand extends Command
             return 'array<string, mixed>';
         }
 
-        if (($definition['type'] ?? null) !== 'array') {
+        $definition = $this->arrayAliasDefinition($ref);
+        if ($definition === null) {
             return null;
         }
 
@@ -5279,13 +5297,8 @@ final class GenerateDtoCommand extends Command
     private function inlineArrayAliasForConstraints(array $schema): array
     {
         $ref = $this->referenceOrSingleRefAllOf($schema);
-        $prefix = '#/components/schemas/';
-        if ($ref === null || !str_starts_with($ref, $prefix)) {
-            return $schema;
-        }
-
-        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
-        if (!is_array($definition) || ($definition['type'] ?? null) !== 'array') {
+        $definition = $ref === null ? null : $this->arrayAliasDefinition($ref);
+        if ($definition === null) {
             return $schema;
         }
 
@@ -5314,18 +5327,83 @@ final class GenerateDtoCommand extends Command
         }
 
         $ref = $this->referenceOrSingleRefAllOf($propertySchema);
-        if ($ref === null || $this->inlineArrayAliasForConstraints(['$ref' => $ref]) === ['$ref' => $ref]) {
+        $definition = $ref === null ? null : $this->arrayAliasDefinition($ref);
+        if ($ref === null || $definition === null) {
             return $propertySchema;
         }
 
         unset($propertySchema['allOf']);
         $propertySchema['$ref'] = $ref;
-        // `withNormalizedReferences()` copies a 3.0 component's `nullable` onto a plain `$ref` only.
-        if (!array_key_exists('nullable', $propertySchema) && ($this->localComponentDefinition($ref)['nullable'] ?? null) === true) {
+        // `withNormalizedReferences()` marks only a plain `$ref`, so the unwrapped one is marked here.
+        if (!array_key_exists('nullable', $propertySchema) && $this->schemaAllowsNull($definition)) {
             $propertySchema['nullable'] = true;
         }
 
         return $propertySchema;
+    }
+
+    /**
+     * The `type: array` component a local `$ref` names, following references between components.
+     *
+     * Two spellings were missed when only `type === 'array'` counted, and both lost far more than
+     * their constraints: the component became an empty class, the property was typed with it, and
+     * valid payloads were refused in four modes while Symfony accepted invalid ones.
+     *   - `type: [array, "null"]`, the OpenAPI 3.1 way to write a nullable list;
+     *   - an alias of an alias, `Contacts: {$ref: ContactList}`.
+     * Keywords on an outer component win over the one it names, as sibling keywords do on a property.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function arrayAliasDefinition(string $ref): ?array
+    {
+        $outer = [];
+        $visited = [];
+        while (!in_array($ref, $visited, true)) {
+            $visited[] = $ref;
+            $definition = $this->localSchemaDefinitionForRef($ref);
+            if ($definition === null) {
+                return null;
+            }
+
+            $next = $definition['$ref'] ?? null;
+            if (!is_string($next)) {
+                return $this->isArrayAliasSchema($definition) ? $outer + $definition : null;
+            }
+
+            unset($definition['$ref']);
+            $outer += $definition;
+            $ref = $next;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a component is an array alias and so gets no class of its own.
+     *
+     * @param array<string, mixed> $definition
+     */
+    private function isArrayAliasComponent(array $definition): bool
+    {
+        if ($this->isArrayAliasSchema($definition)) {
+            return true;
+        }
+
+        $ref = $definition['$ref'] ?? null;
+
+        return is_string($ref) && $this->arrayAliasDefinition($ref) !== null;
+    }
+
+    /**
+     * `type: array`, or `type: [array, "null"]` in either order.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function isArrayAliasSchema(array $schema): bool
+    {
+        $type = $schema['type'] ?? null;
+
+        return $type === 'array' || (is_array($type) && $this->soleTypeBesidesNull($type) === 'array');
     }
 
     /**

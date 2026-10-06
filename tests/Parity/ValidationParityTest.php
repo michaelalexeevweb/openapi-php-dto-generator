@@ -132,6 +132,9 @@ final class ValidationParityTest extends TestCase
             'const' => [['type' => 'string', 'const' => 'a'], '{"f":"a"}', '{"f":"b"}'],
             'minLength' => [['type' => 'string', 'minLength' => 3], '{"f":"abc"}', '{"f":"ab"}'],
             'maxLength' => [['type' => 'string', 'maxLength' => 2], '{"f":"ab"}', '{"f":"abc"}'],
+            // Equal bounds: yiisoft throws "Use $exactly instead." for `min` equal to `max`, so yii3
+            // mode refused every payload, valid ones too, until it emitted `exactly:`.
+            'minLength equals maxLength' => [['type' => 'string', 'minLength' => 3, 'maxLength' => 3], '{"f":"abc"}', '{"f":"ab"}'],
             'pattern' => [['type' => 'string', 'pattern' => '^a'], '{"f":"ab"}', '{"f":"ba"}'],
             'minimum' => [['type' => 'integer', 'minimum' => 3], '{"f":3}', '{"f":2}'],
             'maximum' => [['type' => 'integer', 'maximum' => 3], '{"f":3}', '{"f":4}'],
@@ -153,6 +156,11 @@ final class ValidationParityTest extends TestCase
             'multipleOf' => [['type' => 'integer', 'multipleOf' => 3], '{"f":6}', '{"f":7}'],
             'minItems' => [['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 2], '{"f":["a","b"]}', '{"f":["a"]}'],
             'maxItems' => [['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 1], '{"f":["a"]}', '{"f":["a","b"]}'],
+            'minItems equals maxItems' => [
+                ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 2, 'maxItems' => 2],
+                '{"f":["a","b"]}',
+                '{"f":["a"]}',
+            ],
             'uniqueItems' => [['type' => 'array', 'items' => ['type' => 'string'], 'uniqueItems' => true], '{"f":["a","b"]}', '{"f":["a","a"]}'],
             'items scalar rule' => [['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]], '{"f":["ab"]}', '{"f":["a"]}'],
             'minProperties' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer'], 'minProperties' => 2], '{"f":{"a":1,"b":2}}', '{"f":{"a":1}}'],
@@ -1486,13 +1494,19 @@ final class ValidationParityTest extends TestCase
      * bare `$ref` was scrubbed, so Symfony accepted the list of wrong scalars too.
      *
      * Held to the inline spelling in every mode, directly on the property and one container down.
+     * `Items` is the component referenced; the provider may route it through further components.
      *
-     * @param array<string, mixed> $aliasSchema
+     * @param array<string, mixed> $aliasSchema the array the reference stands for, written inline
+     * @param array<string, array<string, mixed>> $components
      * @param array<int, string> $invalidValues
      */
     #[DataProvider('arrayAliasProvider')]
-    public function testAnArrayAliasValidatesLikeTheInlineArray(array $aliasSchema, string $validValue, array $invalidValues): void
-    {
+    public function testAnArrayAliasValidatesLikeTheInlineArray(
+        array $aliasSchema,
+        array $components,
+        string $validValue,
+        array $invalidValues,
+    ): void {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
         }
@@ -1512,8 +1526,7 @@ final class ValidationParityTest extends TestCase
             $inline = self::probeSpec($wrap($aliasSchema));
             $inline['components']['schemas']['Item'] = $item;
             $aliased = self::probeSpec($wrap(['$ref' => '#/components/schemas/Items']));
-            $aliased['components']['schemas']['Items'] = $aliasSchema;
-            $aliased['components']['schemas']['Item'] = $item;
+            $aliased['components']['schemas'] += $components + ['Item' => $item];
             $validJson = '{"f":' . sprintf($payload, $validValue) . '}';
 
             foreach ($invalidValues as $index => $invalidValue) {
@@ -1536,20 +1549,96 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
-     * @return array<string, array{array<string, mixed>, string, array<int, string>}>
+     * @return array<string, array{array<string, mixed>, array<string, array<string, mixed>>, string, array<int, string>}>
      */
     public static function arrayAliasProvider(): array
     {
         $objects = ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']];
+        $strings = ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1];
+        $nullableStrings = [...$strings, 'type' => ['array', 'null']];
         $notAList = ['"x"', '{"k":{"value":"a@example.com"}}', '[{"value":"invalid"}]'];
+        $notStrings = ['"x"', '[1]', '[]'];
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
 
         return [
-            'list of objects' => [$objects, '[{"value":"a@example.com"}]', $notAList],
-            'nullable list of objects' => [[...$objects, 'nullable' => true], 'null', $notAList],
-            'list of strings' => [
-                ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1],
-                '["a"]',
-                ['"x"', '[1]', '[]'],
+            'list of objects' => [$objects, ['Items' => $objects], '[{"value":"a@example.com"}]', $notAList],
+            'nullable list of objects' => [[...$objects, 'nullable' => true], ['Items' => [...$objects, 'nullable' => true]], 'null', $notAList],
+            'list of strings' => [$strings, ['Items' => $strings], '["a"]', $notStrings],
+            // The OpenAPI 3.1 spelling of a nullable list: it became an empty class before 2.15.59.
+            'type list with null' => [$nullableStrings, ['Items' => $nullableStrings], 'null', $notStrings],
+            'type list with null, a value' => [$nullableStrings, ['Items' => $nullableStrings], '["a"]', $notStrings],
+            // An alias of an alias, which became an empty class as well.
+            'alias of an alias' => [$strings, ['Items' => $ref('Strings'), 'Strings' => $strings], '["a"]', $notStrings],
+            'alias of a nullable alias' => [
+                [...$objects, 'nullable' => true],
+                ['Items' => $ref('Objects'), 'Objects' => [...$objects, 'nullable' => true]],
+                'null',
+                $notAList,
+            ],
+        ];
+    }
+
+    /**
+     * An array alias in the other places a reference can stand: a union branch, an `allOf` item, beside
+     * a keyword of the property's own, and as the values of a map. Each was measured correct when 2.15.58
+     * shipped; these pin it.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array<string, mixed>> $components
+     */
+    #[DataProvider('arrayAliasPositionProvider')]
+    public function testAnArrayAliasIsCheckedWhereverItIsReferenced(
+        array $propertySchema,
+        array $components,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['components']['schemas'] += $components;
+        $key = 'array-alias-position-' . md5(json_encode([$propertySchema, $components], JSON_THROW_ON_ERROR));
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, array<string, array<string, mixed>>, string, string}>
+     */
+    public static function arrayAliasPositionProvider(): array
+    {
+        $ref = ['$ref' => '#/components/schemas/Strings'];
+        $strings = ['Strings' => ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1]];
+        $objects = [
+            'Objects' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']],
+            'Item' => [
+                'type' => 'object',
+                'required' => ['value'],
+                'properties' => ['value' => ['type' => 'string', 'format' => 'email']],
+            ],
+        ];
+
+        return [
+            'oneOf branch' => [['oneOf' => [$ref, ['type' => 'integer']]], $strings, '{"f":["a"]}', '{"f":[1]}'],
+            'allOf item' => [['type' => 'array', 'items' => ['allOf' => [$ref]]], $strings, '{"f":[["a"]]}', '{"f":[[1]]}'],
+            'sibling maxItems' => [[...$ref, 'maxItems' => 1], $strings, '{"f":["a"]}', '{"f":["a","b"]}'],
+            'uniqueItems' => [
+                $ref,
+                ['Strings' => ['type' => 'array', 'items' => ['type' => 'string'], 'uniqueItems' => true]],
+                '{"f":["a","b"]}',
+                '{"f":["a","a"]}',
+            ],
+            'map values' => [
+                ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Objects']],
+                $objects,
+                '{"f":{"k":[{"value":"a@example.com"}]}}',
+                '{"f":{"k":[{"value":"invalid"}]}}',
             ],
         ];
     }

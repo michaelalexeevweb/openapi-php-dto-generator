@@ -1355,7 +1355,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /**
      * The VALUE half of one generic's content: everything after its last depth-0 comma, so
      * `string, Foo` gives `Foo` and `Foo` gives `Foo`. A value that is itself generic is reported
-     * as `array`, because that is what the item is at runtime.
+     * as `array`, because that is what the item is at runtime — `?array` when it is nullable: a map
+     * of nullable lists, `array<string, ?array<string>>`, lost the `?` and refused its own null.
      */
     private function genericValueType(string $inner): string
     {
@@ -1379,8 +1380,11 @@ final class DtoNormalizer implements DtoNormalizerInterface
         }
 
         $valueType = trim(substr($inner, $valueStart));
+        if (!str_contains($valueType, '<')) {
+            return $valueType;
+        }
 
-        return str_contains($valueType, '<') ? 'array' : $valueType;
+        return str_starts_with($valueType, '?') ? '?array' : 'array';
     }
 
     private function normalizeDocTypeNameInClassContext(string $className, string $typeName): string

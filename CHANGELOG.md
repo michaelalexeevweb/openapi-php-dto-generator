@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.59 — 2026-10-06
+
+- Nullable 3.1 array aliases typed as lists
+- Aliases of array aliases typed as lists
+- Lists of nullable lists no longer fatal
+- Yii3 equal bounds use `exactly`
+
+A component spelled `type: [array, "null"]`, or a component that only `$ref`s an array component,
+was materialized as an empty class and every property referencing it was typed with that class.
+Valid payloads were refused in four modes, while Symfony accepted invalid ones. Both spellings are
+now array aliases: no class, the list type, the alias's nullability and its validation, as a property,
+list item or map value. Runtime mode now keeps the `?` of a nullable nested container value, so a map
+of nullable lists accepts its nulls.
+
+`items: {type: [array, "null"]}` was typed `array<?mixed>`, and runtime mode emitted a `?mixed`
+parameter, which is a PHP fatal error. It is now `array<?array<…>>`.
+
+Yii3 mode emitted `Count(min: N, max: N)` / `Length(min: N, max: N)` for equal bounds, which yiisoft
+rejects with "Use $exactly instead." while validating, so every payload was refused. Equal bounds
+now emit `exactly: N`. Regression tests also pin array aliases as a union branch, an `allOf` item,
+beside a sibling keyword, with `uniqueItems` and as map values. Regenerate DTOs.
+
 ## 2.15.58 — 2026-10-06
 
 - Referenced array aliases keep their validation

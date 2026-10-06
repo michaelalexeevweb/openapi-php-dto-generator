@@ -603,14 +603,7 @@ trait RendersYii3Dto
         $min = $constraints['minLength'] ?? null;
         $max = $constraints['maxLength'] ?? null;
         if ($min !== null || $max !== null) {
-            $args = [];
-            if ($min !== null) {
-                $args[] = 'min: ' . (int)$min;
-            }
-            if ($max !== null) {
-                $args[] = 'max: ' . (int)$max;
-            }
-            $attributes[] = $this->yii3Rule('Length', $args, $ruleImports);
+            $attributes[] = $this->yii3Rule('Length', $this->yii3LimitArguments($min, $max), $ruleImports);
         }
 
         foreach (
@@ -670,14 +663,7 @@ trait RendersYii3Dto
         $minItems = $constraints['minItems'] ?? null;
         $maxItems = $constraints['maxItems'] ?? null;
         if ($minItems !== null || $maxItems !== null) {
-            $args = [];
-            if ($minItems !== null) {
-                $args[] = 'min: ' . (int)$minItems;
-            }
-            if ($maxItems !== null) {
-                $args[] = 'max: ' . (int)$maxItems;
-            }
-            $attributes[] = $this->yii3Rule('Count', $args, $ruleImports);
+            $attributes[] = $this->yii3Rule('Count', $this->yii3LimitArguments($minItems, $maxItems), $ruleImports);
         }
 
         // NO rule for `uniqueItems`. `#[UniqueIterable]` was emitted here and measured not to reject
@@ -995,6 +981,31 @@ PHP;
         return substr($methods, 0, $docStart)
             . $this->renderYii3StandalonePayloadMethod($parameters)
             . substr($methods, $bodyEnd + strlen("\n    }"));
+    }
+
+    /**
+     * The `min:`/`max:` arguments of a `Length` or `Count` rule, or `exactly:` when the two are equal.
+     *
+     * yiisoft refuses `min` equal to `max` with `InvalidArgumentException('Use $exactly instead.')`, and
+     * it throws while VALIDATING, so `minItems: 2, maxItems: 2` refused every payload, valid ones too.
+     *
+     * @return array<int, string>
+     */
+    private function yii3LimitArguments(mixed $min, mixed $max): array
+    {
+        if ($min !== null && $max !== null && (int)$min === (int)$max) {
+            return ['exactly: ' . (int)$min];
+        }
+
+        $arguments = [];
+        if ($min !== null) {
+            $arguments[] = 'min: ' . (int)$min;
+        }
+        if ($max !== null) {
+            $arguments[] = 'max: ' . (int)$max;
+        }
+
+        return $arguments;
     }
 
     /**
