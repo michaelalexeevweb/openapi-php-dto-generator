@@ -3,6 +3,22 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.60 — 2026-10-06
+
+- Nested nullable values keep `?`
+- Inline map of nullable lists typed
+- Yii3 crossed or negative bounds no longer throw
+
+A null allowed two or more containers deep lost its `?` in 2.15.59: `items: {type: array, items:
+{type: [string, "null"]}}` was declared `array<array<string>>` while `[[null]]` is valid. It is now
+`array<array<?string>>`, for both null spellings. A map whose values are written inline as
+`type: [array, "null"]` was declared `array<string, mixed>`; it is now `array<string, ?array<…>>`,
+as the `$ref` spelling already was. Validation was correct in both cases; the declarations were not.
+
+Yii3 mode emitted `Count`/`Length` for `minItems` above `maxItems`, or for a negative bound, which
+yiisoft rejects with an exception while validating. Such a pair now gets no rule and is checked by
+the schema interpreter, so the payload gets a violation instead of an exception. Regenerate DTOs.
+
 ## 2.15.59 — 2026-10-06
 
 - Nullable 3.1 array aliases typed as lists

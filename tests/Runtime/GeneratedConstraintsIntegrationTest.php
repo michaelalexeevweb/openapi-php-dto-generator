@@ -6007,6 +6007,55 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A null the document allows below the first container keeps its `?` in the declaration. 2.15.59
+     * dropped it two containers deep and wrote the inline map of nullable lists as `mixed` values.
+     */
+    public function testANestedNullKeepsItsMarkInTheDeclaration(): void
+    {
+        $nullableStrings = ['type' => ['string', 'null']];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Nested' => [
+                    'type' => 'object',
+                    'required' => ['rows', 'oldRows', 'amounts', 'cube', 'byKey'],
+                    'properties' => [
+                        'rows' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => $nullableStrings]],
+                        'oldRows' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'array', 'items' => ['type' => 'string', 'nullable' => true]],
+                        ],
+                        'amounts' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => ['number', 'null']]]],
+                        'cube' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'array', 'items' => ['type' => ['array', 'null'], 'items' => ['type' => 'string']]],
+                        ],
+                        'byKey' => [
+                            'type' => 'object',
+                            'additionalProperties' => ['type' => ['array', 'null'], 'items' => ['type' => 'string']],
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'NestedNullNs', 'Nested');
+
+        $source = (string)file_get_contents($this->outputDirectory . '/Nested.php');
+        $this->assertStringContainsString('@param array<array<?string>> $rows', $source);
+        $this->assertStringContainsString('@param array<array<?string>> $oldRows', $source);
+        $this->assertStringContainsString('@param array<array<float|int|null>> $amounts', $source);
+        $this->assertStringContainsString('@param array<array<?array<string>>> $cube', $source);
+        $this->assertStringContainsString('@param array<string, ?array<string>> $byKey', $source);
+
+        $valid = '{"rows":[["a",null]],"oldRows":[[null]],"amounts":[[1.5,null]],"cube":[[null,["a"]]],'
+            . '"byKey":{"a":null,"b":["x"]}}';
+        $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($valid), $fqcn);
+        $this->assertSame([], (new DtoNormalizer())->validate($dto));
+        $this->assertSame($valid, (string)json_encode((new DtoNormalizer())->toArray($dto)));
+    }
+
+    /**
      * A container inside a container, and the two things that were true of it: the DECLARATION named a
      * type nothing delivered, and the CONSTRAINTS named nothing at all.
      *

@@ -602,7 +602,7 @@ trait RendersYii3Dto
 
         $min = $constraints['minLength'] ?? null;
         $max = $constraints['maxLength'] ?? null;
-        if ($min !== null || $max !== null) {
+        if (($min !== null || $max !== null) && $this->yii3LimitsAreUsable($min, $max)) {
             $attributes[] = $this->yii3Rule('Length', $this->yii3LimitArguments($min, $max), $ruleImports);
         }
 
@@ -662,7 +662,7 @@ trait RendersYii3Dto
 
         $minItems = $constraints['minItems'] ?? null;
         $maxItems = $constraints['maxItems'] ?? null;
-        if ($minItems !== null || $maxItems !== null) {
+        if (($minItems !== null || $maxItems !== null) && $this->yii3LimitsAreUsable($minItems, $maxItems)) {
             $attributes[] = $this->yii3Rule('Count', $this->yii3LimitArguments($minItems, $maxItems), $ruleImports);
         }
 
@@ -1009,6 +1009,19 @@ PHP;
     }
 
     /**
+     * Whether yiisoft accepts these bounds. It throws while VALIDATING on a negative bound or on `min`
+     * above `max`, so such a pair gets no rule and stays with the interpreter, which reads it as written.
+     */
+    private function yii3LimitsAreUsable(mixed $min, mixed $max): bool
+    {
+        if (($min !== null && (int)$min < 0) || ($max !== null && (int)$max < 0)) {
+            return false;
+        }
+
+        return $min === null || $max === null || (int)$min <= (int)$max;
+    }
+
+    /**
      * Emits one rule attribute and records its import.
      *
      * @param array<int, string> $arguments
@@ -1313,7 +1326,17 @@ PHP;
         $schema = $property['constraints'] ?? [];
         $covered = [];
 
+        $unusableLimits = [];
+        foreach ([['minLength', 'maxLength'], ['minItems', 'maxItems']] as [$minKey, $maxKey]) {
+            if (!$this->yii3LimitsAreUsable($schema[$minKey] ?? null, $schema[$maxKey] ?? null)) {
+                array_push($unusableLimits, $minKey, $maxKey);
+            }
+        }
+
         foreach (['minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minItems', 'maxItems'] as $keyword) {
+            if (in_array($keyword, $unusableLimits, true)) {
+                continue;
+            }
             if (array_key_exists($keyword, $schema) && !$this->yii3BoundIsExclusiveByModifier($schema, $keyword)) {
                 // An uncompilable pattern got no rule (see `patternCompiles()`): the interpreter keeps it.
                 if ($keyword === 'pattern' && (!is_string($schema['pattern']) || $schema['pattern'] === '' || !$this->patternCompiles($schema['pattern']))) {

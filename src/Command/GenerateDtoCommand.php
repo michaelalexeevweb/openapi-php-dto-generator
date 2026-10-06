@@ -1019,8 +1019,7 @@ final class GenerateDtoCommand extends Command
             }
             // The same for an array alias reached through other components or spelled
             // `type: [array, "null"]`: it is typed as the list, so its null has to arrive here.
-            $arrayAlias = is_string($ref) ? $this->arrayAliasDefinition($ref) : null;
-            if (!array_key_exists('nullable', $propertySchema) && $arrayAlias !== null && $this->schemaAllowsNull($arrayAlias)) {
+            if (!array_key_exists('nullable', $propertySchema) && $this->arrayAliasAllowsNull($ref)) {
                 $propertySchema['nullable'] = true;
             }
             $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
@@ -4275,12 +4274,10 @@ final class GenerateDtoCommand extends Command
                 return ['array', $nullable];
             }
 
-            $itemNullable = $this->schemaAllowsNull($items);
             // An item that names a nullable array alias admits null like the alias does.
-            if (!$itemNullable && is_string($items['$ref'] ?? null)) {
-                $itemAlias = $this->arrayAliasDefinition($items['$ref']);
-                $itemNullable = $itemAlias !== null && $this->schemaAllowsNull($itemAlias);
-            }
+            $itemNullable = $this->schemaAllowsNull($items) || $this->arrayAliasAllowsNull(
+                is_string($items['$ref'] ?? null) ? $items['$ref'] : null,
+            );
             $itemPrefix = $itemNullable ? '?' : '';
 
             if (array_key_exists('$ref', $items) && is_string($items['$ref'])) {
@@ -5023,6 +5020,23 @@ final class GenerateDtoCommand extends Command
         int $remainingDepth,
         ?string $currentSourceFile = null,
     ): string {
+        // The null is this value's own `?`: stripped from the type below and given back here.
+        return $this->composePhpTypeHint(
+            $this->nestedContainerValueBaseDocType($schema, $remainingDepth, $currentSourceFile),
+            $this->schemaAllowsNull($schema),
+        );
+    }
+
+    /**
+     * `nestedContainerValueDocType()` without the value's own null.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function nestedContainerValueBaseDocType(
+        array $schema,
+        int $remainingDepth,
+        ?string $currentSourceFile,
+    ): string {
         $type = $this->soleTypeBesidesNull($schema['type'] ?? null);
 
         if ($type === 'array' || $type === 'object' || $this->isMapLikeObjectSchema($schema)) {
@@ -5113,8 +5127,7 @@ final class GenerateDtoCommand extends Command
             );
             if ($aliasValueType !== null) {
                 // A nullable array alias admits null as a value, as it does as a property or an item.
-                $valueAlias = $this->arrayAliasDefinition($additionalProperties['$ref']);
-                $valueNullable = $valueNullable || ($valueAlias !== null && $this->schemaAllowsNull($valueAlias));
+                $valueNullable = $valueNullable || $this->arrayAliasAllowsNull($additionalProperties['$ref']);
 
                 return $this->composePhpTypeHint($aliasValueType, $valueNullable);
             }
@@ -5123,7 +5136,7 @@ final class GenerateDtoCommand extends Command
         // A value with fixed `properties` is a DTO and stays one: that IS hydrated at this depth, and
         // the map-like predicate says no to it for exactly that reason.
         if (
-            ($additionalProperties['type'] ?? null) === 'array'
+            $this->soleTypeBesidesNull($additionalProperties['type'] ?? null) === 'array'
             || $this->isPatternPropertiesOnlyObjectSchema($additionalProperties)
             || $this->isMapLikeObjectSchema($additionalProperties)
         ) {
@@ -5392,6 +5405,16 @@ final class GenerateDtoCommand extends Command
         $ref = $definition['$ref'] ?? null;
 
         return is_string($ref) && $this->arrayAliasDefinition($ref) !== null;
+    }
+
+    /**
+     * Whether the array alias a `$ref` names admits null, in either spelling and through any chain.
+     */
+    private function arrayAliasAllowsNull(?string $ref): bool
+    {
+        $definition = $ref === null ? null : $this->arrayAliasDefinition($ref);
+
+        return $definition !== null && $this->schemaAllowsNull($definition);
     }
 
     /**

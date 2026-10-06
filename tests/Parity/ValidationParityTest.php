@@ -135,6 +135,9 @@ final class ValidationParityTest extends TestCase
             // Equal bounds: yiisoft throws "Use $exactly instead." for `min` equal to `max`, so yii3
             // mode refused every payload, valid ones too, until it emitted `exactly:`.
             'minLength equals maxLength' => [['type' => 'string', 'minLength' => 3, 'maxLength' => 3], '{"f":"abc"}', '{"f":"ab"}'],
+            // A negative bound is no bound, but yiisoft throws "Only positive or zero values are
+            // allowed." while validating, so yii3 mode refused every payload until it left it alone.
+            'negative minLength' => [['type' => 'string', 'minLength' => -1, 'maxLength' => 2], '{"f":"ab"}', '{"f":"abc"}'],
             'pattern' => [['type' => 'string', 'pattern' => '^a'], '{"f":"ab"}', '{"f":"ba"}'],
             'minimum' => [['type' => 'integer', 'minimum' => 3], '{"f":3}', '{"f":2}'],
             'maximum' => [['type' => 'integer', 'maximum' => 3], '{"f":3}', '{"f":4}'],
@@ -1640,6 +1643,89 @@ final class ValidationParityTest extends TestCase
                 '{"f":{"k":[{"value":"a@example.com"}]}}',
                 '{"f":{"k":[{"value":"invalid"}]}}',
             ],
+            // A nullable alias as an `allOf` item accepts its null.
+            'allOf item of a nullable alias' => [
+                ['type' => 'array', 'items' => ['allOf' => [['$ref' => '#/components/schemas/NullableStrings']]]],
+                ['NullableStrings' => ['type' => ['array', 'null'], 'items' => ['type' => 'string']]],
+                '{"f":[null]}',
+                '{"f":[[1]]}',
+            ],
+        ];
+    }
+
+    /**
+     * Bounds no value can meet are a refusal, not a crash. yiisoft throws "$min must be lower than $max."
+     * while validating, so yii3 mode answered every payload with an exception until it left the pair to
+     * the interpreter.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('crossedBoundsProvider')]
+    public function testCrossedBoundsAreAViolationInYii3(array $propertySchema, string $json): void
+    {
+        $key = 'crossed-bounds-' . md5(json_encode($propertySchema, JSON_THROW_ON_ERROR));
+        $fqcn = $this->generate(self::probeSpec($propertySchema), $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
+        $this->skipYii3WithoutIntl($fqcn, $json, $key);
+
+        $container = new Yii3Container();
+        $payload = json_decode($json, true);
+        $this->assertIsArray($payload);
+
+        $this->assertFalse($container->validate($container->hydrate($fqcn, $payload))->isValid());
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string}>
+     */
+    public static function crossedBoundsProvider(): array
+    {
+        return [
+            'minItems above maxItems' => [['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 3, 'maxItems' => 2], '{"f":["a","b"]}'],
+            'minLength above maxLength' => [['type' => 'string', 'minLength' => 3, 'maxLength' => 2], '{"f":"ab"}'],
+        ];
+    }
+
+    /**
+     * A null that the document allows below the first container: a list of lists of nullable strings,
+     * and a map of nullable lists written inline. 2.15.59 typed the first `array<array<string>>`, and the
+     * second never reached the list typing at all.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('nestedNullProvider')]
+    public function testANestedNullIsAcceptedWhereTheDocumentAllowsIt(
+        array $propertySchema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $key = 'nested-null-' . md5(json_encode([$propertySchema, $validJson], JSON_THROW_ON_ERROR));
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string, string}>
+     */
+    public static function nestedNullProvider(): array
+    {
+        $lists = static fn(array $item): array => ['type' => 'array', 'items' => ['type' => 'array', 'items' => $item]];
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => ['array', 'null'], 'items' => ['type' => 'string']]];
+
+        return [
+            'list of lists of nullable strings' => [$lists(['type' => ['string', 'null']]), '{"f":[["a",null]]}', '{"f":[[1]]}'],
+            'the same, nullable: true' => [$lists(['type' => 'string', 'nullable' => true]), '{"f":[["a",null]]}', '{"f":[[1]]}'],
+            'list of lists of nullable numbers' => [$lists(['type' => ['number', 'null']]), '{"f":[[1.5,null]]}', '{"f":[["a"]]}'],
+            'inline map of nullable lists, null' => [$map, '{"f":{"k":null}}', '{"f":{"k":[1]}}'],
+            'inline map of nullable lists, a list' => [$map, '{"f":{"k":["a"]}}', '{"f":{"k":"a"}}'],
         ];
     }
 
