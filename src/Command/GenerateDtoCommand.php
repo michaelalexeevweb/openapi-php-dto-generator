@@ -4986,9 +4986,11 @@ final class GenerateDtoCommand extends Command
         if ($type === 'array') {
             $items = $schema['items'] ?? null;
 
+            // No `items` is a list of anything, and says so: a bare `array` in item position is the MAP
+            // form to `DtoDeserializer`, which then refused every JSON array the list held.
             return is_array($items)
                 ? 'array<' . $this->nestedContainerValueDocType($items, $remainingDepth, $currentSourceFile) . '>'
-                : 'array';
+                : 'array<mixed>';
         }
 
         if ($type === 'object' || $this->isMapLikeObjectSchema($schema)) {

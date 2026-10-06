@@ -3,6 +3,16 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.61 — 2026-10-06
+
+- Itemless nested lists accept JSON arrays
+
+A list with no `items` below the first container — `items: {type: array}`, or a map value
+`additionalProperties: {type: array}` — was declared `array<array>` / `array<string, array>`. In item
+position a bare `array` is the map form to `DtoDeserializer`, so runtime mode refused every valid
+payload with "expects object, got array" (`[[1]]`, `[[null]]`, `{"k":[1]}`), while the other four modes
+accepted them. The declaration is now `array<mixed>`. Runtime mode only; regenerate DTOs.
+
 ## 2.15.60 — 2026-10-06
 
 - Nested nullable values keep `?`

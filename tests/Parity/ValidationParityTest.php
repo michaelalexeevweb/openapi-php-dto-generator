@@ -1686,6 +1686,49 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A list with no `items` below the first container holds anything a JSON array can. Runtime mode
+     * refused all of it before 2.15.61: the declaration said `array<array>`, and a bare `array` item is
+     * the map form, so `[[1]]` was "expects object, got array" while every other mode accepted it.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('itemlessNestedListProvider')]
+    public function testAnItemlessNestedListAcceptsAnyJsonArray(
+        array $propertySchema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $key = 'itemless-list-' . md5(json_encode([$propertySchema, $validJson], JSON_THROW_ON_ERROR));
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, string, string}>
+     */
+    public static function itemlessNestedListProvider(): array
+    {
+        $lists = ['type' => 'array', 'items' => ['type' => 'array']];
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => 'array']];
+
+        return [
+            'list of lists, scalars' => [$lists, '{"f":[[1,"a",true]]}', '{"f":[1]}'],
+            'list of lists, null' => [$lists, '{"f":[[null]]}', '{"f":["a"]}'],
+            'list of lists, objects' => [$lists, '{"f":[[{"a":1}]]}', '{"f":[{"a":1}]}'],
+            'map of lists' => [$map, '{"f":{"k":[1,{"a":1}]}}', '{"f":{"k":"x"}}'],
+        ];
+    }
+
+    /**
      * A null that the document allows below the first container: a list of lists of nullable strings,
      * and a map of nullable lists written inline. 2.15.59 typed the first `array<array<string>>`, and the
      * second never reached the list typing at all.
