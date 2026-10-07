@@ -108,7 +108,7 @@ only in how the subject is named — pinned by `tests/Parity/InterpreterMessageP
 
 ## Divergences
 
-Fifteen, all deliberate, all pinned by a test that names the cause. Each is one of eight things: Symfony
+Nineteen, all pinned by a test that names the cause. Fifteen are deliberate; the four rows on null and non-object ITEMS and on fraction digits are limits of the framework component that owns the step, which generated code — DTOs and nothing else — cannot get past. Each is one of eight things: Symfony
 mode's serializer or the yii3 hydrator deciding before generated code gets a say, that serializer having no
 way to say ABSENT on the way out, a mode not holding the raw body, laravel-data's own normalizer having no
 notion of the wire shape, the yii3 hydrator casting only to DECLARED types, a mode having no per-ITEM cast to
@@ -138,6 +138,10 @@ not — not "accepted" versus "refused". `42.0` for `type: integer` is a conform
 | a discriminated union arriving in a PAYLOAD | ✅ built | ✅ built | ✅ built | ✅ built | ❌ left unset | `yiisoft/hydrator` casts to a DECLARED type, and the declared type here is the union interface. Reading the discriminator to choose a member would need a type caster of ours in the generated output, which this mode does not emit — the interface is still the right type for a response and for code that builds a member itself. Pinned by `Yii3RequestShapeTest::testAUnionMemberImplementsTheUnionInterface` |
 | the ITEMS of an array or map of `format: date` / `date-time` | `DateTimeImmutable` | `DateTimeImmutable` | `DateTimeImmutable` | `string` | `string` | See [Temporal container items](#temporal-container-items) below. Runtime and Laravel cast each item themselves, Symfony's `ArrayDenormalizer` does it; laravel-data's `#[WithCast]` casts the PROPERTY and never reaches an item, and the yii3 `#[ToDateTime]` resolver refuses an array outright. The two that hold strings SAY `array<string>` — `GenerateLaravelDtoTest::testTemporalContainerItemsAreCastAndReadAsStrings`, `LaravelDataSemanticsTest::testACastOnAnArrayPropertyDoesNotReachItsItems` |
 | key order of a discriminated union member in `toArray()` | discriminator first | discriminator first | discriminator first | discriminator last | discriminator first | The base is an abstract `Data` class here, so the discriminator is an INHERITED property, and PHP reflection lists a class's own properties before its parent's. Same keys, same values; JSON object order carries no meaning — `NormalizationParityTest`, case "discriminated union". yii3 is measured on the MEMBER instead, because the payload path leaves the property unset (the row above) — `Yii3RequestShapeTest::testAUnionMemberReadsBackWithTheDiscriminatorFirst` |
+| a `null` ITEM of a nullable list of dates or enums (`items: {type: [string, "null"], format: date}`, `items: {anyOf: [{$ref: Kind}, {type: "null"}]}`) | ✅ accepted | ❌ refused | ✅ accepted | ✅ accepted | ✅ accepted | symfony/serializer's `ArrayDenormalizer` hands every element, null included, to `DateTimeNormalizer` / `BackedEnumNormalizer`, and neither accepts null. Getting past it would need a normalizer of ours registered in the application, which generated code does not ship — `ValidationParityTest::testShapesThatCrashedAreAnsweredInEveryMode` ("nullable date items"), `testAComponentThatOnlyNamesAnotherIsThatSchema` ("enum or null as a list item") |
+| a `null` ITEM of a nullable list of DTOs (`items: {anyOf: [{$ref: Tag}, {type: "null"}]}`) | ✅ accepted | ✅ accepted | ✅ accepted | ❌ refused | ✅ accepted³ | laravel-data's `#[DataCollectionOf(Tag::class)]` builds a `Tag` out of every element and has no null case — `ValidationParityTest::testShapesThatCrashedAreAnsweredInEveryMode` ("nullable dto items") |
+| a non-object ITEM of a list or map of DTOs (`["x"]`, or `[null]` where items are not nullable) | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ❌ dropped | yiisoft/hydrator's `CollectionResolver` skips an element it cannot build before any rule runs, so the list arrives shorter and valid; the raw element is gone. Laravel did the same through `validated()` until 2.15.64 — `ValidationParityTest::testShapesThatCrashedAreAnsweredInEveryMode` ("string item in a list of DTOs", "null item in a list of DTOs", "string value in a map of DTOs") |
+| `format: date-time` with one, two, four or five fraction digits (`…05.5Z`) | ✅ accepted | ✅ accepted | ❌ 422 | ❌ 422 | ✅ accepted | Laravel's `date_format` formats the parsed value back and compares strings: `.u` writes six digits and `.v` three, so only those two lengths round-trip. Milliseconds (`toISOString()`) and microseconds pass since 2.15.64 — `ValidationParityTest`, case "format date-time with milliseconds" |
 
 ¹ laravel-data reads the raw body from the current request. On the `validateAndCreate($array)` entry
 point there is no request, so that one check is skipped and everything else still runs.
@@ -145,6 +149,10 @@ point there is no request, so that one check is skipped and everything else stil
 ² symfony needs serialization groups passed by the caller (`['groups' => 'read']` / `'write'`) for
 `writeOnly` omission and `readOnly` input; runtime and laravel enforce both unconditionally, and
 laravel-data enforces `writeOnly` unconditionally via `#[Hidden]`.
+
+³ yii3 accepts the null item, but also does not check the OBJECT items of such a list: `[{}]` passes a
+required property. Same cause as the dropped non-object item — the hydrator builds the collection before
+any rule runs.
 
 Everything else about the response shape is identical in all five.
 
