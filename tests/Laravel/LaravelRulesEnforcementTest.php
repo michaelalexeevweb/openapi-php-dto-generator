@@ -900,7 +900,9 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertIsString($file);
         $source = (string)file_get_contents($file);
 
-        $this->assertStringNotContainsString('withValidator', $source);
+        // `withValidator()` itself is always there (it keeps `validated()` containers whole); the
+        // interpreter hook inside it is not.
+        $this->assertStringNotContainsString('$validator->after(', $source);
         $this->assertStringNotContainsString('validateOpenApiNode', $source);
         $this->assertStringNotContainsString('OPENAPI_VALIDATION_CONSTRAINTS', $source);
     }

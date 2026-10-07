@@ -13158,7 +13158,7 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
     {
         $constraints = [];
         $constraints['listOfLists'] = ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]]];
-        $constraints['listOfMaps'] = ['type' => 'array'];
+        $constraints['listOfMaps'] = ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer', 'minimum' => 0]]];
         $constraints['mapOfLists'] = ['type' => 'object', 'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]]];
         $constraints['plain'] = ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]];
 

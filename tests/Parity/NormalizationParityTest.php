@@ -652,6 +652,27 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['matrix' => [[1, 2], [3]]],
                 'symfony' => ['matrix' => [[1, 2], [3]]],
             ],
+            // An EMPTY item between two others. Laravel's `validated()` rebuilt the list from the leaves
+            // its rules reached, so the empty one came back FIRST — `[[], [1], [2]]` — until 2.15.64.
+            'list of lists with an empty one between' => [
+                'schema' => self::object(
+                    ['matrix' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
+                    ['matrix'],
+                ),
+                'json' => '{"matrix":[[1],[],[2]]}',
+                'runtime' => ['matrix' => [[1], [], [2]]],
+                'symfony' => ['matrix' => [[1], [], [2]]],
+            ],
+            'list of objects whose middle one holds an empty list' => [
+                'schema' => self::object(
+                    ['rows' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Row']]],
+                    ['rows'],
+                ),
+                'extra' => ['Row' => self::object(['tags' => ['type' => 'array', 'items' => ['type' => 'string']]], ['tags'])],
+                'json' => '{"rows":[{"tags":["a"]},{"tags":[]},{"tags":["b"]}]}',
+                'runtime' => ['rows' => [['tags' => ['a']], ['tags' => []], ['tags' => ['b']]]],
+                'symfony' => ['rows' => [['tags' => ['a']], ['tags' => []], ['tags' => ['b']]]],
+            ],
             'map of lists' => [
                 'schema' => self::object(
                     ['byKey' => [

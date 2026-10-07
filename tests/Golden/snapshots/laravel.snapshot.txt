@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 22070 lines
+# laravel mode — 106 files, 23607 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -161,6 +161,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function is_string;
 use function trim;
 
@@ -278,6 +280,26 @@ final class Animal2AnyOf4 implements Animal2
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Animal2AnyOf4::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -312,6 +334,8 @@ final class Animal2AnyOf4 implements Animal2
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -430,6 +454,26 @@ final class AnimalOneOf3 implements Animal
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         AnimalOneOf3::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -464,6 +508,8 @@ final class AnimalOneOf3 implements Animal
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -584,6 +630,26 @@ final class ApiTest2403
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTest2403::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -618,6 +684,8 @@ final class ApiTest2403
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -744,6 +812,26 @@ final class ApiTest2PatchRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTest2PatchRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -817,6 +905,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -846,6 +935,16 @@ final class ApiTest2PatchRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTest2PatchRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -864,6 +963,8 @@ final class ApiTest2PatchRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -992,6 +1093,26 @@ final class ApiTest2PostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTest2PostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -1072,6 +1193,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -1101,6 +1223,16 @@ final class ApiTest2PostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTest2PostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -1119,6 +1251,8 @@ final class ApiTest2PostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -1239,6 +1373,26 @@ final class ApiTest403
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTest403::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -1273,6 +1427,8 @@ final class ApiTest403
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -1430,6 +1586,26 @@ final class ApiTestCatsActionsGetQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestCatsActionsGetQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -1546,6 +1722,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -1572,6 +1749,16 @@ final class ApiTestCatsActionsGetQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestCatsActionsGetQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestCatsActionsGetQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -1615,6 +1802,8 @@ final class ApiTestCatsActionsGetQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -1772,6 +1961,26 @@ final class ApiTestCatsActionsPostQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestCatsActionsPostQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -1888,6 +2097,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -1914,6 +2124,16 @@ final class ApiTestCatsActionsPostQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestCatsActionsPostQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestCatsActionsPostQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -1957,6 +2177,8 @@ final class ApiTestCatsActionsPostQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -2114,6 +2336,26 @@ final class ApiTestDogsTagsGetQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestDogsTagsGetQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -2230,6 +2472,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -2256,6 +2499,16 @@ final class ApiTestDogsTagsGetQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestDogsTagsGetQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestDogsTagsGetQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -2299,6 +2552,8 @@ final class ApiTestDogsTagsGetQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -2456,6 +2711,26 @@ final class ApiTestDogsTagsPatchQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestDogsTagsPatchQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -2572,6 +2847,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -2598,6 +2874,16 @@ final class ApiTestDogsTagsPatchQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestDogsTagsPatchQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestDogsTagsPatchQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -2641,6 +2927,8 @@ final class ApiTestDogsTagsPatchQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -2764,6 +3052,26 @@ final class ApiTestFileDeleteQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestFileDeleteQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -2800,6 +3108,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -2826,6 +3135,16 @@ final class ApiTestFileDeleteQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestFileDeleteQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestFileDeleteQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -2865,6 +3184,8 @@ final class ApiTestFileDeleteQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -2988,6 +3309,26 @@ final class ApiTestFilePatchQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestFilePatchQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -3024,6 +3365,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -3050,6 +3392,16 @@ final class ApiTestFilePatchQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestFilePatchQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestFilePatchQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -3090,6 +3442,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function is_string;
@@ -3211,6 +3564,26 @@ final class ApiTestFilePostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestFilePostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -3247,6 +3620,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -3276,6 +3650,16 @@ final class ApiTestFilePostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestFilePostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -3294,6 +3678,8 @@ final class ApiTestFilePostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function in_array;
 use function is_string;
@@ -3415,6 +3801,26 @@ final class ApiTestJobs200
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestJobs200::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -3458,6 +3864,8 @@ final class ApiTestJobs200
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -3578,6 +3986,26 @@ final class ApiTestJobs404
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestJobs404::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -3612,6 +4040,8 @@ final class ApiTestJobs404
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -3732,6 +4162,26 @@ final class ApiTestJobsDefault
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestJobsDefault::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -3766,6 +4216,8 @@ final class ApiTestJobsDefault
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -3886,6 +4338,26 @@ final class ApiTestJobsPostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestJobsPostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -3922,6 +4394,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -3951,6 +4424,16 @@ final class ApiTestJobsPostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestJobsPostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -3969,6 +4452,8 @@ final class ApiTestJobsPostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function in_array;
 use function is_string;
@@ -4090,6 +4575,26 @@ final class ApiTestLegacy200
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestLegacy200::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -4133,6 +4638,8 @@ final class ApiTestLegacy200
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -4274,6 +4781,26 @@ final class ApiTestLegacyPostQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestLegacyPostQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -4340,6 +4867,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -4369,6 +4897,16 @@ final class ApiTestLegacyPostQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestLegacyPostQueryParams::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -4387,6 +4925,8 @@ final class ApiTestLegacyPostQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -4507,6 +5047,26 @@ final class ApiTestLegacyPostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestLegacyPostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -4543,6 +5103,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -4572,6 +5133,16 @@ final class ApiTestLegacyPostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestLegacyPostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -4590,6 +5161,8 @@ final class ApiTestLegacyPostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function in_array;
 use function is_string;
@@ -4711,6 +5284,26 @@ final class ApiTestRepresentations200
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestRepresentations200::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -4754,6 +5347,8 @@ final class ApiTestRepresentations200
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -4874,6 +5469,26 @@ final class ApiTestRepresentations200Csv
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestRepresentations200Csv::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -4908,6 +5523,8 @@ final class ApiTestRepresentations200Csv
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -5028,6 +5645,26 @@ final class ApiTestRepresentationsPostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestRepresentationsPostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -5062,6 +5699,8 @@ final class ApiTestRepresentationsPostRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -5182,6 +5821,26 @@ final class ApiTestRepresentationsPostRequestForm
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestRepresentationsPostRequestForm::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -5218,6 +5877,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -5247,6 +5907,16 @@ final class ApiTestRepresentationsPostRequestFormFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestRepresentationsPostRequestForm::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -5267,6 +5937,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -5296,6 +5967,16 @@ final class ApiTestRepresentationsPostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestRepresentationsPostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -5314,6 +5995,8 @@ final class ApiTestRepresentationsPostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -5434,6 +6117,26 @@ final class ApiTestRepresentationsPostRequestXml
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestRepresentationsPostRequestXml::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -5470,6 +6173,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -5499,6 +6203,16 @@ final class ApiTestRepresentationsPostRequestXmlFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestRepresentationsPostRequestXml::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -5517,6 +6231,8 @@ final class ApiTestRepresentationsPostRequestXmlFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_values;
 use function is_string;
@@ -5646,6 +6362,26 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -5695,6 +6431,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -5721,6 +6458,16 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParamsFormRequest ext
     public function rules(): array
     {
         return ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -6006,6 +6753,12 @@ final class ApiTestSerializationGetQueryParams
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -6328,6 +7081,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -6467,6 +7221,26 @@ final class ApiTestSerializationGetQueryParamsFilter
         };
 
         return $rules;
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestSerializationGetQueryParamsFilter::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
     }
 
     /**
@@ -6617,6 +7391,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function array_keys;
 use function array_unique;
 use function array_values;
@@ -6757,6 +7533,26 @@ final class ApiTestSharedPathGetQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestSharedPathGetQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -6814,6 +7610,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -6843,6 +7640,16 @@ final class ApiTestSharedPathGetQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestSharedPathGetQueryParams::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -6861,6 +7668,8 @@ final class ApiTestSharedPathGetQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -7013,6 +7822,26 @@ final class ApiTestTenantsDeleteQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestTenantsDeleteQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -7122,6 +7951,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -7148,6 +7978,16 @@ final class ApiTestTenantsDeleteQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestTenantsDeleteQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestTenantsDeleteQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -7187,6 +8027,8 @@ final class ApiTestTenantsDeleteQueryParamsFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function array_keys;
 use function array_unique;
@@ -7344,6 +8186,26 @@ final class ApiTestTenantsGetQueryParams
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ApiTestTenantsGetQueryParams::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -7477,6 +8339,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -7503,6 +8366,16 @@ final class ApiTestTenantsGetQueryParamsFormRequest extends FormRequest
     public function rules(): array
     {
         return ApiTestTenantsGetQueryParams::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        ApiTestTenantsGetQueryParams::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -7926,6 +8799,12 @@ final class ApplicatorRefs
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -8778,6 +9657,12 @@ final class ApplicatorRefsConditional
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -9214,6 +10099,12 @@ final class ApplicatorRefsKeyed
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -9628,6 +10519,12 @@ final class ApplicatorRefsPoisonedKey
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -9807,6 +10704,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function array_keys;
 use function array_unique;
 use function array_values;
@@ -9958,6 +10857,26 @@ final class AwkwardNames
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         AwkwardNames::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -10072,6 +10991,8 @@ final class AwkwardNames
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -10192,6 +11113,26 @@ final class CallbackJobDonePostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         CallbackJobDonePostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -10228,6 +11169,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -10257,6 +11199,16 @@ final class CallbackJobDonePostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        CallbackJobDonePostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -10275,6 +11227,8 @@ final class CallbackJobDonePostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -10395,6 +11349,26 @@ final class CallbackJobFailedPostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         CallbackJobFailedPostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -10431,6 +11405,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -10460,6 +11435,16 @@ final class CallbackJobFailedPostRequestFormRequest extends FormRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        CallbackJobFailedPostRequest::withValidator($validator, $this->getContent());
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -10478,6 +11463,8 @@ final class CallbackJobFailedPostRequestFormRequest extends FormRequest
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -10595,6 +11582,26 @@ final class Cat implements Animal, Animal2
         };
 
         return $rules;
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Cat::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
     }
 
     /**
@@ -10733,6 +11740,7 @@ final class ChainLink
         return [
             'code' => self::withBlankStringValidation(['present', 'string', 'min:3']),
             'tags' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'tags.*' => self::withBlankStringValidation(['array']),
             'tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
@@ -10840,6 +11848,12 @@ final class ChainLink
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -11146,8 +12160,10 @@ final class ChainMiddle
     {
         return [
             'links' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'links.*' => self::withBlankStringValidation(['array']),
             'links.*.code' => self::withBlankStringValidation(['string', 'min:3']),
             'links.*.tags' => self::withBlankStringValidation(['array', 'list']),
+            'links.*.tags.*' => self::withBlankStringValidation(['array']),
             'links.*.tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
@@ -11256,6 +12272,12 @@ final class ChainMiddle
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -11468,6 +12490,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function is_string;
 use function trim;
 
@@ -11585,6 +12609,26 @@ final class ChainTag
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         ChainTag::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -11619,6 +12663,8 @@ final class ChainTag
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -11740,6 +12786,26 @@ final class Circle implements Shape
         };
 
         return $rules;
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Circle::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
     }
 
     /**
@@ -11903,6 +12969,8 @@ final class ContainerAliases
             'listOfLists.*' => self::withBlankStringValidation(['array', 'list']),
             'listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
             'listOfMaps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'listOfMaps.*' => self::withBlankStringValidation(['array']),
+            'listOfMaps.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
             'mapOfLists' => self::withBlankStringValidation(['sometimes', 'array']),
             'mapOfLists.*' => self::withBlankStringValidation(['array', 'list']),
             'mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
@@ -11993,6 +13061,7 @@ final class ContainerAliases
      * @var array<int, string>
      */
     private const array OPENAPI_OBJECT_PATHS = [
+        'listOfMaps.*',
         'mapOfLists',
     ];
 
@@ -12012,6 +13081,12 @@ final class ContainerAliases
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -12366,11 +13441,13 @@ final class Containers
             'dates' => self::withBlankStringValidation(['present', 'array', 'list']),
             'dates.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
             'shapes' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'shapes.*' => self::withBlankStringValidation(['array']),
             'datesByDay' => self::withBlankStringValidation(['sometimes', 'array']),
             'datesByDay.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
             'timestamps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'tagsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
+            'tagsByKey.*' => self::withBlankStringValidation(['array']),
             'tagsByKey.*.id' => self::withBlankStringValidation(['integer']),
             'tagsByKey.*.name' => self::withBlankStringValidation(['string']),
         ];
@@ -12482,6 +13559,12 @@ final class Containers
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -13026,6 +14109,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
@@ -13062,6 +14147,26 @@ final class CountMap
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         CountMap::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -13091,6 +14196,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -13211,6 +14317,26 @@ final class Discriminator
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Discriminator::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -13254,6 +14380,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -13380,6 +14507,26 @@ final class Discriminator1
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Discriminator1::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -13460,6 +14607,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -13588,6 +14736,26 @@ final class Discriminator2
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Discriminator2::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -13692,6 +14860,8 @@ enum DiscriminatorType: string
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -13812,6 +14982,26 @@ final class Dog implements Animal, Animal2
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Dog::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -13853,6 +15043,8 @@ final class Dog implements Animal, Animal2
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -13973,6 +15165,26 @@ final class Dog2 implements Animal2
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Dog2::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -14015,6 +15227,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function is_string;
@@ -14138,6 +15351,26 @@ final class FileRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         FileRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -14188,6 +15421,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -14212,6 +15446,16 @@ final class FileRequestFormRequest extends FormRequest
     public function rules(): array
     {
         return FileRequest::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        FileRequest::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -14422,6 +15666,12 @@ final class ItemBounds
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -14874,6 +16124,12 @@ final class NestedContainers
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -15487,6 +16743,12 @@ final class NullableContainerValues
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -15885,6 +17147,12 @@ final class ObjectWideRules
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -16213,6 +17481,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function is_string;
 use function trim;
 
@@ -16327,6 +17597,26 @@ final class Pet
         };
 
         return $rules;
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Pet::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
     }
 
     /**
@@ -16457,7 +17747,7 @@ final class ReadOnlyFields
         return [
             'serverId' => self::withBlankStringValidation(['sometimes', 'integer']),
             'title' => self::withBlankStringValidation(['present', 'string']),
-            'writtenAt' => self::withBlankStringValidation(['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'writtenAt' => self::withBlankStringValidation(['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'secret' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
@@ -16553,6 +17843,12 @@ final class ReadOnlyFields
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -16733,6 +18029,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function filter_var;
 use function floor;
 use function is_finite;
@@ -16854,6 +18152,26 @@ final class RetiredShape
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         RetiredShape::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -16941,6 +18259,8 @@ interface Shape
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -17065,6 +18385,26 @@ final class Square implements Shape
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Square::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -17136,6 +18476,8 @@ final class Square implements Shape
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -17260,6 +18602,26 @@ final class Tag
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Tag::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -17331,6 +18693,8 @@ final class Tag
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -17450,6 +18814,26 @@ final class Test
         };
 
         return $rules;
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Test::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
     }
 
     /**
@@ -17636,6 +19020,7 @@ final class Test2
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'tags' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'tags.*' => self::withBlankStringValidation(['array']),
             'tags.*.id' => self::withBlankStringValidation(['integer']),
             'tags.*.name' => self::withBlankStringValidation(['string']),
             'types' => self::withBlankStringValidation(['present', Rule::enum(Test2Types::class)]),
@@ -17643,7 +19028,7 @@ final class Test2
             'user.id' => self::withBlankStringValidation(['integer']),
             'user.name' => self::withBlankStringValidation(['string']),
             'user.pet' => self::withBlankStringValidation(['nullable']),
-            'user.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'user.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'userType' => self::withBlankStringValidation(['sometimes', 'array']),
             'userType.region' => self::withBlankStringValidation(['string']),
         ];
@@ -17755,6 +19140,12 @@ final class Test2
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -18065,6 +19456,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function array_keys;
 use function array_unique;
 use function array_values;
@@ -18204,6 +19597,26 @@ final class Test2UserType
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         Test2UserType::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -18259,6 +19672,8 @@ final class Test2UserType
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function filter_var;
 use function floor;
@@ -18385,6 +19800,26 @@ final class TestPatchRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         TestPatchRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -18465,6 +19900,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -18489,6 +19925,16 @@ final class TestPatchRequestFormRequest extends FormRequest
     public function rules(): array
     {
         return TestPatchRequest::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        TestPatchRequest::withValidator($validator, $this->getContent());
     }
 
     /**
@@ -18722,6 +20168,12 @@ final class TestPostRequest
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -19466,6 +20918,12 @@ final class TreeNode
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -20334,6 +21792,12 @@ final class UnionUnderContainer
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -21026,6 +22490,12 @@ final class UniqueScalars
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -21294,7 +22764,7 @@ final class User
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'pet' => self::withBlankStringValidation(['present', 'nullable']),
-            'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
         ];
     }
 
@@ -21399,6 +22869,12 @@ final class User
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -21767,6 +23243,12 @@ final class User2
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             /** @var array<string, mixed> $payload */
             $payload = $validator->getData();
@@ -22014,6 +23496,8 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+
 use function is_string;
 use function trim;
 
@@ -22138,6 +23622,26 @@ final class User2Pet
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         User2Pet::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -22193,6 +23697,8 @@ final class User2Pet
 declare(strict_types=1);
 
 namespace GoldenCorpus;
+
+use Illuminate\Validation\Validator;
 
 use function is_string;
 use function trim;
@@ -22313,6 +23819,26 @@ final class WebhookOrderPlacedPostRequest
     }
 
     /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     *
+     * Hook it up once, in the FormRequest:
+     *
+     *     public function withValidator(Validator $validator): void
+     *     {
+     *         WebhookOrderPlacedPostRequest::withValidator($validator, $this->getContent());
+     *     }
+     *
+     */
+    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+    }
+
+    /**
      * @param array<string, mixed> $data the output of `$request->validated()`
      */
     public static function fromValidated(array $data): self
@@ -22349,6 +23875,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * NOTE: This FormRequest is auto-generated from an OpenAPI schema.
@@ -22375,6 +23902,16 @@ final class WebhookOrderPlacedPostRequestFormRequest extends FormRequest
     public function rules(): array
     {
         return WebhookOrderPlacedPostRequest::rules();
+    }
+
+    /**
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
+        // and the decoded payload Laravel hands the validator no longer carries it.
+        WebhookOrderPlacedPostRequest::withValidator($validator, $this->getContent());
     }
 
     /**

@@ -195,9 +195,8 @@ trait RendersLaravelDto
         foreach ($interpreter['imports'] as $interpreterImport) {
             $useStatements[] = $interpreterImport;
         }
-        if ($hasWithValidator) {
-            $useStatements[] = 'Illuminate\Validation\Validator';
-        }
+        // `withValidator()` is emitted for every class now (it keeps `validated()` containers whole).
+        $useStatements[] = 'Illuminate\Validation\Validator';
         if ($objectShapePaths !== []) {
             $useStatements[] = 'stdClass';
         }
@@ -741,7 +740,17 @@ trait RendersLaravelDto
         // `distinct` compares scalars, so uniqueItems over object items belongs to the interpreter
         // (`laravelUnconsumedKeywords()` picks it up, through `laravelInterpreterSchemaFor()`).
         if ($itemClass !== null) {
-            return [];
+            if ($this->laravelIsEnumClass($itemClass)) {
+                return [];
+            }
+
+            // The item ITSELF must be an object. With no rule on `f.*` a string or a null item reached
+            // `fromValidated()` — which skipped it, so `["x"]` hydrated to `[]` without a word.
+            return [
+                $property['openApiName'] . '.*' => $this->laravelItemsNullable($property)
+                    ? ["'nullable'", "'array'"]
+                    : ["'array'"],
+            ];
         }
 
         $rules = is_array($itemSchema) ? $this->laravelItemRules($itemSchema) : [];
@@ -899,8 +908,12 @@ trait RendersLaravelDto
             // (`GeneratedDtoInterface::DATE_TIME_FORMATS`) uses `p`, and the deserializer only PARSES
             // with it, where either letter reads either spelling — which is why the disagreement could
             // sit here unnoticed.
-            'date-time', 'datetime' => "'date_format:Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.uP,"
-                . "Y-m-d\\TH:i:sp,Y-m-d\\TH:i:s.up,Y-m-d H:i:s,Y-m-d\\TH:i:s'",
+            //
+            // And `.v` beside `.u` for the same reason: `.u` formats back to SIX digits, so `.123Z` —
+            // what JavaScript's `toISOString()` writes — was refused while every other mode accepted it.
+            // `.v` round-trips exactly three. One, two, four or five digits still need `.u`'s six.
+            'date-time', 'datetime' => "'date_format:Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.uP,Y-m-d\\TH:i:s.vP,"
+                . "Y-m-d\\TH:i:sp,Y-m-d\\TH:i:s.up,Y-m-d\\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\\TH:i:s'",
             default => null,
         };
     }
@@ -1675,10 +1688,9 @@ trait RendersLaravelDto
     {
         $hasInterpreter = $this->laravelClassesWithInterpreter[$dtoClassName] ?? false;
 
-        $imports = ['Illuminate\Foundation\Http\FormRequest'];
-        if ($hasInterpreter) {
-            $imports[] = 'Illuminate\Validation\Validator';
-        }
+        // `withValidator()` is always forwarded: besides the interpreter it keeps the containers
+        // `validated()` returns whole (see the DTO's method).
+        $imports = ['Illuminate\Foundation\Http\FormRequest', 'Illuminate\Validation\Validator'];
         sort($imports);
 
         // Laravel validates the query string and the body only. A parameter declared `in: path`,

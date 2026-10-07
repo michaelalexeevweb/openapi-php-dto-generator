@@ -242,6 +242,14 @@ final class ValidationParityTest extends TestCase
                 '{"f":"2026-01-02T03:04:05Z"}',
                 '{"f":"not a timestamp"}',
             ],
+            // Milliseconds, as JavaScript's `toISOString()` writes them. Laravel's `date_format` with
+            // `.u` formats back to six digits and compares strings, so laravel and laravel-data
+            // refused this until 2.15.64.
+            'format date-time with milliseconds' => [
+                ['type' => 'string', 'format' => 'date-time'],
+                '{"f":"2026-01-02T03:04:05.123Z"}',
+                '{"f":"not a timestamp"}',
+            ],
             'format date-time with a numeric offset' => [
                 ['type' => 'string', 'format' => 'date-time'],
                 '{"f":"2026-01-02T03:04:05+00:00"}',
@@ -1861,6 +1869,13 @@ final class ValidationParityTest extends TestCase
             ['valid' => true, 'invalid' => true],
             'the hydrator casts before any rule runs, as for "type integer"',
         );
+        // OPEN DEFECT: yiisoft's CollectionResolver skips an element it cannot build before any rule
+        // runs, and the raw payload is gone by then.
+        $droppedByYii3 = self::diverges(
+            GenerationMode::Yii3,
+            ['valid' => true, 'invalid' => true],
+            'open defect: yii3 Collection hydration drops a non-object item before validation',
+        );
         $tag = ['Tag' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]]];
         $tagRef = ['$ref' => '#/components/schemas/Tag'];
 
@@ -1896,6 +1911,31 @@ final class ValidationParityTest extends TestCase
                     ['valid' => true, 'invalid' => true],
                     'open defect: yii3 does not check a nullable DTO item, as it drops a non-object one',
                 ),
+            ],
+            // A non-object ITEM of a DTO list or map. Laravel had no rule on `f.*` and yii3's collection
+            // hydrator skipped what it could not build, so `["x"]` hydrated to `[]` without an error.
+            'string item in a list of DTOs' => [['type' => 'array', 'items' => $tagRef], $tag, '{"f":[{"id":1}]}', '{"f":["x"]}', $droppedByYii3],
+            'null item in a list of DTOs' => [['type' => 'array', 'items' => $tagRef], $tag, '{"f":[{"id":1}]}', '{"f":[null]}', $droppedByYii3],
+            'string value in a map of DTOs' => [
+                ['type' => 'object', 'additionalProperties' => $tagRef],
+                $tag,
+                '{"f":{"k":{"id":1}}}',
+                '{"f":{"k":"x"}}',
+                $droppedByYii3,
+            ],
+            // A `$ref` to a MAP component as a list item: its values were checked nowhere, while the same
+            // map written inline was enforced in every mode.
+            'map component as a list item' => [
+                ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Colors']],
+                ['Colors' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['red', 'green']]]],
+                '{"f":[{"k":"red"}]}',
+                '{"f":[{"k":"blue"}]}',
+            ],
+            'map component as a property' => [
+                ['$ref' => '#/components/schemas/Colors'],
+                ['Colors' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['red', 'green']]]],
+                '{"f":{"k":"red"}}',
+                '{"f":{"k":"blue"}}',
             ],
             'null in a free-form map' => [
                 ['type' => 'object', 'additionalProperties' => []],

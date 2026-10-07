@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 30746 lines
+# yii3 mode — 80 files, 30774 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -17037,10 +17037,12 @@ use function explode;
 use function floor;
 use function get_object_vars;
 use function is_array;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
 use function is_string;
+use function json_encode;
 use function mb_strlen;
 use function method_exists;
 use function property_exists;
@@ -17083,6 +17085,13 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
             ],
             'listOfMaps' => [
                 'type' => 'array',
+                'items' => [
+                    'type' => 'object',
+                    'additionalProperties' => [
+                        'type' => 'integer',
+                        'minimum' => 0,
+                    ],
+                ],
             ],
             'mapOfLists' => [
                 'type' => 'object',
@@ -17341,6 +17350,13 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
             }
         }
 
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
+            if ($minimum !== null && !($normalizedValue >= $minimum)) {
+                $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
+            }
+        }
+
         if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['minLength'])) {
             $length = mb_strlen($normalizedValue);
             $minLength = $this->toIntConstraint($schema['minLength'] ?? null);
@@ -17436,6 +17452,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'array' => is_array($value) && array_is_list($value),
             'object' => is_array($value) || is_object($value),
@@ -17536,6 +17553,17 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         }
 
         return null;
+    }
+
+    private function toNumericConstraint(mixed $value): int|float|null
+    {
+        return is_int($value) || is_float($value) ? $value : null;
+    }
+
+    private function stringifyOpenApiNumber(int|float $value): string
+    {
+        $rendered = json_encode($value);
+        return is_string($rendered) ? $rendered : (string)$value;
     }
 }
 

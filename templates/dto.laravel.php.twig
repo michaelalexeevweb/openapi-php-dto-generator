@@ -153,14 +153,15 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     ];
 
 {% endif %}
-{% if interpreterMethodsBlock is not empty or objectShapePaths is not empty %}
     /**
 {% if interpreterMethodsBlock is not empty %}
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
-{% else %}
+{% elseif objectShapePaths is not empty %}
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+{% else %}
+     * Keeps every container `validated()` returns whole, in the order it was sent.
 {% endif %}
      *
      * Hook it up once, in the FormRequest:
@@ -178,6 +179,13 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
+        // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
+        // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
+        // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
+        // sent; `fromValidated()` reads only the properties it declares.
+        $validator->excludeUnvalidatedArrayKeys = false;
+{% if interpreterMethodsBlock is not empty or objectShapePaths is not empty %}
+
         $validator->after(static function (Validator $validator) use ($rawJson): void {
 {% if interpreterMethodsBlock is not empty %}
             /** @var array<string, mixed> $payload */
@@ -213,9 +221,9 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             }
 {% endif %}
         });
+{% endif %}
     }
 
-{% endif %}
 {% if objectShapePaths is not empty %}
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.

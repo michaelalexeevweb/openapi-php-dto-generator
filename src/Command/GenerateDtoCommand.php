@@ -5598,7 +5598,7 @@ final class GenerateDtoCommand extends Command
     private function inlineArrayAliasForConstraints(array $schema): array
     {
         $ref = $this->referenceOrSingleRefAllOf($schema);
-        $definition = $ref === null ? null : $this->arrayAliasDefinition($ref);
+        $definition = $ref === null ? null : ($this->arrayAliasDefinition($ref) ?? $this->mapComponentDefinition($ref));
         if ($definition === null) {
             return $schema;
         }
@@ -5610,6 +5610,26 @@ final class GenerateDtoCommand extends Command
         }
 
         return $schema + $definition;
+    }
+
+    /**
+     * The component a local `$ref` names when it is a MAP — `additionalProperties` or `patternProperties`
+     * and no `properties` — for the constraints only. Such a reference is typed as the map wherever it
+     * is used, and nothing validates it as a class, so as a list item its values went unchecked in every
+     * mode while the same schema written inline was enforced.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function mapComponentDefinition(string $ref): ?array
+    {
+        $definition = $this->localSchemaDefinitionForRef($ref);
+        if ($definition === null || array_key_exists('properties', $definition)) {
+            return null;
+        }
+
+        return $this->isMapLikeObjectSchema($definition) || $this->isPatternPropertiesOnlyObjectSchema($definition)
+            ? $definition
+            : null;
     }
 
     /**

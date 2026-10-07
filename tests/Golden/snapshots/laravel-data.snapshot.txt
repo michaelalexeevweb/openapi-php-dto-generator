@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15404 lines
+# laravel-data mode — 80 files, 15413 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -6703,6 +6703,7 @@ final class ChainLink extends Data
         return [
             'code' => self::withBlankStringValidation(['present', 'string', 'min:3']),
             'tags' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'tags.*' => self::withBlankStringValidation(['array']),
             'tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
@@ -7073,8 +7074,10 @@ final class ChainMiddle extends Data
     {
         return [
             'links' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'links.*' => self::withBlankStringValidation(['array']),
             'links.*.code' => self::withBlankStringValidation(['string', 'min:3']),
             'links.*.tags' => self::withBlankStringValidation(['array', 'list']),
+            'links.*.tags.*' => self::withBlankStringValidation(['array']),
             'links.*.tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
@@ -7693,6 +7696,8 @@ final class ContainerAliases extends Data
             'listOfLists.*' => self::withBlankStringValidation(['array', 'list']),
             'listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
             'listOfMaps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'listOfMaps.*' => self::withBlankStringValidation(['array']),
+            'listOfMaps.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
             'mapOfLists' => self::withBlankStringValidation(['sometimes', 'array']),
             'mapOfLists.*' => self::withBlankStringValidation(['array', 'list']),
             'mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
@@ -7783,6 +7788,7 @@ final class ContainerAliases extends Data
      * @var array<int, string>
      */
     private const array OPENAPI_OBJECT_PATHS = [
+        'listOfMaps.*',
         'mapOfLists',
     ];
 
@@ -8040,11 +8046,13 @@ final class Containers extends Data
             'dates' => self::withBlankStringValidation(['present', 'array', 'list']),
             'dates.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
             'shapes' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'shapes.*' => self::withBlankStringValidation(['array']),
             'datesByDay' => self::withBlankStringValidation(['sometimes', 'array']),
             'datesByDay.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
             'timestamps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'tagsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
+            'tagsByKey.*' => self::withBlankStringValidation(['array']),
             'tagsByKey.*.id' => self::withBlankStringValidation(['integer']),
             'tagsByKey.*.name' => self::withBlankStringValidation(['string']),
         ];
@@ -11026,7 +11034,7 @@ final class ReadOnlyFields extends Data
         return [
             'serverId' => self::withBlankStringValidation(['sometimes', 'integer']),
             'title' => self::withBlankStringValidation(['present', 'string']),
-            'writtenAt' => self::withBlankStringValidation(['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'writtenAt' => self::withBlankStringValidation(['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'secret' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
@@ -11824,6 +11832,7 @@ final class Test2 extends Data
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'tags' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'tags.*' => self::withBlankStringValidation(['array']),
             'tags.*.id' => self::withBlankStringValidation(['integer']),
             'tags.*.name' => self::withBlankStringValidation(['string']),
             'types' => self::withBlankStringValidation(['present', Rule::enum(Test2Types::class)]),
@@ -11831,7 +11840,7 @@ final class Test2 extends Data
             'user.id' => self::withBlankStringValidation(['integer']),
             'user.name' => self::withBlankStringValidation(['string']),
             'user.pet' => self::withBlankStringValidation(['nullable']),
-            'user.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'user.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'userType' => self::withBlankStringValidation(['sometimes', 'array']),
             'userType.region' => self::withBlankStringValidation(['string']),
         ];
@@ -14823,7 +14832,7 @@ final class User extends Data
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'pet' => self::withBlankStringValidation(['present', 'nullable']),
-            'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
         ];
     }
 

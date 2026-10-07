@@ -27,7 +27,7 @@ Every schema becomes a DTO. A DTO that describes an INCOMING payload also gets a
 
 | File | What it is |
 |---|---|
-| `UserPostRequest` | a plain DTO: readonly typed properties, getters, `rules()`, `fromValidated()`, and `withValidator()` when the schema needs it |
+| `UserPostRequest` | a plain DTO: readonly typed properties, getters, `rules()`, `fromValidated()` and `withValidator()` |
 | `UserPostRequestFormRequest` | a thin `FormRequest` delegating to those, plus `toDto()` |
 
 **Which classes get a FormRequest**: the ones an operation reads a payload from — a request body
@@ -35,9 +35,11 @@ Every schema becomes a DTO. A DTO that describes an INCOMING payload also gets a
 response gets none: there is no request to validate. The decision comes from where the walker met the
 schema, not from its name, so `User200` is judged by the same rule as everything else.
 
-**`withValidator()` is forwarded only when the DTO has one.** A schema the rules express in full needs
-no interpreter, and its FormRequest must not gain a method that does nothing — so `rules()` and
-`toDto()` are always there, `withValidator()` is not.
+**`withValidator()` is always there and always forwarded** (since 2.15.64). It runs the interpreter
+when the schema needs one, and in every DTO it switches off `excludeUnvalidatedArrayKeys`: otherwise
+`validated()` rebuilds a list from the leaves its rules reach, which reorders it when an empty item sits
+between non-empty ones and drops an item no rule reaches. If you call `rules()` from your own
+FormRequest, call `withValidator()` too.
 
 ## Using it
 

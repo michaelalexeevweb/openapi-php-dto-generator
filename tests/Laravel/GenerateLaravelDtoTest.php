@@ -455,10 +455,10 @@ final class GenerateLaravelDtoTest extends TestCase
     }
 
     /**
-     * `withValidator()` is forwarded only when the DTO actually has an interpreter — a schema that rules
-     * fully express must not gain a method that does nothing.
+     * Forwarded whether or not the DTO has an interpreter: since 2.15.64 the DTO's `withValidator()`
+     * also keeps the containers `validated()` returns whole, which every DTO needs.
      */
-    public function testWithValidatorIsForwardedOnlyWhenTheDtoHasAnInterpreter(): void
+    public function testWithValidatorIsAlwaysForwarded(): void
     {
         $target = $this->generateEndpointSpec('LvFormValidator');
 
@@ -467,10 +467,13 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertStringContainsString('public function withValidator(Validator $validator): void', $withComposition);
         $this->assertStringContainsString('use Illuminate\Validation\Validator;', $withComposition);
 
-        // The query params are a plain integer — nothing for the interpreter to do.
+        // The query params are a plain integer — nothing for the interpreter, but still forwarded.
         $plain = (string)file_get_contents($target . '/ArticlesGetQueryParamsFormRequest.php');
-        $this->assertStringNotContainsString('withValidator', $plain);
-        $this->assertStringNotContainsString('use Illuminate\Validation\Validator;', $plain);
+        $this->assertStringContainsString('public function withValidator(Validator $validator): void', $plain);
+        $this->assertStringContainsString('use Illuminate\Validation\Validator;', $plain);
+        $plainDto = (string)file_get_contents($target . '/ArticlesGetQueryParams.php');
+        $this->assertStringContainsString('$validator->excludeUnvalidatedArrayKeys = false;', $plainDto);
+        $this->assertStringNotContainsString('$validator->after(', $plainDto);
     }
 
     /**

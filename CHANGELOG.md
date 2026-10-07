@@ -3,6 +3,34 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.64 — 2026-10-07
+
+- Laravel keeps list order and empty items
+- Laravel rejects non-object DTO items
+- Laravel accepts millisecond date-times
+- Map components are validated as items
+
+Laravel's `validated()` rebuilds a container that has rules below it out of the leaves those rules
+reach. A list with an empty item between non-empty ones came back reordered (`[[1],[],[2]]` as
+`[[],[1],[2]]`), and an item no leaf rule reached (`{}`) was dropped, silently. The DTO's
+`withValidator()` now sets `excludeUnvalidatedArrayKeys = false`, so the container is kept as sent
+(`fromValidated()` still reads only declared properties). `withValidator()` is therefore generated for
+every Laravel DTO and the FormRequest always forwards it; wire it up if you call `rules()` yourself.
+
+An item of a list or map of DTOs had no rule of its own, so `["x"]` or `[null]` hydrated to `[]` without
+an error. It now gets `array` (`nullable, array` when items may be null).
+
+`date_format` with `.u` formats back to six digits, so `2026-03-10T12:00:00.123Z` — what JavaScript's
+`toISOString()` writes — was refused by laravel and laravel-data. `.v` (three digits) is now accepted
+too; one, two, four or five fraction digits still are not.
+
+A `$ref` to a MAP component (`additionalProperties` / `patternProperties`, no `properties`) used as a list
+item had its values checked in no mode; as a property, yii3 did not check them. Its constraints are now
+inlined as an array alias's are.
+
+Still open, pinned in the parity suite: yii3's collection hydration drops a non-object item of a DTO list
+before validation. Regenerate DTOs.
+
 ## 2.15.63 — 2026-10-07
 
 - Components that only name another are that schema

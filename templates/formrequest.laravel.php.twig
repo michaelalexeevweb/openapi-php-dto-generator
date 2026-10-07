@@ -39,12 +39,15 @@ final class {{ className }} extends FormRequest
     {
         return {{ dtoClassName }}::rules();
     }
-{% if hasInterpreter %}
 
     /**
+{% if hasInterpreter %}
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator`. It runs against the raw
      * payload, so an undeclared key is still visible to `additionalProperties: false`.
+{% else %}
+     * Keeps every container `validated()` returns whole, in the order it was sent.
+{% endif %}
      */
     public function withValidator(Validator $validator): void
     {
@@ -52,7 +55,6 @@ final class {{ className }} extends FormRequest
         // and the decoded payload Laravel hands the validator no longer carries it.
         {{ dtoClassName }}::withValidator($validator, $this->getContent());
     }
-{% endif %}
 
 {% if pathParameters is not empty or headerParameters is not empty or cookieParameters is not empty %}
     /**
