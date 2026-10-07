@@ -139,6 +139,9 @@ final class ValidationParityTest extends TestCase
             // allowed." while validating, so yii3 mode refused every payload until it left it alone.
             'negative minLength' => [['type' => 'string', 'minLength' => -1, 'maxLength' => 2], '{"f":"ab"}', '{"f":"abc"}'],
             'pattern' => [['type' => 'string', 'pattern' => '^a'], '{"f":"ab"}', '{"f":"ba"}'],
+            // A numeric format alone: laravel and laravel-data called a string-format checker they had
+            // not emitted, so a wrong-typed value was "Call to undefined method", a 500.
+            'int64 given a string' => [['type' => 'integer', 'format' => 'int64'], '{"f":5}', '{"f":"abc"}'],
             'minimum' => [['type' => 'integer', 'minimum' => 3], '{"f":3}', '{"f":2}'],
             'maximum' => [['type' => 'integer', 'maximum' => 3], '{"f":3}', '{"f":4}'],
             'exclusiveMinimum' => [['type' => 'integer', 'exclusiveMinimum' => 3], '{"f":4}', '{"f":3}'],
@@ -1729,6 +1732,97 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * Shapes that crashed or refused a valid payload until 2.15.62: a `type` list in yii3 stopped the
+     * generation, an optional `anyOf: [{$ref}, {type: null}]` refused its null, a nullable date or DTO
+     * item was a TypeError in laravel's `fromValidated()`, and runtime refused null in a `{}` map.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, array{expected: mixed, reason: string}> $diverges
+     */
+    #[DataProvider('crashShapeProvider')]
+    public function testShapesThatCrashedAreAnsweredInEveryMode(
+        array $propertySchema,
+        array $components,
+        string $validJson,
+        string $invalidJson,
+        array $diverges = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['components']['schemas'] += $components;
+        // Optional, which is where the folded null branch was lost.
+        $spec['components']['schemas']['Probe']['required'] = [];
+        $key = 'crash-shape-' . md5(json_encode([$propertySchema, $components, $validJson], JSON_THROW_ON_ERROR));
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: array<string, array<string, mixed>>, 2: string, 3: string, 4?: array<string, array{expected: mixed, reason: string}>}>
+     */
+    public static function crashShapeProvider(): array
+    {
+        $coerced = self::diverges(
+            GenerationMode::Yii3,
+            ['valid' => true, 'invalid' => true],
+            'the hydrator casts before any rule runs, as for "type integer"',
+        );
+        $tag = ['Tag' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]]];
+        $tagRef = ['$ref' => '#/components/schemas/Tag'];
+
+        return [
+            'type list of two named types' => [['type' => ['string', 'integer']], [], '{"f":5}', '{"f":true}', $coerced],
+            'anyOf ref or null, null' => [['anyOf' => [$tagRef, ['type' => 'null']]], $tag, '{"f":null}', '{"f":{}}'],
+            'oneOf ref or null, null' => [['oneOf' => [$tagRef, ['type' => 'null']]], $tag, '{"f":null}', '{"f":{}}'],
+            'nullable date items' => [
+                ['type' => 'array', 'items' => ['type' => ['string', 'null'], 'format' => 'date']],
+                [],
+                '{"f":[null,"2026-01-02"]}',
+                '{"f":["x"]}',
+                // OPEN DEFECT, not a design choice: the serializer's DateTimeNormalizer is handed the
+                // null item and throws, and it parses "x" leniently as every Symfony date does.
+                self::diverges(
+                    GenerationMode::Symfony,
+                    ['valid' => false, 'invalid' => true],
+                    'open defect: Symfony serializer cannot denormalize a null date item',
+                ),
+            ],
+            'nullable dto items' => [
+                ['type' => 'array', 'items' => ['anyOf' => [$tagRef, ['type' => 'null']]]],
+                $tag,
+                '{"f":[null,{"id":1}]}',
+                '{"f":[{}]}',
+                // OPEN DEFECT: `#[DataCollectionOf(Tag::class)]` builds a Tag out of the null item.
+                self::diverges(
+                    GenerationMode::LaravelData,
+                    ['valid' => false, 'invalid' => false],
+                    'open defect: DataCollectionOf cannot hold a null item',
+                ) + self::diverges(
+                    GenerationMode::Yii3,
+                    ['valid' => true, 'invalid' => true],
+                    'open defect: yii3 does not check a nullable DTO item, as it drops a non-object one',
+                ),
+            ],
+            'null in a free-form map' => [
+                ['type' => 'object', 'additionalProperties' => []],
+                [],
+                '{"f":{"j":null,"k":1}}',
+                '{"f":"x"}',
+                $coerced,
+            ],
+        ];
+    }
+
+    /**
      * A null that the document allows below the first container: a list of lists of nullable strings,
      * and a map of nullable lists written inline. 2.15.59 typed the first `array<array<string>>`, and the
      * second never reached the list typing at all.
@@ -2564,6 +2658,7 @@ final class ValidationParityTest extends TestCase
         return [
             'type string' => $coerced,
             'type integer' => $coerced,
+            'int64 given a string' => $coerced,
             // A `false` branch can never match, so this `anyOf` collapses to the single `type: string`
             // branch and the property is typed `?string` — which puts it back under the caster above.
             // The boolean is carried into the constraints correctly; what diverges is the same

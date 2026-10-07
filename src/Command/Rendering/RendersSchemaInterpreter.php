@@ -781,7 +781,11 @@ PHP;
 
 PHP : '';
 
-            $formatCheck = $hasFormat ? <<<'PHP'
+            // Only a STRING format has an arm, and only then is `isValidOpenApiStringFormat()` emitted
+            // (below). `format: int64` alone wrote the call without the method, so a wrong-typed value
+            // ended in "Call to undefined method" instead of a violation.
+            $hasStringFormatArm = array_intersect($usedFormats, array_keys(self::OPENAPI_FORMAT_ARMS)) !== [];
+            $formatCheck = $hasFormat && $hasStringFormatArm ? <<<'PHP'
             if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
                 $errors[] = sprintf('%s must match format %s', $path, $format);
             }

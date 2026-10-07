@@ -991,12 +991,19 @@ trait RendersLaravelDto
                 : $raw,
         };
 
+        $itemsNullable = $this->laravelItemsNullable($property);
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
             // The ITEMS of a temporal container, cast the same way the scalar above is. Without this
             // the property held the strings `validated()` handed over while its docblock promised
             // `array<DateTimeImmutable>` — a lie PHPStan downstream was already believing. `array_map`
             // keeps string keys, so a MAP of dates survives as a map.
+            // A null item the document allows is handed over as null: a closure typed `string $item`
+            // threw a TypeError on it, a 500 after the validator had accepted the payload.
+            $param['isTemporalItems'] === true && $itemsNullable => sprintf(
+                'array_map(static fn(?string $item): ?DateTimeImmutable => $item === null ? null : new DateTimeImmutable($item), %s)',
+                $containerRaw,
+            ),
             $param['isTemporalItems'] === true => sprintf(
                 'array_map(static fn(string $item): DateTimeImmutable => new DateTimeImmutable($item), %s)',
                 $containerRaw,
@@ -1006,6 +1013,11 @@ trait RendersLaravelDto
                 $dtoClass,
                 $containerRaw,
                 $property['openApiName'],
+            ),
+            $itemClass !== null && $this->laravelIsEnumClass($itemClass) && $itemsNullable => sprintf(
+                'array_map(static fn(int|string|null $item): ?%1$s => $item === null ? null : %1$s::from($item), %2$s)',
+                $this->shortClassName($itemClass),
+                $containerRaw,
             ),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) => sprintf(
                 'array_map(static fn(int|string $item): %1$s => %1$s::from($item), %2$s)',
@@ -1017,6 +1029,12 @@ trait RendersLaravelDto
             // call. Emitting `%1$s::fromValidated($item)` here was the array half of that same
             // mistake: the scalar path dispatched on the discriminator, the items path called the
             // interface, and the request died on `Error: Call to undefined method`.
+            $itemClass !== null && $itemsNullable => sprintf(
+                'array_map(static fn(?array $item): ?%s => $item === null ? null : %s, %s)',
+                $this->shortClassName($itemClass),
+                $this->laravelNestedDtoExpression($itemClass, '$item', $property['openApiName']),
+                $containerRaw,
+            ),
             $itemClass !== null => sprintf(
                 'array_map(static fn(array $item): %s => %s, %s)',
                 $this->shortClassName($itemClass),
@@ -1164,6 +1182,16 @@ trait RendersLaravelDto
         return array_key_exists($itemClass, $this->dtoSchemas) || $this->laravelIsEnumClass($itemClass)
             ? $itemClass
             : null;
+    }
+
+    /**
+     * Whether the container's items admit null: `array<?X>` or `array<string, ?X>`.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelItemsNullable(array $property): bool
+    {
+        return preg_match('/^\??array<(?:[A-Za-z_][A-Za-z0-9_]*,\s*)?\?/', $property['type']) === 1;
     }
 
     private function laravelIsEnumClass(string $className): bool

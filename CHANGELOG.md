@@ -3,6 +3,36 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.62 — 2026-10-07
+
+- Numeric formats no longer crash Laravel
+- Yii3 generates multi-type properties
+- Optional nullable unions accept null
+- Laravel hydrates nullable date and DTO items
+- Runtime accepts null in free-form maps
+
+Laravel and laravel-data called the string-format checker for any `format`, but emitted it only when a
+string format was present, so `format: int64` (or `int32`, `float`, …) alone turned a wrong-typed
+value such as `"abc"` into "Call to undefined method …isValidOpenApiStringFormat()", a 500 instead of
+a 422. The call is now emitted only together with the checker.
+
+Yii3 generation stopped with a `TypeError` on a property whose `type` lists two or more named types,
+e.g. `type: [string, integer]`.
+
+An optional property spelled `anyOf`/`oneOf: [{$ref: X}, {type: "null"}]` is typed `?X` but refused an
+explicit `null` in runtime mode: the null branch never reached the constraints. It now marks the
+property nullable, as `type: [x, "null"]` does.
+
+Laravel's `fromValidated()` built nullable items with closures typed `string $item` / `array $item`,
+so a valid `[null, "2026-01-02"]` for `items: {type: [string, "null"], format: date}` (and the same
+for enum and DTO items) was a `TypeError` after validation passed.
+
+Runtime mode refused `null` as a value of `additionalProperties: {}` with "expects mixed, got null".
+
+Still open, pinned as declared divergences in the parity suite: Symfony cannot denormalize a null item
+of a nullable date list, laravel-data cannot hold a null item in a `DataCollectionOf` list, and Yii3
+does not check items of a nullable DTO list. Regenerate DTOs.
+
 ## 2.15.61 — 2026-10-06
 
 - Itemless nested lists accept JSON arrays

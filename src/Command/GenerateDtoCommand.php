@@ -3380,7 +3380,44 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        // The union spelling of the same permission, `anyOf: [{$ref: X}, {type: "null"}]`. The property
+        // is typed `?X` from it, but the null branch was all the constraints knew of the permission and
+        // it extracts to nothing, so an OPTIONAL property refused the null the document allows.
+        if (!array_key_exists('nullable', $constraints) && $this->unionHasNullBranch($propertySchema)) {
+            $constraints['nullable'] = true;
+        }
+
         return $constraints;
+    }
+
+    /**
+     * Whether a `oneOf`/`anyOf` has a branch that is only null: `{type: "null"}`, `{type: ["null"]}`, or
+     * the 3.0 `{nullable: true}` with nothing else.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function unionHasNullBranch(array $schema): bool
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $branches = $schema[$keyword] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $type = $branch['type'] ?? null;
+                if ($type === 'null' || $type === ['null']) {
+                    return true;
+                }
+                if (($branch['nullable'] ?? null) === true && $this->isNullOnlyBranch($branch)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

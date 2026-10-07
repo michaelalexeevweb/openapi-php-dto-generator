@@ -1361,8 +1361,11 @@ PHP;
         // `type` stays in the interpreter unless the schema allows null. The rule alone cannot catch
         // an explicit null on a non-nullable property: it carries `WhenNull`, so it steps aside for
         // exactly that value. The interpreter has the wire shape and judges it once.
+        // A `type` list got no rule (see the emission above), so it is not covered either: as an
+        // array offset it was a TypeError that stopped the whole generation.
         if (
-            array_key_exists($schema['type'] ?? '', self::YII3_TYPE_RULES)
+            is_string($schema['type'] ?? null)
+            && array_key_exists($schema['type'], self::YII3_TYPE_RULES)
             && $this->yii3TypeRuleApplies($property)
             && ($this->propertyIsRequiredOnInput($property) || $this->yii3SchemaAllowsNull($property))
         ) {

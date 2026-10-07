@@ -2657,7 +2657,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // A null element is accepted only when the items schema declares it nullable
         // (items: {nullable: true} or type containing null); otherwise it falls through
         // to the per-kind casts, which reject it with a clear type error.
-        if ($itemValue === null && $itemsNullable) {
+        // A `mixed` item is the empty schema `{}`, and null is one of the values it admits; the
+        // constraints still judge it. Refusing it here sent `{"j": null}` back as "expects mixed".
+        if ($itemValue === null && ($itemsNullable || $arrayItemType === 'mixed')) {
             return null;
         }
 
