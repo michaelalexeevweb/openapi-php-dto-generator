@@ -1732,6 +1732,91 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A component that only names another one — `X: {$ref: Y}`, or `allOf: [{$ref: Y}]` around a
+     * non-object — is Y. Until 2.15.63 it became an empty class: a scalar or enum alias refused every
+     * valid value in four modes while Symfony accepted anything, and an object alias validated nothing.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, array{expected: mixed, reason: string}> $diverges
+     */
+    #[DataProvider('pureAliasProvider')]
+    public function testAComponentThatOnlyNamesAnotherIsThatSchema(
+        array $propertySchema,
+        array $components,
+        string $validJson,
+        string $invalidJson,
+        array $diverges = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['components']['schemas'] += $components;
+        $key = 'pure-alias-' . md5(json_encode([$propertySchema, $components, $validJson], JSON_THROW_ON_ERROR));
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: array<string, array<string, mixed>>, 2: string, 3: string, 4?: array<string, array{expected: mixed, reason: string}>}>
+     */
+    public static function pureAliasProvider(): array
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $code = ['Code' => ['type' => 'string', 'minLength' => 2]];
+        $kind = ['Kind' => ['type' => 'string', 'enum' => ['a', 'b']]];
+        $item = ['Item' => ['type' => 'object', 'required' => ['v'], 'properties' => ['v' => ['type' => 'string']]]];
+
+        return [
+            'scalar alias' => [$ref('Alias'), $code + ['Alias' => $ref('Code')], '{"f":"ab"}', '{"f":"a"}'],
+            'scalar alias through allOf' => [$ref('Alias'), $code + ['Alias' => ['allOf' => [$ref('Code')]]], '{"f":"ab"}', '{"f":"a"}'],
+            'alias of a scalar alias' => [
+                $ref('Outer'),
+                $code + ['Inner' => $ref('Code'), 'Outer' => $ref('Inner') + ['description' => 'two hops']],
+                '{"f":"ab"}',
+                '{"f":"a"}',
+            ],
+            'enum alias' => [$ref('Alias'), $kind + ['Alias' => $ref('Kind')], '{"f":"a"}', '{"f":"z"}'],
+            'enum alias as a list item' => [
+                ['type' => 'array', 'items' => $ref('Alias')],
+                $kind + ['Alias' => $ref('Kind')],
+                '{"f":["a","b"]}',
+                '{"f":["z"]}',
+            ],
+            'object alias' => [$ref('Alias'), $item + ['Alias' => $ref('Item')], '{"f":{"v":"x"}}', '{"f":{}}'],
+            'object alias as a list item' => [
+                ['type' => 'array', 'items' => $ref('Alias')],
+                $item + ['Alias' => $ref('Item')],
+                '{"f":[{"v":"x"}]}',
+                '{"f":[{}]}',
+            ],
+            'nullable scalar alias' => [$ref('Alias'), $code + ['Alias' => $ref('Code') + ['nullable' => true]], '{"f":null}', '{"f":"a"}'],
+            // Not an alias component, but the same reference read through a union: the enum's members
+            // were checked against the null item the second branch allows.
+            'enum or null as a list item' => [
+                ['type' => 'array', 'items' => ['anyOf' => [$ref('Kind'), ['type' => 'null']]]],
+                $kind,
+                '{"f":["a",null]}',
+                '{"f":["z"]}',
+                // OPEN DEFECT, the same as the null date item: the serializer hands the null item to
+                // BackedEnumNormalizer, which throws.
+                self::diverges(
+                    GenerationMode::Symfony,
+                    ['valid' => false, 'invalid' => false],
+                    'open defect: Symfony serializer cannot denormalize a null enum item',
+                ),
+            ],
+        ];
+    }
+
+    /**
      * Shapes that crashed or refused a valid payload until 2.15.62: a `type` list in yii3 stopped the
      * generation, an optional `anyOf: [{$ref}, {type: null}]` refused its null, a nullable date or DTO
      * item was a TypeError in laravel's `fromValidated()`, and runtime refused null in a `{}` map.

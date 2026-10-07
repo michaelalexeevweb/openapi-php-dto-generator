@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.63 — 2026-10-07
+
+- Components that only name another are that schema
+- Nullable enum list items accept null
+
+A component that is nothing but a reference — `X: {$ref: Y}`, alone or with annotations such as
+`description` — was materialized as an EMPTY class, and every property referencing it was typed with
+that class. A scalar or enum alias refused every valid value in four modes while Symfony accepted
+anything; an object alias validated nothing; Yii3 crashed calling a method the empty class lacked.
+Every reference to such a component now goes to what it names, chains included, and it gets no class.
+A `nullable: true` on the alias is carried onto each reference. `X: {allOf: [{$ref: Y}]}` is treated
+the same when Y is a scalar, an enum or an array alias (in runtime mode that spelling stopped the
+generation with "Class … not found"); around an object it stays inheritance, as before.
+
+The documented 3.0 deviation — `nullable: true` admits null beside an `enum` that does not list it —
+now holds below the property too, so a list item `{$ref: Kind, nullable: true}` or
+`anyOf: [{$ref: Kind}, {type: "null"}]` accepts a null item. The 3.1 `type: [x, "null"]` stays strict.
+
+Breaking for code that referenced an alias class by name: that class is no longer generated, and
+properties are typed with the class it named. Symfony still cannot denormalize a null item of an enum
+list (pinned as an open defect, like the null date item). Regenerate DTOs.
+
 ## 2.15.62 — 2026-10-07
 
 - Numeric formats no longer crash Laravel

@@ -333,6 +333,14 @@ final class GenerateDtoCommand extends Command
      */
     private array $canonicalSourceFiles = [];
 
+    /**
+     * Components that only name another one (`X: {$ref: Y}`), redirected to what they name and given
+     * no class of their own — see `redirectPureAliasReferences()`.
+     *
+     * @var array<string, true>
+     */
+    private array $pureAliasClasses = [];
+
     /** Set once the registered schemas went through `inlineNullSchemaReferences()`. */
     private bool $referencesNormalized = false;
 
@@ -1097,8 +1105,186 @@ final class GenerateDtoCommand extends Command
         return $schema;
     }
 
+    /**
+     * Keywords that describe a schema without constraining it, so a component carrying only these
+     * next to its `$ref` is still nothing but that reference.
+     */
+    private const array ALIAS_ANNOTATION_KEYWORDS = [
+        'description', 'title', 'example', 'examples', 'deprecated', 'externalDocs', 'nullable',
+    ];
+
+    /**
+     * A component that only names another one — `X: {$ref: Y}` — is the schema it names, and every
+     * reference to it is redirected there before anything is analyzed.
+     *
+     * Left alone it was materialized as an EMPTY class and properties were typed with it: a scalar or
+     * enum alias refused every valid value in four modes while Symfony accepted anything, an object
+     * alias validated nothing, and yii3 died calling a method the empty class did not have.
+     *
+     * `allOf: [{$ref: Y}]` is redirected the same way when Y is not an object DTO (a scalar, an enum or
+     * an array alias). Around an OBJECT that spelling is inheritance — the class extends Y — and that
+     * has always worked, so it stays.
+     *
+     * A `nullable: true` on the alias is carried onto each reference it replaces.
+     */
+    private function redirectPureAliasReferences(): void
+    {
+        $prefix = '#/components/schemas/';
+        $targets = [];
+        foreach (array_keys($this->rawSchemasByClass + $this->dtoSchemas) as $className) {
+            $definition = $this->rawSchemasByClass[$className] ?? $this->dtoSchemas[$className] ?? null;
+            if (!is_array($definition)) {
+                continue;
+            }
+            $target = $this->pureAliasTarget($definition);
+            if ($target !== null && str_starts_with($target, $prefix)) {
+                $targets[$className] = [
+                    'ref' => $target,
+                    'nullable' => ($definition['nullable'] ?? null) === true,
+                    'allOf' => array_key_exists('allOf', $definition),
+                ];
+            }
+        }
+
+        // Follow chains to the end, and drop an `allOf` alias whose end is an object DTO.
+        $resolved = [];
+        foreach ($targets as $className => $alias) {
+            $ref = $alias['ref'];
+            $nullable = $alias['nullable'];
+            $seen = [$className => true];
+            while (true) {
+                $next = $this->schemaClassName(substr($ref, strlen($prefix)));
+                if (!array_key_exists($next, $targets) || array_key_exists($next, $seen)) {
+                    break;
+                }
+                $seen[$next] = true;
+                $nullable = $nullable || $targets[$next]['nullable'];
+                $ref = $targets[$next]['ref'];
+            }
+            $endClass = $this->schemaClassName(substr($ref, strlen($prefix)));
+            if (array_key_exists($endClass, $seen) || $this->localComponentDefinition($ref) === null) {
+                continue;
+            }
+            if ($alias['allOf'] && $this->isObjectDtoComponent($endClass)) {
+                continue;
+            }
+            $resolved[$className] = ['ref' => $ref, 'nullable' => $nullable];
+            $this->pureAliasClasses[$className] = true;
+        }
+
+        if ($resolved === []) {
+            return;
+        }
+
+        foreach ($this->dtoSchemas as $className => $schema) {
+            $this->dtoSchemas[$className] = $this->withRedirectedAliases($schema, $resolved);
+        }
+    }
+
+    /**
+     * The `$ref` a component consists of, plain or as a single-reference `allOf`, when nothing but
+     * annotations stands beside it.
+     *
+     * @param array<string, mixed> $definition
+     */
+    private function pureAliasTarget(array $definition): ?string
+    {
+        $ref = $definition['$ref'] ?? null;
+        $spelling = '$ref';
+        if (!is_string($ref) && $this->isSingleRefAllOf($definition)) {
+            /** @var array<int, array<string, mixed>> $allOf */
+            $allOf = $definition['allOf'];
+            if (array_keys($allOf[0]) !== ['$ref']) {
+                return null;
+            }
+            $ref = $allOf[0]['$ref'];
+            $spelling = 'allOf';
+        }
+        if (!is_string($ref)) {
+            return null;
+        }
+
+        foreach (array_keys($definition) as $keyword) {
+            if (
+                $keyword !== $spelling
+                && !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                && !str_starts_with($keyword, 'x-')
+            ) {
+                return null;
+            }
+        }
+
+        return $ref;
+    }
+
+    /**
+     * Whether a component is generated as an object DTO: not a scalar, enum or array alias.
+     */
+    private function isObjectDtoComponent(string $className): bool
+    {
+        if (array_key_exists($className, $this->enumSchemas)) {
+            return false;
+        }
+        $definition = $this->dtoSchemas[$className] ?? null;
+
+        return is_array($definition)
+            && !$this->isScalarAliasSchema($definition)
+            && !$this->isArrayAliasComponent($definition);
+    }
+
+    /**
+     * @param array<string, array{ref: string, nullable: bool}> $aliases keyed by the alias's class name
+     */
+    private function withRedirectedAliases(mixed $node, array $aliases): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+
+        $alias = $this->aliasNamedBy($node['$ref'] ?? null, $aliases);
+        if ($alias !== null) {
+            $node['$ref'] = $alias['ref'];
+            if ($alias['nullable'] && !array_key_exists('nullable', $node)) {
+                $node['nullable'] = true;
+            }
+        }
+
+        $mapping = $node['discriminator']['mapping'] ?? null;
+        if (is_array($mapping)) {
+            foreach ($mapping as $value => $target) {
+                $mapped = $this->aliasNamedBy($target, $aliases);
+                if ($mapped !== null) {
+                    $node['discriminator']['mapping'][$value] = $mapped['ref'];
+                }
+            }
+        }
+
+        foreach ($node as $key => $child) {
+            if ($key !== 'discriminator' && is_array($child)) {
+                $node[$key] = $this->withRedirectedAliases($child, $aliases);
+            }
+        }
+
+        return $node;
+    }
+
+    /**
+     * @param array<string, array{ref: string, nullable: bool}> $aliases
+     * @return array{ref: string, nullable: bool}|null
+     */
+    private function aliasNamedBy(mixed $ref, array $aliases): ?array
+    {
+        $prefix = '#/components/schemas/';
+        if (!is_string($ref) || !str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        return $aliases[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+    }
+
     private function finalizeGeneration(): int
     {
+        $this->redirectPureAliasReferences();
         $this->expandNestedSchemas();
         $this->inlineNullSchemaReferences();
         $this->detectParentClasses();
@@ -1139,7 +1325,11 @@ final class GenerateDtoCommand extends Command
             // as a value (a property, an array item, a `$ref` target) it resolves to a map so the
             // payload survives — but the class itself is also how a response schema is named, so
             // deleting it would take away a type the application may reference.
-            if ($this->isArrayAliasComponent($schemaDefinition) || $this->isScalarAliasSchema($schemaDefinition)) {
+            if (
+                array_key_exists($className, $this->pureAliasClasses)
+                || $this->isArrayAliasComponent($schemaDefinition)
+                || $this->isScalarAliasSchema($schemaDefinition)
+            ) {
                 continue;
             }
 
@@ -3104,6 +3294,62 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The documented 3.0 deviation — `nullable: true` admits null beside an `enum` or `const` that does
+     * not list it — applied below the property too. Only the property level had it, so a list item
+     * `{$ref: Kind, nullable: true}` and the union `anyOf: [{$ref: Kind}, {type: null}]` (canonicalized
+     * to that) refused the null item in every mode.
+     *
+     * It runs on the schema as written (with references inlined), before a 3.1 `type: [x, "null"]` is
+     * normalized into `nullable`, so that spelling keeps its JSON Schema strictness.
+     *
+     * @param array<string, mixed> $node
+     * @return array<string, mixed>
+     */
+    private function withNestedNullableEnumRelaxed(array $node, bool $isRoot = false): array
+    {
+        if (!$isRoot && ($node['nullable'] ?? null) === true) {
+            // `{$ref: Kind, nullable: true}`: the members arrive with the reference, later. Brought in
+            // here, beside the `$ref`, they win over the referenced ones when that is inlined.
+            $ref = $node['$ref'] ?? null;
+            if (is_string($ref) && !array_key_exists('enum', $node) && !array_key_exists('const', $node)) {
+                $referenced = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+                if (is_array($referenced['enum'] ?? null)) {
+                    $node['enum'] = $referenced['enum'];
+                } elseif (is_array($referenced) && array_key_exists('const', $referenced)) {
+                    $node['const'] = $referenced['const'];
+                }
+            }
+            if (is_array($node['enum'] ?? null) && !in_array(null, $node['enum'], true)) {
+                $node['enum'] = [...$node['enum'], null];
+            }
+            if (array_key_exists('const', $node) && $node['const'] !== null) {
+                $node['enum'] = [$node['const'], null];
+                unset($node['const']);
+            }
+        }
+
+        foreach (['items', 'additionalProperties', 'contains', 'propertyNames', 'unevaluatedItems', 'unevaluatedProperties'] as $key) {
+            if (is_array($node[$key] ?? null)) {
+                $node[$key] = $this->withNestedNullableEnumRelaxed($node[$key]);
+            }
+        }
+        foreach (['properties', 'patternProperties'] as $key) {
+            if (is_array($node[$key] ?? null)) {
+                foreach ($node[$key] as $name => $child) {
+                    // A property node is a PROPERTY: its own `nullable` may be a normalized 3.1 type
+                    // list, and the property level decides that from the raw keyword. Only its
+                    // containers are below it.
+                    if (is_array($child)) {
+                        $node[$key][$name] = $this->withNestedNullableEnumRelaxed($child, isRoot: true);
+                    }
+                }
+            }
+        }
+
+        return $node;
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
      */
@@ -3117,6 +3363,9 @@ final class GenerateDtoCommand extends Command
         // hole looked when measured.
         if ($mayInline) {
             $propertySchema = $this->inlineNestedContainerValidation($propertySchema);
+            // On the inlined but not yet normalized schema: `nullable` here is still the KEYWORD, and a
+            // 3.1 `type: [x, "null"]` is still a type list, so the two stay apart.
+            $propertySchema = $this->withNestedNullableEnumRelaxed($propertySchema, isRoot: true);
         }
 
         $allowedKeys = [
