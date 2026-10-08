@@ -1005,6 +1005,7 @@ trait RendersLaravelDto
         };
 
         $itemsNullable = $this->laravelItemsNullable($property);
+        $nestedDtoContainer = $this->laravelNestedDtoContainerExpression($property['type'], $containerRaw, $property['openApiName']);
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
             // The ITEMS of a temporal container, cast the same way the scalar above is. Without this
@@ -1054,6 +1055,10 @@ trait RendersLaravelDto
                 $this->laravelNestedDtoExpression($itemClass, '$item', $property['openApiName']),
                 $containerRaw,
             ),
+            // DTOs two containers deep — `array<array<Tag>>`, `array<string, array<Tag>>`, a list of maps
+            // of them. Declared as the class, as in runtime and Symfony mode, but handed over as the
+            // plain arrays `validated()` holds, so `->getId()` on one was a fatal error.
+            $nestedDtoContainer !== null => $nestedDtoContainer,
             // A container with no class of its own — a list of lists, a map of scalars — still reaches
             // a constructor parameter typed `array`, so it needs the same accessor.
             default => $param['declaredType'] === 'array' || str_starts_with($param['declaredType'], '?array')
@@ -1198,6 +1203,104 @@ trait RendersLaravelDto
     }
 
     /**
+     * The expression that builds a container whose VALUES are containers of DTOs, or null when the
+     * type is not that shape. One level of `array_map` per container, null kept where `?` allows it.
+     */
+    private function laravelNestedDtoContainerExpression(string $type, string $rawAccess, string $wireName): ?string
+    {
+        $outer = $this->laravelContainerValueType($type);
+        if ($outer === null) {
+            return null;
+        }
+        $inner = $this->laravelContainerValueType($outer);
+        if ($inner === null) {
+            return null;
+        }
+
+        $leafNullable = str_starts_with($inner, '?');
+        $leaf = ltrim($inner, '?');
+        if (!array_key_exists($leaf, $this->dtoSchemas) || $this->laravelIsEnumClass($leaf)) {
+            return null;
+        }
+
+        $build = $this->laravelNestedDtoExpression($leaf, '$item', $wireName);
+        $itemClosure = $leafNullable
+            ? sprintf('static fn(?array $item): ?%s => $item === null ? null : %s', $this->shortClassName($leaf), $build)
+            : sprintf('static fn(array $item): %s => %s', $this->shortClassName($leaf), $build);
+        $rowClosure = str_starts_with($outer, '?')
+            ? sprintf('static fn(?array $row): ?array => $row === null ? null : array_map(%s, $row)', $itemClosure)
+            : sprintf('static fn(array $row): array => array_map(%s, $row)', $itemClosure);
+
+        return sprintf('array_map(%s, %s)', $rowClosure, $rawAccess);
+    }
+
+    /**
+     * The `toArray()` side of `laravelNestedDtoContainerExpression()`, or null when the type is not
+     * a container of containers of DTOs.
+     */
+    private function laravelNestedDtoContainerToWire(string $type, string $access): ?string
+    {
+        $outer = $this->laravelContainerValueType($type);
+        if ($outer === null) {
+            return null;
+        }
+        $inner = $this->laravelContainerValueType($outer);
+        if ($inner === null) {
+            return null;
+        }
+
+        $leaf = ltrim($inner, '?');
+        if (!array_key_exists($leaf, $this->dtoSchemas) || $this->laravelIsEnumClass($leaf)) {
+            return null;
+        }
+
+        $short = $this->shortClassName($leaf);
+        $itemMapper = str_starts_with($inner, '?')
+            ? sprintf('static fn(?%s $item): array|object|null => $item === null ? null : ($item->toArray() ?: (object)[])', $short)
+            : $this->laravelItemToWireMapper($leaf);
+
+        $isMap = static fn(string $container): bool => preg_match('/^\??array<\s*(?:string|int)\s*,/', $container) === 1;
+        $row = $isMap($outer)
+            ? sprintf('self::toJsonObjects(array_map(%s, $row))', $itemMapper)
+            : sprintf('array_map(%s, array_values($row))', $itemMapper);
+        $rowClosure = str_starts_with($outer, '?')
+            ? sprintf('static fn(?array $row): array|object|null => $row === null ? null : %s', $row)
+            : sprintf('static fn(array $row): array|object => %s', $row);
+
+        return $isMap($type)
+            ? sprintf('self::toJsonObjects(array_map(%s, %s))', $rowClosure, $access)
+            : sprintf('array_map(%s, array_values(%s))', $rowClosure, $access);
+    }
+
+    /**
+     * The value type of `array<V>` / `array<K, V>` (with any leading `?` on the container dropped), or
+     * null when the type is not a generic container.
+     */
+    private function laravelContainerValueType(string $type): ?string
+    {
+        $type = ltrim($type, '?');
+        if (!str_starts_with($type, 'array<') || !str_ends_with($type, '>')) {
+            return null;
+        }
+
+        $inner = substr($type, 6, -1);
+        $depth = 0;
+        $length = strlen($inner);
+        for ($i = 0; $i < $length; $i++) {
+            $character = $inner[$i];
+            if ($character === '<') {
+                $depth++;
+            } elseif ($character === '>') {
+                $depth--;
+            } elseif ($character === ',' && $depth === 0) {
+                return trim(substr($inner, $i + 1));
+            }
+        }
+
+        return trim($inner);
+    }
+
+    /**
      * Whether the container's items admit null: `array<?X>` or `array<string, ?X>`.
      *
      * @param SchemaProperty $property
@@ -1275,6 +1378,13 @@ trait RendersLaravelDto
 
         if ($this->laravelEnumClass($property) !== null) {
             return $property_access . $arrow . 'value';
+        }
+
+        // DTOs two containers deep (see `laravelNestedDtoContainerExpression()`): each one written out
+        // with its own `toArray()`, lists reindexed and maps kept as JSON objects at both levels.
+        $nestedWire = $this->laravelNestedDtoContainerToWire($property['type'], $property_access);
+        if ($nestedWire !== null) {
+            return $nullable ? sprintf('%s === null ? null : %s', $property_access, $nestedWire) : $nestedWire;
         }
 
         // A map must encode as a JSON object, empty or not — `type: object` says so, and runtime mode

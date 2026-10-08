@@ -5280,6 +5280,19 @@ final class GenerateDtoCommand extends Command
         }
 
         if ($type === 'object' || $this->isMapLikeObjectSchema($schema)) {
+            // Runtime mode casts JSON objects to arrays two containers deep and no further: from the
+            // third container on, an object or map is the `stdClass` `json_decode()` produced (kept so
+            // an empty one still writes back as `{}`). Declared an array, `$x[0][0]['k']` passed PHPStan
+            // and was a fatal error. `mixed`, not `stdClass`: the deserializer reads this declaration
+            // to decide what to cast, and a class name there would be hydrated as a DTO. The other
+            // modes hold an array there, as declared.
+            if (
+                $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME
+                && $remainingDepth < self::NESTED_CONTAINER_DOC_DEPTH
+            ) {
+                return 'mixed';
+            }
+
             $valueSchema = $schema['additionalProperties'] ?? null;
 
             // `patternProperties` is the other dictionary spelling. One value schema is a type; several

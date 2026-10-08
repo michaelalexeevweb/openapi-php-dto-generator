@@ -190,7 +190,20 @@ value. All five modes declare that rather than promising otherwise:
 | `type: number` | `array<array<float\|int>>` |
 | a `$ref` to a scalar or enum component | that component's backing type |
 | a `$ref` to a CONTAINER component | the container it aliases — `array<array<string>>` |
-| a `$ref` to an OBJECT component | that component's DTO — `array<array<Tag>>` |
+| a `$ref` to an OBJECT component | that component's DTO — `array<array<Tag>>` (yii3: `array<array<array<string, mixed>>>`) |
+
+yii3 is the exception in that last row, and one level up as well: its hydrator builds objects only
+for the items of a list of DTOs (`#[Collection]`). An enum member anywhere in a container, and a DTO in a
+map or two containers deep, stay the decoded JSON — so yii3 declares `array<string>` for a list of a
+string enum and `array<string, array<string, mixed>>` for a map of DTOs, which is what the object holds.
+`#[Collection]` is not used for those on purpose: for an enum it drops a member the enum lacks before any
+rule can report it, and it renumbers a map's keys. Since 2.15.65; before, the class was declared and
+`getKinds()[0]->value` passed PHPStan and failed at runtime.
+
+Runtime mode stops casting objects two containers deep: from the third container on, an object or map is
+the `stdClass` `json_decode()` produced (so an empty one still writes back as `{}`), and the declaration
+says `mixed` there — `array<array<mixed>>` for a list of lists of objects. The other modes hold arrays at
+that depth and declare them.
 
 #### A container value the schema lets be null
 

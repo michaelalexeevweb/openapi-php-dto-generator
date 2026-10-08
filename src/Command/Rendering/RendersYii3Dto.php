@@ -393,10 +393,7 @@ trait RendersYii3Dto
             // The ITEMS of a temporal container stay strings in this mode — `#[ToDateTime]` cannot
             // convert them (see the attribute emitter), so promising `DateTimeImmutable` here would
             // be a docblock the object never honours.
-            $docType = $this->formatDocblockTypeForNamespace(
-                str_replace('DateTimeImmutable', 'string', $type),
-                $namespace,
-            );
+            $docType = $this->formatDocblockTypeForNamespace($this->yii3HeldDocType($type), $namespace);
             $type = 'array';
         } else {
             $type = $this->formatPhpTypeForNamespace($type, $namespace);
@@ -1446,6 +1443,52 @@ PHP;
     }
 
     /**
+     * The container type as the yii3 hydrator actually fills it.
+     *
+     * It builds objects in ONE place: the items of a list of DTOs, through `#[Collection]`. Everything
+     * else in a container stays the decoded JSON — an enum member is its backing string or int, a DTO
+     * in a map or two containers deep is an array, a date is a string (`#[ToDateTime]` refuses an
+     * array). `#[Collection]` is not used for the rest on purpose: for an enum it drops a member the
+     * enum lacks before any rule can report it, and it renumbers a map's keys.
+     *
+     * Declaring the class there was a promise the object never kept: `getKinds()[0]->value` passed
+     * PHPStan and failed at runtime.
+     */
+    private function yii3HeldDocType(string $type): string
+    {
+        $builtItem = $this->yii3ListItemTypeOf($type);
+        $builtItem = $builtItem !== null && $this->isGeneratedDtoType(ltrim($builtItem, '?')) ? ltrim($builtItem, '?') : null;
+
+        $depth = 0;
+        $held = '';
+        $length = strlen($type);
+        for ($i = 0; $i < $length;) {
+            if (preg_match('/\G[A-Za-z_\\\][A-Za-z0-9_\\\]*/', $type, $match, 0, $i) !== 1) {
+                $character = $type[$i];
+                $depth += $character === '<' ? 1 : ($character === '>' ? -1 : 0);
+                $held .= $character;
+                $i++;
+                continue;
+            }
+
+            $name = $match[0];
+            $i += strlen($name);
+            $short = $this->shortClassName(ltrim($name, '\\'));
+            if ($short === 'DateTimeImmutable') {
+                $held .= 'string';
+            } elseif (array_key_exists($short, $this->enumSchemas)) {
+                $held .= $this->enumSchemas[$short]['type'];
+            } elseif ($this->isGeneratedDtoType($short) && !($depth === 1 && $short === $builtItem)) {
+                $held .= 'array<string, mixed>';
+            } else {
+                $held .= $name;
+            }
+        }
+
+        return $held;
+    }
+
+    /**
      * The item class of a list property, read from the generic in its TYPE (`array<Tag>`) — the
      * constraints array carries the items SCHEMA, which never names the generated class.
      *
@@ -1453,7 +1496,15 @@ PHP;
      */
     private function yii3ArrayItemType(array $property): ?string
     {
-        $type = ltrim($property['type'], '?');
+        return $this->yii3ListItemTypeOf($property['type']);
+    }
+
+    /**
+     * `yii3ArrayItemType()` for a bare type string.
+     */
+    private function yii3ListItemTypeOf(string $type): ?string
+    {
+        $type = ltrim($type, '?');
         if (!str_starts_with($type, 'array<') || !str_ends_with($type, '>')) {
             return null;
         }

@@ -16224,7 +16224,7 @@ final class NestedContainers
             dateRows: ($data['dateRows'] ?? null) === null ? null : $data['dateRows'],
             numRows: ($data['numRows'] ?? null) === null ? null : $data['numRows'],
             enumRows: ($data['enumRows'] ?? null) === null ? null : $data['enumRows'],
-            tagRows: ($data['tagRows'] ?? null) === null ? null : $data['tagRows'],
+            tagRows: ($data['tagRows'] ?? null) === null ? null : array_map(static fn(array $row): array => array_map(static fn(array $item): Tag => Tag::fromValidated($item), $row), $data['tagRows']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -16533,7 +16533,7 @@ final class NestedContainers
         }
 
         if ($this->isTagRowsProvided()) {
-            $result['tagRows'] = $this->tagRows === null ? null : array_values($this->tagRows);
+            $result['tagRows'] = $this->tagRows === null ? null : array_map(static fn(array $row): array|object => array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], array_values($row)), array_values($this->tagRows));
         }
 
         return $result;

@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.65 — 2026-10-08
+
+- Container declarations name what is held
+- Laravel builds DTOs two containers deep
+- Yii3 optional getters declare null
+
+A container's docblock named a type the object did not hold, so code written against it passed PHPStan
+and failed at runtime. Validation was right in every case.
+
+- yii3 builds objects only for the items of a list of DTOs (`#[Collection]`). A list of enums now
+  declares the backing type (`array<string>`), and a DTO in a map or two containers deep declares the
+  array it is (`array<string, array<string, mixed>>`), instead of `array<Kind>` / `array<string, Tag>`.
+- laravel declared `array<array<Tag>>` and held plain arrays. `fromValidated()` now builds the DTOs at
+  that depth (lists and maps of lists or maps), and `toArray()` writes them back — as runtime and Symfony
+  mode already did.
+- runtime keeps the decoded `stdClass` for an object three containers deep and declared an array there;
+  it now declares `mixed`. Nothing is cast differently.
+- yii3's optional container getters and properties declared `array<…>` beside a native `?array`; the
+  docblock now carries the `?` too.
+
+Docblocks change in yii3 and runtime, and laravel's generated hydration changes. Regenerate DTOs.
+
 ## 2.15.64 — 2026-10-07
 
 - Laravel keeps list order and empty items

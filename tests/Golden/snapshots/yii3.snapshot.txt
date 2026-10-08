@@ -9724,23 +9724,23 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
-    /** @var array<int> */
+    /** @var ?array<int> */
     #[Query('exploded')]
     public readonly ?array $exploded;
 
-    /** @var array<string> */
+    /** @var ?array<string> */
     #[Query('joined')]
     public readonly ?array $joined;
 
-    /** @var array<int> */
+    /** @var ?array<int> */
     #[Query('spaced')]
     public readonly ?array $spaced;
 
-    /** @var array<string> */
+    /** @var ?array<string> */
     #[Query('piped')]
     public readonly ?array $piped;
 
-    /** @var array<string, string> */
+    /** @var ?array<string, string> */
     #[Query('nested')]
     public readonly ?array $nested;
 
@@ -9756,7 +9756,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     #[StringValue(skipOnEmpty: new WhenNull())]
     public readonly ?string $raw;
 
-    /** @var array<string> */
+    /** @var ?array<string> */
     #[Data('X-Codes')]
     public readonly ?array $xCodes;
 
@@ -9767,7 +9767,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     #[Nested(skipOnEmpty: new WhenNull())]
     public readonly ?ApiTestSerializationGetQueryParamsFilter $filter;
 
-    /** @return array<int> */
+    /** @return ?array<int> */
     public function getExploded(): ?array
     {
         return $this->hasProperty('exploded') ? $this->exploded : null;
@@ -9779,7 +9779,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         return $this->hasProperty('exploded');
     }
 
-    /** @return array<string> */
+    /** @return ?array<string> */
     public function getJoined(): ?array
     {
         return $this->hasProperty('joined') ? $this->joined : null;
@@ -9791,7 +9791,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         return $this->hasProperty('joined');
     }
 
-    /** @return array<int> */
+    /** @return ?array<int> */
     public function getSpaced(): ?array
     {
         return $this->hasProperty('spaced') ? $this->spaced : null;
@@ -9803,7 +9803,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         return $this->hasProperty('spaced');
     }
 
-    /** @return array<string> */
+    /** @return ?array<string> */
     public function getPiped(): ?array
     {
         return $this->hasProperty('piped') ? $this->piped : null;
@@ -9815,7 +9815,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         return $this->hasProperty('piped');
     }
 
-    /** @return array<string, string> */
+    /** @return ?array<string, string> */
     public function getNested(): ?array
     {
         return $this->hasProperty('nested') ? $this->nested : null;
@@ -9860,7 +9860,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         return $this->hasProperty('raw');
     }
 
-    /** @return array<string> */
+    /** @return ?array<string> */
     public function getXCodes(): ?array
     {
         return $this->hasProperty('X-Codes') ? $this->xCodes : null;
@@ -15630,7 +15630,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
     #[Length(min: 3, skipOnEmpty: new WhenNull())]
     public readonly string $code;
 
-    /** @var array<ChainTag> */
+    /** @var ?array<ChainTag> */
     #[Collection(ChainTag::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
     public readonly ?array $tags;
@@ -15640,7 +15640,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         return $this->code;
     }
 
-    /** @return array<ChainTag> */
+    /** @return ?array<ChainTag> */
     public function getTags(): ?array
     {
         return $this->hasProperty('tags') ? $this->tags : null;
@@ -17118,13 +17118,13 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
     /** @var array<array<string>> */
     public readonly array $listOfLists;
 
-    /** @var array<array<string, mixed>> */
+    /** @var ?array<array<string, mixed>> */
     public readonly ?array $listOfMaps;
 
-    /** @var array<string, array<string>> */
+    /** @var ?array<string, array<string>> */
     public readonly ?array $mapOfLists;
 
-    /** @var array<string> */
+    /** @var ?array<string> */
     public readonly ?array $plain;
 
     /** @return array<array<string>> */
@@ -17133,7 +17133,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         return $this->listOfLists;
     }
 
-    /** @return array<array<string, mixed>> */
+    /** @return ?array<array<string, mixed>> */
     public function getListOfMaps(): ?array
     {
         return $this->hasProperty('listOfMaps') ? $this->listOfMaps : null;
@@ -17145,7 +17145,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('listOfMaps');
     }
 
-    /** @return array<string, array<string>> */
+    /** @return ?array<string, array<string>> */
     public function getMapOfLists(): ?array
     {
         return $this->hasProperty('mapOfLists') ? $this->mapOfLists : null;
@@ -17157,7 +17157,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('mapOfLists');
     }
 
-    /** @return array<string> */
+    /** @return ?array<string> */
     public function getPlain(): ?array
     {
         return $this->hasProperty('plain') ? $this->plain : null;
@@ -17678,13 +17678,13 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
     public readonly array $shapes;
 
-    /** @var array<string, string> */
+    /** @var ?array<string, string> */
     public readonly ?array $datesByDay;
 
-    /** @var array<string> */
+    /** @var ?array<string> */
     public readonly ?array $timestamps;
 
-    /** @var array<string, Tag> */
+    /** @var ?array<string, array<string, mixed>> */
     public readonly ?array $tagsByKey;
 
     /** @return array<string> */
@@ -17699,7 +17699,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         return $this->shapes;
     }
 
-    /** @return array<string, string> */
+    /** @return ?array<string, string> */
     public function getDatesByDay(): ?array
     {
         return $this->hasProperty('datesByDay') ? $this->datesByDay : null;
@@ -17711,7 +17711,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         return $this->hasProperty('datesByDay');
     }
 
-    /** @return array<string> */
+    /** @return ?array<string> */
     public function getTimestamps(): ?array
     {
         return $this->hasProperty('timestamps') ? $this->timestamps : null;
@@ -17723,7 +17723,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         return $this->hasProperty('timestamps');
     }
 
-    /** @return array<string, Tag> */
+    /** @return ?array<string, array<string, mixed>> */
     public function getTagsByKey(): ?array
     {
         return $this->hasProperty('tagsByKey') ? $this->tagsByKey : null;
@@ -20992,10 +20992,10 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
     /** @var array<int> */
     public readonly array $scores;
 
-    /** @var array<string, int> */
+    /** @var ?array<string, int> */
     public readonly ?array $scoresByKey;
 
-    /** @var array<string> */
+    /** @var ?array<string> */
     public readonly ?array $codes;
 
     /** @return array<int> */
@@ -21004,7 +21004,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         return $this->scores;
     }
 
-    /** @return array<string, int> */
+    /** @return ?array<string, int> */
     public function getScoresByKey(): ?array
     {
         return $this->hasProperty('scoresByKey') ? $this->scoresByKey : null;
@@ -21016,7 +21016,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         return $this->hasProperty('scoresByKey');
     }
 
-    /** @return array<string> */
+    /** @return ?array<string> */
     public function getCodes(): ?array
     {
         return $this->hasProperty('codes') ? $this->codes : null;
@@ -21681,22 +21681,22 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     /** @var array<array<string, string>> */
     public readonly array $rowsOfMaps;
 
-    /** @var array<string, array<string>> */
+    /** @var ?array<string, array<string>> */
     public readonly ?array $listsByKey;
 
-    /** @var array<string, array<string, int>> */
+    /** @var ?array<string, array<string, int>> */
     public readonly ?array $mapsByKey;
 
-    /** @var array<array<string>> */
+    /** @var ?array<array<string>> */
     public readonly ?array $dateRows;
 
-    /** @var array<array<float|int>> */
+    /** @var ?array<array<float|int>> */
     public readonly ?array $numRows;
 
-    /** @var array<array<string>> */
+    /** @var ?array<array<string>> */
     public readonly ?array $enumRows;
 
-    /** @var array<array<Tag>> */
+    /** @var ?array<array<array<string, mixed>>> */
     public readonly ?array $tagRows;
 
     /** @return array<array<int>> */
@@ -21711,7 +21711,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->rowsOfMaps;
     }
 
-    /** @return array<string, array<string>> */
+    /** @return ?array<string, array<string>> */
     public function getListsByKey(): ?array
     {
         return $this->hasProperty('listsByKey') ? $this->listsByKey : null;
@@ -21723,7 +21723,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('listsByKey');
     }
 
-    /** @return array<string, array<string, int>> */
+    /** @return ?array<string, array<string, int>> */
     public function getMapsByKey(): ?array
     {
         return $this->hasProperty('mapsByKey') ? $this->mapsByKey : null;
@@ -21735,7 +21735,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('mapsByKey');
     }
 
-    /** @return array<array<string>> */
+    /** @return ?array<array<string>> */
     public function getDateRows(): ?array
     {
         return $this->hasProperty('dateRows') ? $this->dateRows : null;
@@ -21747,7 +21747,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('dateRows');
     }
 
-    /** @return array<array<float|int>> */
+    /** @return ?array<array<float|int>> */
     public function getNumRows(): ?array
     {
         return $this->hasProperty('numRows') ? $this->numRows : null;
@@ -21759,7 +21759,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('numRows');
     }
 
-    /** @return array<array<string>> */
+    /** @return ?array<array<string>> */
     public function getEnumRows(): ?array
     {
         return $this->hasProperty('enumRows') ? $this->enumRows : null;
@@ -21771,7 +21771,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('enumRows');
     }
 
-    /** @return array<array<Tag>> */
+    /** @return ?array<array<array<string, mixed>>> */
     public function getTagRows(): ?array
     {
         return $this->hasProperty('tagRows') ? $this->tagRows : null;
@@ -22366,13 +22366,13 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     /** @var array<?string> */
     public readonly array $listOfNullable;
 
-    /** @var array<string, ?int> */
+    /** @var ?array<string, ?int> */
     public readonly ?array $mapOfNullable;
 
-    /** @var array<?string> */
+    /** @var ?array<?string> */
     public readonly ?array $listOfNullable31;
 
-    /** @var array<string, ?int> */
+    /** @var ?array<string, ?int> */
     public readonly ?array $mapOfNullable31;
 
     /** @return array<?string> */
@@ -22381,7 +22381,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         return $this->listOfNullable;
     }
 
-    /** @return array<string, ?int> */
+    /** @return ?array<string, ?int> */
     public function getMapOfNullable(): ?array
     {
         return $this->hasProperty('mapOfNullable') ? $this->mapOfNullable : null;
@@ -22393,7 +22393,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         return $this->hasProperty('mapOfNullable');
     }
 
-    /** @return array<?string> */
+    /** @return ?array<?string> */
     public function getListOfNullable31(): ?array
     {
         return $this->hasProperty('listOfNullable31') ? $this->listOfNullable31 : null;
@@ -22405,7 +22405,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         return $this->hasProperty('listOfNullable31');
     }
 
-    /** @return array<string, ?int> */
+    /** @return ?array<string, ?int> */
     public function getMapOfNullable31(): ?array
     {
         return $this->hasProperty('mapOfNullable31') ? $this->mapOfNullable31 : null;
