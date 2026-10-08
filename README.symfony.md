@@ -13,7 +13,9 @@ with other status codes — measured by installing the lowest versions; CI keeps
 
 Required properties are constructor arguments and stay `readonly`. Optional ones are set by the
 serializer through a setter, and that setter records that the payload carried the key — which is
-what makes PATCH semantics work (see [below](#presence-tracking-patch--partial-updates)).
+what makes PATCH semantics work (see [below](#presence-tracking-patch--partial-updates)). Every
+property is declared in the class body in schema order, which is the order the serializer writes the
+keys in.
 
 ```bash
 composer openapi:generate-dto -- \
@@ -27,19 +29,22 @@ composer openapi:generate-dto -- \
 // generated in symfony mode
 final class User
 {
+    private readonly int $id;
+
     /**
      * @var ?string The display name Example: John
      */
     #[Assert\Length(min: 2, max: 50)]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $name = null;
 
     #[Ignore]
     private bool $nameProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        private readonly int $id,
+        int $id,
     ) {
+        $this->id = $id;
     }
 
     public function getId(): int
@@ -97,7 +102,7 @@ For direct Serializer calls, pass `['require_all_properties' => true]` as the fo
 
 | OpenAPI | Symfony attribute |
 |---|---|
-| `required` (non-nullable) | `#[Assert\NotNull]` |
+| `required` (non-nullable) | a non-nullable PHP type; `#[Assert\NotNull]` only where the type admits null (an untyped property) |
 | `minLength` / `maxLength` | `#[Assert\Length(min:, max:)]` |
 | `minimum` / `maximum` | `#[Assert\Range(min:, max:)]` |
 | `exclusiveMinimum` / `exclusiveMaximum` | `#[Assert\GreaterThan]` / `#[Assert\LessThan]` |
@@ -266,26 +271,47 @@ routes were measured and rejected:
 
 ## Absent optional fields in the response
 
-An optional property the client never sent normalizes as an explicit `null`:
+Each property tells the stock serializer what to do with its own null, through Symfony's
+`#[Context]` attribute — nothing to register:
+
+- an optional property the schema does **not** let be null can only hold `null` when it was never
+  set, so it carries `SKIP_NULL_VALUES => true` and is left out of the output, as in runtime mode;
+- a property the schema **does** let be null carries `SKIP_NULL_VALUES => false`, so its null is
+  written even under a parent property that skips nulls, or a caller that passes
+  `SKIP_NULL_VALUES => true` for the whole call;
+- an optional property with a `default` is never null unless the schema allows it, and is written
+  with its default.
 
 ```json
-{"id": 1, "note": null}
+{"id": 1}
 ```
 
-Runtime mode omits such a key instead. There is no way to match that with the stock serializer: the
-DTO knows the difference (`isNoteProvided()`), but normalization goes through the getter, which
-answers `null` either way. Both available knobs drop **explicit** nulls too, so neither is a
-parity fix:
+One case stays apart from runtime mode: an optional **and** nullable property that was never set is
+written as the `null` the schema allows (`{"id": 1, "note": null}`). The DTO knows the difference
+(`isNoteProvided()`), but normalization goes through the getter, which answers `null` either way;
+telling the two apart on the wire would need a normalizer of the application's own.
+
+An object with nothing to write leaves as `[]`, not `{}`, unless the call passes
+`AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true` — the serializer has no notion of the
+schema's shape there.
+
+## Query, path, header and cookie parameters
+
+`#[MapQueryString]` binds a DTO from the query string alone, so the generated `…QueryParams` class
+holds the `in: query` parameters only. A path parameter reaches the controller as an argument of its
+own (with the route's `requirements` for its pattern), and so do headers and cookies:
 
 ```php
-// drops every null — the ones the client sent as well
-$serializer->normalize($dto, null, [AbstractObjectNormalizer::SKIP_NULL_VALUES => true]);
+#[Route('/widgets/{widgetId}', requirements: ['widgetId' => '\d+'])]
+public function show(int $widgetId, #[MapQueryString] ?WidgetsGetQueryParams $query = null): Response
 ```
 
-Matching runtime exactly would mean implementing `NormalizableInterface` on every DTO, registering
-`CustomNormalizer` (not enabled by default) and re-implementing `#[SerializedName]`, `#[Groups]` and
-the date-format `#[Context]` inside the generated code. Not worth it for a null in the payload —
-this mode is meant to run on the stock serializer.
+An operation with no query parameters gets no class at all. `--dto-generator-directory` is ignored
+in this mode: it copies the runtime mode's services, which these DTOs never use.
+
+A numeric list in the query (`?ids[]=1&ids[]=2`) arrives from Symfony as strings and is not cast
+item by item, so the generated check refuses it; bind such a parameter with
+`#[MapQueryParameter(filter: \FILTER_VALIDATE_INT)]` instead.
 
 ### Dates are formatted by the DTO, not the normalizer
 

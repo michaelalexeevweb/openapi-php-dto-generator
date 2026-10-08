@@ -33,6 +33,7 @@ use Twig\TwigFilter;
  *   openApiName: string,
  *   type: string,
  *   nullable: bool,
+ *   schemaNullable?: bool,
  *   required: bool,
  *   default: mixed,
  *   description: string|null,
@@ -522,7 +523,15 @@ final class GenerateDtoCommand extends Command
             $this->deferOutputPublication = true;
             $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace, mode: $mode);
 
-            if ($dtoGeneratorDirectory !== null) {
+            // The copied services are the runtime mode's own deserializer, normalizer and validator;
+            // a DTO of any other mode never references them, so copying them there only left
+            // dead code in the consumer's tree.
+            if ($dtoGeneratorDirectory !== null && $mode !== self::ATTRIBUTE_MODE_RUNTIME) {
+                $this->generationWarnings[] = sprintf(
+                    'Option --dto-generator-directory is ignored with --attributes=%s: those DTOs use no runtime services.',
+                    $mode,
+                );
+            } elseif ($dtoGeneratorDirectory !== null) {
                 $this->copyCommonServices(
                     outputDirectory: $outputDirectory,
                     namespace: $namespace,
@@ -541,7 +550,7 @@ final class GenerateDtoCommand extends Command
             $this->ownedOutputDirectories = [];
         }
 
-        if ($withPsr7) {
+        if ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME) {
             $io->note(
                 'PSR-7 deserializer copied. Install the bridge in your project: '
                 . 'composer require symfony/psr-http-message-bridge',
@@ -3049,6 +3058,7 @@ final class GenerateDtoCommand extends Command
                 'openApiName' => $wireName,
                 'type' => $type,
                 'nullable' => $nullable,
+                'schemaNullable' => $nullableBySchema,
                 'required' => $isRequired,
                 'default' => $default,
                 'description' => $description,
@@ -6735,11 +6745,67 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Reports a directory whose DTOs were generated in another mode and are about to be replaced.
+     *
+     * Schemas shared through `--ref` land in one directory for every spec that references them, so
+     * generating one spec in a new mode rewrote them under the specs still generated in the old one,
+     * and those broke at runtime (a runtime DTO passing `UnsetValue` to a Symfony one) with nothing
+     * said at generation time. The modes cannot share such a directory; this names the clash.
+     *
+     * @param array<string, string> $files
+     */
+    private function warnAboutReplacedModes(array $files): void
+    {
+        $reported = [];
+        foreach ($files as $path => $content) {
+            $directory = dirname($path);
+            if (array_key_exists($directory, $reported) || !is_file($path)) {
+                continue;
+            }
+            $existing = file_get_contents($path);
+            $previousMode = is_string($existing) ? self::generatedModeOf($existing) : null;
+            $nextMode = self::generatedModeOf($content);
+            if ($previousMode === null || $nextMode === null || $previousMode === $nextMode) {
+                continue;
+            }
+            $reported[$directory] = true;
+            $this->generationWarnings[] = sprintf(
+                '%s holds DTOs generated with --attributes=%s; they are being replaced by %s ones. '
+                . 'Every spec that shares this directory (e.g. through --ref) must be generated in one mode.',
+                $directory,
+                $previousMode,
+                $nextMode,
+            );
+        }
+    }
+
+    /**
+     * The mode a generated DTO class was emitted in, read from what only that mode imports; null for
+     * a file that says nothing mode-specific, an enum for instance.
+     */
+    private static function generatedModeOf(string $source): ?string
+    {
+        if (!str_contains($source, 'auto-generated from an OpenAPI schema')) {
+            return null;
+        }
+
+        return match (true) {
+            str_contains($source, 'GeneratedDtoInterface;') => self::ATTRIBUTE_MODE_RUNTIME,
+            str_contains($source, 'use Spatie\LaravelData\\') => self::ATTRIBUTE_MODE_LARAVEL_DATA,
+            str_contains($source, 'use Illuminate\\') => self::ATTRIBUTE_MODE_LARAVEL,
+            str_contains($source, 'use Yiisoft\\') => self::ATTRIBUTE_MODE_YII3,
+            str_contains($source, 'use Symfony\Component\Validator\Constraints as Assert;') => self::ATTRIBUTE_MODE_SYMFONY,
+            default => null,
+        };
+    }
+
+    /**
      * @param array<string, string> $files
      * @param list<string> $ownedDirectories
      */
     private function publishGeneratedFiles(array $files, array $ownedDirectories): void
     {
+        $this->warnAboutReplacedModes($files);
         if (!$this->deferOutputPublication) {
             (new GeneratedFilePublisher())->publish($files, $ownedDirectories);
             return;
@@ -8682,7 +8748,14 @@ final class GenerateDtoCommand extends Command
             }
 
             $paramIn = $parameter['in'] ?? null;
-            if (in_array($paramIn, ['path', 'query', 'header', 'cookie', 'querystring'], true)) {
+            // Symfony binds a DTO from the query string alone (`#[MapQueryString]`); route, header
+            // and cookie values reach the controller as arguments of their own. A path parameter in
+            // that DTO made it unbindable: the query never carries it, so a required one failed
+            // every request.
+            $locations = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
+                ? ['query']
+                : ['path', 'query', 'header', 'cookie', 'querystring'];
+            if (in_array($paramIn, $locations, true)) {
                 $filtered[] = $parameter;
             }
         }

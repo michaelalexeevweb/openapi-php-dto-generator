@@ -109,7 +109,8 @@ final class GenerateSymfonyDtoTest extends TestCase
         $content = (string)file_get_contents($this->outputDirectory . '/User.php');
 
         $this->assertStringContainsString('use Symfony\Component\Validator\Constraints as Assert;', $content);
-        $this->assertStringContainsString('#[Assert\NotNull]', $content);
+        // A required property's PHP type already refuses null; NotNull on it never fired.
+        $this->assertStringNotContainsString('#[Assert\NotNull]', $content);
         $this->assertStringContainsString('#[Assert\Length(min: 2, max: 50)]', $content);
         $this->assertStringContainsString('#[Assert\Range(min: 0, max: 120)]', $content);
         $this->assertStringContainsString('#[Assert\GreaterThan(0)]', $content);
@@ -117,7 +118,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->assertStringContainsString('#[Assert\Count(min: 1, max: 5)]', $content);
         $this->assertStringContainsString('#[Assert\Callback]', $content);
         $this->assertStringContainsString('#[Assert\Valid]', $content);
-        $this->assertStringContainsString('private readonly string $name,', $content);
+        $this->assertStringContainsString('private readonly string $name;', $content);
     }
 
     public function testSymfonyModeEmitsSerializedNameWhenPropertyDiffersFromOpenApiName(): void
@@ -812,7 +813,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         // Previously: a synthesized MergedCode object class with no constraints at all.
         $this->assertFileDoesNotExist($this->outputDirectory . '/MergedCode.php');
         $content = (string)file_get_contents($this->outputDirectory . '/Merged.php');
-        $this->assertStringContainsString('private readonly string $code,', $content);
+        $this->assertStringContainsString('private readonly string $code;', $content);
         $this->assertStringContainsString('#[Assert\Length(min: 3)]', $content);
     }
 
@@ -850,8 +851,8 @@ final class GenerateSymfonyDtoTest extends TestCase
         $this->assertStringNotContainsString('toNumericConstraint', $content);
         $this->assertStringNotContainsString('ExecutionContextInterface', $content);
 
-        $this->assertStringContainsString('private readonly int $id,', $content);
-        $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt,', $content);
+        $this->assertStringContainsString('private readonly int $id;', $content);
+        $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt;', $content);
     }
 
     public function testCallbackHelpersFollowTheKeywordsInUse(): void
@@ -926,7 +927,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         // `readonly` on each promoted parameter.
         $this->assertStringContainsString('final class User', $content);
         $this->assertStringNotContainsString('public readonly ', $content);
-        $this->assertStringContainsString('private readonly string $name,', $content);
+        $this->assertStringContainsString('private readonly string $name;', $content);
     }
 
     public function testExplicitAllowEmptyValueFalseBecomesNotBlank(): void
@@ -974,7 +975,9 @@ final class GenerateSymfonyDtoTest extends TestCase
         // the explicit prohibition — and only on that one parameter.
         $this->assertSame(1, substr_count($content, '#[Assert\NotBlank(allowNull: true)]'));
         $this->assertStringContainsString(
-            "#[Assert\\NotBlank(allowNull: true)]\n    private ?string \$forbidden",
+            "#[Assert\\NotBlank(allowNull: true)]\n"
+            . "    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]\n"
+            . '    private ?string $forbidden',
             $content,
         );
 
@@ -1044,7 +1047,7 @@ final class GenerateSymfonyDtoTest extends TestCase
 
         $this->assertFileExists($this->outputDirectory . '/Orders200.php');
         $request = (string)file_get_contents($this->outputDirectory . '/OrdersPostRequest.php');
-        $this->assertStringContainsString('private readonly string $sku,', $request);
+        $this->assertStringContainsString('private readonly string $sku;', $request);
         $this->assertStringContainsString('#[Assert\Length(min: 3)]', $request);
     }
 
@@ -1087,9 +1090,9 @@ final class GenerateSymfonyDtoTest extends TestCase
 
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymGenDocMeta', 'symfony');
 
-        // Promoted properties cannot carry their own docblock, so the annotations land on @param.
+        // Every property is declared in the class body, so the annotations land on its @var.
         $documented = (string)file_get_contents($this->outputDirectory . '/Documented.php');
-        $this->assertStringContainsString(' * @param string $ex Some field Example: sample', $documented);
+        $this->assertStringContainsString(' * @var string Some field Example: sample', $documented);
         $this->assertStringContainsString(' * @var ?string Deprecated. Legacy field', $documented);
         // A property without annotations gains no @param line.
         $this->assertStringNotContainsString('@param ?int $plain', $documented);
@@ -1130,7 +1133,7 @@ final class GenerateSymfonyDtoTest extends TestCase
         $content = (string)file_get_contents($this->outputDirectory . '/WebhookNewPetPostRequest.php');
         $this->assertStringContainsString('Route: POST webhook:newPet', $content);
         $this->assertStringContainsString('#[Assert\Range(min: 1)]', $content);
-        $this->assertStringContainsString('private readonly int $id,', $content);
+        $this->assertStringContainsString('private readonly int $id;', $content);
     }
 
     public function testEmptyDtoRendersParameterlessConstructor(): void

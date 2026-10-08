@@ -266,10 +266,6 @@ final class NormalizationParityTest extends TestCase
      */
     public static function normalizationProvider(): array
     {
-        $nullOmission = 'runtime omits a property it never received (UnsetValue), Symfony has no '
-            . 'presence tracking and emits an explicit null — the response direction of the same '
-            . 'limitation as PATCH support';
-
         $cases = [
             'scalars' => [
                 'schema' => self::object(
@@ -293,8 +289,7 @@ final class NormalizationParityTest extends TestCase
                 'schema' => self::object(['s' => ['type' => 'string'], 'opt' => ['type' => 'string']], ['s']),
                 'json' => '{"s":"a"}',
                 'runtime' => ['s' => 'a'],
-                'symfony' => ['opt' => null, 's' => 'a'],
-                'reason' => $nullOmission,
+                'symfony' => ['s' => 'a'],
             ],
             'explicit null is kept by both' => [
                 'schema' => self::object(['s' => ['type' => 'string'], 'opt' => ['type' => ['string', 'null']]], ['s', 'opt']),
@@ -386,8 +381,10 @@ final class NormalizationParityTest extends TestCase
                 'schema' => self::object(['s' => ['type' => 'string'], 'any' => ['description' => 'anything']], ['s']),
                 'json' => '{"s":"a"}',
                 'runtime' => ['s' => 'a'],
-                'symfony' => ['any' => null, 's' => 'a'],
-                'reason' => $nullOmission,
+                'symfony' => ['s' => 'a', 'any' => null],
+                'reason' => 'an untyped property admits null, so Symfony mode cannot drop a null from it '
+                    . 'as "never set" the way it does for a typed optional property — the same limit '
+                    . 'laravel-data has below',
                 'diverges' => [
                     'laravel-data' => [
                         'expected' => ['s' => 'a', 'any' => null],
@@ -409,7 +406,7 @@ final class NormalizationParityTest extends TestCase
                 ),
                 'json' => '{"id":1}',
                 'runtime' => ['id' => 1],
-                'symfony' => ['limit' => 25, 'id' => 1],
+                'symfony' => ['id' => 1, 'limit' => 25],
                 'reason' => 'the constructor default IS the Symfony DTO\'s value for an absent key, so a '
                     . 'schema default is indistinguishable from one the client sent — the response '
                     . 'direction of the same missing presence tracking',
@@ -426,7 +423,7 @@ final class NormalizationParityTest extends TestCase
                 ),
                 'json' => '{"id":1}',
                 'runtime' => ['id' => 1],
-                'symfony' => ['on' => '2020-01-01', 'id' => 1],
+                'symfony' => ['id' => 1, 'on' => '2020-01-01'],
                 'reason' => 'the same absent-with-a-default difference as the integer case above: the '
                     . 'default IS the Symfony DTO\'s value, and it has no presence tracking to tell '
                     . 'that apart from a date the client sent',
@@ -743,8 +740,7 @@ final class NormalizationParityTest extends TestCase
                 'extra' => ['Child' => self::object(['id' => ['type' => 'integer'], 'note' => ['type' => 'string']], ['id'])],
                 'json' => '{"child":{"id":7}}',
                 'runtime' => ['child' => ['id' => 7]],
-                'symfony' => ['child' => ['note' => null, 'id' => 7]],
-                'reason' => $nullOmission . ' — it applies at every nesting level',
+                'symfony' => ['child' => ['id' => 7]],
             ],
             'array of nested objects' => [
                 'schema' => self::object(['kids' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Child']]], ['kids']),
@@ -762,10 +758,10 @@ final class NormalizationParityTest extends TestCase
                 'extra' => ['Child' => self::object(['id' => ['type' => 'integer']])],
                 'json' => '{"kid":{}}',
                 'runtime' => ['kid' => ['#object' => []]],
-                'symfony' => ['kid' => ['id' => null]],
-                'reason' => 'symfony never gets as far as the shape question: with no presence '
-                    . 'tracking the nested object writes its absent property as an explicit null, so '
-                    . 'the array is not empty in the first place — the nested form of $nullOmission',
+                'symfony' => ['kid' => []],
+                'reason' => 'the serializer has no notion of the wire shape either: an object with '
+                    . 'nothing to write leaves as `[]` unless the caller passes '
+                    . 'AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS',
                 'diverges' => [
                     'laravel-data' => [
                         'expected' => ['kid' => []],

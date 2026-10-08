@@ -241,6 +241,13 @@ trait RendersSymfonyDto
         if ($needsIgnore) {
             $useStatements[] = 'Symfony\Component\Serializer\Attribute\Ignore';
         }
+        foreach ($params as $param) {
+            if ($param['skipNullValues'] !== null) {
+                $useStatements[] = 'Symfony\Component\Serializer\Attribute\Context';
+                $useStatements[] = 'Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer';
+                break;
+            }
+        }
         $implementedInterfaces = [];
         foreach ($this->symfonyImplementedUnionInterfaces($className, $extends) as $unionInterface) {
             $this->appendImportForClass($useStatements, $unionInterface, $namespace, $className);
@@ -668,9 +675,16 @@ PHP;
 
         $values = array_values($byName);
 
-        // Required params (which get no default) must precede optional ones (which get a default),
-        // otherwise PHP emits an "optional before required" deprecation and construction by the
-        // required args alone fails. usort is stable on PHP 8.3, so schema order is otherwise kept.
+        // Symfony mode keeps schema order: it is the order the properties are declared in, and so
+        // the order the serializer writes the keys in. Only required properties are constructor
+        // parameters there, so no optional one can precede them.
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
+            return $values;
+        }
+
+        // Elsewhere required params (which get no default) must precede optional ones (which get a
+        // default), otherwise PHP emits an "optional before required" deprecation and construction by
+        // the required args alone fails. usort is stable on PHP 8.3, so schema order is otherwise kept.
         usort(
             $values,
             static fn(array $a, array $b): int => ($b['required'] ? 1 : 0) <=> ($a['required'] ? 1 : 0),
@@ -694,6 +708,7 @@ PHP;
      *     setter: string,
      *     providedFlag: string,
      *     providedGetter: string,
+     *     skipNullValues: bool|null,
      *     temporalDefault: ?string,
      *     temporalGetterBody: ?string,
      *     temporalGetterReturnType: string,
@@ -724,25 +739,34 @@ PHP;
         // An optional property is nullable with a default (null unless the schema declares one).
         // It is NOT a constructor parameter: the serializer fills it through the setter, and the
         // setter is what records that the payload carried the key — see the class docblock.
-        $declaredNullable = $property['nullable'] || (!$required && $default === null);
-        $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
+        // `nullable` on the property also covers "optional", which is what the runtime mode needs;
+        // here only the schema's own word counts, since an optional property WITH a default never
+        // holds null unless the schema allows it — `?Kind $kind = Kind::A` invited a null the
+        // document rejects.
+        $schemaNullable = $property['schemaNullable'] ?? $property['nullable'];
 
         // A temporal default is `new DateTimeImmutable(...)`, and PHP forbids `new` in a PROPERTY
         // initialiser — which is what an optional property here is, since the serializer fills it
         // through the setter rather than the constructor. The constructor BODY is the one place that
         // can hold the expression, so the property is left uninitialised and assigned there.
         $temporalDefault = null;
-        if ($required) {
-            $defaultLiteral = '';
-        } elseif ($default !== null && $this->symfonyPropertyIsTemporalScalar($property)) {
-            $expression = ltrim($this->renderDefaultValue($default, $phpType, $declaredType), ' =');
-            $temporalDefault = $expression === '' ? null : $expression;
-            $defaultLiteral = $temporalDefault === null ? ' = null' : '';
-        } elseif ($default !== null) {
-            $defaultLiteral = $this->renderDefaultValue($default, $phpType, $declaredType);
-        } else {
+        $defaultLiteral = '';
+        if (!$required && $default !== null) {
+            $rendered = $this->renderDefaultValue($default, $phpType, $this->composePhpTypeHint($phpType, $schemaNullable));
+            if ($this->symfonyPropertyIsTemporalScalar($property)) {
+                $expression = ltrim($rendered, ' =');
+                $temporalDefault = $expression === '' ? null : $expression;
+            } else {
+                $defaultLiteral = $rendered;
+            }
+        }
+        // Without a usable default an optional property starts as null, so its type must admit it.
+        $hasDefault = $defaultLiteral !== '' || $temporalDefault !== null;
+        $declaredNullable = $schemaNullable || (!$required && !$hasDefault);
+        if (!$required && !$hasDefault) {
             $defaultLiteral = ' = null';
         }
+        $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
 
         return [
             'declaredType' => $declaredType,
@@ -775,6 +799,11 @@ PHP;
             'setter' => 'set' . ucfirst($property['name']),
             'providedFlag' => $property['name'] . 'Provided',
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
+            // Symfony writes every property it can read; whether a null belongs in the output is set per
+            // property, since a parent's context reaches its children. Null on an optional property the
+            // schema does not let be null can only mean "never set", so it is dropped; a nullable one
+            // keeps its null even under a parent, or a global, that skips them.
+            'skipNullValues' => $schemaNullable || $phpType === 'mixed' ? false : ($declaredNullable ? true : null),
         ];
     }
 
@@ -945,7 +974,13 @@ PHP;
         $untyped = $property['type'] === 'mixed'
             && !array_key_exists('type', $constraints)
             && !array_key_exists('nullable', $constraints);
-        if ($this->propertyIsRequiredOnInput($property) && !$property['nullable'] && !$untyped) {
+        // Only where the PHP type itself admits null: on `string $name` the serializer fails on the
+        // type before the validator runs, and a hand-built DTO cannot hold null there at all, so the
+        // assertion never fired.
+        $typeAdmitsNull = $property['type'] === 'mixed'
+            || str_starts_with($property['type'], '?')
+            || in_array('null', explode('|', $property['type']), true);
+        if ($this->propertyIsRequiredOnInput($property) && !$property['nullable'] && !$untyped && $typeAdmitsNull) {
             $attributes[] = '#[Assert\NotNull]';
         }
 

@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.66 — 2026-10-08
+
+- Symfony keys follow schema order
+- Symfony leaves never-set properties out
+- Symfony query DTO binds via MapQueryString
+- Mode clash in a shared directory warned
+
+Symfony mode, measured against the stock serializer and argument resolvers with nothing registered:
+
+- keys came out with every optional property first. Once a class carries an `#[Ignore]` the serializer
+  writes properties in declaration order, and required ones were promoted constructor parameters,
+  declared after the rest. Every property is now declared in the class body in schema order; the
+  constructor assigns the required ones.
+- an optional property never set was written as `null`. Each property now carries Symfony's own
+  `#[Context]`: a null the schema does not allow can only mean "never set" and is skipped; a null the
+  schema allows is kept, also under a parent or a caller that skips nulls. An optional AND nullable
+  property never set is still written as `null`.
+- an optional property with a `default` was `?T`, inviting a null the schema refuses. It is `T` now.
+- `…QueryParams` mixed path and query parameters, so `#[MapQueryString]` failed every request on the
+  missing path value. It now holds `in: query` only; an operation without query parameters gets no class.
+- `#[Assert\NotNull]` on a non-nullable PHP type never fired and is gone.
+- `--dto-generator-directory` copied the runtime services, which these DTOs never use. It is ignored
+  with a warning.
+
+Every mode: generating into a directory that holds DTOs of another mode — schemas shared through
+`--ref` — now warns. The specs sharing it must be generated in one mode.
+
+Symfony output changes shape (constructor parameters are no longer promoted). Regenerate DTOs.
+
 ## 2.15.65 — 2026-10-08
 
 - Container declarations name what is held

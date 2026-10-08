@@ -206,7 +206,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymDef', 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Conf.php');
 
-        $this->assertStringContainsString('private ?int $level = 5;', $content);
+        // A default fills the property, so a type that is not nullable in the schema stays so.
+        $this->assertStringContainsString('private int $level = 5;', $content);
         $this->assertStringContainsString('= Status::On;', $content);
     }
 
@@ -808,7 +809,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         // Required $b is a constructor parameter; optional $a is a property with a setter, so the
         // two live in different parts of the class rather than in one argument list.
-        $this->assertStringContainsString('private readonly string $b,', $content);
+        $this->assertStringContainsString('private readonly string $b;', $content);
         $this->assertStringContainsString('private ?string $a = null;', $content);
         $this->assertStringNotContainsString('string $a = null,', $content);
 

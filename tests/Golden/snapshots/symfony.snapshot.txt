@@ -1,4 +1,4 @@
-# symfony mode — 80 files, 11923 lines
+# symfony mode — 77 files, 11737 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -13,8 +13,6 @@
 # ApiTestCatsActionsPostQueryParams.php
 # ApiTestDogsTagsGetQueryParams.php
 # ApiTestDogsTagsPatchQueryParams.php
-# ApiTestFileDeleteQueryParams.php
-# ApiTestFilePatchQueryParams.php
 # ApiTestFilePostRequest.php
 # ApiTestJobs200.php
 # ApiTestJobs404.php
@@ -28,7 +26,6 @@
 # ApiTestRepresentationsPostRequest.php
 # ApiTestRepresentationsPostRequestForm.php
 # ApiTestRepresentationsPostRequestXml.php
-# ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams.php
 # ApiTestSerializationGetQueryParams.php
 # ApiTestSerializationGetQueryParamsFilter.php
 # ApiTestSharedPathGetQueryParams.php
@@ -138,11 +135,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Animal2AnyOf4 implements Animal2
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $test2;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $test2,
+        string $test2,
     ) {
+        $this->test2 = $test2;
     }
 
     public function getTest2(): string
@@ -191,11 +190,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class AnimalOneOf3 implements Animal
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $test;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $test,
+        string $test,
     ) {
+        $this->test = $test;
     }
 
     public function getTest(): string
@@ -228,11 +229,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTest2403
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $message;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $message,
+        string $message,
     ) {
+        $this->message = $message;
     }
 
     public function getMessage(): string
@@ -265,14 +268,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTest2PatchRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $idPatchTest2;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $namePatchTest2;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $idPatchTest2,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $namePatchTest2,
+        int $idPatchTest2,
+        string $namePatchTest2,
     ) {
+        $this->idPatchTest2 = $idPatchTest2;
+        $this->namePatchTest2 = $namePatchTest2;
     }
 
     public function getIdPatchTest2(): int
@@ -310,17 +317,23 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTest2PostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $idPostTest2;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $namePostTest2;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $surnamePostTest2;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $idPostTest2,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $namePostTest2,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $surnamePostTest2,
+        int $idPostTest2,
+        string $namePostTest2,
+        string $surnamePostTest2,
     ) {
+        $this->idPostTest2 = $idPostTest2;
+        $this->namePostTest2 = $namePostTest2;
+        $this->surnamePostTest2 = $surnamePostTest2;
     }
 
     public function getIdPostTest2(): int
@@ -363,11 +376,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTest403
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $message;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $message,
+        string $message,
     ) {
+        $this->message = $message;
     }
 
     public function getMessage(): string
@@ -383,8 +398,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -403,6 +420,7 @@ final class ApiTestCatsActionsGetQueryParams
 {
     #[Assert\Range(min: 1)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $page = null;
 
     #[Ignore]
@@ -410,34 +428,14 @@ final class ApiTestCatsActionsGetQueryParams
 
     #[Assert\Range(min: 1, max: 100)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $limit = null;
 
     #[Ignore]
     private bool $limitProvided = false;
 
-    /**
-     * @param string $id Example: 00000000-1111-4222-8333-444455556666
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Uuid]
-        #[Assert\NotBlank(allowNull: true)]
-        #[Groups(['read', 'write'])]
-        private readonly string $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $actionId,
-    ) {
-    }
-
-    public function getId(): string
+    public function __construct()
     {
-        return $this->id;
-    }
-
-    public function getActionId(): int
-    {
-        return $this->actionId;
     }
 
     public function getPage(): ?int
@@ -490,8 +488,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -510,6 +510,7 @@ final class ApiTestCatsActionsPostQueryParams
 {
     #[Assert\Range(min: 1)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $page = null;
 
     #[Ignore]
@@ -517,34 +518,14 @@ final class ApiTestCatsActionsPostQueryParams
 
     #[Assert\Range(min: 1, max: 100)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $limit = null;
 
     #[Ignore]
     private bool $limitProvided = false;
 
-    /**
-     * @param string $id Example: 00000000-1111-4222-8333-444455556666
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Uuid]
-        #[Assert\NotBlank(allowNull: true)]
-        #[Groups(['read', 'write'])]
-        private readonly string $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $actionId,
-    ) {
-    }
-
-    public function getId(): string
+    public function __construct()
     {
-        return $this->id;
-    }
-
-    public function getActionId(): int
-    {
-        return $this->actionId;
     }
 
     public function getPage(): ?int
@@ -597,8 +578,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -617,6 +600,7 @@ final class ApiTestDogsTagsGetQueryParams
 {
     #[Assert\Range(min: 1)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $page = null;
 
     #[Ignore]
@@ -624,34 +608,14 @@ final class ApiTestDogsTagsGetQueryParams
 
     #[Assert\Range(min: 1, max: 100)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $limit = null;
 
     #[Ignore]
     private bool $limitProvided = false;
 
-    /**
-     * @param string $id Example: 00000000-1111-4222-8333-444455556666
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Uuid]
-        #[Assert\NotBlank(allowNull: true)]
-        #[Groups(['read', 'write'])]
-        private readonly string $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $tagId,
-    ) {
-    }
-
-    public function getId(): string
+    public function __construct()
     {
-        return $this->id;
-    }
-
-    public function getTagId(): int
-    {
-        return $this->tagId;
     }
 
     public function getPage(): ?int
@@ -704,8 +668,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -724,6 +690,7 @@ final class ApiTestDogsTagsPatchQueryParams
 {
     #[Assert\Range(min: 1)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $page = null;
 
     #[Ignore]
@@ -731,34 +698,14 @@ final class ApiTestDogsTagsPatchQueryParams
 
     #[Assert\Range(min: 1, max: 100)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $limit = null;
 
     #[Ignore]
     private bool $limitProvided = false;
 
-    /**
-     * @param string $id Example: 00000000-1111-4222-8333-444455556666
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Uuid]
-        #[Assert\NotBlank(allowNull: true)]
-        #[Groups(['read', 'write'])]
-        private readonly string $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $tagId,
-    ) {
-    }
-
-    public function getId(): string
+    public function __construct()
     {
-        return $this->id;
-    }
-
-    public function getTagId(): int
-    {
-        return $this->tagId;
     }
 
     public function getPage(): ?int
@@ -804,90 +751,6 @@ final class ApiTestDogsTagsPatchQueryParams
     }
 }
 
-===== ApiTestFileDeleteQueryParams.php =====
-<?php
-
-declare(strict_types=1);
-
-namespace GoldenCorpus;
-
-use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
-
-/**
- * NOTE: This DTO is auto-generated from an OpenAPI schema.
- * Do not edit this file manually.
- *
- * Route: DELETE /api/test/file/{id}
- *
- * This document uses readOnly/writeOnly, which Symfony can only honour through serialization
- * groups — so every property here carries one. Pass the group, or a writeOnly field ends up in
- * the response:
- *   $serializer->normalize($dto, null, ['groups' => 'read']);
- *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
- */
-final class ApiTestFileDeleteQueryParams
-{
-    /**
-     * @param string $id Example: 00000000-1111-4222-8333-444455556666
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Uuid]
-        #[Assert\NotBlank(allowNull: true)]
-        #[Groups(['read', 'write'])]
-        private readonly string $id,
-    ) {
-    }
-
-    public function getId(): string
-    {
-        return $this->id;
-    }
-}
-
-===== ApiTestFilePatchQueryParams.php =====
-<?php
-
-declare(strict_types=1);
-
-namespace GoldenCorpus;
-
-use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
-
-/**
- * NOTE: This DTO is auto-generated from an OpenAPI schema.
- * Do not edit this file manually.
- *
- * Route: PATCH /api/test/file/{id}
- *
- * This document uses readOnly/writeOnly, which Symfony can only honour through serialization
- * groups — so every property here carries one. Pass the group, or a writeOnly field ends up in
- * the response:
- *   $serializer->normalize($dto, null, ['groups' => 'read']);
- *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
- */
-final class ApiTestFilePatchQueryParams
-{
-    /**
-     * @param string $id Example: 00000000-1111-4222-8333-444455556666
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Uuid]
-        #[Assert\NotBlank(allowNull: true)]
-        #[Groups(['read', 'write'])]
-        private readonly string $id,
-    ) {
-    }
-
-    public function getId(): string
-    {
-        return $this->id;
-    }
-}
-
 ===== ApiTestFilePostRequest.php =====
 <?php
 
@@ -913,11 +776,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestFilePostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly UploadedFile $file;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly UploadedFile $file,
+        UploadedFile $file,
     ) {
+        $this->file = $file;
     }
 
     public function getFile(): UploadedFile
@@ -950,11 +815,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestJobs200
 {
+    #[Groups(['read', 'write'])]
+    private readonly bool $accepted;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly bool $accepted,
+        bool $accepted,
     ) {
+        $this->accepted = $accepted;
     }
 
     public function getAccepted(): bool
@@ -987,11 +854,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestJobs404
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $reason;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $reason,
+        string $reason,
     ) {
+        $this->reason = $reason;
     }
 
     public function getReason(): string
@@ -1024,11 +893,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestJobsDefault
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $message;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $message,
+        string $message,
     ) {
+        $this->message = $message;
     }
 
     public function getMessage(): string
@@ -1061,11 +932,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestJobsPostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $callbackUrl;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $callbackUrl,
+        string $callbackUrl,
     ) {
+        $this->callbackUrl = $callbackUrl;
     }
 
     public function getCallbackUrl(): string
@@ -1100,11 +973,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestLegacy200
 {
+    #[Groups(['read', 'write'])]
+    private readonly bool $ok;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly bool $ok,
+        bool $ok,
     ) {
+        $this->ok = $ok;
     }
 
     public function getOk(): bool
@@ -1120,8 +995,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -1141,6 +1018,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ApiTestLegacyPostQueryParams
 {
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?bool $legacyFlag = null;
 
     #[Ignore]
@@ -1198,11 +1076,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestLegacyPostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $payload;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $payload,
+        string $payload,
     ) {
+        $this->payload = $payload;
     }
 
     public function getPayload(): string
@@ -1235,11 +1115,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestRepresentations200
 {
+    #[Groups(['read', 'write'])]
+    private readonly bool $ok;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly bool $ok,
+        bool $ok,
     ) {
+        $this->ok = $ok;
     }
 
     public function getOk(): bool
@@ -1272,11 +1154,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestRepresentations200Csv
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $row;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $row,
+        string $row,
     ) {
+        $this->row = $row;
     }
 
     public function getRow(): string
@@ -1309,11 +1193,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestRepresentationsPostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $payload;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $payload,
+        string $payload,
     ) {
+        $this->payload = $payload;
     }
 
     public function getPayload(): string
@@ -1346,11 +1232,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestRepresentationsPostRequestForm
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $field;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $field,
+        string $field,
     ) {
+        $this->field = $field;
     }
 
     public function getField(): string
@@ -1383,317 +1271,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ApiTestRepresentationsPostRequestXml
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $element;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $element,
+        string $element,
     ) {
+        $this->element = $element;
     }
 
     public function getElement(): string
     {
         return $this->element;
-    }
-}
-
-===== ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams.php =====
-<?php
-
-declare(strict_types=1);
-
-namespace GoldenCorpus;
-
-use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
-use Symfony\Component\Validator\Context\ExecutionContextInterface;
-
-use function array_is_list;
-use function array_key_exists;
-use function array_keys;
-use function floor;
-use function get_object_vars;
-use function is_array;
-use function is_finite;
-use function is_float;
-use function is_int;
-use function is_object;
-use function is_string;
-use function method_exists;
-use function sprintf;
-use function str_ends_with;
-use function str_starts_with;
-use function strpos;
-use function substr;
-
-/**
- * NOTE: This DTO is auto-generated from an OpenAPI schema.
- * Do not edit this file manually.
- *
- * Route: GET /api/test/serialization/{matrixIds}/{labelIds}
- *
- * This document uses readOnly/writeOnly, which Symfony can only honour through serialization
- * groups — so every property here carries one. Pass the group, or a writeOnly field ends up in
- * the response:
- *   $serializer->normalize($dto, null, ['groups' => 'read']);
- *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
- */
-final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
-{
-    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
-        'properties' => [
-            'matrixIds' => [
-                'items' => [
-                    'type' => 'integer',
-                ],
-            ],
-            'labelIds' => [
-                'items' => [
-                    'type' => 'string',
-                ],
-            ],
-        ],
-    ];
-
-    private const array OPENAPI_PHP_TO_NAME_MAP = [
-        'matrixIds' => 'matrixIds',
-        'labelIds' => 'labelIds',
-    ];
-
-    private const array OPENAPI_PROVIDED_FLAGS = [];
-
-    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
-
-    /**
-     * @param array<int> $matrixIds
-     * @param array<string> $labelIds
-     */
-    public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $matrixIds,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $labelIds,
-    ) {
-    }
-
-    /**
-     * @return array<int>
-     */
-    public function getMatrixIds(): array
-    {
-        return $this->matrixIds;
-    }
-
-    /**
-     * @return array<string>
-     */
-    public function getLabelIds(): array
-    {
-        return $this->labelIds;
-    }
-
-    #[Assert\Callback]
-    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
-    {
-        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
-            $path = self::openApiViolationPath($error);
-            if ($path !== null) {
-                $violation->atPath($path);
-            }
-            $violation->addViolation();
-        }
-    }
-
-    /**
-     * This DTO as an OpenAPI-named payload — machinery for the generated validation, not an API to
-     * call. It is public only because an enclosing DTO is a different class and needs this view of
-     * a nested one. For output, use the Symfony serializer.
-     *
-     * @internal
-     *
-     * @return array<string, mixed>
-     */
-    public function toOpenApiValidationPayload(): array
-    {
-        $payload = [];
-        foreach (self::OPENAPI_PHP_TO_NAME_MAP as $phpName => $openApiName) {
-            // A required property always exists. An optional one belongs in the payload only when
-            // it was actually provided — its presence flag says so, which is also what keeps the
-            // flags themselves out of the payload (iterating the object's properties would put
-            // them in and trip `additionalProperties: false`).
-            $flag = self::OPENAPI_PROVIDED_FLAGS[$phpName] ?? null;
-            if ($flag !== null && $this->{$flag} !== true) {
-                continue;
-            }
-            $payload[$openApiName] = $this->{$phpName};
-        }
-
-        return $payload;
-    }
-
-    /**
-     * @param array<string, mixed> $schema
-     * @return array<int, string>
-     */
-    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
-    {
-        if ($depth > 0) {
-            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        }
-        try {
-            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
-            return [$error->getMessage()];
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $schema
-     * @return array<int, string>
-     */
-    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
-    {
-        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
-        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
-        }
-
-        $errors = [];
-        $normalizedValue = $value;
-        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
-
-        if (array_key_exists('type', $schema)) {
-            $typeConstraint = $schema['type'];
-            if (is_string($typeConstraint)) {
-                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
-                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
-                }
-            }
-        }
-
-        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
-            foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
-                    continue;
-                }
-                if (!array_key_exists($propertyName, $structuredValue)) {
-                    continue;
-                }
-                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
-                    continue;
-                }
-                $errors = [
-                    ...$errors,
-                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
-                ];
-            }
-        }
-
-        $listValue = is_array($value) && array_is_list($value);
-
-        if ($listValue && ($schema['items'] ?? null) === false) {
-            foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
-            }
-        }
-
-        if ($listValue && is_array($schema['items'] ?? null)) {
-            foreach ($value as $index => $itemValue) {
-                if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
-                    continue;
-                }
-                $errors = [
-                    ...$errors,
-                    ...$this->validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
-                ];
-            }
-        }
-
-        return $errors;
-    }
-
-    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
-    {
-        if (!is_string($type) || $type === '') {
-            return true;
-        }
-
-        return match ($type) {
-            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
-            'string' => is_string($value),
-            default => true,
-        };
-    }
-
-    private function normalizeOpenApiStructuralValue(mixed $value): mixed
-    {
-        if (is_array($value) || !is_object($value)) {
-            return $value;
-        }
-
-        // Generated DTOs expose their OpenAPI-named payload themselves.
-        if (method_exists($value, 'toOpenApiValidationPayload')) {
-            return $value->toOpenApiValidationPayload();
-        }
-        // Any other object: only its public state is visible, under PHP property names.
-        return get_object_vars($value);
-    }
-
-    private function isGeneratedOpenApiDtoObject(mixed $value): bool
-    {
-        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
-        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
-        return is_object($value)
-            && method_exists($value, 'validateOpenApiConstraints')
-            && method_exists($value, 'toOpenApiValidationPayload');
-    }
-
-    /**
-     * The property a message is about, as a value path, or null when it is about the payload itself.
-     *
-     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
-     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
-     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
-     * an error response groups by property, and every keyword this interpreter owns was landing at
-     * the root instead, where a per-field renderer never shows it.
-     */
-    private static function openApiViolationPath(string $error): ?string
-    {
-        if (!str_starts_with($error, 'field "')) {
-            return null;
-        }
-
-        $closing = strpos($error, '"', 7);
-        if ($closing === false) {
-            return null;
-        }
-
-        $property = substr($error, 7, $closing - 7);
-        if ($property === '') {
-            return null;
-        }
-
-        // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
-        $rest = substr($error, $closing + 1);
-        $deeper = '';
-        if (str_starts_with($rest, '.')) {
-            $space = strpos($rest, ' ');
-            $deeper = $space === false ? $rest : substr($rest, 0, $space);
-        }
-
-        return $property . $deeper;
-    }
-
-    private function openApiChildPath(string $path, string $propertyName): string
-    {
-        // The first level names the field the way the runtime validator's caller does, so both
-        // modes report the same subject: `field "tags" must ...`.
-        return $path === 'payload'
-            ? sprintf('field "%s"', $propertyName)
-            : $path . '.' . $propertyName;
     }
 }
 
@@ -1705,9 +1294,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeInterface;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
-use Symfony\Component\Serializer\Attribute\SerializedName;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -1773,12 +1363,6 @@ final class ApiTestSerializationGetQueryParams
             'flag' => [],
             'strict' => [],
             'raw' => [],
-            'X-Codes' => [
-                'items' => [
-                    'type' => 'string',
-                ],
-            ],
-            'session' => [],
             'filter' => [],
         ],
     ];
@@ -1792,8 +1376,6 @@ final class ApiTestSerializationGetQueryParams
         'flag' => 'flag',
         'strict' => 'strict',
         'raw' => 'raw',
-        'xCodes' => 'X-Codes',
-        'session' => 'session',
         'filter' => 'filter',
     ];
 
@@ -1806,8 +1388,6 @@ final class ApiTestSerializationGetQueryParams
         'flag' => 'flagProvided',
         'strict' => 'strictProvided',
         'raw' => 'rawProvided',
-        'xCodes' => 'xCodesProvided',
-        'session' => 'sessionProvided',
         'filter' => 'filterProvided',
     ];
 
@@ -1817,6 +1397,7 @@ final class ApiTestSerializationGetQueryParams
      * @var ?array<int>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $exploded = null;
 
     #[Ignore]
@@ -1826,6 +1407,7 @@ final class ApiTestSerializationGetQueryParams
      * @var ?array<string>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $joined = null;
 
     #[Ignore]
@@ -1835,6 +1417,7 @@ final class ApiTestSerializationGetQueryParams
      * @var ?array<int>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $spaced = null;
 
     #[Ignore]
@@ -1844,6 +1427,7 @@ final class ApiTestSerializationGetQueryParams
      * @var ?array<string>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $piped = null;
 
     #[Ignore]
@@ -1853,12 +1437,14 @@ final class ApiTestSerializationGetQueryParams
      * @var ?array<string, string>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $nested = null;
 
     #[Ignore]
     private bool $nestedProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?bool $flag = null;
 
     #[Ignore]
@@ -1866,35 +1452,22 @@ final class ApiTestSerializationGetQueryParams
 
     #[Assert\NotBlank(allowNull: true)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $strict = null;
 
     #[Ignore]
     private bool $strictProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $raw = null;
 
     #[Ignore]
     private bool $rawProvided = false;
 
-    /**
-     * @var ?array<string>
-     */
-    #[Groups(['read', 'write'])]
-    #[SerializedName('X-Codes')]
-    private ?array $xCodes = null;
-
-    #[Ignore]
-    private bool $xCodesProvided = false;
-
-    #[Groups(['read', 'write'])]
-    private ?string $session = null;
-
-    #[Ignore]
-    private bool $sessionProvided = false;
-
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?ApiTestSerializationGetQueryParamsFilter $filter = null;
 
     #[Ignore]
@@ -2100,54 +1673,6 @@ final class ApiTestSerializationGetQueryParams
     public function isRawProvided(): bool
     {
         return $this->rawProvided;
-    }
-
-    /**
-     * @return ?array<string>
-     */
-    public function getXCodes(): ?array
-    {
-        return $this->xCodes;
-    }
-
-    /**
-     * @param ?array<string> $xCodes
-     */
-    public function setXCodes(?array $xCodes): void
-    {
-        $this->xCodes = $xCodes;
-        $this->xCodesProvided = true;
-    }
-
-    /**
-     * Whether the payload carried this key — true even when its value was null. Set by the setter,
-     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
-     */
-    #[Ignore]
-    public function isXCodesProvided(): bool
-    {
-        return $this->xCodesProvided;
-    }
-
-    public function getSession(): ?string
-    {
-        return $this->session;
-    }
-
-    public function setSession(?string $session): void
-    {
-        $this->session = $session;
-        $this->sessionProvided = true;
-    }
-
-    /**
-     * Whether the payload carried this key — true even when its value was null. Set by the setter,
-     * so it answers for a request the serializer built and for a DTO assembled by hand alike.
-     */
-    #[Ignore]
-    public function isSessionProvided(): bool
-    {
-        return $this->sessionProvided;
     }
 
     public function getFilter(): ?ApiTestSerializationGetQueryParamsFilter
@@ -2431,8 +1956,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -2451,6 +1978,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ApiTestSerializationGetQueryParamsFilter
 {
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?DateTimeImmutable $since = null;
 
     #[Ignore]
@@ -2519,8 +2047,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -2538,6 +2068,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ApiTestSharedPathGetQueryParams
 {
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $cursor = null;
 
     #[Ignore]
@@ -2576,9 +2107,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
-use Symfony\Component\Serializer\Attribute\SerializedName;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -2596,28 +2128,21 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ApiTestTenantsDeleteQueryParams
 {
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $region = null;
 
     #[Ignore]
     private bool $regionProvided = false;
 
     #[Groups(['read', 'write'])]
-    #[SerializedName('tenant')]
-    private ?string $tenantQuery = null;
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    private ?string $tenant = null;
 
     #[Ignore]
-    private bool $tenantQueryProvided = false;
+    private bool $tenantProvided = false;
 
-    public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $tenant,
-    ) {
-    }
-
-    public function getTenant(): int
+    public function __construct()
     {
-        return $this->tenant;
     }
 
     public function getRegion(): ?string
@@ -2641,15 +2166,15 @@ final class ApiTestTenantsDeleteQueryParams
         return $this->regionProvided;
     }
 
-    public function getTenantQuery(): ?string
+    public function getTenant(): ?string
     {
-        return $this->tenantQuery;
+        return $this->tenant;
     }
 
-    public function setTenantQuery(?string $tenantQuery): void
+    public function setTenant(?string $tenant): void
     {
-        $this->tenantQuery = $tenantQuery;
-        $this->tenantQueryProvided = true;
+        $this->tenant = $tenant;
+        $this->tenantProvided = true;
     }
 
     /**
@@ -2657,9 +2182,9 @@ final class ApiTestTenantsDeleteQueryParams
      * so it answers for a request the serializer built and for a DTO assembled by hand alike.
      */
     #[Ignore]
-    public function isTenantQueryProvided(): bool
+    public function isTenantProvided(): bool
     {
-        return $this->tenantQueryProvided;
+        return $this->tenantProvided;
     }
 }
 
@@ -2670,9 +2195,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
-use Symfony\Component\Serializer\Attribute\SerializedName;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -2690,34 +2216,28 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ApiTestTenantsGetQueryParams
 {
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $region = null;
 
     #[Ignore]
     private bool $regionProvided = false;
 
     #[Groups(['read', 'write'])]
-    #[SerializedName('tenant')]
-    private ?string $tenantQuery = null;
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    private ?string $tenant = null;
 
     #[Ignore]
-    private bool $tenantQueryProvided = false;
+    private bool $tenantProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?bool $verbose = null;
 
     #[Ignore]
     private bool $verboseProvided = false;
 
-    public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $tenant,
-    ) {
-    }
-
-    public function getTenant(): int
+    public function __construct()
     {
-        return $this->tenant;
     }
 
     public function getRegion(): ?int
@@ -2741,15 +2261,15 @@ final class ApiTestTenantsGetQueryParams
         return $this->regionProvided;
     }
 
-    public function getTenantQuery(): ?string
+    public function getTenant(): ?string
     {
-        return $this->tenantQuery;
+        return $this->tenant;
     }
 
-    public function setTenantQuery(?string $tenantQuery): void
+    public function setTenant(?string $tenant): void
     {
-        $this->tenantQuery = $tenantQuery;
-        $this->tenantQueryProvided = true;
+        $this->tenant = $tenant;
+        $this->tenantProvided = true;
     }
 
     /**
@@ -2757,9 +2277,9 @@ final class ApiTestTenantsGetQueryParams
      * so it answers for a request the serializer built and for a DTO assembled by hand alike.
      */
     #[Ignore]
-    public function isTenantQueryProvided(): bool
+    public function isTenantProvided(): bool
     {
-        return $this->tenantQueryProvided;
+        return $this->tenantProvided;
     }
 
     public function getVerbose(): ?bool
@@ -2791,8 +2311,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -2993,25 +2515,35 @@ final class ApplicatorRefs
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    /**
+     * @var array<array<string, mixed>>
+     */
     #[Groups(['read', 'write'])]
+    private readonly array $mustContain;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $positions = null;
 
     #[Ignore]
     private bool $positionsProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $rest = null;
 
     #[Ignore]
     private bool $restProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $closedPair = null;
 
     #[Ignore]
     private bool $closedPairProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
     private mixed $impossible = null;
 
     #[Ignore]
@@ -3019,36 +2551,42 @@ final class ApplicatorRefs
 
     #[Assert\Length(min: 3)]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $vacuous = null;
 
     #[Ignore]
     private bool $vacuousProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $имя = null;
 
     #[Ignore]
     private bool $имяProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $名前 = null;
 
     #[Ignore]
     private bool $名前Provided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
     private mixed $forbiddenKey = null;
 
     #[Ignore]
     private bool $forbiddenKeyProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
     private mixed $neverMatches = null;
 
     #[Ignore]
     private bool $neverMatchesProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $closedFirstSlot = null;
 
     #[Ignore]
@@ -3056,6 +2594,7 @@ final class ApplicatorRefs
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?ApplicatorRefsPoisonedKey $poisonedKey = null;
 
     #[Ignore]
@@ -3063,6 +2602,7 @@ final class ApplicatorRefs
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?ApplicatorRefsConditional $conditional = null;
 
     #[Ignore]
@@ -3070,6 +2610,7 @@ final class ApplicatorRefs
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?ApplicatorRefsKeyed $keyed = null;
 
     #[Ignore]
@@ -3079,10 +2620,9 @@ final class ApplicatorRefs
      * @param array<array<string, mixed>> $mustContain
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $mustContain,
+        array $mustContain,
     ) {
+        $this->mustContain = $mustContain;
     }
 
     /**
@@ -3790,8 +3330,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -3856,6 +3398,7 @@ final class ApplicatorRefsConditional
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $label = null;
 
     #[Ignore]
@@ -4137,8 +3680,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -4200,6 +3745,7 @@ final class ApplicatorRefsKeyed
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $trigger = null;
 
     #[Ignore]
@@ -4472,8 +4018,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -4522,6 +4070,7 @@ final class ApplicatorRefsPoisonedKey
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $trigger = null;
 
     #[Ignore]
@@ -4722,9 +4271,11 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Attribute\SerializedName;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -4740,7 +4291,16 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class AwkwardNames
 {
     #[Groups(['read', 'write'])]
+    private readonly string $plain;
+
+    #[Assert\Length(min: 2)]
+    #[Groups(['read', 'write'])]
+    #[SerializedName('it\'s')]
+    private readonly string $itS;
+
+    #[Groups(['read', 'write'])]
     #[SerializedName('back\slash')]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $backSlash = null;
 
     #[Ignore]
@@ -4749,21 +4309,18 @@ final class AwkwardNames
     #[Assert\Range(min: 1)]
     #[Groups(['read', 'write'])]
     #[SerializedName('both\\\'s')]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $bothS = null;
 
     #[Ignore]
     private bool $bothSProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $plain,
-        #[Assert\NotNull]
-        #[Assert\Length(min: 2)]
-        #[Groups(['read', 'write'])]
-        #[SerializedName('it\'s')]
-        private readonly string $itS,
+        string $plain,
+        string $itS,
     ) {
+        $this->plain = $plain;
+        $this->itS = $itS;
     }
 
     public function getPlain(): string
@@ -4843,11 +4400,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class CallbackJobDonePostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $state;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $state,
+        string $state,
     ) {
+        $this->state = $state;
     }
 
     public function getState(): string
@@ -4880,11 +4439,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class CallbackJobFailedPostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $failure;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $failure,
+        string $failure,
     ) {
+        $this->failure = $failure;
     }
 
     public function getFailure(): string
@@ -4915,14 +4476,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Cat implements Animal, Animal2
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $meow;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $meow,
+        string $name,
+        string $meow,
     ) {
+        $this->name = $name;
+        $this->meow = $meow;
     }
 
     public function getName(): string
@@ -4962,8 +4527,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -4978,22 +4545,25 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ChainLink
 {
+    #[Assert\Length(min: 3)]
+    #[Groups(['read', 'write'])]
+    private readonly string $code;
+
     /**
      * @var ?array<ChainTag>
      */
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $tags = null;
 
     #[Ignore]
     private bool $tagsProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Length(min: 3)]
-        #[Groups(['read', 'write'])]
-        private readonly string $code,
+        string $code,
     ) {
+        $this->code = $code;
     }
 
     public function getCode(): string
@@ -5052,14 +4622,19 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ChainMiddle
 {
     /**
+     * @var array<ChainLink>
+     */
+    #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    private readonly array $links;
+
+    /**
      * @param array<ChainLink> $links
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        #[Assert\Valid]
-        private readonly array $links,
+        array $links,
     ) {
+        $this->links = $links;
     }
 
     /**
@@ -5093,12 +4668,14 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ChainTag
 {
+    #[Assert\Length(min: 2)]
+    #[Groups(['read', 'write'])]
+    private readonly string $label;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Length(min: 2)]
-        #[Groups(['read', 'write'])]
-        private readonly string $label,
+        string $label,
     ) {
+        $this->label = $label;
     }
 
     public function getLabel(): string
@@ -5129,14 +4706,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Circle implements Shape
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $kind;
+
+    #[Groups(['read', 'write'])]
+    private readonly int $radius;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $kind,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $radius,
+        string $kind,
+        int $radius,
     ) {
+        $this->kind = $kind;
+        $this->radius = $radius;
     }
 
     public function getKind(): string
@@ -5157,8 +4738,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -5247,9 +4830,16 @@ final class ContainerAliases
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * @var array<array<string>>
+     */
+    #[Groups(['read', 'write'])]
+    private readonly array $listOfLists;
+
+    /**
      * @var ?array<array<string, mixed>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listOfMaps = null;
 
     #[Ignore]
@@ -5259,6 +4849,7 @@ final class ContainerAliases
      * @var ?array<string, array<string>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $mapOfLists = null;
 
     #[Ignore]
@@ -5269,6 +4860,7 @@ final class ContainerAliases
      */
     #[Assert\All([new Assert\Length(min: 2)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $plain = null;
 
     #[Ignore]
@@ -5278,10 +4870,9 @@ final class ContainerAliases
      * @param array<array<string>> $listOfLists
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $listOfLists,
+        array $listOfLists,
     ) {
+        $this->listOfLists = $listOfLists;
     }
 
     /**
@@ -5673,8 +5264,10 @@ namespace GoldenCorpus;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -5733,9 +5326,9 @@ final class Containers
 
     private const array OPENAPI_PHP_TO_NAME_MAP = [
         'dates' => 'dates',
-        'shapes' => 'shapes',
         'datesByDay' => 'datesByDay',
         'timestamps' => 'timestamps',
+        'shapes' => 'shapes',
         'tagsByKey' => 'tagsByKey',
     ];
 
@@ -5748,10 +5341,18 @@ final class Containers
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * @var array<DateTimeImmutable>
+     */
+    #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
+    #[Groups(['read', 'write'])]
+    private readonly array $dates;
+
+    /**
      * @var ?array<string, DateTimeImmutable>
      */
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $datesByDay = null;
 
     #[Ignore]
@@ -5762,15 +5363,24 @@ final class Containers
      */
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $timestamps = null;
 
     #[Ignore]
     private bool $timestampsProvided = false;
 
     /**
+     * @var array<Shape>
+     */
+    #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    private readonly array $shapes;
+
+    /**
      * @var ?array<string, Tag>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $tagsByKey = null;
 
     #[Ignore]
@@ -5781,15 +5391,11 @@ final class Containers
      * @param array<Shape> $shapes
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
-        #[Groups(['read', 'write'])]
-        private readonly array $dates,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        #[Assert\Valid]
-        private readonly array $shapes,
+        array $dates,
+        array $shapes,
     ) {
+        $this->dates = $dates;
+        $this->shapes = $shapes;
     }
 
     /**
@@ -5815,14 +5421,6 @@ final class Containers
     public function getDatesAsDateTime(): array
     {
         return $this->dates;
-    }
-
-    /**
-     * @return array<Shape>
-     */
-    public function getShapes(): array
-    {
-        return $this->shapes;
     }
 
     /**
@@ -5913,6 +5511,14 @@ final class Containers
     public function isTimestampsProvided(): bool
     {
         return $this->timestampsProvided;
+    }
+
+    /**
+     * @return array<Shape>
+     */
+    public function getShapes(): array
+    {
+        return $this->shapes;
     }
 
     /**
@@ -6537,7 +6143,9 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -6552,13 +6160,19 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Discriminator
 {
+    #[Groups(['read', 'write'])]
+    private readonly DiscriminatorType $type;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
+    private readonly ?string $name;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly DiscriminatorType $type,
-        #[Groups(['read', 'write'])]
-        private readonly ?string $name,
+        DiscriminatorType $type,
+        ?string $name,
     ) {
+        $this->type = $type;
+        $this->name = $name;
     }
 
     public function getType(): DiscriminatorType
@@ -6579,7 +6193,9 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -6594,16 +6210,24 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Discriminator1
 {
+    #[Groups(['read', 'write'])]
+    private readonly DiscriminatorType $type;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
+    private readonly ?string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly DiscriminatorType $type,
-        #[Groups(['read', 'write'])]
-        private readonly ?string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
+        DiscriminatorType $type,
+        ?string $name,
+        int $id,
     ) {
+        $this->type = $type;
+        $this->name = $name;
+        $this->id = $id;
     }
 
     public function getType(): DiscriminatorType
@@ -6629,8 +6253,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\SerializedName;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -6645,20 +6271,30 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Discriminator2
 {
+    #[Groups(['read', 'write'])]
+    private readonly DiscriminatorType $type;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
+    private readonly ?string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    #[Groups(['read', 'write'])]
+    #[SerializedName('NAme')]
+    private readonly string $nAme2;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly DiscriminatorType $type,
-        #[Groups(['read', 'write'])]
-        private readonly ?string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        #[SerializedName('NAme')]
-        private readonly string $nAme2,
+        DiscriminatorType $type,
+        ?string $name,
+        int $id,
+        string $nAme2,
     ) {
+        $this->type = $type;
+        $this->name = $name;
+        $this->id = $id;
+        $this->nAme2 = $nAme2;
     }
 
     public function getType(): DiscriminatorType
@@ -6723,14 +6359,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Dog implements Animal, Animal2
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $bark;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $bark,
+        string $name,
+        string $bark,
     ) {
+        $this->name = $name;
+        $this->bark = $bark;
     }
 
     public function getName(): string
@@ -6785,14 +6425,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Dog2 implements Animal2
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $bark;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $bark,
+        string $name,
+        string $bark,
     ) {
+        $this->name = $name;
+        $this->bark = $bark;
     }
 
     public function getName(): string
@@ -6848,17 +6492,23 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class FileRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly UploadedFile $file;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $surname;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly UploadedFile $file,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $surname,
+        UploadedFile $file,
+        string $name,
+        string $surname,
     ) {
+        $this->file = $file;
+        $this->name = $name;
+        $this->surname = $surname;
     }
 
     public function getFile(): UploadedFile
@@ -6884,8 +6534,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -6953,10 +6605,18 @@ final class ItemBounds
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * @var array<int>
+     */
+    #[Assert\All([new Assert\Range(min: 5)])]
+    #[Groups(['read', 'write'])]
+    private readonly array $scores;
+
+    /**
      * @var ?array<string, int>
      */
     #[Assert\All([new Assert\Range(min: 5)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $scoresByKey = null;
 
     #[Ignore]
@@ -6967,6 +6627,7 @@ final class ItemBounds
      */
     #[Assert\All([new Assert\Length(min: 2), new Assert\Regex('#^[a-z]+$#u'), new Assert\NotBlank(allowNull: true)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $codes = null;
 
     #[Ignore]
@@ -6976,11 +6637,9 @@ final class ItemBounds
      * @param array<int> $scores
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Assert\All([new Assert\Range(min: 5)])]
-        #[Groups(['read', 'write'])]
-        private readonly array $scores,
+        array $scores,
     ) {
+        $this->scores = $scores;
     }
 
     /**
@@ -7288,8 +6947,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -7442,9 +7103,22 @@ final class NestedContainers
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * @var array<array<int>>
+     */
+    #[Groups(['read', 'write'])]
+    private readonly array $matrix;
+
+    /**
+     * @var array<array<string, string>>
+     */
+    #[Groups(['read', 'write'])]
+    private readonly array $rowsOfMaps;
+
+    /**
      * @var ?array<string, array<string>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listsByKey = null;
 
     #[Ignore]
@@ -7454,6 +7128,7 @@ final class NestedContainers
      * @var ?array<string, array<string, int>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $mapsByKey = null;
 
     #[Ignore]
@@ -7463,6 +7138,7 @@ final class NestedContainers
      * @var ?array<array<string>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $dateRows = null;
 
     #[Ignore]
@@ -7472,6 +7148,7 @@ final class NestedContainers
      * @var array<array<float|int>>|null
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $numRows = null;
 
     #[Ignore]
@@ -7481,6 +7158,7 @@ final class NestedContainers
      * @var ?array<array<string>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $enumRows = null;
 
     #[Ignore]
@@ -7490,6 +7168,7 @@ final class NestedContainers
      * @var ?array<array<Tag>>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $tagRows = null;
 
     #[Ignore]
@@ -7500,13 +7179,11 @@ final class NestedContainers
      * @param array<array<string, string>> $rowsOfMaps
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $matrix,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $rowsOfMaps,
+        array $matrix,
+        array $rowsOfMaps,
     ) {
+        $this->matrix = $matrix;
+        $this->rowsOfMaps = $rowsOfMaps;
     }
 
     /**
@@ -8066,8 +7743,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -8146,10 +7825,18 @@ final class NullableContainerValues
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * @var array<?string>
+     */
+    #[Assert\All([new Assert\Length(min: 2)])]
+    #[Groups(['read', 'write'])]
+    private readonly array $listOfNullable;
+
+    /**
      * @var ?array<string, ?int>
      */
     #[Assert\All([new Assert\Range(min: 5)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $mapOfNullable = null;
 
     #[Ignore]
@@ -8159,6 +7846,7 @@ final class NullableContainerValues
      * @var ?array<?string>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listOfNullable31 = null;
 
     #[Ignore]
@@ -8168,6 +7856,7 @@ final class NullableContainerValues
      * @var ?array<string, ?int>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $mapOfNullable31 = null;
 
     #[Ignore]
@@ -8177,11 +7866,9 @@ final class NullableContainerValues
      * @param array<?string> $listOfNullable
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Assert\All([new Assert\Length(min: 2)])]
-        #[Groups(['read', 'write'])]
-        private readonly array $listOfNullable,
+        array $listOfNullable,
     ) {
+        $this->listOfNullable = $listOfNullable;
     }
 
     /**
@@ -8515,8 +8202,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -8590,22 +8279,26 @@ final class ObjectWideRules
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Groups(['read', 'write'])]
+    private readonly string $kind;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $code = null;
 
     #[Ignore]
     private bool $codeProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $extra = null;
 
     #[Ignore]
     private bool $extraProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $kind,
+        string $kind,
     ) {
+        $this->kind = $kind;
     }
 
     public function getKind(): string
@@ -8979,11 +8672,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Pet
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
+        string $name,
     ) {
+        $this->name = $name;
     }
 
     public function getName(): string
@@ -9000,8 +8695,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -9017,33 +8714,33 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ReadOnlyFields
 {
     #[Groups(['read'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?int $serverId = null;
 
     #[Ignore]
     private bool $serverIdProvided = false;
 
+    #[Groups(['read', 'write'])]
+    private readonly string $title;
+
     #[Groups(['read'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?DateTimeImmutable $writtenAt = null;
 
     #[Ignore]
     private bool $writtenAtProvided = false;
 
     #[Groups(['write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $secret = null;
 
     #[Ignore]
     private bool $secretProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $title,
+        string $title,
     ) {
-    }
-
-    public function getTitle(): string
-    {
-        return $this->title;
+        $this->title = $title;
     }
 
     public function getServerId(): ?int
@@ -9065,6 +8762,11 @@ final class ReadOnlyFields
     public function isServerIdProvided(): bool
     {
         return $this->serverIdProvided;
+    }
+
+    public function getTitle(): string
+    {
+        return $this->title;
     }
 
     /**
@@ -9146,11 +8848,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class RetiredShape
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $legacyId;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $legacyId,
+        int $legacyId,
     ) {
+        $this->legacyId = $legacyId;
     }
 
     public function getLegacyId(): int
@@ -9201,14 +8905,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Square implements Shape
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $kind;
+
+    #[Groups(['read', 'write'])]
+    private readonly int $side;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $kind,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $side,
+        string $kind,
+        int $side,
     ) {
+        $this->kind = $kind;
+        $this->side = $side;
     }
 
     public function getKind(): string
@@ -9244,14 +8952,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Tag
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
+        int $id,
+        string $name,
     ) {
+        $this->id = $id;
+        $this->name = $name;
     }
 
     public function getId(): int
@@ -9306,11 +9018,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Test
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
+        int $id,
     ) {
+        $this->id = $id;
     }
 
     public function getId(): int
@@ -9326,8 +9040,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -9342,8 +9058,28 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Test2
 {
+    /**
+     * @var int this is id
+     */
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    /**
+     * @var string this is name
+     */
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    /**
+     * @var array<Tag>
+     */
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    private readonly array $tags;
+
+    #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?User $user = null;
 
     #[Ignore]
@@ -9351,31 +9087,28 @@ final class Test2
 
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?Test2UserType $userType = null;
 
     #[Ignore]
     private bool $userTypeProvided = false;
 
+    #[Groups(['read', 'write'])]
+    private readonly Test2Types $types;
+
     /**
-     * @param int $id this is id
-     * @param string $name this is name
      * @param array<Tag> $tags
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        #[Assert\Valid]
-        private readonly array $tags,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly Test2Types $types,
+        int $id,
+        string $name,
+        array $tags,
+        Test2Types $types,
     ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->tags = $tags;
+        $this->types = $types;
     }
 
     public function getId(): int
@@ -9394,11 +9127,6 @@ final class Test2
     public function getTags(): array
     {
         return $this->tags;
-    }
-
-    public function getTypes(): Test2Types
-    {
-        return $this->types;
     }
 
     public function getUser(): ?User
@@ -9442,6 +9170,11 @@ final class Test2
     {
         return $this->userTypeProvided;
     }
+
+    public function getTypes(): Test2Types
+    {
+        return $this->types;
+    }
 }
 
 ===== Test2Types.php =====
@@ -9470,8 +9203,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -9489,6 +9224,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class Test2UserType
 {
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $region = null;
 
     #[Ignore]
@@ -9562,17 +9298,23 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class TestPatchRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $surname;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $surname,
+        int $id,
+        string $name,
+        string $surname,
     ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->surname = $surname;
     }
 
     public function getId(): int
@@ -9598,8 +9340,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -9689,28 +9433,36 @@ final class TestPostRequest
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly int|string $code;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $homepage = null;
 
     #[Ignore]
     private bool $homepageProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?string $endpoint = null;
 
     #[Ignore]
     private bool $endpointProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int|string $code,
+        int $id,
+        string $name,
+        int|string $code,
     ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->code = $code;
     }
 
     public function getId(): int
@@ -10341,18 +10093,25 @@ final class TreeNode
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    #[Assert\Length(min: 1)]
+    #[Groups(['read', 'write'])]
+    private readonly string $label;
+
+    /**
+     * @var array<string, mixed>
+     */
+    #[Groups(['read', 'write'])]
+    private readonly array $children;
+
     /**
      * @param array<string, mixed> $children
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Assert\Length(min: 1)]
-        #[Groups(['read', 'write'])]
-        private readonly string $label,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $children,
+        string $label,
+        array $children,
     ) {
+        $this->label = $label;
+        $this->children = $children;
     }
 
     public function getLabel(): string
@@ -10785,8 +10544,10 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -10949,9 +10710,9 @@ final class UnionUnderContainer
     ];
 
     private const array OPENAPI_PHP_TO_NAME_MAP = [
-        'tree' => 'tree',
         'chain' => 'chain',
         'chainAllOf' => 'chainAllOf',
+        'tree' => 'tree',
         'listOfUnions' => 'listOfUnions',
     ];
 
@@ -10964,34 +10725,34 @@ final class UnionUnderContainer
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $chain = null;
 
     #[Ignore]
     private bool $chainProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $chainAllOf = null;
 
     #[Ignore]
     private bool $chainAllOfProvided = false;
 
     #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    private readonly TreeNode $tree;
+
+    #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listOfUnions = null;
 
     #[Ignore]
     private bool $listOfUnionsProvided = false;
 
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        #[Assert\Valid]
-        private readonly TreeNode $tree,
+        TreeNode $tree,
     ) {
-    }
-
-    public function getTree(): TreeNode
-    {
-        return $this->tree;
+        $this->tree = $tree;
     }
 
     public function getChain(): ?array
@@ -11034,6 +10795,11 @@ final class UnionUnderContainer
     public function isChainAllOfProvided(): bool
     {
         return $this->chainAllOfProvided;
+    }
+
+    public function getTree(): TreeNode
+    {
+        return $this->tree;
     }
 
     public function getListOfUnions(): ?array
@@ -11546,13 +11312,18 @@ final class UniqueScalars
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * @var array<string>
+     */
+    #[Groups(['read', 'write'])]
+    private readonly array $tags;
+
+    /**
      * @param array<string> $tags
      */
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly array $tags,
+        array $tags,
     ) {
+        $this->tags = $tags;
     }
 
     /**
@@ -11889,8 +11660,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -11905,20 +11678,30 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class User
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
+    private readonly ?Animal2 $pet;
+
+    #[Groups(['read', 'write'])]
+    private readonly DateTimeImmutable $createdAt;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Groups(['read', 'write'])]
-        #[Assert\Valid]
-        private readonly ?Animal2 $pet,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly DateTimeImmutable $createdAt,
+        int $id,
+        string $name,
+        ?Animal2 $pet,
+        DateTimeImmutable $createdAt,
     ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->pet = $pet;
+        $this->createdAt = $createdAt;
     }
 
     public function getId(): int
@@ -11983,8 +11766,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -11999,20 +11784,30 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class User2
 {
+    #[Groups(['read', 'write'])]
+    private readonly int $id;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    #[Assert\Valid]
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
+    private readonly ?User2Pet $pet;
+
+    #[Groups(['read', 'write'])]
+    private readonly DateTimeImmutable $createdAt;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly int $id,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Groups(['read', 'write'])]
-        #[Assert\Valid]
-        private readonly ?User2Pet $pet,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly DateTimeImmutable $createdAt,
+        int $id,
+        string $name,
+        ?User2Pet $pet,
+        DateTimeImmutable $createdAt,
     ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->pet = $pet;
+        $this->createdAt = $createdAt;
     }
 
     public function getId(): int
@@ -12070,20 +11865,28 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class User2Pet
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $name;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $meow;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $bark;
+
+    #[Groups(['read', 'write'])]
+    private readonly string $test;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $name,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $meow,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $bark,
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $test,
+        string $name,
+        string $meow,
+        string $bark,
+        string $test,
     ) {
+        $this->name = $name;
+        $this->meow = $meow;
+        $this->bark = $bark;
+        $this->test = $test;
     }
 
     public function getName(): string
@@ -12152,11 +11955,13 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class WebhookOrderPlacedPostRequest
 {
+    #[Groups(['read', 'write'])]
+    private readonly string $orderId;
+
     public function __construct(
-        #[Assert\NotNull]
-        #[Groups(['read', 'write'])]
-        private readonly string $orderId,
+        string $orderId,
     ) {
+        $this->orderId = $orderId;
     }
 
     public function getOrderId(): string

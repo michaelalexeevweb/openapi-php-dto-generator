@@ -398,7 +398,8 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $this->assertSame('o-2', $payload['id']);
         $this->assertArrayHasKey('created_at', $payload);
         $this->assertStringStartsWith('2026-05-06T07:08:09', (string)$payload['created_at']);
-        $this->assertSame(['email' => null, 'name' => 'Bob'], $payload['customer']);
+        // The optional email was never set, so it is not written at all.
+        $this->assertSame(['name' => 'Bob'], $payload['customer']);
         $this->assertSame([['sku' => 'X', 'qty' => 1]], $payload['items']);
     }
 

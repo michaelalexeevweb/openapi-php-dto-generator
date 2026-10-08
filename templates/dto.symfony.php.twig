@@ -65,7 +65,9 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endif %}
 {% set requiredParams = params|filter(param => param.required) %}
 {% set optionalParams = params|filter(param => not param.required) %}
-{% for param in optionalParams %}
+{# Declared in schema order, not promoted: once a class carries an #[Ignore], Symfony's serializer
+   writes keys in property DECLARATION order, and promoted properties sat after every optional one. #}
+{% for param in params %}
 {% if param.docType is not null or param.docDescription is not null %}
     /**
      * @var {{ param.docType ?? param.declaredType }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
@@ -77,10 +79,17 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% if param.serializedName is not null %}
     #[SerializedName('{{ param.serializedName|php_string }}')]
 {% endif %}
+{% if param.skipNullValues is not null %}
+    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => {{ param.skipNullValues ? 'true' : 'false' }}])]
+{% endif %}
+{% if param.required %}
+    private readonly {{ param.declaredType }} ${{ param.name }};
+{% else %}
     private {{ param.declaredType }} ${{ param.name }}{{ param.default }};
 
     #[Ignore]
     private bool ${{ param.providedFlag }} = false;
+{% endif %}
 
 {% endfor %}
 {% set temporalDefaults = optionalParams|filter(param => param.temporalDefault is not null) %}
@@ -92,70 +101,28 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endfor %}
     }
 {% else %}
-{% set docParams = requiredParams|filter(param => param.docType is not null or param.docDescription is not null) %}
+{% set docParams = requiredParams|filter(param => param.docType is not null) %}
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
-     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
+     * @param {{ param.docType }} ${{ param.name }}
 {% endfor %}
      */
 {% endif %}
     public function __construct(
 {% for param in requiredParams %}
-{% for attribute in param.attributes %}
-        {{ attribute }}
-{% endfor %}
-{% if param.serializedName is not null %}
-        #[SerializedName('{{ param.serializedName|php_string }}')]
-{% endif %}
-        private readonly {{ param.declaredType }} ${{ param.name }},
+        {{ param.declaredType }} ${{ param.name }},
 {% endfor %}
     ) {
+{% for param in requiredParams %}
+        $this->{{ param.name }} = ${{ param.name }};
+{% endfor %}
 {% for param in temporalDefaults %}
         $this->{{ param.name }} = {{ param.temporalDefault|raw }};
 {% endfor %}
     }
 {% endif %}
-{% for param in requiredParams %}
-{% if param.temporalGetterBody is not null %}
-
-    /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-{% if param.temporalGetterDocType is not null %}
-     *
-     * @return {{ param.temporalGetterDocType }}
-{% endif %}
-     */
-    public function {{ param.getter }}(): {{ param.temporalGetterReturnType }}
-    {
-        return {{ param.temporalGetterBody|raw }};
-    }
-
-{% if param.temporalObjectDocType is not null %}
-    /**
-     * @return {{ param.temporalObjectDocType }}
-     */
-{% endif %}
-    #[Ignore]
-    public function {{ param.temporalObjectGetter }}(): {{ param.declaredType }}
-    {
-        return $this->{{ param.name }};
-    }
-{% else %}
-
-{% if param.docType is not null %}
-    /**
-     * @return {{ param.docType }}
-     */
-{% endif %}
-    public function {{ param.getter }}(): {{ param.declaredType }}
-    {
-        return $this->{{ param.name }};
-    }
-{% endif %}
-{% endfor %}
-{% for param in optionalParams %}
+{% for param in params %}
 
 {% if param.temporalGetterBody is not null %}
     /**
@@ -181,7 +148,6 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     {
         return $this->{{ param.name }};
     }
-
 {% else %}
 {% if param.docType is not null %}
     /**
@@ -192,8 +158,9 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     {
         return $this->{{ param.name }};
     }
-
 {% endif %}
+{% if not param.required %}
+
 {% if param.docType is not null %}
     /**
      * @param {{ param.docType }} ${{ param.name }}
@@ -214,6 +181,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     {
         return $this->{{ param.providedFlag }};
     }
+{% endif %}
 {% endfor %}
 {% if validationMethodsBlock is not empty %}
 
