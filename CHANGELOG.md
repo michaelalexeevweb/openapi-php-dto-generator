@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.70 — 2026-10-09
+
+- Symfony query lists read as numbers
+
+Symfony mode:
+
+- `#[MapQueryString]` casts a single query value to the declared type but leaves the items of a list
+  as strings, so `?ids[]=1` failed the DTO's own `integer` check. The query DTO now reads an
+  `integer`, `number` or `boolean` list itself, in its constructor and setter, with `filter_var`; an
+  item that does not read as the type stays a string and is refused at its index. The
+  `#[MapQueryParameter]` workaround from 2.15.69 is no longer needed.
+
 ## 2.15.69 — 2026-10-09
 
 - Symfony create() fills required defaults

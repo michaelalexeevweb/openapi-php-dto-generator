@@ -18,6 +18,7 @@ use Symfony\Component\HttpKernel\Controller\ArgumentResolver\BackedEnumValueReso
 use Symfony\Component\HttpKernel\Controller\ArgumentResolver\RequestPayloadValueResolver;
 use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
 use Symfony\Component\HttpKernel\Event\ControllerArgumentsEvent;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
@@ -33,6 +34,7 @@ use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validation;
 
 /**
@@ -289,6 +291,50 @@ final class SymfonyWireShapeTest extends TestCase
         require_once $target . '/Parcel.php';
         $parcel = \WireLocal\Parcel::create(id: 1, dto: 'a', builtDto: 'b');
         $this->assertSame(['a', 'b'], [$parcel->getDto(), $parcel->getBuiltDto()]);
+    }
+
+    /**
+     * `#[MapQueryString]` casts a single query value but leaves the items of a list as strings; the
+     * DTO reads them itself, and an item that is not of the type still fails at its index.
+     */
+    public function testAQueryListIsReadItemByItem(): void
+    {
+        $target = $this->outputDirectory . '/WireList';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/gadgets' => [
+                    'get' => [
+                        'parameters' => [
+                            ['name' => 'counts', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                            ['name' => 'weights', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'number']]],
+                            ['name' => 'flags', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'boolean']]],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireList', 'symfony');
+        require_once $target . '/GadgetsGetQueryParams.php';
+        $fqcn = \WireList\GadgetsGetQueryParams::class;
+
+        $resolved = $this->resolveQuery($fqcn, '/gadgets?counts[]=1&counts[]=-22&weights[]=1.5&weights[]=2&flags[]=true&flags[]=0');
+        $this->assertSame([1, -22], $resolved->getCounts());
+        $this->assertSame([1.5, 2.0], $resolved->getWeights());
+        $this->assertSame([true, false], $resolved->getFlags());
+
+        try {
+            $this->resolveQuery($fqcn, '/gadgets?counts[]=1&counts[]=x');
+            $this->fail('a non-numeric item must not pass');
+        } catch (HttpException $exception) {
+            $failure = $exception->getPrevious();
+            $this->assertInstanceOf(ValidationFailedException::class, $failure);
+            // Symfony 8 refuses the item in the serializer already, Symfony 7 leaves it to the DTO's
+            // check: the wording differs, the field it is pinned to does not.
+            $this->assertStringStartsWith('counts', $failure->getViolations()->get(0)->getPropertyPath());
+        }
     }
 
     /**

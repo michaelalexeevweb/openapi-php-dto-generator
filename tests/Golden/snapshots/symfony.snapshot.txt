@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12404 lines
+# symfony mode — 77 files, 12424 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1398,6 +1398,8 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -1580,11 +1582,11 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<int> $exploded
+     * @param ?array<int|numeric-string> $exploded
      */
     public function setExploded(?array $exploded): void
     {
-        $this->exploded = $exploded;
+        $this->exploded = $exploded === null ? null : self::readQueryInts($exploded);
         $this->explodedProvided = true;
     }
 
@@ -1634,11 +1636,11 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<int> $spaced
+     * @param ?array<int|numeric-string> $spaced
      */
     public function setSpaced(?array $spaced): void
     {
-        $this->spaced = $spaced;
+        $this->spaced = $spaced === null ? null : self::readQueryInts($spaced);
         $this->spacedProvided = true;
     }
 
@@ -1794,9 +1796,9 @@ final class ApiTestSerializationGetQueryParams
      * The DTO in one expression: required properties as in the constructor, optional ones by name.
      * A null optional argument means "not set" — to send an explicit null, call the setter.
      *
-     * @param ?array<int> $exploded
+     * @param ?array<int|numeric-string> $exploded
      * @param ?array<string> $joined
-     * @param ?array<int> $spaced
+     * @param ?array<int|numeric-string> $spaced
      * @param ?array<string> $piped
      * @param ?array<string, string> $nested
      */
@@ -1841,6 +1843,24 @@ final class ApiTestSerializationGetQueryParams
         }
 
         return $dto;
+    }
+
+    /**
+     * A query list item by item, as the URL carries it: Symfony casts a single query value to the
+     * declared type but not the items of a list. An item that does not read as the type is kept, for
+     * validation to report at its index.
+     *
+     * @param array<mixed> $items
+     * @return array<mixed>
+     */
+    private static function readQueryInts(array $items): array
+    {
+        return array_map(
+            static fn (mixed $item): mixed => is_string($item)
+                ? filter_var($item, \FILTER_VALIDATE_INT, \FILTER_NULL_ON_FAILURE) ?? $item
+                : $item,
+            $items,
+        );
     }
 
     #[Assert\Callback]

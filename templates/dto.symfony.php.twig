@@ -101,11 +101,11 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endfor %}
     }
 {% else %}
-{% set docParams = requiredParams|filter(param => param.docType is not null) %}
+{% set docParams = requiredParams|filter(param => param.inputDocType is not null) %}
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
-     * @param {{ param.docType }} ${{ param.name }}
+     * @param {{ param.inputDocType }} ${{ param.name }}
 {% endfor %}
      */
 {% endif %}
@@ -115,7 +115,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endfor %}
     ) {
 {% for param in requiredParams %}
-        $this->{{ param.name }} = ${{ param.name }};
+        $this->{{ param.name }} = {{ param.assignedValue|raw }};
 {% endfor %}
 {% for param in temporalDefaults %}
         $this->{{ param.name }} = {{ param.temporalDefault|raw }};
@@ -135,14 +135,14 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     }
 {% if not param.required %}
 
-{% if param.docType is not null %}
+{% if param.inputDocType is not null %}
     /**
-     * @param {{ param.docType }} ${{ param.name }}
+     * @param {{ param.inputDocType }} ${{ param.name }}
      */
 {% endif %}
     public function {{ param.setter }}({{ param.declaredType }} ${{ param.name }}): void
     {
-        $this->{{ param.name }} = ${{ param.name }};
+        $this->{{ param.name }} = {{ param.assignedValue|raw }};
         $this->{{ param.providedFlag }} = true;
     }
 
@@ -202,6 +202,26 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endif %}
     }
 {% endif %}
+{% for reader in queryReaders %}
+
+    /**
+     * A query list item by item, as the URL carries it: Symfony casts a single query value to the
+     * declared type but not the items of a list. An item that does not read as the type is kept, for
+     * validation to report at its index.
+     *
+     * @param array<mixed> $items
+     * @return array<mixed>
+     */
+    private static function {{ reader }}(array $items): array
+    {
+        return array_map(
+            static fn (mixed $item): mixed => is_string($item)
+                ? filter_var($item, {{ {'readQueryInts': '\\FILTER_VALIDATE_INT', 'readQueryFloats': '\\FILTER_VALIDATE_FLOAT', 'readQueryBools': '\\FILTER_VALIDATE_BOOL'}[reader] }}, \FILTER_NULL_ON_FAILURE) ?? $item
+                : $item,
+            $items,
+        );
+    }
+{% endfor %}
 {% if temporalFormatters is not empty %}
 {% if 'formatOpenApiDate' in temporalFormatters %}
 

@@ -322,20 +322,11 @@ public function show(int $widgetId, #[MapQueryString] ?WidgetsGetQueryParams $qu
 An operation with no query parameters gets no class at all. `--dto-generator-directory` is ignored
 in this mode: it copies the runtime mode's services, which these DTOs never use.
 
-A numeric list in the query (`?ids[]=1&ids[]=2`) arrives from Symfony as strings, and
-`#[MapQueryString]` casts single values only, not the items of a list — so the generated check
-refuses it. That is the serializer's call, not the DTO's: bind such a parameter as an argument of
-its own, where Symfony's `filter_var` casts and checks every item, and keep the rest in the DTO.
-
-```php
-public function list(
-    #[MapQueryParameter(filter: \FILTER_VALIDATE_INT, validationFailedStatusCode: 400)] array $ids,
-    #[MapQueryString] ?WidgetsGetQueryParams $query = null,
-): Response
-```
-
-`?ids[]=1&ids[]=22` gives `[1, 22]`, `?ids[]=1&ids[]=x` is rejected (404 unless the status code is
-set). `\FILTER_VALIDATE_FLOAT` and `\FILTER_VALIDATE_BOOL` do the same for other item types.
+A list of numbers or booleans in the query (`?ids[]=1&ids[]=22`) arrives from Symfony as strings:
+`#[MapQueryString]` casts a single value to the declared type, not the items of a list. The DTO reads
+such a list itself, in its constructor and setter, with `filter_var` — as `#[MapQueryParameter]`
+does — so `getIds()` returns `[1, 22]`. An item that does not read as the type (`?ids[]=x`) is kept
+as the string and refused by validation at its index, `ids[1]`, never turned into a silent `0`.
 
 ### Dates are formatted by the DTO, not the normalizer
 

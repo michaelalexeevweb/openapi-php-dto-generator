@@ -252,6 +252,12 @@ trait RendersSymfonyDto
         if ($needsIgnore) {
             $useStatements[] = 'Symfony\Component\Serializer\Attribute\Ignore';
         }
+        $queryReaders = [];
+        foreach ($params as $param) {
+            if ($param['queryReader'] !== null) {
+                $queryReaders[$param['queryReader']] = $param['queryReader'];
+            }
+        }
         $temporalFormatters = [];
         foreach ($params as $param) {
             if ($param['temporalFormatter'] !== null) {
@@ -292,6 +298,7 @@ trait RendersSymfonyDto
             'extends' => null,
             'params' => $params,
             'temporalFormatters' => array_values($temporalFormatters),
+            'queryReaders' => array_values($queryReaders),
             'factoryLocal' => $this->symfonyFactoryLocalName($params),
             'validationConstsBlock' => $validationParts['consts'],
             'validationMethodsBlock' => $validationParts['methods'],
@@ -769,6 +776,9 @@ PHP;
      *     factoryDefault: string,
      *     factoryDocType: ?string,
      *     temporalFormatter: ?string,
+     *     queryReader: ?string,
+     *     inputDocType: ?string,
+     *     assignedValue: string,
      *     temporalDefault: ?string,
      * }
      */
@@ -833,6 +843,31 @@ PHP;
         }
         $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
 
+        // `#[MapQueryString]` casts a single query value to the declared scalar, but leaves the items
+        // of a list as the strings the URL carried, so `?ids[]=1` reached the property as `['1']` and
+        // failed its own item check. The DTO reads such a list through a method of its own, the way
+        // `filter_var` does for `#[MapQueryParameter]`; an item that does not read as the type stays a
+        // string, for validation to report at its index.
+        $queryReader = null;
+        $inputDocType = $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null;
+        $factoryDocType = $docType !== null ? $this->composePhpTypeHint($docType, $required ? $declaredNullable : true) : null;
+        if (
+            ($property['inQuery'] ?? false) === true
+            && preg_match('/^array<\??(int|float|bool)(\|null)?>$/', $property['type'], $itemMatch) === 1
+        ) {
+            $queryReader = 'readQuery' . ucfirst($itemMatch[1]) . 's';
+            $itemPattern = '/\b' . $itemMatch[1] . '\b/';
+            $loosened = $itemMatch[1] === 'bool' ? 'bool|string' : $itemMatch[1] . '|numeric-string';
+            $inputDocType = $inputDocType === null ? null : (string)preg_replace($itemPattern, $loosened, $inputDocType, 1);
+            $factoryDocType = $factoryDocType === null ? null : (string)preg_replace($itemPattern, $loosened, $factoryDocType, 1);
+        }
+        $assignedValue = '$' . $property['name'];
+        if ($queryReader !== null) {
+            $assignedValue = $declaredNullable
+                ? sprintf('$%1$s === null ? null : self::%2$s($%1$s)', $property['name'], $queryReader)
+                : sprintf('self::%s($%s)', $queryReader, $property['name']);
+        }
+
         return [
             'declaredType' => $declaredType,
             'docType' => $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null,
@@ -850,6 +885,9 @@ PHP;
             // the serializer a callback of the DTO's own through #[Context].
             'temporalFormatter' => $this->symfonyTemporalFormatter($property),
             'temporalDefault' => $temporalDefault,
+            'queryReader' => $queryReader,
+            'inputDocType' => $inputDocType,
+            'assignedValue' => $assignedValue,
             'setter' => 'set' . ucfirst($property['name']),
             'providedFlag' => $property['name'] . 'Provided',
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
@@ -860,9 +898,7 @@ PHP;
             // `create()` takes an optional property as nullable, null standing for "not set".
             'factoryType' => $required ? $declaredType : $this->composePhpTypeHint(ltrim($declaredType, '?'), true),
             'factoryDefault' => $factoryDefault,
-            'factoryDocType' => $docType === null
-                ? null
-                : $this->composePhpTypeHint($docType, $required ? $declaredNullable : true),
+            'factoryDocType' => $factoryDocType,
             'contextAttribute' => $this->symfonyContextAttribute(
                 name: $property['name'],
                 skipNullValues: $schemaNullable || $phpType === 'mixed' ? false : ($declaredNullable ? true : null),
