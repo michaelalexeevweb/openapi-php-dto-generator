@@ -203,6 +203,9 @@ trait RendersSymfonyDto
         }
 
         $validationConstraints = $this->pruneConstraintsCoveredByPhpType($validationConstraints, $params);
+        if (self::constraintsAreInert($validationConstraints)) {
+            $validationConstraints = [];
+        }
 
         $validationParts = $this->renderInterpreterBlock(
             constraints: $validationConstraints,
@@ -428,6 +431,40 @@ trait RendersSymfonyDto
         return \$payload;
     }
 PHP;
+    }
+
+    /**
+     * Whether a pruned constraint tree can never report anything: it holds only `properties` and
+     * `items` that lead to more of the same, and `nullable`, which merely relaxes a `type` check that
+     * is no longer there. Emitting the interpreter for it added a constant, a callback and some two
+     * hundred lines to a class that the PHP types already describe completely. A boolean `true`
+     * subschema (`items: {}` arrives as one) accepts everything as well.
+     *
+     * @param array<mixed>|bool $schema
+     */
+    private static function constraintsAreInert(array|bool $schema): bool
+    {
+        if (!is_array($schema)) {
+            return $schema;
+        }
+        foreach ($schema as $keyword => $value) {
+            if ($keyword === 'nullable') {
+                continue;
+            }
+            if ($keyword === 'items' && (is_array($value) || is_bool($value)) && self::constraintsAreInert($value)) {
+                continue;
+            }
+            if ($keyword !== 'properties' || !is_array($value)) {
+                return false;
+            }
+            foreach ($value as $propertySchema) {
+                if ((!is_array($propertySchema) && !is_bool($propertySchema)) || !self::constraintsAreInert($propertySchema)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

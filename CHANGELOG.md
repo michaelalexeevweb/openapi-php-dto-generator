@@ -3,6 +3,16 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.67 — 2026-10-09
+
+- Symfony skips callback with nothing to check
+
+A Symfony DTO whose pruned schema held only `nullable`, untyped `items` or properties of the same kind
+still carried `OPENAPI_VALIDATION_CONSTRAINTS`, a `#[Assert\Callback]` and some two hundred lines of
+interpreter that could never report anything. Such a class is now plain properties and accessors. A
+class another DTO's callback reads (`uniqueItems` over its items, for one) keeps the compact payload
+method it needs.
+
 ## 2.15.66 — 2026-10-08
 
 - Symfony keys follow schema order

@@ -145,7 +145,8 @@ own callback and are reached via the `#[Assert\Valid]` cascade.
 | scalar keywords inside callback subschemas (`type`, `enum`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum`, `multipleOf`, `minItems`/`maxItems`, `uniqueItems`, `minProperties`/`maxProperties`, `format`) | enforced recursively in `not`/`if`/`then`/`else`/`contains`/`items`/`propertyNames`/`patternProperties`/`dependentSchemas` |
 
 Callback code is emitted only for keywords that actually occur in the schema, and recursion is capped
-at `OPENAPI_MAX_VALIDATION_DEPTH = 256`.
+at `OPENAPI_MAX_VALIDATION_DEPTH = 256`. A class whose schema the PHP types already describe
+completely — what is left is only `nullable` or an untyped `items` — gets no callback at all.
 
 ## Serialization groups (`readOnly` / `writeOnly`)
 
