@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12380 lines
+# symfony mode — 77 files, 12404 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -239,6 +239,17 @@ final class ApiTest2403
     {
         return $this->message;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A required property with a schema default may be left out here; the constructor, which the
+     * serializer calls, still demands it.
+     */
+    public static function create(
+        string $message = 'Access Denied.',
+    ): self {
+        return new self(message: $message);
+    }
 }
 
 ===== ApiTest2PatchRequest.php =====
@@ -382,6 +393,17 @@ final class ApiTest403
     public function getMessage(): string
     {
         return $this->message;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A required property with a schema default may be left out here; the constructor, which the
+     * serializer calls, still demands it.
+     */
+    public static function create(
+        string $message = 'Access Denied.',
+    ): self {
+        return new self(message: $message);
     }
 }
 
@@ -9718,15 +9740,17 @@ final class Test2
 
     /**
      * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A required property with a schema default may be left out here; the constructor, which the
+     * serializer calls, still demands it.
      * A null optional argument means "not set" — to send an explicit null, call the setter.
      *
      * @param array<Tag> $tags
      */
     public static function create(
-        int $id,
         string $name,
         array $tags,
         Test2Types $types,
+        int $id = 1,
         ?User $user = null,
         ?Test2UserType $userType = null,
     ): self {

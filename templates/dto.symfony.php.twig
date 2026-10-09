@@ -157,11 +157,21 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     }
 {% endif %}
 {% endfor %}
-{% if optionalParams is not empty %}
+{# A required property's schema default goes to create() only: PHP wants every defaulted parameter
+   after the plain ones, and the constructor stays strict for the serializer. #}
+{% set factoryRequiredParams = requiredParams|filter(param => param.factoryDefault is empty)|merge(requiredParams|filter(param => param.factoryDefault is not empty)) %}
+{% set requiredDefaults = requiredParams|filter(param => param.factoryDefault is not empty) %}
+{% if optionalParams is not empty or requiredDefaults is not empty %}
 
     /**
      * The DTO in one expression: required properties as in the constructor, optional ones by name.
+{% if requiredDefaults is not empty %}
+     * A required property with a schema default may be left out here; the constructor, which the
+     * serializer calls, still demands it.
+{% endif %}
+{% if optionalParams is not empty %}
      * A null optional argument means "not set" — to send an explicit null, call the setter.
+{% endif %}
 {% set factoryDocParams = params|filter(param => param.factoryDocType is not null) %}
 {% if factoryDocParams is not empty %}
      *
@@ -171,13 +181,16 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endif %}
      */
     public static function create(
-{% for param in requiredParams %}
-        {{ param.factoryType }} ${{ param.name }},
+{% for param in factoryRequiredParams %}
+        {{ param.factoryType }} ${{ param.name }}{{ param.factoryDefault|raw }},
 {% endfor %}
 {% for param in optionalParams %}
         {{ param.factoryType }} ${{ param.name }} = null,
 {% endfor %}
     ): self {
+{% if optionalParams is empty %}
+        return new self({% for param in requiredParams %}{{ param.name }}: ${{ param.name }}{{ loop.last ? '' : ', ' }}{% endfor %});
+{% else %}
         ${{ factoryLocal }} = new self({% for param in requiredParams %}{{ param.name }}: ${{ param.name }}{{ loop.last ? '' : ', ' }}{% endfor %});
 {% for param in optionalParams %}
         if (${{ param.name }} !== null) {
@@ -186,6 +199,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endfor %}
 
         return ${{ factoryLocal }};
+{% endif %}
     }
 {% endif %}
 {% if temporalFormatters is not empty %}

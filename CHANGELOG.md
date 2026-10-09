@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.69 — 2026-10-09
+
+- Symfony create() fills required defaults
+- Symfony numeric query lists documented
+
+Symfony mode:
+
+- a required property's schema `default` was dropped, so code building a response repeated it at
+  every call. It is now the default of that parameter in `create()`, which is emitted for such a
+  class even with no optional property. The constructor keeps no default: it is what the serializer
+  calls, and a request that omits the field is still refused.
+- `#[MapQueryString]` does not cast the items of a query list, so `?ids[]=1` stays a string. The
+  README shows the framework's own answer, `#[MapQueryParameter(filter: \FILTER_VALIDATE_INT)]` on a
+  separate argument.
+
 ## 2.15.68 — 2026-10-09
 
 - Symfony date getters return DateTimeImmutable

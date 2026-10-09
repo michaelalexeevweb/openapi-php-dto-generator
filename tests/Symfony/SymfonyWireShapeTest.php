@@ -7,6 +7,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Symfony;
 use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionProperty;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -22,6 +23,7 @@ use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
 use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
@@ -287,6 +289,46 @@ final class SymfonyWireShapeTest extends TestCase
         require_once $target . '/Parcel.php';
         $parcel = \WireLocal\Parcel::create(id: 1, dto: 'a', builtDto: 'b');
         $this->assertSame(['a', 'b'], [$parcel->getDto(), $parcel->getBuiltDto()]);
+    }
+
+    /**
+     * A required property's schema default is there for the code that builds the DTO, never for a
+     * payload: `create()` fills it, the constructor the serializer calls still demands it.
+     */
+    public function testARequiredDefaultFillsCreateButNotAPayload(): void
+    {
+        $target = $this->outputDirectory . '/WireReceipt';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'Receipt' => [
+                        'type' => 'object',
+                        'required' => ['status', 'id'],
+                        'properties' => [
+                            'status' => ['type' => 'string', 'default' => 'done'],
+                            'id' => ['type' => 'integer'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireReceipt', 'symfony');
+        require_once $target . '/Receipt.php';
+
+        $constructor = new ReflectionMethod(\WireReceipt\Receipt::class, '__construct');
+        foreach ($constructor->getParameters() as $parameter) {
+            $this->assertFalse($parameter->isDefaultValueAvailable(), $parameter->getName());
+        }
+
+        $receipt = \WireReceipt\Receipt::create(id: 7);
+        $this->assertSame('{"status":"done","id":7}', $this->serializer()->serialize($receipt, 'json'));
+        $this->assertSame('held', \WireReceipt\Receipt::create(id: 7, status: 'held')->getStatus());
+
+        $this->expectException(MissingConstructorArgumentsException::class);
+        $this->serializer()->deserialize('{"id":7}', \WireReceipt\Receipt::class, 'json');
     }
 
     /**

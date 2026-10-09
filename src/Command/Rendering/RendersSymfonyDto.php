@@ -766,6 +766,7 @@ PHP;
      *     providedGetter: string,
      *     contextAttribute: ?string,
      *     factoryType: string,
+     *     factoryDefault: string,
      *     factoryDocType: ?string,
      *     temporalFormatter: ?string,
      *     temporalDefault: ?string,
@@ -814,6 +815,16 @@ PHP;
                 $defaultLiteral = $rendered;
             }
         }
+        // A REQUIRED property's default lives in `create()` only. The constructor is what the
+        // serializer calls, and a default there would let a request that omits the field through
+        // without an error; the factory is what code building a response calls, and it is where
+        // the default saves the caller from repeating it. PHP allows `new` in a parameter default,
+        // so a temporal default needs no special case here.
+        $factoryDefault = '';
+        if ($required && $default !== null) {
+            $factoryDefault = $this->renderDefaultValue($default, $phpType, $this->composePhpTypeHint($phpType, $schemaNullable));
+        }
+
         // Without a usable default an optional property starts as null, so its type must admit it.
         $hasDefault = $defaultLiteral !== '' || $temporalDefault !== null;
         $declaredNullable = $schemaNullable || (!$required && !$hasDefault);
@@ -848,6 +859,7 @@ PHP;
             // keeps its null even under a parent, or a global, that skips them.
             // `create()` takes an optional property as nullable, null standing for "not set".
             'factoryType' => $required ? $declaredType : $this->composePhpTypeHint(ltrim($declaredType, '?'), true),
+            'factoryDefault' => $factoryDefault,
             'factoryDocType' => $docType === null
                 ? null
                 : $this->composePhpTypeHint($docType, $required ? $declaredNullable : true),

@@ -75,6 +75,14 @@ Building one by hand: `create()` takes every field in one expression — require
 constructor, optional ones by name. An optional argument left out or passed as `null` is not set;
 to send an explicit `null`, call the setter.
 
+A required property with a schema `default` may be left out of `create()`, which fills the default.
+The constructor still demands it: that is what the serializer calls, so a request that omits the
+field is refused as before.
+
+```php
+$receipt = Receipt::create(id: 7);   // status: 'done' from the schema
+```
+
 ```php
 $user = User::create(id: 1, name: 'John');
 
@@ -314,9 +322,20 @@ public function show(int $widgetId, #[MapQueryString] ?WidgetsGetQueryParams $qu
 An operation with no query parameters gets no class at all. `--dto-generator-directory` is ignored
 in this mode: it copies the runtime mode's services, which these DTOs never use.
 
-A numeric list in the query (`?ids[]=1&ids[]=2`) arrives from Symfony as strings and is not cast
-item by item, so the generated check refuses it; bind such a parameter with
-`#[MapQueryParameter(filter: \FILTER_VALIDATE_INT)]` instead.
+A numeric list in the query (`?ids[]=1&ids[]=2`) arrives from Symfony as strings, and
+`#[MapQueryString]` casts single values only, not the items of a list — so the generated check
+refuses it. That is the serializer's call, not the DTO's: bind such a parameter as an argument of
+its own, where Symfony's `filter_var` casts and checks every item, and keep the rest in the DTO.
+
+```php
+public function list(
+    #[MapQueryParameter(filter: \FILTER_VALIDATE_INT, validationFailedStatusCode: 400)] array $ids,
+    #[MapQueryString] ?WidgetsGetQueryParams $query = null,
+): Response
+```
+
+`?ids[]=1&ids[]=22` gives `[1, 22]`, `?ids[]=1&ids[]=x` is rejected (404 unless the status code is
+set). `\FILTER_VALIDATE_FLOAT` and `\FILTER_VALIDATE_BOOL` do the same for other item types.
 
 ### Dates are formatted by the DTO, not the normalizer
 
