@@ -176,8 +176,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $serializer = $this->serializer();
 
         $event = $serializer->denormalize(['at' => '2026-01-02T03:04:05+00:00'], $eventClass);
-        $this->assertInstanceOf(DateTimeImmutable::class, $event->getAtAsDateTime());
-        $this->assertSame('2026-01-02T03:04:05+00:00', $event->getAt());
+        $this->assertInstanceOf(DateTimeImmutable::class, $event->getAt());
+        $this->assertSame('2026-01-02T03:04:05+00:00', $event->getAt()->format('c'));
     }
 
     public function testScalarAndEnumDefaultsAreRendered(): void
@@ -811,7 +811,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         // two live in different parts of the class rather than in one argument list.
         $this->assertStringContainsString('private readonly string $b;', $content);
         $this->assertStringContainsString('private ?string $a = null;', $content);
-        $this->assertStringNotContainsString('string $a = null,', $content);
+        $this->assertStringContainsString("public function __construct(\n        string \$b,\n    )", $content);
 
         require_once $this->outputDirectory . '/Order.php';
         $cls = $ns . '\Order';
@@ -926,8 +926,8 @@ final class SymfonyDtoBehaviorTest extends TestCase
         require_once $this->outputDirectory . '/Day.php';
         $cls = $ns . '\Day';
         $object = $this->serializer()->denormalize(['on' => '2026-03-04'], $cls);
-        $this->assertInstanceOf(DateTimeImmutable::class, $object->getOnAsDateTime());
-        $this->assertSame('2026-03-04', $object->getOn());
+        $this->assertInstanceOf(DateTimeImmutable::class, $object->getOn());
+        $this->assertSame('2026-03-04', $object->getOn()->format('Y-m-d'));
     }
 
     public function testReservedWordAndKebabPropertyNamesGenerateValidDto(): void
@@ -1064,9 +1064,9 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
     /**
      * Symfony's DateTimeNormalizer has one fixed pattern: it would turn `format: date` into a full
-     * timestamp and drop the sub-second precision of a date-time. The generated getter formats the
-     * value itself instead — the same rule runtime mode uses — and an #[Ignore]d companion still
-     * hands out the object.
+     * timestamp and drop the sub-second precision of a date-time. The property hands the serializer
+     * the DTO's own formatter through #[Context] instead — the same rule runtime mode uses — while
+     * the getter returns the object.
      */
     public function testTemporalGettersFormatAsTheSchemaDeclares(): void
     {
@@ -1102,20 +1102,22 @@ final class SymfonyDtoBehaviorTest extends TestCase
             ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
             $fqcn,
         );
-        $this->assertSame('2026-03-10T12:00:00.123456+03:00', $withMicroseconds->getAt());
-        $this->assertSame('2026-03-10', $withMicroseconds->getOn(), 'a date must not grow a time part');
+        $this->assertInstanceOf(DateTimeImmutable::class, $withMicroseconds->getAt());
+        $this->assertSame('123456', $withMicroseconds->getAt()->format('u'));
+        $this->assertSame('2026-03-10', $withMicroseconds->getOn()->format('Y-m-d'));
 
         $withoutMicroseconds = $serializer->denormalize(
             ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
             $fqcn,
         );
-        $this->assertSame('2026-03-10T12:00:00+00:00', $withoutMicroseconds->getAt());
-
-        // The object is still reachable, and stays out of the serialized output.
-        $this->assertInstanceOf(DateTimeImmutable::class, $withMicroseconds->getAtAsDateTime());
+        $this->assertSame(
+            ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
+            $serializer->normalize($withoutMicroseconds),
+        );
         $this->assertSame(
             ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
             $serializer->normalize($withMicroseconds),
+            'a date must not grow a time part, a date-time keeps its precision',
         );
     }
 }

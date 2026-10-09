@@ -351,8 +351,8 @@ final class SymfonySerdeRoundTripTest extends TestCase
 
         $this->assertSame('o-1', $order->getId());
         $this->assertSame(($ns . '\Status')::from(1), $order->getStatus());
-        $this->assertInstanceOf(DateTimeImmutable::class, $order->getCreatedAtAsDateTime());
-        $this->assertSame('2026-01-02T03:04:05+00:00', $order->getCreatedAt());
+        $this->assertInstanceOf(DateTimeImmutable::class, $order->getCreatedAt());
+        $this->assertSame('2026-01-02T03:04:05+00:00', $order->getCreatedAt()->format('c'));
         // Nested DTO denormalized into a typed object.
         $this->assertInstanceOf($ns . '\Customer', $order->getCustomer());
         $this->assertSame('Alice', $order->getCustomer()->getName());

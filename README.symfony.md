@@ -71,10 +71,14 @@ final class User
 }
 ```
 
-Building one by hand: required fields go through the constructor, optional ones through setters.
+Building one by hand: `create()` takes every field in one expression — required ones as in the
+constructor, optional ones by name. An optional argument left out or passed as `null` is not set;
+to send an explicit `null`, call the setter.
 
 ```php
-$user = new User(id: 1);
+$user = User::create(id: 1, name: 'John');
+
+$user = new User(id: 1);       // the same, step by step
 $user->setName('John');
 ```
 
@@ -114,8 +118,8 @@ For direct Serializer calls, pass `['require_all_properties' => true]` as the fo
 | `enum` | generated PHP backed enum when representable; inline Choice for non-nullable string/bool members; callback for numeric, structural and nullable enums |
 | `format: email` / `uuid` / `url` / `ipv4`,`ipv6` / `hostname` | `#[Assert\Email]` / `Uuid` / `Url` / `Ip` / `Hostname` |
 | `format: int32` / `uint32` | `#[Assert\Range]` (bounds) |
-| `format: date` / `date-time` | `DateTimeImmutable` property; the getter returns the formatted string and `getXAsDateTime()` the object (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
-| `items` / `additionalProperties` with `format: date` / `date-time` | `array<DateTimeImmutable>`; same pair of getters, per item (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
+| `format: date` / `date-time` | `DateTimeImmutable` property and getter; written as the schema says through a `#[Context]` callback (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
+| `items` / `additionalProperties` with `format: date` / `date-time` | `array<DateTimeImmutable>`; written per item the same way (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `format: binary` | `UploadedFile` type |
 | `items` (scalar) / `additionalProperties` | `#[Assert\All([...])]` |
 | `anyOf` | `#[Assert\AtLeastOneOf([...])]` |
@@ -318,28 +322,26 @@ item by item, so the generated check refuses it; bind such a parameter with
 
 Symfony's `DateTimeNormalizer` has one fixed pattern per context, which cannot express what OpenAPI
 asks for: `format: date` must stay a date, and a `date-time` must keep the sub-second precision the
-payload carried. So the generated getter formats the value itself — the same rule runtime mode uses:
+payload carried. So a date property hands the serializer a formatter of the DTO's own, through
+Symfony's `#[Context]` callback — the same rule runtime mode uses — and nothing has to be registered:
 
 ```php
-$dto->getAt();             // "2026-03-10T12:00:00.123456+03:00" — precision preserved
-$dto->getOn();             // "2026-03-10" — a date, not a timestamp
-$dto->getAtAsDateTime();   // the DateTimeImmutable, #[Ignore]d so it stays out of the output
+#[Context(normalizationContext: [
+    AbstractObjectNormalizer::CALLBACKS => ['at' => [self::class, 'formatOpenApiDateTime']],
+])]
+private readonly DateTimeImmutable $at;
 ```
 
-The property itself is still a `DateTimeImmutable`, so denormalization, `#[Assert\*]` and the
-`#[Assert\Valid]` cascade are unchanged — only the read side differs.
+```php
+$dto->getAt();                       // DateTimeImmutable
+$serializer->serialize($dto, 'json'); // {"at":"2026-03-10T12:00:00.123456+03:00","on":"2026-03-10"}
+```
 
-A CONTAINER of dates gets the same pair. `items: {type: string, format: date}` types the ITEM as
-`DateTimeImmutable` — `ArrayDenormalizer` casts each one — and without a formatting getter every
-element left as an RFC 3339 date-time, contradicting the `format: date` it came from:
+A CONTAINER of dates is written item by item, and a map keeps its keys:
 
 ```php
-/** @return array<string> */          $dto->getDates();              // ["2026-03-10", "2026-03-11"]
-/** @return array<DateTimeImmutable> */ $dto->getDatesAsDateTime();  // the objects
-
-// A map keeps its keys through both:
-$dto->getDatesByDay();               // ["mon" => "2026-03-09"]
-$dto->getDatesByDayAsDateTime();     // ["mon" => DateTimeImmutable]
+/** @return array<string, DateTimeImmutable> */ $dto->getDatesByDay();  // ["mon" => DateTimeImmutable]
+// on the wire: {"datesByDay":{"mon":"2026-03-09"}}
 ```
 
 Where the items are really dates and where they are strings differs by mode — see

@@ -159,10 +159,8 @@ trait RendersSymfonyDto
                     $needsIgnore = true;
                 }
             }
-            // Every optional property carries a presence flag plus an #[Ignore]d accessor for it,
-            // and a temporal property carries an #[Ignore]d companion returning the object — so the
-            // attribute is needed as soon as either exists.
-            if ($param['required'] !== true || $param['temporalGetterBody'] !== null) {
+            // Every optional property carries a presence flag plus an #[Ignore]d accessor for it.
+            if ($param['required'] !== true) {
                 $needsIgnore = true;
             }
             $params[] = $param;
@@ -228,7 +226,17 @@ trait RendersSymfonyDto
             $validationParts['methods'] = $this->renderSymfonyStandalonePayloadMethod($params);
         }
 
-        $useStatements[] = 'Symfony\Component\Validator\Constraints as Assert';
+        // Only where an attribute uses it: since NotNull and the empty callback went, many classes
+        // carry no constraint at all, and an unused import trips `no_unused_imports` in the consumer.
+        $usesAssert = str_contains($validationParts['methods'], 'Assert\\');
+        foreach ($params as $param) {
+            foreach ($param['attributes'] as $attribute) {
+                $usesAssert = $usesAssert || str_contains($attribute, 'Assert\\');
+            }
+        }
+        if ($usesAssert) {
+            $useStatements[] = 'Symfony\Component\Validator\Constraints as Assert';
+        }
         if (str_contains($validationParts['methods'], 'ExecutionContextInterface')) {
             $useStatements[] = 'Symfony\Component\Validator\Context\ExecutionContextInterface';
         }
@@ -244,8 +252,17 @@ trait RendersSymfonyDto
         if ($needsIgnore) {
             $useStatements[] = 'Symfony\Component\Serializer\Attribute\Ignore';
         }
+        $temporalFormatters = [];
         foreach ($params as $param) {
-            if ($param['skipNullValues'] !== null) {
+            if ($param['temporalFormatter'] !== null) {
+                $temporalFormatters[$param['temporalFormatter']] = $param['temporalFormatter'];
+            }
+        }
+        if ($temporalFormatters !== []) {
+            $useStatements[] = 'DateTimeInterface';
+        }
+        foreach ($params as $param) {
+            if ($param['contextAttribute'] !== null) {
                 $useStatements[] = 'Symfony\Component\Serializer\Attribute\Context';
                 $useStatements[] = 'Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer';
                 break;
@@ -274,6 +291,8 @@ trait RendersSymfonyDto
             'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'extends' => null,
             'params' => $params,
+            'temporalFormatters' => array_values($temporalFormatters),
+            'factoryLocal' => $this->symfonyFactoryLocalName($params),
             'validationConstsBlock' => $validationParts['consts'],
             'validationMethodsBlock' => $validationParts['methods'],
             'serializationGroups' => $needsGroups,
@@ -745,13 +764,11 @@ PHP;
      *     setter: string,
      *     providedFlag: string,
      *     providedGetter: string,
-     *     skipNullValues: bool|null,
+     *     contextAttribute: ?string,
+     *     factoryType: string,
+     *     factoryDocType: ?string,
+     *     temporalFormatter: ?string,
      *     temporalDefault: ?string,
-     *     temporalGetterBody: ?string,
-     *     temporalGetterReturnType: string,
-     *     temporalGetterDocType: ?string,
-     *     temporalObjectDocType: ?string,
-     *     temporalObjectGetter: string,
      * }
      */
     private function resolveSymfonyParam(array $property, string $namespace): array
@@ -815,24 +832,13 @@ PHP;
             'attributes' => $this->resolveSymfonyAttributes($property),
             'docDescription' => $this->resolveSymfonyDocDescription($property),
             'getter' => 'get' . ucfirst($property['name']),
-            // A temporal property is stored as DateTimeImmutable but READ as the string the schema
-            // asks for: `format: date` must not grow a time part, and a date-time must keep the
-            // sub-second precision the payload had. Symfony's DateTimeNormalizer has one fixed
-            // pattern and can express neither, so the getter formats and an #[Ignore]d companion
-            // hands out the object.
-            'temporalGetterBody' => $this->symfonyTemporalGetterBody($property)
-                ?? $this->symfonyTemporalArrayGetterBody($property),
-            // A temporal SCALAR reads as a string; a temporal ARRAY stays an array and its ITEMS
-            // become the strings, so only the docblock changes there.
-            'temporalGetterReturnType' => str_replace('DateTimeImmutable', 'string', $declaredType),
-            'temporalGetterDocType' => $docType !== null
-                ? str_replace('DateTimeImmutable', 'string', $this->composePhpTypeHint($docType, $declaredNullable))
-                : null,
-            'temporalObjectDocType' => $docType !== null
-                ? $this->composePhpTypeHint($docType, $declaredNullable)
-                : null,
+            // A temporal property is a DateTimeImmutable to the code that reads it, and the string
+            // the schema asks for on the wire: `format: date` must not grow a time part, and a
+            // date-time must keep the sub-second precision the payload had. Symfony's
+            // DateTimeNormalizer has one fixed pattern and can express neither, so the property hands
+            // the serializer a callback of the DTO's own through #[Context].
+            'temporalFormatter' => $this->symfonyTemporalFormatter($property),
             'temporalDefault' => $temporalDefault,
-            'temporalObjectGetter' => 'get' . ucfirst($property['name']) . 'AsDateTime',
             'setter' => 'set' . ucfirst($property['name']),
             'providedFlag' => $property['name'] . 'Provided',
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
@@ -840,8 +846,85 @@ PHP;
             // property, since a parent's context reaches its children. Null on an optional property the
             // schema does not let be null can only mean "never set", so it is dropped; a nullable one
             // keeps its null even under a parent, or a global, that skips them.
-            'skipNullValues' => $schemaNullable || $phpType === 'mixed' ? false : ($declaredNullable ? true : null),
+            // `create()` takes an optional property as nullable, null standing for "not set".
+            'factoryType' => $required ? $declaredType : $this->composePhpTypeHint(ltrim($declaredType, '?'), true),
+            'factoryDocType' => $docType === null
+                ? null
+                : $this->composePhpTypeHint($docType, $required ? $declaredNullable : true),
+            'contextAttribute' => $this->symfonyContextAttribute(
+                name: $property['name'],
+                skipNullValues: $schemaNullable || $phpType === 'mixed' ? false : ($declaredNullable ? true : null),
+                temporalFormatter: $this->symfonyTemporalFormatter($property),
+            ),
         ];
+    }
+
+    /**
+     * The local `create()` builds the DTO in. Its parameters are the property names, so the local
+     * takes the first camelCase name none of them uses.
+     *
+     * @param array<int, array{name: string}> $params
+     */
+    private function symfonyFactoryLocalName(array $params): string
+    {
+        $taken = array_column($params, 'name');
+        $candidate = 'dto';
+        $suffix = 1;
+        while (in_array($candidate, $taken, true)) {
+            $candidate = 'builtDto' . ($suffix === 1 ? '' : $suffix);
+            $suffix++;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * The one #[Context] a property carries, or null when it needs none: its own null policy and,
+     * for a date, the DTO's formatter as the serializer callback.
+     */
+    private function symfonyContextAttribute(string $name, ?bool $skipNullValues, ?string $temporalFormatter): ?string
+    {
+        $entries = [];
+        if ($skipNullValues !== null) {
+            $entries[] = 'AbstractObjectNormalizer::SKIP_NULL_VALUES => ' . ($skipNullValues ? 'true' : 'false');
+        }
+        if ($temporalFormatter !== null) {
+            $entries[] = sprintf(
+                'AbstractObjectNormalizer::CALLBACKS => [%s => [self::class, %s]]',
+                var_export($name, true),
+                var_export($temporalFormatter, true),
+            );
+        }
+
+        if ($entries === []) {
+            return null;
+        }
+        if ($temporalFormatter === null) {
+            return '#[Context(normalizationContext: [' . implode(', ', $entries) . '])]';
+        }
+
+        // With a callback the line runs long; one entry per line, as php-cs-fixer would lay it out.
+        return "#[Context(normalizationContext: [\n        " . implode(",\n        ", $entries) . ",\n    ])]";
+    }
+
+    /**
+     * The static formatter a date property hands the serializer, or null when it holds no dates.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyTemporalFormatter(array $property): ?string
+    {
+        $format = null;
+        if ($this->symfonyPropertyIsTemporalScalar($property)) {
+            $format = $property['temporalFormat'] ?? null;
+        } elseif ($this->propertyHasTemporalItems($property)) {
+            $format = $property['itemsTemporalFormat'] ?? null;
+        }
+        if (!is_string($format)) {
+            return null;
+        }
+
+        return $format === 'Y-m-d' ? 'formatOpenApiDate' : 'formatOpenApiDateTime';
     }
 
     /**

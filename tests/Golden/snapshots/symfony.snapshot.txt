@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 11737 lines
+# symfony mode — 77 files, 12380 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -121,7 +121,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -176,7 +175,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -213,7 +211,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -252,7 +249,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -301,7 +297,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -360,7 +355,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -479,6 +473,25 @@ final class ApiTestCatsActionsGetQueryParams
     {
         return $this->limitProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?int $page = null,
+        ?int $limit = null,
+    ): self {
+        $dto = new self();
+        if ($page !== null) {
+            $dto->setPage($page);
+        }
+        if ($limit !== null) {
+            $dto->setLimit($limit);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ApiTestCatsActionsPostQueryParams.php =====
@@ -568,6 +581,25 @@ final class ApiTestCatsActionsPostQueryParams
     public function isLimitProvided(): bool
     {
         return $this->limitProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?int $page = null,
+        ?int $limit = null,
+    ): self {
+        $dto = new self();
+        if ($page !== null) {
+            $dto->setPage($page);
+        }
+        if ($limit !== null) {
+            $dto->setLimit($limit);
+        }
+
+        return $dto;
     }
 }
 
@@ -659,6 +691,25 @@ final class ApiTestDogsTagsGetQueryParams
     {
         return $this->limitProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?int $page = null,
+        ?int $limit = null,
+    ): self {
+        $dto = new self();
+        if ($page !== null) {
+            $dto->setPage($page);
+        }
+        if ($limit !== null) {
+            $dto->setLimit($limit);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ApiTestDogsTagsPatchQueryParams.php =====
@@ -749,6 +800,25 @@ final class ApiTestDogsTagsPatchQueryParams
     {
         return $this->limitProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?int $page = null,
+        ?int $limit = null,
+    ): self {
+        $dto = new self();
+        if ($page !== null) {
+            $dto->setPage($page);
+        }
+        if ($limit !== null) {
+            $dto->setLimit($limit);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ApiTestFilePostRequest.php =====
@@ -760,7 +830,6 @@ namespace GoldenCorpus;
 
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -799,7 +868,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -838,7 +906,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -877,7 +944,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -916,7 +982,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -955,7 +1020,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -999,7 +1063,6 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1048,6 +1111,21 @@ final class ApiTestLegacyPostQueryParams
     {
         return $this->legacyFlagProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?bool $legacyFlag = null,
+    ): self {
+        $dto = new self();
+        if ($legacyFlag !== null) {
+            $dto->setLegacyFlag($legacyFlag);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ApiTestLegacyPostRequest.php =====
@@ -1058,7 +1136,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1099,7 +1176,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1138,7 +1214,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1177,7 +1252,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1216,7 +1290,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1255,7 +1328,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1696,6 +1768,59 @@ final class ApiTestSerializationGetQueryParams
         return $this->filterProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param ?array<int> $exploded
+     * @param ?array<string> $joined
+     * @param ?array<int> $spaced
+     * @param ?array<string> $piped
+     * @param ?array<string, string> $nested
+     */
+    public static function create(
+        ?array $exploded = null,
+        ?array $joined = null,
+        ?array $spaced = null,
+        ?array $piped = null,
+        ?array $nested = null,
+        ?bool $flag = null,
+        ?string $strict = null,
+        ?string $raw = null,
+        ?ApiTestSerializationGetQueryParamsFilter $filter = null,
+    ): self {
+        $dto = new self();
+        if ($exploded !== null) {
+            $dto->setExploded($exploded);
+        }
+        if ($joined !== null) {
+            $dto->setJoined($joined);
+        }
+        if ($spaced !== null) {
+            $dto->setSpaced($spaced);
+        }
+        if ($piped !== null) {
+            $dto->setPiped($piped);
+        }
+        if ($nested !== null) {
+            $dto->setNested($nested);
+        }
+        if ($flag !== null) {
+            $dto->setFlag($flag);
+        }
+        if ($strict !== null) {
+            $dto->setStrict($strict);
+        }
+        if ($raw !== null) {
+            $dto->setRaw($raw);
+        }
+        if ($filter !== null) {
+            $dto->setFilter($filter);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -1956,11 +2081,14 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
+
+use function array_map;
+use function is_array;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1978,7 +2106,10 @@ use Symfony\Component\Validator\Constraints as Assert;
 final class ApiTestSerializationGetQueryParamsFilter
 {
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['since' => [self::class, 'formatOpenApiDate']],
+    ])]
     private ?DateTimeImmutable $since = null;
 
     #[Ignore]
@@ -1988,17 +2119,7 @@ final class ApiTestSerializationGetQueryParamsFilter
     {
     }
 
-    /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     */
-    public function getSince(): ?string
-    {
-        return $this->since === null ? null : $this->since->format('Y-m-d');
-    }
-
-    #[Ignore]
-    public function getSinceAsDateTime(): ?DateTimeImmutable
+    public function getSince(): ?DateTimeImmutable
     {
         return $this->since;
     }
@@ -2017,6 +2138,35 @@ final class ApiTestSerializationGetQueryParamsFilter
     public function isSinceProvided(): bool
     {
         return $this->sinceProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?DateTimeImmutable $since = null,
+    ): self {
+        $dto = new self();
+        if ($since !== null) {
+            $dto->setSince($since);
+        }
+
+        return $dto;
+    }
+
+    /**
+     * A `format: date` value the way the schema writes it — a date, never a timestamp. The serializer
+     * calls it through the property's #[Context] callback; a container is written item by item, and
+     * anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDate(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDate(...), $value);
+        }
+
+        return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
     }
 
     /**
@@ -2051,7 +2201,6 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -2098,6 +2247,21 @@ final class ApiTestSharedPathGetQueryParams
     {
         return $this->cursorProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?string $cursor = null,
+    ): self {
+        $dto = new self();
+        if ($cursor !== null) {
+            $dto->setCursor($cursor);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ApiTestTenantsDeleteQueryParams.php =====
@@ -2111,7 +2275,6 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -2186,6 +2349,25 @@ final class ApiTestTenantsDeleteQueryParams
     {
         return $this->tenantProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?string $region = null,
+        ?string $tenant = null,
+    ): self {
+        $dto = new self();
+        if ($region !== null) {
+            $dto->setRegion($region);
+        }
+        if ($tenant !== null) {
+            $dto->setTenant($tenant);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ApiTestTenantsGetQueryParams.php =====
@@ -2199,7 +2381,6 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -2301,6 +2482,29 @@ final class ApiTestTenantsGetQueryParams
     public function isVerboseProvided(): bool
     {
         return $this->verboseProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?int $region = null,
+        ?string $tenant = null,
+        ?bool $verbose = null,
+    ): self {
+        $dto = new self();
+        if ($region !== null) {
+            $dto->setRegion($region);
+        }
+        if ($tenant !== null) {
+            $dto->setTenant($tenant);
+        }
+        if ($verbose !== null) {
+            $dto->setVerbose($verbose);
+        }
+
+        return $dto;
     }
 }
 
@@ -2906,6 +3110,72 @@ final class ApplicatorRefs
         return $this->keyedProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<array<string, mixed>> $mustContain
+     */
+    public static function create(
+        array $mustContain,
+        ?array $positions = null,
+        ?array $rest = null,
+        ?array $closedPair = null,
+        mixed $impossible = null,
+        ?string $vacuous = null,
+        ?string $имя = null,
+        ?string $名前 = null,
+        mixed $forbiddenKey = null,
+        mixed $neverMatches = null,
+        ?array $closedFirstSlot = null,
+        ?ApplicatorRefsPoisonedKey $poisonedKey = null,
+        ?ApplicatorRefsConditional $conditional = null,
+        ?ApplicatorRefsKeyed $keyed = null,
+    ): self {
+        $dto = new self(mustContain: $mustContain);
+        if ($positions !== null) {
+            $dto->setPositions($positions);
+        }
+        if ($rest !== null) {
+            $dto->setRest($rest);
+        }
+        if ($closedPair !== null) {
+            $dto->setClosedPair($closedPair);
+        }
+        if ($impossible !== null) {
+            $dto->setImpossible($impossible);
+        }
+        if ($vacuous !== null) {
+            $dto->setVacuous($vacuous);
+        }
+        if ($имя !== null) {
+            $dto->setимя($имя);
+        }
+        if ($名前 !== null) {
+            $dto->set名前($名前);
+        }
+        if ($forbiddenKey !== null) {
+            $dto->setForbiddenKey($forbiddenKey);
+        }
+        if ($neverMatches !== null) {
+            $dto->setNeverMatches($neverMatches);
+        }
+        if ($closedFirstSlot !== null) {
+            $dto->setClosedFirstSlot($closedFirstSlot);
+        }
+        if ($poisonedKey !== null) {
+            $dto->setPoisonedKey($poisonedKey);
+        }
+        if ($conditional !== null) {
+            $dto->setConditional($conditional);
+        }
+        if ($keyed !== null) {
+            $dto->setKeyed($keyed);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -3429,6 +3699,21 @@ final class ApplicatorRefsConditional
         return $this->labelProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?string $label = null,
+    ): self {
+        $dto = new self();
+        if ($label !== null) {
+            $dto->setLabel($label);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -3776,6 +4061,21 @@ final class ApplicatorRefsKeyed
         return $this->triggerProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?string $trigger = null,
+    ): self {
+        $dto = new self();
+        if ($trigger !== null) {
+            $dto->setTrigger($trigger);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -4101,6 +4401,21 @@ final class ApplicatorRefsPoisonedKey
         return $this->triggerProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?string $trigger = null,
+    ): self {
+        $dto = new self();
+        if ($trigger !== null) {
+            $dto->setTrigger($trigger);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -4374,6 +4689,27 @@ final class AwkwardNames
     {
         return $this->bothSProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        string $plain,
+        string $itS,
+        ?string $backSlash = null,
+        ?int $bothS = null,
+    ): self {
+        $dto = new self(plain: $plain, itS: $itS);
+        if ($backSlash !== null) {
+            $dto->setBackSlash($backSlash);
+        }
+        if ($bothS !== null) {
+            $dto->setBothS($bothS);
+        }
+
+        return $dto;
+    }
 }
 
 ===== CallbackJobDonePostRequest.php =====
@@ -4384,7 +4720,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4423,7 +4758,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4462,7 +4796,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4597,6 +4930,24 @@ final class ChainLink
     {
         return $this->tagsProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param ?array<ChainTag> $tags
+     */
+    public static function create(
+        string $code,
+        ?array $tags = null,
+    ): self {
+        $dto = new self(code: $code);
+        if ($tags !== null) {
+            $dto->setTags($tags);
+        }
+
+        return $dto;
+    }
 }
 
 ===== ChainMiddle.php =====
@@ -4692,7 +5043,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -4962,6 +5312,35 @@ final class ContainerAliases
     public function isPlainProvided(): bool
     {
         return $this->plainProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<array<string>> $listOfLists
+     * @param ?array<array<string, mixed>> $listOfMaps
+     * @param ?array<string, array<string>> $mapOfLists
+     * @param ?array<string> $plain
+     */
+    public static function create(
+        array $listOfLists,
+        ?array $listOfMaps = null,
+        ?array $mapOfLists = null,
+        ?array $plain = null,
+    ): self {
+        $dto = new self(listOfLists: $listOfLists);
+        if ($listOfMaps !== null) {
+            $dto->setListOfMaps($listOfMaps);
+        }
+        if ($mapOfLists !== null) {
+            $dto->setMapOfLists($mapOfLists);
+        }
+        if ($plain !== null) {
+            $dto->setPlain($plain);
+        }
+
+        return $dto;
     }
 
     #[Assert\Callback]
@@ -5345,6 +5724,9 @@ final class Containers
      */
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['dates' => [self::class, 'formatOpenApiDate']],
+    ])]
     private readonly array $dates;
 
     /**
@@ -5352,7 +5734,10 @@ final class Containers
      */
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['datesByDay' => [self::class, 'formatOpenApiDate']],
+    ])]
     private ?array $datesByDay = null;
 
     #[Ignore]
@@ -5363,7 +5748,10 @@ final class Containers
      */
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['timestamps' => [self::class, 'formatOpenApiDateTime']],
+    ])]
     private ?array $timestamps = null;
 
     #[Ignore]
@@ -5399,51 +5787,17 @@ final class Containers
     }
 
     /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     *
-     * @return array<string>
-     */
-    public function getDates(): array
-    {
-        return array_map(
-            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
-                ? $item->format('Y-m-d')
-                : $item,
-            $this->dates,
-        );
-    }
-
-    /**
      * @return array<DateTimeImmutable>
      */
-    #[Ignore]
-    public function getDatesAsDateTime(): array
+    public function getDates(): array
     {
         return $this->dates;
     }
 
     /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     *
-     * @return ?array<string, string>
-     */
-    public function getDatesByDay(): ?array
-    {
-        return $this->datesByDay === null ? null : array_map(
-            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
-                ? $item->format('Y-m-d')
-                : $item,
-            $this->datesByDay,
-        );
-    }
-
-    /**
      * @return ?array<string, DateTimeImmutable>
      */
-    #[Ignore]
-    public function getDatesByDayAsDateTime(): ?array
+    public function getDatesByDay(): ?array
     {
         return $this->datesByDay;
     }
@@ -5468,28 +5822,9 @@ final class Containers
     }
 
     /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     *
-     * @return ?array<string>
-     */
-    public function getTimestamps(): ?array
-    {
-        return $this->timestamps === null ? null : array_map(
-            static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
-                ? ($item->format('u') === '000000'
-                    ? $item->format('c')
-                    : $item->format('Y-m-d\TH:i:s.uP'))
-                : $item,
-            $this->timestamps,
-        );
-    }
-
-    /**
      * @return ?array<DateTimeImmutable>
      */
-    #[Ignore]
-    public function getTimestampsAsDateTime(): ?array
+    public function getTimestamps(): ?array
     {
         return $this->timestamps;
     }
@@ -5546,6 +5881,68 @@ final class Containers
     public function isTagsByKeyProvided(): bool
     {
         return $this->tagsByKeyProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<DateTimeImmutable> $dates
+     * @param ?array<string, DateTimeImmutable> $datesByDay
+     * @param ?array<DateTimeImmutable> $timestamps
+     * @param array<Shape> $shapes
+     * @param ?array<string, Tag> $tagsByKey
+     */
+    public static function create(
+        array $dates,
+        array $shapes,
+        ?array $datesByDay = null,
+        ?array $timestamps = null,
+        ?array $tagsByKey = null,
+    ): self {
+        $dto = new self(dates: $dates, shapes: $shapes);
+        if ($datesByDay !== null) {
+            $dto->setDatesByDay($datesByDay);
+        }
+        if ($timestamps !== null) {
+            $dto->setTimestamps($timestamps);
+        }
+        if ($tagsByKey !== null) {
+            $dto->setTagsByKey($tagsByKey);
+        }
+
+        return $dto;
+    }
+
+    /**
+     * A `format: date` value the way the schema writes it — a date, never a timestamp. The serializer
+     * calls it through the property's #[Context] callback; a container is written item by item, and
+     * anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDate(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDate(...), $value);
+        }
+
+        return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
+    }
+
+    /**
+     * A `format: date-time` value the way the schema writes it, keeping the sub-second precision the
+     * value carries. The serializer calls it through the property's #[Context] callback; a container
+     * is written item by item, and anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDateTime(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDateTime(...), $value);
+        }
+        if (!$value instanceof DateTimeInterface) {
+            return $value;
+        }
+
+        return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
     }
 
     #[Assert\Callback]
@@ -6146,7 +6543,6 @@ namespace GoldenCorpus;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6196,7 +6592,6 @@ namespace GoldenCorpus;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6257,7 +6652,6 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6345,7 +6739,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6411,7 +6804,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6478,7 +6870,6 @@ namespace GoldenCorpus;
 
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -6702,6 +7093,30 @@ final class ItemBounds
     public function isCodesProvided(): bool
     {
         return $this->codesProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<int> $scores
+     * @param ?array<string, int> $scoresByKey
+     * @param ?array<string> $codes
+     */
+    public static function create(
+        array $scores,
+        ?array $scoresByKey = null,
+        ?array $codes = null,
+    ): self {
+        $dto = new self(scores: $scores);
+        if ($scoresByKey !== null) {
+            $dto->setScoresByKey($scoresByKey);
+        }
+        if ($codes !== null) {
+            $dto->setCodes($codes);
+        }
+
+        return $dto;
     }
 
     #[Assert\Callback]
@@ -7364,6 +7779,52 @@ final class NestedContainers
         return $this->tagRowsProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<array<int>> $matrix
+     * @param array<array<string, string>> $rowsOfMaps
+     * @param ?array<string, array<string>> $listsByKey
+     * @param ?array<string, array<string, int>> $mapsByKey
+     * @param ?array<array<string>> $dateRows
+     * @param array<array<float|int>>|null $numRows
+     * @param ?array<array<string>> $enumRows
+     * @param ?array<array<Tag>> $tagRows
+     */
+    public static function create(
+        array $matrix,
+        array $rowsOfMaps,
+        ?array $listsByKey = null,
+        ?array $mapsByKey = null,
+        ?array $dateRows = null,
+        ?array $numRows = null,
+        ?array $enumRows = null,
+        ?array $tagRows = null,
+    ): self {
+        $dto = new self(matrix: $matrix, rowsOfMaps: $rowsOfMaps);
+        if ($listsByKey !== null) {
+            $dto->setListsByKey($listsByKey);
+        }
+        if ($mapsByKey !== null) {
+            $dto->setMapsByKey($mapsByKey);
+        }
+        if ($dateRows !== null) {
+            $dto->setDateRows($dateRows);
+        }
+        if ($numRows !== null) {
+            $dto->setNumRows($numRows);
+        }
+        if ($enumRows !== null) {
+            $dto->setEnumRows($enumRows);
+        }
+        if ($tagRows !== null) {
+            $dto->setTagRows($tagRows);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -7960,6 +8421,35 @@ final class NullableContainerValues
         return $this->mapOfNullable31Provided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<?string> $listOfNullable
+     * @param ?array<string, ?int> $mapOfNullable
+     * @param ?array<?string> $listOfNullable31
+     * @param ?array<string, ?int> $mapOfNullable31
+     */
+    public static function create(
+        array $listOfNullable,
+        ?array $mapOfNullable = null,
+        ?array $listOfNullable31 = null,
+        ?array $mapOfNullable31 = null,
+    ): self {
+        $dto = new self(listOfNullable: $listOfNullable);
+        if ($mapOfNullable !== null) {
+            $dto->setMapOfNullable($mapOfNullable);
+        }
+        if ($listOfNullable31 !== null) {
+            $dto->setListOfNullable31($listOfNullable31);
+        }
+        if ($mapOfNullable31 !== null) {
+            $dto->setMapOfNullable31($mapOfNullable31);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -8348,6 +8838,26 @@ final class ObjectWideRules
         return $this->extraProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        string $kind,
+        ?string $code = null,
+        ?string $extra = null,
+    ): self {
+        $dto = new self(kind: $kind);
+        if ($code !== null) {
+            $dto->setCode($code);
+        }
+        if ($extra !== null) {
+            $dto->setExtra($extra);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -8658,7 +9168,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8695,11 +9204,14 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
+
+use function array_map;
+use function is_array;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8724,7 +9236,10 @@ final class ReadOnlyFields
     private readonly string $title;
 
     #[Groups(['read'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['writtenAt' => [self::class, 'formatOpenApiDateTime']],
+    ])]
     private ?DateTimeImmutable $writtenAt = null;
 
     #[Ignore]
@@ -8769,19 +9284,7 @@ final class ReadOnlyFields
         return $this->title;
     }
 
-    /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     */
-    public function getWrittenAt(): ?string
-    {
-        return $this->writtenAt === null ? null : ($this->writtenAt->format('u') === '000000'
-            ? $this->writtenAt->format('c')
-            : $this->writtenAt->format('Y-m-d\TH:i:s.uP'));
-    }
-
-    #[Ignore]
-    public function getWrittenAtAsDateTime(): ?DateTimeImmutable
+    public function getWrittenAt(): ?DateTimeImmutable
     {
         return $this->writtenAt;
     }
@@ -8822,6 +9325,47 @@ final class ReadOnlyFields
     {
         return $this->secretProvided;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        string $title,
+        ?int $serverId = null,
+        ?DateTimeImmutable $writtenAt = null,
+        ?string $secret = null,
+    ): self {
+        $dto = new self(title: $title);
+        if ($serverId !== null) {
+            $dto->setServerId($serverId);
+        }
+        if ($writtenAt !== null) {
+            $dto->setWrittenAt($writtenAt);
+        }
+        if ($secret !== null) {
+            $dto->setSecret($secret);
+        }
+
+        return $dto;
+    }
+
+    /**
+     * A `format: date-time` value the way the schema writes it, keeping the sub-second precision the
+     * value carries. The serializer calls it through the property's #[Context] callback; a container
+     * is written item by item, and anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDateTime(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDateTime(...), $value);
+        }
+        if (!$value instanceof DateTimeInterface) {
+            return $value;
+        }
+
+        return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
+    }
 }
 
 ===== RetiredShape.php =====
@@ -8832,7 +9376,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8891,7 +9434,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8938,7 +9480,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9004,7 +9545,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9175,6 +9715,31 @@ final class Test2
     {
         return $this->types;
     }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param array<Tag> $tags
+     */
+    public static function create(
+        int $id,
+        string $name,
+        array $tags,
+        Test2Types $types,
+        ?User $user = null,
+        ?Test2UserType $userType = null,
+    ): self {
+        $dto = new self(id: $id, name: $name, tags: $tags, types: $types);
+        if ($user !== null) {
+            $dto->setUser($user);
+        }
+        if ($userType !== null) {
+            $dto->setUserType($userType);
+        }
+
+        return $dto;
+    }
 }
 
 ===== Test2Types.php =====
@@ -9207,7 +9772,6 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9256,6 +9820,21 @@ final class Test2UserType
     }
 
     /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        ?string $region = null,
+    ): self {
+        $dto = new self();
+        if ($region !== null) {
+            $dto->setRegion($region);
+        }
+
+        return $dto;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
      * one through here, because the properties themselves are private. For output, use the Symfony
@@ -9284,7 +9863,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -9520,6 +10098,28 @@ final class TestPostRequest
     public function isEndpointProvided(): bool
     {
         return $this->endpointProvided;
+    }
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        int $id,
+        string $name,
+        int|string $code,
+        ?string $homepage = null,
+        ?string $endpoint = null,
+    ): self {
+        $dto = new self(id: $id, name: $name, code: $code);
+        if ($homepage !== null) {
+            $dto->setHomepage($homepage);
+        }
+        if ($endpoint !== null) {
+            $dto->setEndpoint($endpoint);
+        }
+
+        return $dto;
     }
 
     #[Assert\Callback]
@@ -10823,6 +11423,30 @@ final class UnionUnderContainer
         return $this->listOfUnionsProvided;
     }
 
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+     */
+    public static function create(
+        TreeNode $tree,
+        ?array $chain = null,
+        ?array $chainAllOf = null,
+        ?array $listOfUnions = null,
+    ): self {
+        $dto = new self(tree: $tree);
+        if ($chain !== null) {
+            $dto->setChain($chain);
+        }
+        if ($chainAllOf !== null) {
+            $dto->setChainAllOf($chainAllOf);
+        }
+        if ($listOfUnions !== null) {
+            $dto->setListOfUnions($listOfUnions);
+        }
+
+        return $dto;
+    }
+
     #[Assert\Callback]
     public function validateOpenApiConstraints(ExecutionContextInterface $context): void
     {
@@ -11660,11 +12284,14 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
+
+use function array_map;
+use function is_array;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -11690,6 +12317,9 @@ final class User
     private readonly ?Animal2 $pet;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['createdAt' => [self::class, 'formatOpenApiDateTime']],
+    ])]
     private readonly DateTimeImmutable $createdAt;
 
     public function __construct(
@@ -11719,21 +12349,26 @@ final class User
         return $this->pet;
     }
 
-    /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     */
-    public function getCreatedAt(): string
-    {
-        return ($this->createdAt->format('u') === '000000'
-            ? $this->createdAt->format('c')
-            : $this->createdAt->format('Y-m-d\TH:i:s.uP'));
-    }
-
-    #[Ignore]
-    public function getCreatedAtAsDateTime(): DateTimeImmutable
+    public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    /**
+     * A `format: date-time` value the way the schema writes it, keeping the sub-second precision the
+     * value carries. The serializer calls it through the property's #[Context] callback; a container
+     * is written item by item, and anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDateTime(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDateTime(...), $value);
+        }
+        if (!$value instanceof DateTimeInterface) {
+            return $value;
+        }
+
+        return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
     }
 
     /**
@@ -11766,11 +12401,14 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
+
+use function array_map;
+use function is_array;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -11796,6 +12434,9 @@ final class User2
     private readonly ?User2Pet $pet;
 
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['createdAt' => [self::class, 'formatOpenApiDate']],
+    ])]
     private readonly DateTimeImmutable $createdAt;
 
     public function __construct(
@@ -11825,19 +12466,23 @@ final class User2
         return $this->pet;
     }
 
-    /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-     */
-    public function getCreatedAt(): string
-    {
-        return $this->createdAt->format('Y-m-d');
-    }
-
-    #[Ignore]
-    public function getCreatedAtAsDateTime(): DateTimeImmutable
+    public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    /**
+     * A `format: date` value the way the schema writes it — a date, never a timestamp. The serializer
+     * calls it through the property's #[Context] callback; a container is written item by item, and
+     * anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDate(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDate(...), $value);
+        }
+
+        return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
     }
 }
 
@@ -11849,7 +12494,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -11939,7 +12583,6 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.

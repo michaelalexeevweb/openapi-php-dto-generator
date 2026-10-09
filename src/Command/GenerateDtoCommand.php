@@ -8564,12 +8564,40 @@ final class GenerateDtoCommand extends Command
                 );
                 $this->warnAboutPathParameterMismatches($path, $resolvedParameters);
                 $pathAndQueryParameters = $this->filterPathAndQueryParameters($resolvedParameters);
+                $ownerKey = strtoupper($method) . ' ' . $path;
+
+                // Symfony binds route, header and cookie values as controller arguments of their own,
+                // so they are no part of the query DTO — but an inline `enum` on one still deserves
+                // its class: a route argument typed with it is resolved and checked by Symfony itself.
+                if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
+                    foreach ($resolvedParameters as $parameter) {
+                        $location = $parameter['in'] ?? null;
+                        $parameterName = $parameter['name'] ?? null;
+                        $schema = $parameter['schema'] ?? null;
+                        if (
+                            !in_array($location, ['path', 'header', 'cookie'], true)
+                            || !is_string($parameterName)
+                            || !is_array($schema)
+                            || !is_array($schema['enum'] ?? null)
+                            || array_key_exists('$ref', $schema)
+                        ) {
+                            continue;
+                        }
+                        $enumName = $this->uniqueEndpointSchemaName(
+                            path: $this->pathItemNamingKey($path),
+                            tail: ucfirst(strtolower($method)) . ucfirst($location) . 'Params' . $this->pascalizeSegment($parameterName),
+                            ownerKey: $ownerKey,
+                            owners: $parameterOwners,
+                        );
+                        $parameterSchemas[$enumName] = $schema;
+                        $parameterOwners[$enumName] = $ownerKey;
+                    }
+                }
 
                 if ($pathAndQueryParameters === []) {
                     continue;
                 }
 
-                $ownerKey = strtoupper($method) . ' ' . $path;
                 $schemaName = $this->uniqueEndpointSchemaName(
                     path: $this->pathItemNamingKey($path),
                     tail: ucfirst(strtolower($method)) . 'QueryParams',

@@ -1352,7 +1352,7 @@ trait RendersLaravelDto
         }
 
         $name = $property['name'];
-        $property_access = '$this->' . $name;
+        $propertyAccess = '$this->' . $name;
         $nullable = $property['nullable'] === true || !$this->propertyIsRequiredOnInput($property);
         $arrow = $nullable ? '?->' : '->';
 
@@ -1372,19 +1372,19 @@ trait RendersLaravelDto
             }
 
             return $nullable
-                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $property_access, $formatted)
+                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $propertyAccess, $formatted)
                 : sprintf('self::toJsonObjects(%s)', $formatted);
         }
 
         if ($this->laravelEnumClass($property) !== null) {
-            return $property_access . $arrow . 'value';
+            return $propertyAccess . $arrow . 'value';
         }
 
         // DTOs two containers deep (see `laravelNestedDtoContainerExpression()`): each one written out
         // with its own `toArray()`, lists reindexed and maps kept as JSON objects at both levels.
-        $nestedWire = $this->laravelNestedDtoContainerToWire($property['type'], $property_access);
+        $nestedWire = $this->laravelNestedDtoContainerToWire($property['type'], $propertyAccess);
         if ($nestedWire !== null) {
-            return $nullable ? sprintf('%s === null ? null : %s', $property_access, $nestedWire) : $nestedWire;
+            return $nullable ? sprintf('%s === null ? null : %s', $propertyAccess, $nestedWire) : $nestedWire;
         }
 
         // A map must encode as a JSON object, empty or not — `type: object` says so, and runtime mode
@@ -1397,11 +1397,11 @@ trait RendersLaravelDto
             // are private. `array_map()` over one array keeps the string keys, so the map survives.
             $valueClass = $this->laravelDtoItemClass($property);
             $mapped = $valueClass === null
-                ? $property_access
-                : sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass), $property_access);
+                ? $propertyAccess
+                : sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass), $propertyAccess);
 
             return $nullable
-                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $property_access, $mapped)
+                ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $propertyAccess, $mapped)
                 : sprintf('self::toJsonObjects(%s)', $mapped);
         }
 
@@ -1410,16 +1410,16 @@ trait RendersLaravelDto
             // hands back the empty array PHP cannot tell from an empty LIST. Spelled long-hand for
             // the nullable case: `?->toArray() ?: (object)[]` would turn a legitimate null into `{}`.
             return $nullable
-                ? sprintf('%s === null ? null : (%s->toArray() ?: (object)[])', $property_access, $property_access)
-                : sprintf('%s->toArray() ?: (object)[]', $property_access);
+                ? sprintf('%s === null ? null : (%s->toArray() ?: (object)[])', $propertyAccess, $propertyAccess)
+                : sprintf('%s->toArray() ?: (object)[]', $propertyAccess);
         }
 
         if ($this->laravelDescribesListOfMaps($property['type'])) {
             $mapper = 'static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item)';
 
             return $nullable
-                ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $property_access, $mapper, $property_access)
-                : sprintf('array_map(%s, array_values(%s))', $mapper, $property_access);
+                ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $propertyAccess, $mapper, $propertyAccess)
+                : sprintf('array_map(%s, array_values(%s))', $mapper, $propertyAccess);
         }
 
         $itemClass = $this->laravelDtoItemClass($property);
@@ -1427,8 +1427,8 @@ trait RendersLaravelDto
             $mapper = $this->laravelItemToWireMapper($itemClass);
 
             return $nullable
-                ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $property_access, $mapper, $property_access)
-                : sprintf('array_map(%s, array_values(%s))', $mapper, $property_access);
+                ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $propertyAccess, $mapper, $propertyAccess)
+                : sprintf('array_map(%s, array_values(%s))', $mapper, $propertyAccess);
         }
 
         // A LIST is reindexed on the way out, for the reason spelled out in `RendersRuntimeDto`: the
@@ -1437,11 +1437,11 @@ trait RendersLaravelDto
         // MAP never reaches here — it returned above, where its keys ARE the data.
         if ($this->laravelDescribesList($property)) {
             return $nullable
-                ? sprintf('%s === null ? null : array_values(%s)', $property_access, $property_access)
-                : sprintf('array_values(%s)', $property_access);
+                ? sprintf('%s === null ? null : array_values(%s)', $propertyAccess, $propertyAccess)
+                : sprintf('array_values(%s)', $propertyAccess);
         }
 
-        return $property_access;
+        return $propertyAccess;
     }
 
     /**

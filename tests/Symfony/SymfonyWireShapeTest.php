@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Symfony;
 
+use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\TestCase;
 use ReflectionNamedType;
@@ -12,6 +13,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapQueryString;
+use Symfony\Component\HttpKernel\Controller\ArgumentResolver\BackedEnumValueResolver;
 use Symfony\Component\HttpKernel\Controller\ArgumentResolver\RequestPayloadValueResolver;
 use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
 use Symfony\Component\HttpKernel\Event\ControllerArgumentsEvent;
@@ -177,6 +179,117 @@ final class SymfonyWireShapeTest extends TestCase
     }
 
     /**
+     * A route value is a controller argument of its own, and an inline `enum` on it still gets its
+     * class, so Symfony resolves and checks the argument itself.
+     */
+    public function testAnInlineEnumOnARouteParameterKeepsItsClass(): void
+    {
+        $target = $this->outputDirectory . '/WireRoute';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/shapes/{shapeKind}' => [
+                    'delete' => [
+                        'parameters' => [[
+                            'name' => 'shapeKind',
+                            'in' => 'path',
+                            'required' => true,
+                            'schema' => ['type' => 'string', 'enum' => ['circle', 'square']],
+                        ]],
+                        'responses' => ['204' => ['description' => 'gone']],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireRoute', 'symfony');
+        $listed = scandir($target);
+        $this->assertIsArray($listed);
+        $this->assertContains('ShapesDeletePathParamsShapeKind.php', $listed);
+        require_once $target . '/ShapesDeletePathParamsShapeKind.php';
+
+        $request = Request::create('/shapes/square');
+        $request->attributes->set('shapeKind', 'square');
+        $argument = new ArgumentMetadata('shapeKind', 'WireRoute\ShapesDeletePathParamsShapeKind', false, false, null);
+        $resolved = (new BackedEnumValueResolver())->resolve($request, $argument);
+        $this->assertSame('square', $resolved[0]->value);
+    }
+
+    /**
+     * `create()` builds the DTO in one expression; an optional argument left out, or passed as null,
+     * is simply not set.
+     */
+    public function testCreateBuildsTheDtoInOneExpression(): void
+    {
+        $namespace = 'WireCreate';
+        $this->generate($namespace);
+        $widget = $namespace . '\Widget';
+        $gadget = $namespace . '\Gadget';
+
+        $dto = $widget::create(beta: 'b', delta: null, alpha: 'a', part: $gadget::create(tint: 'azure'));
+
+        $this->assertTrue($dto->isAlphaProvided());
+        $this->assertFalse($dto->isGammaProvided());
+        $this->assertSame(
+            '{"alpha":"a","beta":"b","gamma":null,"delta":null,"part":{"tint":"azure"},"size":3}',
+            $this->serializer()->serialize($dto, 'json'),
+        );
+    }
+
+    /**
+     * A date is a DateTimeImmutable to the code that reads it and the schema's string on the wire: a
+     * date stays a date and a date-time keeps its precision, in a property and in a map alike.
+     */
+    public function testDatesReadAsObjectsAndLeaveAsTheSchemaWritesThem(): void
+    {
+        $namespace = 'WireDates';
+        $this->generate($namespace);
+        $gadget = $namespace . '\Gadget';
+
+        $json = '{"tint":null,"madeOn":"2026-03-10","seen":{"first":"2026-03-10T12:00:00.123456+03:00","last":"2026-03-11T08:00:00+00:00"}}';
+        $dto = $this->serializer()->deserialize($json, $gadget, 'json');
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->getMadeOn());
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->getSeen()['first']);
+        $this->assertSame($json, $this->serializer()->serialize($dto, 'json'));
+    }
+
+    /**
+     * `create()` names its local in camelCase, and a property already called `dto` does not shadow it.
+     * A class with no constraint imports no Assert.
+     */
+    public function testCreateKeepsItsLocalApartFromThePropertyNames(): void
+    {
+        $target = $this->outputDirectory . '/WireLocal';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'Parcel' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'dto' => ['type' => 'string'],
+                            'builtDto' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireLocal', 'symfony');
+        $source = (string)file_get_contents($target . '/Parcel.php');
+        $this->assertStringContainsString('$builtDto2 = new self(id: $id);', $source);
+        $this->assertStringNotContainsString('Constraints as Assert', $source);
+
+        require_once $target . '/Parcel.php';
+        $parcel = \WireLocal\Parcel::create(id: 1, dto: 'a', builtDto: 'b');
+        $this->assertSame(['a', 'b'], [$parcel->getDto(), $parcel->getBuiltDto()]);
+    }
+
+    /**
      * DTOs shared through one directory cannot be in two modes: replacing them names the clash.
      */
     public function testReplacingAnotherModesDtosIsReported(): void
@@ -268,7 +381,14 @@ final class SymfonyWireShapeTest extends TestCase
                     'Gadget' => [
                         'type' => 'object',
                         'required' => ['tint'],
-                        'properties' => ['tint' => ['type' => ['string', 'null']]],
+                        'properties' => [
+                            'tint' => ['type' => ['string', 'null']],
+                            'madeOn' => ['type' => 'string', 'format' => 'date'],
+                            'seen' => [
+                                'type' => 'object',
+                                'additionalProperties' => ['type' => 'string', 'format' => 'date-time'],
+                            ],
+                        ],
                     ],
                     'Widget' => [
                         'type' => 'object',

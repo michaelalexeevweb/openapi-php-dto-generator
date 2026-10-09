@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.68 — 2026-10-09
+
+- Symfony date getters return DateTimeImmutable
+- Symfony create() builds a DTO in one expression
+- Symfony route enums generated again
+- Symfony unused Assert import dropped
+
+Symfony mode:
+
+- `getX()` of a `format: date` / `date-time` property returned the formatted string, and the object
+  sat behind `getXAsDateTime()`. The getter now returns the `DateTimeImmutable` (or the array of them),
+  and `getXAsDateTime()` is gone. The wire is unchanged: the property hands the serializer the DTO's
+  own `formatOpenApiDate()` / `formatOpenApiDateTime()` through Symfony's `#[Context]` callback, so a
+  date stays a date and a date-time keeps its sub-second precision, item by item in a container.
+- a DTO with optional properties gets a static `create()`: required properties as in the constructor,
+  optional ones by name, null meaning "not set". Building a response is one expression again instead
+  of `new` plus a setter per field; an explicit null still goes through the setter.
+- since 2.15.66 the query DTO holds `in: query` only, and an inline `enum` on a path, header or cookie
+  parameter lost its class with it. It is generated again as `…PathParams<Name>` (`…HeaderParams…`,
+  `…CookieParams…`), for a route argument Symfony resolves and checks itself.
+- since the dead `NotNull` and the empty callback went, many classes imported
+  `Symfony\Component\Validator\Constraints as Assert` without using it, which fails
+  `no_unused_imports` in the consumer. The import now comes with the first `Assert` attribute.
+
+Symfony getters and the hand-built DTOs that read them change. Regenerate DTOs.
+
 ## 2.15.67 — 2026-10-09
 
 - Symfony skips callback with nothing to check

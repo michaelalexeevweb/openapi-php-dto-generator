@@ -164,7 +164,7 @@ objects there and two deliver strings — and every mode's DECLARATION now says 
 | | holds | declares | reader |
 |---|---|---|---|
 | runtime | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` formats, `getXAsDateTime()` gives the objects |
-| symfony | `DateTimeImmutable` | `array<DateTimeImmutable>` | same pair, the object getter `#[Ignore]`d |
+| symfony | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` gives the objects; a `#[Context]` callback writes the strings |
 | laravel | `DateTimeImmutable` | `array<DateTimeImmutable>` | same pair |
 | laravel-data | `string` | `array<string>` | the public property |
 | yii3 | `string` | `array<string>` | `getX()` |

@@ -79,8 +79,8 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% if param.serializedName is not null %}
     #[SerializedName('{{ param.serializedName|php_string }}')]
 {% endif %}
-{% if param.skipNullValues is not null %}
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => {{ param.skipNullValues ? 'true' : 'false' }}])]
+{% if param.contextAttribute is not null %}
+    {{ param.contextAttribute|raw }}
 {% endif %}
 {% if param.required %}
     private readonly {{ param.declaredType }} ${{ param.name }};
@@ -124,31 +124,6 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endif %}
 {% for param in params %}
 
-{% if param.temporalGetterBody is not null %}
-    /**
-     * Formatted as the schema declares it — a date stays a date, and a date-time keeps the
-     * sub-second precision the payload carried.
-{% if param.temporalGetterDocType is not null %}
-     *
-     * @return {{ param.temporalGetterDocType }}
-{% endif %}
-     */
-    public function {{ param.getter }}(): {{ param.temporalGetterReturnType }}
-    {
-        return {{ param.temporalGetterBody|raw }};
-    }
-
-{% if param.temporalObjectDocType is not null %}
-    /**
-     * @return {{ param.temporalObjectDocType }}
-     */
-{% endif %}
-    #[Ignore]
-    public function {{ param.temporalObjectGetter }}(): {{ param.declaredType }}
-    {
-        return $this->{{ param.name }};
-    }
-{% else %}
 {% if param.docType is not null %}
     /**
      * @return {{ param.docType }}
@@ -158,7 +133,6 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     {
         return $this->{{ param.name }};
     }
-{% endif %}
 {% if not param.required %}
 
 {% if param.docType is not null %}
@@ -183,6 +157,74 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     }
 {% endif %}
 {% endfor %}
+{% if optionalParams is not empty %}
+
+    /**
+     * The DTO in one expression: required properties as in the constructor, optional ones by name.
+     * A null optional argument means "not set" — to send an explicit null, call the setter.
+{% set factoryDocParams = params|filter(param => param.factoryDocType is not null) %}
+{% if factoryDocParams is not empty %}
+     *
+{% for param in factoryDocParams %}
+     * @param {{ param.factoryDocType }} ${{ param.name }}
+{% endfor %}
+{% endif %}
+     */
+    public static function create(
+{% for param in requiredParams %}
+        {{ param.factoryType }} ${{ param.name }},
+{% endfor %}
+{% for param in optionalParams %}
+        {{ param.factoryType }} ${{ param.name }} = null,
+{% endfor %}
+    ): self {
+        ${{ factoryLocal }} = new self({% for param in requiredParams %}{{ param.name }}: ${{ param.name }}{{ loop.last ? '' : ', ' }}{% endfor %});
+{% for param in optionalParams %}
+        if (${{ param.name }} !== null) {
+            ${{ factoryLocal }}->{{ param.setter }}(${{ param.name }});
+        }
+{% endfor %}
+
+        return ${{ factoryLocal }};
+    }
+{% endif %}
+{% if temporalFormatters is not empty %}
+{% if 'formatOpenApiDate' in temporalFormatters %}
+
+    /**
+     * A `format: date` value the way the schema writes it — a date, never a timestamp. The serializer
+     * calls it through the property's #[Context] callback; a container is written item by item, and
+     * anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDate(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDate(...), $value);
+        }
+
+        return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
+    }
+{% endif %}
+{% if 'formatOpenApiDateTime' in temporalFormatters %}
+
+    /**
+     * A `format: date-time` value the way the schema writes it, keeping the sub-second precision the
+     * value carries. The serializer calls it through the property's #[Context] callback; a container
+     * is written item by item, and anything that is not a date passes through for validation to report.
+     */
+    public static function formatOpenApiDateTime(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::formatOpenApiDateTime(...), $value);
+        }
+        if (!$value instanceof DateTimeInterface) {
+            return $value;
+        }
+
+        return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
+    }
+{% endif %}
+{% endif %}
 {% if validationMethodsBlock is not empty %}
 
 {{ validationMethodsBlock|raw }}
