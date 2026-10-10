@@ -230,9 +230,9 @@ Measured against `RequestPayloadValueResolver` with a validator attached:
 
 | Payload problem | Result |
 |---|---|
-| wrong scalar type, unknown enum member, missing required field | **422**, as a violation: `This value should be of type int.` — the generated constraints never run for that field. A missing field of an enum or object type is named by its class (`… of type App\Dto\WidgetKind.`), a missing required nullable one reads `of type unknown` — the text is Symfony's; keep it out of a public response if the class names matter |
+| wrong scalar type, unknown enum member, missing required field | **422**, as a violation: `This value should be of type int.` — the generated constraints never run for that field. A missing field of an enum or object type is named by its class (`… of type App\Dto\WidgetKind.`), a missing required nullable one reads `of type unknown` — the text is Symfony's; [rewrite it](#turning-the-serializers-refusals-into-your-own-response) if the class names matter |
 | `null` for an optional property the schema does not let be null, `?limit=` in the query | **422** / 404 at the field — the setter takes null only where the schema allows it |
-| a discriminator value outside the mapping | **500** — `NotNormalizableValueException` is thrown before the resolver collects anything. Map it to 400 yourself |
+| a discriminator value outside the mapping, or none at all, at the top of the body | **500** — `NotNormalizableValueException` is thrown while the serializer picks the class, before the resolver collects anything. [Map it yourself](#turning-the-serializers-refusals-into-your-own-response). The same value one level down (`{"payload": {"kind": "oval"}}`) is a 422 at `payload.kind` |
 | `format: date` in another spelling (`tomorrow`, `01/02/2025`, a full timestamp) | **accepted** — DateTimeNormalizer parses anything `DateTime` does. Pinning the format (`DateTimeNormalizer::FORMAT_KEY`) would refuse those but let an impossible date (`2025-13-45`) roll over into another one, which is worse; it is left to the default |
 | unparsable body | **400** `Request payload contains invalid "json" data.` |
 | unknown JSON key | **accepted** — the key is dropped before validation, which is why `additionalProperties: false` / `unevaluatedProperties: false` are near no-ops here; they still fire on a hand-built payload array |
@@ -244,6 +244,63 @@ The 422 messages for those first three come from Symfony, not from the schema, s
 (an unknown enum member reads `This value should be of type int|string.`). Anything the
 denormalizer accepts is then checked by the generated constraints, whose messages do name the
 OpenAPI rule.
+
+### Turning the serializer's refusals into your own response
+
+Two of the cases above cannot be fixed from a DTO — the text and the exception come from the
+serializer — so they belong in the application's exception handling. One `kernel.exception` listener
+(or the equivalent branch in an existing error builder) covers both:
+
+```php
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Event\ExceptionEvent;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use Symfony\Component\Validator\Exception\ValidationFailedException;
+
+#[AsEventListener]
+final class PayloadErrorListener
+{
+    public function __invoke(ExceptionEvent $event): void
+    {
+        $exception = $event->getThrowable();
+
+        // A discriminator at the top of a #[MapRequestPayload] body: unknown value or none at all.
+        if ($exception instanceof NotNormalizableValueException) {
+            $path = $exception->getPath() ?? '';
+            $message = $exception->canUseMessageForUser()
+                ? $exception->getMessage()             // The type "oval" is not a valid value.
+                : sprintf('"%s" is required.', $path); // the raw text names the interface's class
+            $event->setResponse(new JsonResponse(['errors' => [$path => $message]], 422));
+
+            return;
+        }
+
+        $failure = $exception instanceof HttpExceptionInterface ? $exception->getPrevious() : null;
+        if (!$failure instanceof ValidationFailedException) {
+            return;
+        }
+
+        $errors = [];
+        foreach ($failure->getViolations() as $violation) {
+            $type = $violation->getParameters()['{{ type }}'] ?? null;
+            $errors[$violation->getPropertyPath()] = match (true) {
+                $type === 'unknown' => 'This field is required.',          // a required nullable field left out
+                $type !== null && str_contains($type, '\\') => 'This value is not valid.', // an enum or object class
+                default => (string)$violation->getMessage(),
+            };
+        }
+        $event->setResponse(new JsonResponse(['errors' => $errors], 422));
+    }
+}
+```
+
+`canUseMessageForUser()` is Symfony's own flag: it is true for an unknown discriminator value, whose
+message names only the value, and false for a missing one, whose message names the class. The
+violation's `hint` parameter carries the serializer's message where it is safe to show, e.g.
+`Failed to create object because the class misses the "score" property.` for a required nullable
+field. Use whatever status code and error shape the API documents; 422 is the resolver's default.
 
 To apply the `write` group described above in a controller:
 

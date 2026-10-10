@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.72 — 2026-10-10
+
+- Symfony payload error recipe documented
+
+Symfony mode, documentation only:
+
+- a discriminator value outside the mapping, or none at all, at the top of a `#[MapRequestPayload]`
+  body is thrown by the serializer as `NotNormalizableValueException`, which the resolver does not
+  catch — a 500. A missing required nullable field reads `of type unknown`, a missing enum or object
+  one names its class. Neither can be fixed from a DTO; the README now has a `kernel.exception`
+  listener that turns all three into a field-level error.
+
 ## 2.15.71 — 2026-10-09
 
 - Symfony allOf discriminator becomes interface
