@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12424 lines
+# symfony mode — 77 files, 12410 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -459,7 +459,7 @@ final class ApiTestCatsActionsGetQueryParams
         return $this->page;
     }
 
-    public function setPage(?int $page): void
+    public function setPage(int $page): void
     {
         $this->page = $page;
         $this->pageProvided = true;
@@ -480,7 +480,7 @@ final class ApiTestCatsActionsGetQueryParams
         return $this->limit;
     }
 
-    public function setLimit(?int $limit): void
+    public function setLimit(int $limit): void
     {
         $this->limit = $limit;
         $this->limitProvided = true;
@@ -568,7 +568,7 @@ final class ApiTestCatsActionsPostQueryParams
         return $this->page;
     }
 
-    public function setPage(?int $page): void
+    public function setPage(int $page): void
     {
         $this->page = $page;
         $this->pageProvided = true;
@@ -589,7 +589,7 @@ final class ApiTestCatsActionsPostQueryParams
         return $this->limit;
     }
 
-    public function setLimit(?int $limit): void
+    public function setLimit(int $limit): void
     {
         $this->limit = $limit;
         $this->limitProvided = true;
@@ -677,7 +677,7 @@ final class ApiTestDogsTagsGetQueryParams
         return $this->page;
     }
 
-    public function setPage(?int $page): void
+    public function setPage(int $page): void
     {
         $this->page = $page;
         $this->pageProvided = true;
@@ -698,7 +698,7 @@ final class ApiTestDogsTagsGetQueryParams
         return $this->limit;
     }
 
-    public function setLimit(?int $limit): void
+    public function setLimit(int $limit): void
     {
         $this->limit = $limit;
         $this->limitProvided = true;
@@ -786,7 +786,7 @@ final class ApiTestDogsTagsPatchQueryParams
         return $this->page;
     }
 
-    public function setPage(?int $page): void
+    public function setPage(int $page): void
     {
         $this->page = $page;
         $this->pageProvided = true;
@@ -807,7 +807,7 @@ final class ApiTestDogsTagsPatchQueryParams
         return $this->limit;
     }
 
-    public function setLimit(?int $limit): void
+    public function setLimit(int $limit): void
     {
         $this->limit = $limit;
         $this->limitProvided = true;
@@ -1118,7 +1118,7 @@ final class ApiTestLegacyPostQueryParams
         return $this->legacyFlag;
     }
 
-    public function setLegacyFlag(?bool $legacyFlag): void
+    public function setLegacyFlag(bool $legacyFlag): void
     {
         $this->legacyFlag = $legacyFlag;
         $this->legacyFlagProvided = true;
@@ -1582,11 +1582,11 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<int|numeric-string> $exploded
+     * @param array<int|numeric-string> $exploded
      */
-    public function setExploded(?array $exploded): void
+    public function setExploded(array $exploded): void
     {
-        $this->exploded = $exploded === null ? null : self::readQueryInts($exploded);
+        $this->exploded = self::readQueryInts($exploded);
         $this->explodedProvided = true;
     }
 
@@ -1609,9 +1609,9 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<string> $joined
+     * @param array<string> $joined
      */
-    public function setJoined(?array $joined): void
+    public function setJoined(array $joined): void
     {
         $this->joined = $joined;
         $this->joinedProvided = true;
@@ -1636,11 +1636,11 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<int|numeric-string> $spaced
+     * @param array<int|numeric-string> $spaced
      */
-    public function setSpaced(?array $spaced): void
+    public function setSpaced(array $spaced): void
     {
-        $this->spaced = $spaced === null ? null : self::readQueryInts($spaced);
+        $this->spaced = self::readQueryInts($spaced);
         $this->spacedProvided = true;
     }
 
@@ -1663,9 +1663,9 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<string> $piped
+     * @param array<string> $piped
      */
-    public function setPiped(?array $piped): void
+    public function setPiped(array $piped): void
     {
         $this->piped = $piped;
         $this->pipedProvided = true;
@@ -1690,9 +1690,9 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
-     * @param ?array<string, string> $nested
+     * @param array<string, string> $nested
      */
-    public function setNested(?array $nested): void
+    public function setNested(array $nested): void
     {
         $this->nested = $nested;
         $this->nestedProvided = true;
@@ -1713,7 +1713,7 @@ final class ApiTestSerializationGetQueryParams
         return $this->flag;
     }
 
-    public function setFlag(?bool $flag): void
+    public function setFlag(bool $flag): void
     {
         $this->flag = $flag;
         $this->flagProvided = true;
@@ -1734,7 +1734,7 @@ final class ApiTestSerializationGetQueryParams
         return $this->strict;
     }
 
-    public function setStrict(?string $strict): void
+    public function setStrict(string $strict): void
     {
         $this->strict = $strict;
         $this->strictProvided = true;
@@ -1755,7 +1755,7 @@ final class ApiTestSerializationGetQueryParams
         return $this->raw;
     }
 
-    public function setRaw(?string $raw): void
+    public function setRaw(string $raw): void
     {
         $this->raw = $raw;
         $this->rawProvided = true;
@@ -1776,7 +1776,7 @@ final class ApiTestSerializationGetQueryParams
         return $this->filter;
     }
 
-    public function setFilter(?ApiTestSerializationGetQueryParamsFilter $filter): void
+    public function setFilter(ApiTestSerializationGetQueryParamsFilter $filter): void
     {
         $this->filter = $filter;
         $this->filterProvided = true;
@@ -2166,7 +2166,7 @@ final class ApiTestSerializationGetQueryParamsFilter
         return $this->since;
     }
 
-    public function setSince(?DateTimeImmutable $since): void
+    public function setSince(DateTimeImmutable $since): void
     {
         $this->since = $since;
         $this->sinceProvided = true;
@@ -2274,7 +2274,7 @@ final class ApiTestSharedPathGetQueryParams
         return $this->cursor;
     }
 
-    public function setCursor(?string $cursor): void
+    public function setCursor(string $cursor): void
     {
         $this->cursor = $cursor;
         $this->cursorProvided = true;
@@ -2355,7 +2355,7 @@ final class ApiTestTenantsDeleteQueryParams
         return $this->region;
     }
 
-    public function setRegion(?string $region): void
+    public function setRegion(string $region): void
     {
         $this->region = $region;
         $this->regionProvided = true;
@@ -2376,7 +2376,7 @@ final class ApiTestTenantsDeleteQueryParams
         return $this->tenant;
     }
 
-    public function setTenant(?string $tenant): void
+    public function setTenant(string $tenant): void
     {
         $this->tenant = $tenant;
         $this->tenantProvided = true;
@@ -2468,7 +2468,7 @@ final class ApiTestTenantsGetQueryParams
         return $this->region;
     }
 
-    public function setRegion(?int $region): void
+    public function setRegion(int $region): void
     {
         $this->region = $region;
         $this->regionProvided = true;
@@ -2489,7 +2489,7 @@ final class ApiTestTenantsGetQueryParams
         return $this->tenant;
     }
 
-    public function setTenant(?string $tenant): void
+    public function setTenant(string $tenant): void
     {
         $this->tenant = $tenant;
         $this->tenantProvided = true;
@@ -2510,7 +2510,7 @@ final class ApiTestTenantsGetQueryParams
         return $this->verbose;
     }
 
-    public function setVerbose(?bool $verbose): void
+    public function setVerbose(bool $verbose): void
     {
         $this->verbose = $verbose;
         $this->verboseProvided = true;
@@ -2884,7 +2884,7 @@ final class ApplicatorRefs
         return $this->positions;
     }
 
-    public function setPositions(?array $positions): void
+    public function setPositions(array $positions): void
     {
         $this->positions = $positions;
         $this->positionsProvided = true;
@@ -2905,7 +2905,7 @@ final class ApplicatorRefs
         return $this->rest;
     }
 
-    public function setRest(?array $rest): void
+    public function setRest(array $rest): void
     {
         $this->rest = $rest;
         $this->restProvided = true;
@@ -2926,7 +2926,7 @@ final class ApplicatorRefs
         return $this->closedPair;
     }
 
-    public function setClosedPair(?array $closedPair): void
+    public function setClosedPair(array $closedPair): void
     {
         $this->closedPair = $closedPair;
         $this->closedPairProvided = true;
@@ -2968,7 +2968,7 @@ final class ApplicatorRefs
         return $this->vacuous;
     }
 
-    public function setVacuous(?string $vacuous): void
+    public function setVacuous(string $vacuous): void
     {
         $this->vacuous = $vacuous;
         $this->vacuousProvided = true;
@@ -2989,7 +2989,7 @@ final class ApplicatorRefs
         return $this->имя;
     }
 
-    public function setимя(?string $имя): void
+    public function setимя(string $имя): void
     {
         $this->имя = $имя;
         $this->имяProvided = true;
@@ -3010,7 +3010,7 @@ final class ApplicatorRefs
         return $this->名前;
     }
 
-    public function set名前(?string $名前): void
+    public function set名前(string $名前): void
     {
         $this->名前 = $名前;
         $this->名前Provided = true;
@@ -3073,7 +3073,7 @@ final class ApplicatorRefs
         return $this->closedFirstSlot;
     }
 
-    public function setClosedFirstSlot(?array $closedFirstSlot): void
+    public function setClosedFirstSlot(array $closedFirstSlot): void
     {
         $this->closedFirstSlot = $closedFirstSlot;
         $this->closedFirstSlotProvided = true;
@@ -3094,7 +3094,7 @@ final class ApplicatorRefs
         return $this->poisonedKey;
     }
 
-    public function setPoisonedKey(?ApplicatorRefsPoisonedKey $poisonedKey): void
+    public function setPoisonedKey(ApplicatorRefsPoisonedKey $poisonedKey): void
     {
         $this->poisonedKey = $poisonedKey;
         $this->poisonedKeyProvided = true;
@@ -3115,7 +3115,7 @@ final class ApplicatorRefs
         return $this->conditional;
     }
 
-    public function setConditional(?ApplicatorRefsConditional $conditional): void
+    public function setConditional(ApplicatorRefsConditional $conditional): void
     {
         $this->conditional = $conditional;
         $this->conditionalProvided = true;
@@ -3136,7 +3136,7 @@ final class ApplicatorRefs
         return $this->keyed;
     }
 
-    public function setKeyed(?ApplicatorRefsKeyed $keyed): void
+    public function setKeyed(ApplicatorRefsKeyed $keyed): void
     {
         $this->keyed = $keyed;
         $this->keyedProvided = true;
@@ -3725,7 +3725,7 @@ final class ApplicatorRefsConditional
         return $this->label;
     }
 
-    public function setLabel(?string $label): void
+    public function setLabel(string $label): void
     {
         $this->label = $label;
         $this->labelProvided = true;
@@ -4087,7 +4087,7 @@ final class ApplicatorRefsKeyed
         return $this->trigger;
     }
 
-    public function setTrigger(?string $trigger): void
+    public function setTrigger(string $trigger): void
     {
         $this->trigger = $trigger;
         $this->triggerProvided = true;
@@ -4427,7 +4427,7 @@ final class ApplicatorRefsPoisonedKey
         return $this->trigger;
     }
 
-    public function setTrigger(?string $trigger): void
+    public function setTrigger(string $trigger): void
     {
         $this->trigger = $trigger;
         $this->triggerProvided = true;
@@ -4695,7 +4695,7 @@ final class AwkwardNames
         return $this->backSlash;
     }
 
-    public function setBackSlash(?string $backSlash): void
+    public function setBackSlash(string $backSlash): void
     {
         $this->backSlash = $backSlash;
         $this->backSlashProvided = true;
@@ -4716,7 +4716,7 @@ final class AwkwardNames
         return $this->bothS;
     }
 
-    public function setBothS(?int $bothS): void
+    public function setBothS(int $bothS): void
     {
         $this->bothS = $bothS;
         $this->bothSProvided = true;
@@ -4955,9 +4955,9 @@ final class ChainLink
     }
 
     /**
-     * @param ?array<ChainTag> $tags
+     * @param array<ChainTag> $tags
      */
-    public function setTags(?array $tags): void
+    public function setTags(array $tags): void
     {
         $this->tags = $tags;
         $this->tagsProvided = true;
@@ -5284,9 +5284,9 @@ final class ContainerAliases
     }
 
     /**
-     * @param ?array<array<string, mixed>> $listOfMaps
+     * @param array<array<string, mixed>> $listOfMaps
      */
-    public function setListOfMaps(?array $listOfMaps): void
+    public function setListOfMaps(array $listOfMaps): void
     {
         $this->listOfMaps = $listOfMaps;
         $this->listOfMapsProvided = true;
@@ -5311,9 +5311,9 @@ final class ContainerAliases
     }
 
     /**
-     * @param ?array<string, array<string>> $mapOfLists
+     * @param array<string, array<string>> $mapOfLists
      */
-    public function setMapOfLists(?array $mapOfLists): void
+    public function setMapOfLists(array $mapOfLists): void
     {
         $this->mapOfLists = $mapOfLists;
         $this->mapOfListsProvided = true;
@@ -5338,9 +5338,9 @@ final class ContainerAliases
     }
 
     /**
-     * @param ?array<string> $plain
+     * @param array<string> $plain
      */
-    public function setPlain(?array $plain): void
+    public function setPlain(array $plain): void
     {
         $this->plain = $plain;
         $this->plainProvided = true;
@@ -5845,9 +5845,9 @@ final class Containers
     }
 
     /**
-     * @param ?array<string, DateTimeImmutable> $datesByDay
+     * @param array<string, DateTimeImmutable> $datesByDay
      */
-    public function setDatesByDay(?array $datesByDay): void
+    public function setDatesByDay(array $datesByDay): void
     {
         $this->datesByDay = $datesByDay;
         $this->datesByDayProvided = true;
@@ -5872,9 +5872,9 @@ final class Containers
     }
 
     /**
-     * @param ?array<DateTimeImmutable> $timestamps
+     * @param array<DateTimeImmutable> $timestamps
      */
-    public function setTimestamps(?array $timestamps): void
+    public function setTimestamps(array $timestamps): void
     {
         $this->timestamps = $timestamps;
         $this->timestampsProvided = true;
@@ -5907,9 +5907,9 @@ final class Containers
     }
 
     /**
-     * @param ?array<string, Tag> $tagsByKey
+     * @param array<string, Tag> $tagsByKey
      */
-    public function setTagsByKey(?array $tagsByKey): void
+    public function setTagsByKey(array $tagsByKey): void
     {
         $this->tagsByKey = $tagsByKey;
         $this->tagsByKeyProvided = true;
@@ -6582,46 +6582,20 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
-use Symfony\Component\Serializer\Attribute\Context;
-use Symfony\Component\Serializer\Attribute\Groups;
-use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\Attribute\DiscriminatorMap;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
  *
- * This document uses readOnly/writeOnly, which Symfony can only honour through serialization
- * groups — so every property here carries one. Pass the group, or a writeOnly field ends up in
- * the response:
- *   $serializer->normalize($dto, null, ['groups' => 'read']);
- *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
+ * Members: Discriminator1|Discriminator2
  */
-final class Discriminator
+#[DiscriminatorMap(typeProperty: 'type', mapping: ['discriminator1' => Discriminator1::class, 'discriminator2' => Discriminator2::class])]
+interface Discriminator
 {
-    #[Groups(['read', 'write'])]
-    private readonly DiscriminatorType $type;
+    public function getType(): DiscriminatorType;
 
-    #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
-    private readonly ?string $name;
-
-    public function __construct(
-        DiscriminatorType $type,
-        ?string $name,
-    ) {
-        $this->type = $type;
-        $this->name = $name;
-    }
-
-    public function getType(): DiscriminatorType
-    {
-        return $this->type;
-    }
-
-    public function getName(): ?string
-    {
-        return $this->name;
-    }
+    public function getName(): ?string;
 }
 
 ===== Discriminator1.php =====
@@ -6645,7 +6619,7 @@ use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
  *   $serializer->normalize($dto, null, ['groups' => 'read']);
  *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
  */
-final class Discriminator1
+final class Discriminator1 implements Discriminator
 {
     #[Groups(['read', 'write'])]
     private readonly DiscriminatorType $type;
@@ -6657,9 +6631,12 @@ final class Discriminator1
     #[Groups(['read', 'write'])]
     private readonly int $id;
 
+    /**
+     * @param ?string $name
+     */
     public function __construct(
         DiscriminatorType $type,
-        ?string $name,
+        $name,
         int $id,
     ) {
         $this->type = $type;
@@ -6705,7 +6682,7 @@ use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
  *   $serializer->normalize($dto, null, ['groups' => 'read']);
  *   $serializer->denormalize($payload, self::class, null, ['groups' => 'write']);
  */
-final class Discriminator2
+final class Discriminator2 implements Discriminator
 {
     #[Groups(['read', 'write'])]
     private readonly DiscriminatorType $type;
@@ -6721,9 +6698,12 @@ final class Discriminator2
     #[SerializedName('NAme')]
     private readonly string $nAme2;
 
+    /**
+     * @param ?string $name
+     */
     public function __construct(
         DiscriminatorType $type,
-        ?string $name,
+        $name,
         int $id,
         string $nAme2,
     ) {
@@ -7092,9 +7072,9 @@ final class ItemBounds
     }
 
     /**
-     * @param ?array<string, int> $scoresByKey
+     * @param array<string, int> $scoresByKey
      */
-    public function setScoresByKey(?array $scoresByKey): void
+    public function setScoresByKey(array $scoresByKey): void
     {
         $this->scoresByKey = $scoresByKey;
         $this->scoresByKeyProvided = true;
@@ -7119,9 +7099,9 @@ final class ItemBounds
     }
 
     /**
-     * @param ?array<string> $codes
+     * @param array<string> $codes
      */
-    public function setCodes(?array $codes): void
+    public function setCodes(array $codes): void
     {
         $this->codes = $codes;
         $this->codesProvided = true;
@@ -7668,9 +7648,9 @@ final class NestedContainers
     }
 
     /**
-     * @param ?array<string, array<string>> $listsByKey
+     * @param array<string, array<string>> $listsByKey
      */
-    public function setListsByKey(?array $listsByKey): void
+    public function setListsByKey(array $listsByKey): void
     {
         $this->listsByKey = $listsByKey;
         $this->listsByKeyProvided = true;
@@ -7695,9 +7675,9 @@ final class NestedContainers
     }
 
     /**
-     * @param ?array<string, array<string, int>> $mapsByKey
+     * @param array<string, array<string, int>> $mapsByKey
      */
-    public function setMapsByKey(?array $mapsByKey): void
+    public function setMapsByKey(array $mapsByKey): void
     {
         $this->mapsByKey = $mapsByKey;
         $this->mapsByKeyProvided = true;
@@ -7722,9 +7702,9 @@ final class NestedContainers
     }
 
     /**
-     * @param ?array<array<string>> $dateRows
+     * @param array<array<string>> $dateRows
      */
-    public function setDateRows(?array $dateRows): void
+    public function setDateRows(array $dateRows): void
     {
         $this->dateRows = $dateRows;
         $this->dateRowsProvided = true;
@@ -7749,9 +7729,9 @@ final class NestedContainers
     }
 
     /**
-     * @param array<array<float|int>>|null $numRows
+     * @param array<array<float|int>> $numRows
      */
-    public function setNumRows(?array $numRows): void
+    public function setNumRows(array $numRows): void
     {
         $this->numRows = $numRows;
         $this->numRowsProvided = true;
@@ -7776,9 +7756,9 @@ final class NestedContainers
     }
 
     /**
-     * @param ?array<array<string>> $enumRows
+     * @param array<array<string>> $enumRows
      */
-    public function setEnumRows(?array $enumRows): void
+    public function setEnumRows(array $enumRows): void
     {
         $this->enumRows = $enumRows;
         $this->enumRowsProvided = true;
@@ -7803,9 +7783,9 @@ final class NestedContainers
     }
 
     /**
-     * @param ?array<array<Tag>> $tagRows
+     * @param array<array<Tag>> $tagRows
      */
-    public function setTagRows(?array $tagRows): void
+    public function setTagRows(array $tagRows): void
     {
         $this->tagRows = $tagRows;
         $this->tagRowsProvided = true;
@@ -8391,9 +8371,9 @@ final class NullableContainerValues
     }
 
     /**
-     * @param ?array<string, ?int> $mapOfNullable
+     * @param array<string, ?int> $mapOfNullable
      */
-    public function setMapOfNullable(?array $mapOfNullable): void
+    public function setMapOfNullable(array $mapOfNullable): void
     {
         $this->mapOfNullable = $mapOfNullable;
         $this->mapOfNullableProvided = true;
@@ -8418,9 +8398,9 @@ final class NullableContainerValues
     }
 
     /**
-     * @param ?array<?string> $listOfNullable31
+     * @param array<?string> $listOfNullable31
      */
-    public function setListOfNullable31(?array $listOfNullable31): void
+    public function setListOfNullable31(array $listOfNullable31): void
     {
         $this->listOfNullable31 = $listOfNullable31;
         $this->listOfNullable31Provided = true;
@@ -8445,9 +8425,9 @@ final class NullableContainerValues
     }
 
     /**
-     * @param ?array<string, ?int> $mapOfNullable31
+     * @param array<string, ?int> $mapOfNullable31
      */
-    public function setMapOfNullable31(?array $mapOfNullable31): void
+    public function setMapOfNullable31(array $mapOfNullable31): void
     {
         $this->mapOfNullable31 = $mapOfNullable31;
         $this->mapOfNullable31Provided = true;
@@ -8843,7 +8823,7 @@ final class ObjectWideRules
         return $this->code;
     }
 
-    public function setCode(?string $code): void
+    public function setCode(string $code): void
     {
         $this->code = $code;
         $this->codeProvided = true;
@@ -8864,7 +8844,7 @@ final class ObjectWideRules
         return $this->extra;
     }
 
-    public function setExtra(?string $extra): void
+    public function setExtra(string $extra): void
     {
         $this->extra = $extra;
         $this->extraProvided = true;
@@ -9305,7 +9285,7 @@ final class ReadOnlyFields
         return $this->serverId;
     }
 
-    public function setServerId(?int $serverId): void
+    public function setServerId(int $serverId): void
     {
         $this->serverId = $serverId;
         $this->serverIdProvided = true;
@@ -9331,7 +9311,7 @@ final class ReadOnlyFields
         return $this->writtenAt;
     }
 
-    public function setWrittenAt(?DateTimeImmutable $writtenAt): void
+    public function setWrittenAt(DateTimeImmutable $writtenAt): void
     {
         $this->writtenAt = $writtenAt;
         $this->writtenAtProvided = true;
@@ -9352,7 +9332,7 @@ final class ReadOnlyFields
         return $this->secret;
     }
 
-    public function setSecret(?string $secret): void
+    public function setSecret(string $secret): void
     {
         $this->secret = $secret;
         $this->secretProvided = true;
@@ -9716,7 +9696,7 @@ final class Test2
         return $this->user;
     }
 
-    public function setUser(?User $user): void
+    public function setUser(User $user): void
     {
         $this->user = $user;
         $this->userProvided = true;
@@ -9737,7 +9717,7 @@ final class Test2
         return $this->userType;
     }
 
-    public function setUserType(?Test2UserType $userType): void
+    public function setUserType(Test2UserType $userType): void
     {
         $this->userType = $userType;
         $this->userTypeProvided = true;
@@ -9847,7 +9827,7 @@ final class Test2UserType
         return $this->region;
     }
 
-    public function setRegion(?string $region): void
+    public function setRegion(string $region): void
     {
         $this->region = $region;
         $this->regionProvided = true;
@@ -10107,7 +10087,7 @@ final class TestPostRequest
         return $this->homepage;
     }
 
-    public function setHomepage(?string $homepage): void
+    public function setHomepage(string $homepage): void
     {
         $this->homepage = $homepage;
         $this->homepageProvided = true;
@@ -10128,7 +10108,7 @@ final class TestPostRequest
         return $this->endpoint;
     }
 
-    public function setEndpoint(?string $endpoint): void
+    public function setEndpoint(string $endpoint): void
     {
         $this->endpoint = $endpoint;
         $this->endpointProvided = true;
@@ -11404,7 +11384,7 @@ final class UnionUnderContainer
         return $this->chain;
     }
 
-    public function setChain(?array $chain): void
+    public function setChain(array $chain): void
     {
         $this->chain = $chain;
         $this->chainProvided = true;
@@ -11425,7 +11405,7 @@ final class UnionUnderContainer
         return $this->chainAllOf;
     }
 
-    public function setChainAllOf(?array $chainAllOf): void
+    public function setChainAllOf(array $chainAllOf): void
     {
         $this->chainAllOf = $chainAllOf;
         $this->chainAllOfProvided = true;
@@ -11451,7 +11431,7 @@ final class UnionUnderContainer
         return $this->listOfUnions;
     }
 
-    public function setListOfUnions(?array $listOfUnions): void
+    public function setListOfUnions(array $listOfUnions): void
     {
         $this->listOfUnions = $listOfUnions;
         $this->listOfUnionsProvided = true;
@@ -12366,10 +12346,13 @@ final class User
     ])]
     private readonly DateTimeImmutable $createdAt;
 
+    /**
+     * @param ?Animal2 $pet
+     */
     public function __construct(
         int $id,
         string $name,
-        ?Animal2 $pet,
+        $pet,
         DateTimeImmutable $createdAt,
     ) {
         $this->id = $id;
@@ -12483,10 +12466,13 @@ final class User2
     ])]
     private readonly DateTimeImmutable $createdAt;
 
+    /**
+     * @param ?User2Pet $pet
+     */
     public function __construct(
         int $id,
         string $name,
-        ?User2Pet $pet,
+        $pet,
         DateTimeImmutable $createdAt,
     ) {
         $this->id = $id;

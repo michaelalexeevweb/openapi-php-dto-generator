@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.71 — 2026-10-09
+
+- Symfony allOf discriminator becomes interface
+- Symfony refuses missing required nullable
+- Symfony refuses null where schema forbids
+- warning for required without property
+
+Symfony mode:
+
+- an object base with a `discriminator` whose variants `allOf` it was generated as a plain class the
+  variants knew nothing of, so a property typed with the base could not hold a variant and a request
+  body could not be bound in one go. The base is now an interface with `#[DiscriminatorMap]` and the
+  getters of its own properties; the variants implement it. `#[MapRequestPayload]` on the base picks
+  the variant, which replaces a hand-written mapper.
+- a required property that may be null took a typed nullable constructor parameter, and the
+  serializer passes null for a missing one — `{}` came in as `{"score": null}`. The parameter is now
+  untyped (the docblock keeps the type), and the missing key is reported at its path.
+- an optional property the schema does not let be null had a nullable setter, so `{"limit": null}` and
+  `?limit=` passed as "not given". The setter now takes null only where the schema allows it, and the
+  serializer refuses the rest at the field.
+
+All modes:
+
+- a `required` name a closed object declares no property for is reported: the class is generated
+  without it, so the requirement was enforced nowhere.
+
 ## 2.15.70 — 2026-10-09
 
 - Symfony query lists read as numbers

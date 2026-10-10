@@ -25,6 +25,7 @@ use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
+use Symfony\Component\Serializer\Exception\NotNormalizableValueException;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
 use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
@@ -334,6 +335,69 @@ final class SymfonyWireShapeTest extends TestCase
             // Symfony 8 refuses the item in the serializer already, Symfony 7 leaves it to the DTO's
             // check: the wording differs, the field it is pinned to does not.
             $this->assertStringStartsWith('counts', $failure->getViolations()->get(0)->getPropertyPath());
+        }
+    }
+
+    /**
+     * Null comes in only where the schema allows it. A required nullable property still has to be
+     * present — the serializer would pass null for a missing typed nullable argument — and an optional
+     * one that may not be null refuses an explicit null and an empty query value alike.
+     */
+    public function testNullIsTakenOnlyWhereTheSchemaAllowsIt(): void
+    {
+        $target = $this->outputDirectory . '/WireNull';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/ratings' => [
+                    'get' => [
+                        'parameters' => [['name' => 'limit', 'in' => 'query', 'schema' => ['type' => 'integer', 'minimum' => 1]]],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+            'components' => [
+                'schemas' => [
+                    'Rating' => [
+                        'type' => 'object',
+                        'required' => ['score', 'phantom'],
+                        'properties' => [
+                            'score' => ['type' => ['integer', 'null']],
+                            'note' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $generator = new GenerateDtoCommand();
+        $generator->generateFromArray($spec, $target, 'WireNull', 'symfony');
+        $this->assertCount(1, array_filter(
+            $generator->getGenerationWarnings(),
+            static fn(string $warning): bool => str_contains($warning, '"Rating" lists "phantom" in `required`'),
+        ));
+        require_once $target . '/Rating.php';
+        require_once $target . '/RatingsGetQueryParams.php';
+
+        $rating = $this->serializer()->deserialize('{"score":null}', \WireNull\Rating::class, 'json');
+        $this->assertNull($rating->getScore());
+
+        foreach (['{}' => MissingConstructorArgumentsException::class, '{"score":1,"note":null}' => NotNormalizableValueException::class] as $json => $refusal) {
+            try {
+                $this->serializer()->deserialize($json, \WireNull\Rating::class, 'json');
+                $this->fail($json . ' must not pass');
+            } catch (MissingConstructorArgumentsException | NotNormalizableValueException $exception) {
+                $this->assertInstanceOf($refusal, $exception, $json);
+            }
+        }
+
+        try {
+            $this->resolveQuery(\WireNull\RatingsGetQueryParams::class, '/ratings?limit=');
+            $this->fail('an empty query value must not pass as "not given"');
+        } catch (HttpException $exception) {
+            $failure = $exception->getPrevious();
+            $this->assertInstanceOf(ValidationFailedException::class, $failure);
+            $this->assertSame('limit', $failure->getViolations()->get(0)->getPropertyPath());
         }
     }
 

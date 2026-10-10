@@ -1664,6 +1664,7 @@ final class GenerateDtoCommand extends Command
             $this->assertLaravelPropertyNamesAreUnambiguous($schemaDefinition);
         }
         $this->warnAboutPcreOnlyEscapes($schemaDefinition, $className);
+        $this->warnAboutRequiredNamesWithoutProperty($schemaDefinition, $className);
 
         // Registries are keyed by generated class name. A different document is not the same
         // schema, even when its definition happens to look identical or its namespace is mapped.
@@ -8930,6 +8931,43 @@ final class GenerateDtoCommand extends Command
      * pattern would be refused or read differently by a JavaScript validator.
      */
     private const string PCRE_ONLY_ESCAPES = 'hHVRNKAzZGXCQEeago';
+
+    /**
+     * A `required` name the schema declares no property for. The class is generated without it, so
+     * the requirement the document states is enforced nowhere — usually a leftover of a renamed or
+     * removed property. Only a closed, plain object is judged: composition or additionalProperties
+     * can supply the key from elsewhere.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function warnAboutRequiredNamesWithoutProperty(array $schema, string $className): void
+    {
+        $properties = $schema['properties'] ?? null;
+        $required = $schema['required'] ?? null;
+        if (!is_array($properties) || !is_array($required)) {
+            return;
+        }
+        foreach (['allOf', 'oneOf', 'anyOf', 'patternProperties', '$ref'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                return;
+            }
+        }
+        $additional = $schema['additionalProperties'] ?? false;
+        if ($additional !== false) {
+            return;
+        }
+        foreach ($required as $name) {
+            if (is_string($name) && !array_key_exists($name, $properties)) {
+                $this->addGenerationWarning(sprintf(
+                    'Schema "%s" lists "%s" in `required`, but declares no such property. The class is '
+                    . 'generated without it, so the requirement is enforced nowhere — remove it from '
+                    . '`required` or declare the property.',
+                    $className,
+                    $name,
+                ));
+            }
+        }
+    }
 
     /**
      * @param array<array-key, mixed> $schema

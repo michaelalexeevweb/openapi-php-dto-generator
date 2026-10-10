@@ -791,10 +791,10 @@ final class ValidationParityTest extends TestCase
     {
         foreach (GenerationMode::cases() as $mode) {
             $required = self::probeSpec(['type' => 'null']);
-            // Symfony's default serializer supplies null for omitted nullable constructor arguments.
-            // Pin that separate presence limitation; null type/value validation remains strict.
+            // Symfony's serializer supplies null for an omitted TYPED nullable constructor argument; the
+            // Symfony DTO leaves a required nullable one untyped, so the missing key is reported there too.
             $this->assertSame(
-                expected: ['valid' => true, 'invalid' => $mode === GenerationMode::Symfony],
+                expected: ['valid' => true, 'invalid' => false],
                 actual: $this->verdict($mode, $required, 'required-null-presence', '{"f":null}', '{}'),
                 message: $mode->value,
             );
@@ -1439,11 +1439,8 @@ final class ValidationParityTest extends TestCase
         $this->assertEveryModeYields(
             ['valid' => true, 'invalid' => false],
             fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $asNull),
-            self::diverges(
-                GenerationMode::Symfony,
-                ['valid' => true, 'invalid' => true],
-                'an optional property has a nullable PHP type, so no #[Assert\NotNull] is emitted for it',
-            ),
+            // Symfony agrees since its setter admits null only where the schema does.
+            [],
             $key,
         );
 

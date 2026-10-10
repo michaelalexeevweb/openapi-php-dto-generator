@@ -86,7 +86,7 @@ needs more than one schema:
 
 | Keyword | Measured in |
 |---|---|
-| `discriminator` (mapping, `allOf` variants, hydration to the mapped class) | `tests/Runtime/GenerateDtoCommandTest`, `tests/Symfony/SymfonyConstraintMatrixTest`, `tests/Parity/NormalizationParityTest`, and per mode: `tests/Laravel/GenerateLaravelDtoTest`, `tests/LaravelData/MorphDiscriminatorTest`, `tests/Yii3/Yii3RequestShapeTest` (typing only — see the divergences) |
+| `discriminator` (mapping, `allOf` variants, hydration to the mapped class) | `tests/Runtime/GenerateDtoCommandTest`, `tests/Symfony/SymfonyConstraintMatrixTest`, `tests/Symfony/SymfonyAllOfDiscriminatorTest`, `tests/Parity/NormalizationParityTest`, and per mode: `tests/Laravel/GenerateLaravelDtoTest`, `tests/LaravelData/MorphDiscriminatorTest`, `tests/Yii3/Yii3RequestShapeTest` (typing only — see the divergences) |
 | `required` / `properties` on a schema that becomes a DTO | the class itself: in four modes a required property is a constructor parameter with no default, so no payload can omit it; yii3 has no constructor, so absence is a property left uninitialised and the interpreter reports it — `tests/Yii3/Yii3RuleCoverageTest`. Nested `required` is measured by the recursion cases above and `tests/Laravel/LaravelRulesEnforcementTest` |
 
 ### Which layer does it

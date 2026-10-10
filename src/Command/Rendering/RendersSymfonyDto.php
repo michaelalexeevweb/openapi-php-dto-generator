@@ -130,6 +130,18 @@ trait RendersSymfonyDto
                 discriminator: $discriminator,
             );
         }
+        // The allOf pattern: an object base with a discriminator whose variants extend it. Flattened,
+        // a variant cannot extend anything, so the base becomes the interface the variants implement
+        // — with the getters of the base's own properties, which every variant inherits.
+        if ($this->isSymfonyAllOfDiscriminatorBase($className)) {
+            return $this->renderSymfonyUnionInterface(
+                namespace: $namespace,
+                className: $className,
+                unionTypes: [],
+                discriminator: $discriminator,
+                sharedProperties: $properties,
+            );
+        }
 
         $useStatements = [];
         if ($this->needsDateTimeImmutableImport($properties)) {
@@ -596,14 +608,28 @@ PHP;
      *
      * @param array<int, string> $unionTypes
      * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array<int, SchemaProperty> $sharedProperties the base's own properties, for an allOf base
      */
     private function renderSymfonyUnionInterface(
         string $namespace,
         string $className,
         array $unionTypes,
         ?array $discriminator,
+        array $sharedProperties = [],
     ): string {
         $imports = [];
+        $interfaceGetters = [];
+        foreach ($sharedProperties as $property) {
+            $interfaceGetters[] = $this->resolveSymfonyParam($property, $namespace);
+        }
+        if ($sharedProperties !== []) {
+            foreach ($this->collectGeneratedClassImports($namespace, $className, $sharedProperties, null, [], null) as $import) {
+                $imports[] = $import;
+            }
+            if ($this->needsDateTimeImmutableImport($sharedProperties)) {
+                $imports[] = 'DateTimeImmutable';
+            }
+        }
         $memberNames = $unionTypes !== [] ? $unionTypes : $this->symfonyDiscriminatorMembers($className);
         foreach ($memberNames as $member) {
             $this->appendImportForClass($imports, $member, $namespace, $className);
@@ -660,6 +686,7 @@ PHP;
                     $memberNames,
                 )),
             'interfaceExtends' => $interfaceExtends,
+            'interfaceGetters' => $interfaceGetters,
             'discriminatorMap' => $discriminatorMap,
         ]);
     }
@@ -683,6 +710,26 @@ PHP;
     }
 
     /**
+     * An object schema with a discriminator mapping to OTHER schemas — the variants `allOf` it. In
+     * runtime mode it is a parent class; here it is an interface with `#[DiscriminatorMap]`. A base
+     * that maps a value to itself is a concrete type of its own and stays a class.
+     */
+    private function isSymfonyAllOfDiscriminatorBase(string $className): bool
+    {
+        // yii3 shares the interface lookup, but keeps the base a class of its own.
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_SYMFONY) {
+            return false;
+        }
+        $discriminator = $this->discriminatorSchemas[$className] ?? null;
+        if ($discriminator === null || $discriminator['mapping'] === [] || $this->isOneOfDiscriminatorBase($className)) {
+            return false;
+        }
+
+        return !in_array($className, $discriminator['mapping'], true)
+            && $this->symfonyDiscriminatorMembers($className) !== [];
+    }
+
+    /**
      * Union interfaces this class implements: the oneOf/anyOf schemas listing it as a member, plus
      * any discriminated base it is mapped to (Symfony DTOs are flattened, so the base cannot be a
      * parent class).
@@ -696,7 +743,7 @@ PHP;
         $base = $extends;
         $guard = 0;
         while ($base !== null && $guard++ < 10) {
-            if ($this->isOneOfDiscriminatorBase($base)) {
+            if ($this->isOneOfDiscriminatorBase($base) || $this->isSymfonyAllOfDiscriminatorBase($base)) {
                 $interfaces[] = $base;
             }
             $base = $this->discriminatorBaseForMember($base);
@@ -776,6 +823,9 @@ PHP;
      *     factoryDefault: string,
      *     factoryDocType: ?string,
      *     temporalFormatter: ?string,
+     *     inputType: string,
+     *     constructorType: string,
+     *     constructorDocType: ?string,
      *     queryReader: ?string,
      *     inputDocType: ?string,
      *     assignedValue: string,
@@ -848,8 +898,14 @@ PHP;
         // failed its own item check. The DTO reads such a list through a method of its own, the way
         // `filter_var` does for `#[MapQueryParameter]`; an item that does not read as the type stays a
         // string, for validation to report at its index.
+        // What a caller — the serializer included — may hand in: null only where the schema allows it.
+        // The property of an optional field is nullable for the "never set" state alone; a setter that
+        // took null as well let `{"limit": null}` and `?limit=` through as "not given" (the serializer
+        // turns an empty query value into null for a nullable type). A non-nullable setter makes the
+        // serializer refuse both at the field's path.
+        $inputType = $this->composePhpTypeHint($phpType, $schemaNullable);
         $queryReader = null;
-        $inputDocType = $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null;
+        $inputDocType = $docType !== null ? $this->composePhpTypeHint($docType, $schemaNullable) : null;
         $factoryDocType = $docType !== null ? $this->composePhpTypeHint($docType, $required ? $declaredNullable : true) : null;
         if (
             ($property['inQuery'] ?? false) === true
@@ -863,7 +919,7 @@ PHP;
         }
         $assignedValue = '$' . $property['name'];
         if ($queryReader !== null) {
-            $assignedValue = $declaredNullable
+            $assignedValue = $schemaNullable
                 ? sprintf('$%1$s === null ? null : self::%2$s($%1$s)', $property['name'], $queryReader)
                 : sprintf('self::%s($%s)', $queryReader, $property['name']);
         }
@@ -885,6 +941,13 @@ PHP;
             // the serializer a callback of the DTO's own through #[Context].
             'temporalFormatter' => $this->symfonyTemporalFormatter($property),
             'temporalDefault' => $temporalDefault,
+            'inputType' => $required ? $declaredType : $inputType,
+            // A required property that may be null takes an UNTYPED constructor parameter. For a typed
+            // nullable one the serializer passes null when the key is missing, so `{}` came in as
+            // `{"score": null}`; without a type it reports the key missing at its path instead, and still
+            // reads the value by the property's type. The docblock keeps the type for every other caller.
+            'constructorType' => $required && $schemaNullable ? '' : $declaredType,
+            'constructorDocType' => $required && $schemaNullable ? ($inputDocType ?? $declaredType) : $inputDocType,
             'queryReader' => $queryReader,
             'inputDocType' => $inputDocType,
             'assignedValue' => $assignedValue,

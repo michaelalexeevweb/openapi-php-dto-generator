@@ -53,6 +53,17 @@ interface {{ className }}
 {%- endif %}
 
 {
+{% for param in interfaceGetters|default([]) %}
+{% if not loop.first %}
+
+{% endif %}
+{% if param.docType is not null %}
+    /**
+     * @return {{ param.docType }}
+     */
+{% endif %}
+    public function {{ param.getter }}(): {{ param.declaredType }};
+{% endfor %}
 }
 {%- else %}
 
@@ -101,17 +112,17 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endfor %}
     }
 {% else %}
-{% set docParams = requiredParams|filter(param => param.inputDocType is not null) %}
+{% set docParams = requiredParams|filter(param => param.constructorDocType is not null) %}
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
-     * @param {{ param.inputDocType }} ${{ param.name }}
+     * @param {{ param.constructorDocType }} ${{ param.name }}
 {% endfor %}
      */
 {% endif %}
     public function __construct(
 {% for param in requiredParams %}
-        {{ param.declaredType }} ${{ param.name }},
+        {{ param.constructorType is empty ? '' : param.constructorType ~ ' ' }}${{ param.name }},
 {% endfor %}
     ) {
 {% for param in requiredParams %}
@@ -140,7 +151,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
      * @param {{ param.inputDocType }} ${{ param.name }}
      */
 {% endif %}
-    public function {{ param.setter }}({{ param.declaredType }} ${{ param.name }}): void
+    public function {{ param.setter }}({{ param.inputType }} ${{ param.name }}): void
     {
         $this->{{ param.name }} = {{ param.assignedValue|raw }};
         $this->{{ param.providedFlag }} = true;

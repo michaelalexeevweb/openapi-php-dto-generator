@@ -230,7 +230,10 @@ Measured against `RequestPayloadValueResolver` with a validator attached:
 
 | Payload problem | Result |
 |---|---|
-| wrong scalar type, unknown enum member, missing required field | **422**, as a violation: `This value should be of type int.` — the generated constraints never run for that field |
+| wrong scalar type, unknown enum member, missing required field | **422**, as a violation: `This value should be of type int.` — the generated constraints never run for that field. A missing field of an enum or object type is named by its class (`… of type App\Dto\WidgetKind.`), a missing required nullable one reads `of type unknown` — the text is Symfony's; keep it out of a public response if the class names matter |
+| `null` for an optional property the schema does not let be null, `?limit=` in the query | **422** / 404 at the field — the setter takes null only where the schema allows it |
+| a discriminator value outside the mapping | **500** — `NotNormalizableValueException` is thrown before the resolver collects anything. Map it to 400 yourself |
+| `format: date` in another spelling (`tomorrow`, `01/02/2025`, a full timestamp) | **accepted** — DateTimeNormalizer parses anything `DateTime` does. Pinning the format (`DateTimeNormalizer::FORMAT_KEY`) would refuse those but let an impossible date (`2025-13-45`) roll over into another one, which is worse; it is left to the default |
 | unparsable body | **400** `Request payload contains invalid "json" data.` |
 | unknown JSON key | **accepted** — the key is dropped before validation, which is why `additionalProperties: false` / `unevaluatedProperties: false` are near no-ops here; they still fire on a hand-built payload array |
 | unknown JSON key with `ALLOW_EXTRA_ATTRIBUTES => false` | **500** — `ExtraAttributesException` is neither of the two exception types the resolver catches. Map it yourself if you want strict rejection |
@@ -307,6 +310,24 @@ telling the two apart on the wire would need a normalizer of the application's o
 An object with nothing to write leaves as `[]`, not `{}`, unless the call passes
 `AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true` — the serializer has no notion of the
 schema's shape there.
+
+## File uploads (`multipart/form-data`)
+
+A `format: binary` property is an `UploadedFile`, but `#[MapRequestPayload]` reads the form fields
+only (`$request->request`), never `$request->files` — a DTO with a file in it cannot be bound that
+way. Bind the file with Symfony's own `#[MapUploadedFile]` and build the DTO from it:
+
+```php
+public function upload(
+    #[MapUploadedFile(constraints: new Assert\File(mimeTypes: ['text/csv']))] UploadedFile $sheet,
+): Response {
+    $request = WidgetImportRequest::create(sheet: $sheet);
+    // ...
+}
+```
+
+The multipart `encoding` of the document (`contentType: text/csv`) is not applied; the
+`Assert\File` constraint on the attribute is where it belongs.
 
 ## Query, path, header and cookie parameters
 
@@ -395,7 +416,17 @@ $payload['tags'] = (object)$payload['tags'];
 | **An empty map** | serializes as `[]`, not `{}` — see [below](#an-empty-map-serializes-as-) |
 
 One more asymmetry, in this mode's favour: a polymorphic schema becomes an interface with
-`#[DiscriminatorMap]`, so the serializer picks the concrete class natively.
+`#[DiscriminatorMap]`, so the serializer picks the concrete class natively. That holds for both ways
+of writing it — a `oneOf` with a discriminator, and an object base whose variants `allOf` it. In the
+second case the base's own properties become getters of the interface, so an argument typed with
+the base takes the body as it is:
+
+```php
+public function show(#[MapRequestPayload] ShapeRequest $request): Response
+{
+    // $request is a CircleShapeRequest or a SquareShapeRequest, picked by its discriminator
+}
+```
 
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
