@@ -471,6 +471,8 @@ $payload['tags'] = (object)$payload['tags'];
 | **readOnly / writeOnly** | advisory unless you pass serialization groups (above); runtime enforces them itself |
 | **`additionalProperties: false`** | near a no-op through the serializer, which drops unknown keys before validation |
 | **An empty map** | serializes as `[]`, not `{}` — see [below](#an-empty-map-serializes-as-) |
+| **A whole `type: number`** | serializes as `30000.0`, not `30000` — the serializer's `JsonEncode` defaults to `JSON_PRESERVE_ZERO_FRACTION`. Both are the same JSON number; a client or a snapshot comparing text sees a difference. It is an encoder option, out of a DTO's reach: pass `[JsonEncode::OPTIONS => 0]` (plus whatever flags you use) to `serialize()` to match runtime mode |
+| **`(string)$dto`, `toJson()`, `jsonSerialize()`** | not generated — the Symfony serializer is the way out. Code that leaned on them breaks loudly, but some only implicitly: `array_unique()` over DTOs compares them as strings, which is a fatal error without `__toString()`. Compare by the fields that make two items the same instead |
 
 One more asymmetry, in this mode's favour: a polymorphic schema becomes an interface with
 `#[DiscriminatorMap]`, so the serializer picks the concrete class natively. That holds for both ways

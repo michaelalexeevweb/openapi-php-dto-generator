@@ -3,6 +3,17 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.74 — 2026-10-12
+
+- Symfony number and string output documented
+
+Symfony mode, documentation only:
+
+- a whole `type: number` serializes as `30000.0` — the serializer's encoder default, not something a
+  DTO can change — and the README shows the option that matches runtime mode.
+- the DTOs have no `__toString()`, `toJson()` or `jsonSerialize()`; the README names the implicit
+  use that breaks, `array_unique()` over DTOs.
+
 ## 2.15.73 — 2026-10-12
 
 - Symfony shared class independent of document
