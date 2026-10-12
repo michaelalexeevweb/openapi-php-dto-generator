@@ -3,6 +3,17 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.73 — 2026-10-12
+
+- Symfony shared class independent of document
+
+Symfony mode:
+
+- a class from a `$ref`ed component file is written to one shared place by every document that refers
+  to it, yet it carried the payload view an enclosing callback reads only when THAT document had such
+  a callback. The last document generated decided for all of them, so a nested check in another one
+  was skipped silently. A class from another file now always carries the method.
+
 ## 2.15.72 — 2026-10-12
 
 - Symfony payload error recipe documented

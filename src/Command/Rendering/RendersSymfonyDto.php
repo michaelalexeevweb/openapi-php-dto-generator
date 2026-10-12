@@ -229,11 +229,16 @@ trait RendersSymfonyDto
         // `const`, a subschema applied to the nested object). Its properties are private, so
         // reading it from outside is impossible without this — hence the compact version. Emitted
         // only for the classes some other DTO's callback can actually reach: everywhere else it
-        // would be a method nobody calls.
+        // would be a method nobody calls. A class from another file is the exception: several
+        // documents write the same file, and only some of them read it from a callback — so it
+        // always carries the method, or the last generation run decides what the others get.
         if (
             $validationParts['methods'] === ''
             && $params !== []
-            && array_key_exists($className, $this->symfonyClassesReadByACallback())
+            && (
+                array_key_exists($className, $this->symfonyClassesReadByACallback())
+                || $this->isSymfonySharedClass($className)
+            )
         ) {
             $validationParts['methods'] = $this->renderSymfonyStandalonePayloadMethod($params);
         }
@@ -321,6 +326,17 @@ trait RendersSymfonyDto
     private function resetSymfonyReachabilityCache(): void
     {
         $this->symfonyClassesReadByACallback = null;
+    }
+
+    /**
+     * Whether the class comes from a file other than the document being generated — a `$ref`ed
+     * component file that other documents generate into the same place.
+     */
+    private function isSymfonySharedClass(string $className): bool
+    {
+        $sourceFile = $this->getSchemaSourceFile($className);
+
+        return $sourceFile !== null && $this->rootSpecFile !== null && $sourceFile !== $this->rootSpecFile;
     }
 
     /**
