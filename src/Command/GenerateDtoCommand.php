@@ -3496,6 +3496,14 @@ final class GenerateDtoCommand extends Command
             $branchConstraints = [];
             $hasUnvalidatableBranch = false;
             foreach ($variants as $variant) {
+                // The 3.0 null branch, `{nullable: true}` and nothing else, is what types the property
+                // `?X`. It extracts to the bare permission, which the interpreter drops as asserting
+                // nothing — so the branch vanished and the `null` it stands for matched no branch.
+                if (is_array($variant) && $this->isNullUnionBranch($variant)) {
+                    $branchConstraints[] = ['type' => 'null'];
+
+                    continue;
+                }
                 // The always-true branch COUNTS: in `oneOf` it matches alongside any other branch.
                 if ($this->isVacuousSubschema($variant)) {
                     $branchConstraints[] = true;

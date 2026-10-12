@@ -3,11 +3,19 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
-## 2.15.72 — 2026-10-10
+## 2.15.72 — 2026-10-12
 
 - Symfony payload error recipe documented
+- 3.0 null branch accepts null
 
-Symfony mode, documentation only:
+All modes but runtime:
+
+- a union whose null branch is spelled the 3.0 way, `oneOf: [{$ref: X}, {nullable: true}]`, typed the
+  property `?X` but refused its `null`: the branch extracted to the bare permission, which the
+  interpreter drops as asserting nothing, so `null` matched no branch — "does not match any oneOf
+  branch". The branch is now read as `{type: null}`, the way the `nullable` beside a union already was.
+
+Symfony mode, documentation:
 
 - a discriminator value outside the mapping, or none at all, at the top of a `#[MapRequestPayload]`
   body is thrown by the serializer as `NotNormalizableValueException`, which the resolver does not

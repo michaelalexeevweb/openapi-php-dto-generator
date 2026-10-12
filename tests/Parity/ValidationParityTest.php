@@ -1480,6 +1480,11 @@ final class ValidationParityTest extends TestCase
             'a null branch inside the union' => [
                 'oneOf' => [['type' => 'integer', 'minimum' => 10], ['type' => 'string'], ['type' => 'null']],
             ],
+            // The 3.0 spelling of that branch: it extracted to the bare permission, which the
+            // interpreter dropped, so Symfony refused the null the branch stands for.
+            'a 3.0 nullable branch inside the union' => [
+                'oneOf' => [['type' => 'integer', 'minimum' => 10], ['type' => 'string'], ['nullable' => true]],
+            ],
         ];
 
         foreach ($spellings as $key => $propertySchema) {
@@ -1492,6 +1497,20 @@ final class ValidationParityTest extends TestCase
                 context: $key,
             );
         }
+
+        // The same branch beside a `$ref`, which Symfony matches by class rather than by schema.
+        $key = 'a 3.0 nullable branch beside a reference';
+        $spec = self::probeSpec(['oneOf' => [['$ref' => '#/components/schemas/Widget'], ['nullable' => true]]]);
+        $spec['components']['schemas']['Widget'] = [
+            'type' => 'object',
+            'required' => ['id'],
+            'properties' => ['id' => ['type' => 'integer', 'minimum' => 10]],
+        ];
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":null}', '{"f":{"id":5}}'),
+            context: $key,
+        );
     }
 
     /**
