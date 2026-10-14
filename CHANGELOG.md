@@ -6,6 +6,15 @@ This file starts at 2.9.0. Notes for every earlier tag are the
 ## 2.15.74 — 2026-10-12
 
 - Symfony number and string output documented
+- Symfony and yii3 item errors keep index
+- Symfony query list forms documented
+
+Symfony and yii3 modes:
+
+- a message the class-level callback raised about a list item, `field "ids"[0] must be of type
+  integer.`, was pinned to the list, `ids`, while Symfony's own constraints pin an item to `ids[0]`.
+  The path now keeps the index — `ids[0]`, `f[0].a` — and yii3 gets it as the keys `ids`, 0, the
+  value path `Each` writes.
 
 Symfony mode, documentation only:
 
@@ -13,6 +22,9 @@ Symfony mode, documentation only:
   DTO can change — and the README shows the option that matches runtime mode.
 - the DTOs have no `__toString()`, `toJson()` or `jsonSerialize()`; the README names the implicit
   use that breaks, `array_unique()` over DTOs.
+- a list in the query binds from the bracket form `?ids[]=1` only. `explode: false`
+  (`?ids=1,22`), the delimited styles and repeated keys (`?ids=1&ids=22`, the OpenAPI default) are
+  refused by Symfony before the DTO is reached; the README lists each form with its result.
 
 ## 2.15.73 — 2026-10-12
 

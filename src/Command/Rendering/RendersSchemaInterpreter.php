@@ -1605,10 +1605,11 @@ PHP;
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }

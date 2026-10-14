@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 30774 lines
+# yii3 mode — 80 files, 31212 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -138,12 +138,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -286,9 +287,13 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -443,10 +448,11 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -486,12 +492,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -634,9 +641,13 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -791,10 +802,11 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -834,12 +846,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -982,9 +995,13 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -1139,10 +1156,11 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -1184,12 +1202,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -1344,9 +1363,13 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -1504,10 +1527,11 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -1549,12 +1573,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -1720,9 +1745,13 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -1883,10 +1912,11 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -1926,12 +1956,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -2074,9 +2105,13 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -2231,10 +2266,11 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -2281,7 +2317,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -2291,6 +2327,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -2489,9 +2526,13 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -2656,10 +2697,11 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -2706,7 +2748,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -2716,6 +2758,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -2914,9 +2957,13 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -3081,10 +3128,11 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -3131,7 +3179,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -3141,6 +3189,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -3339,9 +3388,13 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -3506,10 +3559,11 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -3556,7 +3610,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -3566,6 +3620,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -3764,9 +3819,13 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -3931,10 +3990,11 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -3977,12 +4037,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -4128,9 +4189,13 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -4285,10 +4350,11 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -4331,12 +4397,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -4482,9 +4549,13 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -4639,10 +4710,11 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -4683,12 +4755,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -4829,9 +4902,13 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -4959,10 +5036,11 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -5002,12 +5080,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -5150,9 +5229,13 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -5307,10 +5390,11 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -5350,12 +5434,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -5498,9 +5583,13 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -5655,10 +5744,11 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -5698,12 +5788,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -5846,9 +5937,13 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -6003,10 +6098,11 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -6047,12 +6143,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -6196,9 +6293,13 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -6353,10 +6454,11 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -6396,12 +6498,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -6544,9 +6647,13 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -6701,10 +6808,11 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -6746,13 +6854,14 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_bool;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -6903,9 +7012,13 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -7061,10 +7174,11 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -7105,12 +7219,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -7254,9 +7369,13 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -7411,10 +7530,11 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -7454,12 +7574,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -7602,9 +7723,13 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -7759,10 +7884,11 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -7802,12 +7928,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -7950,9 +8077,13 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -8107,10 +8238,11 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -8151,12 +8283,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -8300,9 +8433,13 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -8457,10 +8594,11 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -8501,12 +8639,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -8650,9 +8789,13 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -8807,10 +8950,11 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -8851,12 +8995,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -9000,9 +9145,13 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -9157,10 +9306,11 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -9202,7 +9352,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -9212,6 +9362,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -9380,9 +9531,13 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -9565,10 +9720,11 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -9616,7 +9772,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -9628,6 +9784,7 @@ use function is_object;
 use function is_string;
 use function method_exists;
 use function preg_match;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -9997,9 +10154,13 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -10264,10 +10425,11 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -10340,12 +10502,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -10504,9 +10667,13 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -10671,10 +10838,11 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -10716,12 +10884,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -10872,9 +11041,13 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -11030,10 +11203,11 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -11077,12 +11251,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -11265,9 +11440,13 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -11429,10 +11608,11 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -11477,7 +11657,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -11488,6 +11668,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -11689,9 +11870,13 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -11858,10 +12043,11 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -11905,7 +12091,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function count;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -11916,6 +12102,7 @@ use function is_object;
 use function is_string;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -12400,9 +12587,13 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -12729,10 +12920,11 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -12868,7 +13060,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -12878,6 +13070,7 @@ use function is_object;
 use function is_string;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -13042,9 +13235,13 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -13226,10 +13423,11 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -13295,7 +13493,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -13305,6 +13503,7 @@ use function is_object;
 use function is_string;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -13466,9 +13665,13 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -13641,10 +13844,11 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -13710,12 +13914,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -13868,9 +14073,13 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -14039,10 +14248,11 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -14103,7 +14313,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -14113,6 +14323,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -14307,9 +14518,13 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -14475,10 +14690,11 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -14519,12 +14735,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -14668,9 +14885,13 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -14825,10 +15046,11 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -14869,12 +15091,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -15018,9 +15241,13 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -15175,10 +15402,11 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -15218,12 +15446,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -15377,9 +15606,13 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -15537,10 +15770,11 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -15585,12 +15819,13 @@ use Yiisoft\Validator\ValidationContext;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -15755,9 +15990,13 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -15918,10 +16157,11 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -15964,12 +16204,13 @@ use Yiisoft\Validator\ValidationContext;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -16117,9 +16358,13 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -16277,10 +16522,11 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -16321,12 +16567,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -16470,9 +16717,13 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -16627,10 +16878,11 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -16671,12 +16923,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -16830,9 +17083,13 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -16990,10 +17247,11 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -17033,7 +17291,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -17045,6 +17303,7 @@ use function is_string;
 use function json_encode;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -17272,9 +17531,13 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -17509,10 +17772,11 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -17594,13 +17858,14 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
 use function preg_match;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -17843,9 +18108,13 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -18073,10 +18342,11 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -18168,7 +18438,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -18179,6 +18449,7 @@ use function is_object;
 use function is_string;
 use function json_encode;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -18310,9 +18581,13 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -18476,10 +18751,11 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -18545,13 +18821,14 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function implode;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -18708,9 +18985,13 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -18903,10 +19184,11 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -18948,13 +19230,14 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function implode;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -19122,9 +19405,13 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -19320,10 +19607,11 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -19366,13 +19654,14 @@ use Yiisoft\Validator\ValidationContext;
 use function array_filter;
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function implode;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -19552,9 +19841,13 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -19753,10 +20046,11 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -19815,12 +20109,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -19974,9 +20269,13 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -20134,10 +20433,11 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -20177,12 +20477,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -20336,9 +20637,13 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -20496,10 +20801,11 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -20542,12 +20848,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -20712,9 +21019,13 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -20875,10 +21186,11 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -20918,7 +21230,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -20932,6 +21244,7 @@ use function mb_strlen;
 use function method_exists;
 use function preg_last_error;
 use function preg_match;
+use function preg_split;
 use function property_exists;
 use function restore_error_handler;
 use function set_error_handler;
@@ -21131,9 +21444,13 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -21384,10 +21701,11 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -21530,7 +21848,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function bin2hex;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -21545,6 +21863,7 @@ use function ksort;
 use function method_exists;
 use function pack;
 use function preg_match;
+use function preg_split;
 use function property_exists;
 use function serialize;
 use function sprintf;
@@ -21886,9 +22205,13 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -22203,10 +22526,11 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -22288,7 +22612,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -22300,6 +22624,7 @@ use function is_string;
 use function json_encode;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -22520,9 +22845,13 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -22757,10 +23086,11 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -22838,7 +23168,7 @@ use Yiisoft\Validator\ValidationContext;
 use function array_key_exists;
 use function array_map;
 use function count;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -22848,6 +23178,7 @@ use function is_object;
 use function is_string;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -23050,9 +23381,13 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -23299,10 +23634,11 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -23368,12 +23704,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -23516,9 +23853,13 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -23673,10 +24014,11 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -23720,7 +24062,7 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -23730,6 +24072,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -23943,9 +24286,13 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -24128,10 +24475,11 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -24171,12 +24519,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -24319,9 +24668,13 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -24476,10 +24829,11 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -24540,12 +24894,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -24699,9 +25054,13 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -24859,10 +25218,11 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -24903,12 +25263,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -25062,9 +25423,13 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -25222,10 +25587,11 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -25265,12 +25631,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -25413,9 +25780,13 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -25570,10 +25941,11 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -25618,12 +25990,13 @@ use Yiisoft\Validator\ValidationContext;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -25843,9 +26216,13 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -26042,10 +26419,11 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -26104,12 +26482,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -26257,9 +26636,13 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -26407,10 +26790,11 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -26452,12 +26836,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -26623,9 +27008,13 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -26786,10 +27175,11 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -26837,7 +27227,7 @@ use function array_map;
 use function array_pop;
 use function array_unique;
 use function array_values;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -26855,6 +27245,7 @@ use function ltrim;
 use function method_exists;
 use function preg_match;
 use function preg_replace;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_contains;
@@ -27070,9 +27461,13 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -27393,10 +27788,11 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -27507,7 +27903,7 @@ use function array_map;
 use function array_pop;
 use function array_unique;
 use function array_values;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -27523,6 +27919,7 @@ use function is_string;
 use function ltrim;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -27756,9 +28153,13 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -28092,10 +28493,11 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -28183,7 +28585,7 @@ use function array_map;
 use function array_pop;
 use function array_unique;
 use function array_values;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -28199,6 +28601,7 @@ use function is_string;
 use function ltrim;
 use function mb_strlen;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -28498,9 +28901,13 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -28869,10 +29276,11 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -28940,7 +29348,7 @@ use function array_keys;
 use function array_map;
 use function bin2hex;
 use function count;
-use function explode;
+use function ctype_digit;
 use function floor;
 use function get_object_vars;
 use function is_array;
@@ -28952,6 +29360,7 @@ use function is_string;
 use function ksort;
 use function method_exists;
 use function pack;
+use function preg_split;
 use function property_exists;
 use function serialize;
 use function sprintf;
@@ -29102,9 +29511,13 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -29369,10 +29782,11 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -29443,12 +29857,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -29642,9 +30057,13 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -29826,10 +30245,11 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -29874,12 +30294,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -30070,9 +30491,13 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -30254,10 +30679,11 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -30297,12 +30723,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -30479,9 +30906,13 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -30645,10 +31076,11 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -30689,12 +31121,13 @@ use Yiisoft\Validator\ValidationContext;
 
 use function array_key_exists;
 use function array_map;
-use function explode;
+use function ctype_digit;
 use function get_object_vars;
 use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -30838,9 +31271,13 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
         $result = new Result();
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             $result->addError(
                 str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : explode('.', $path),
+                valuePath: $path === null ? [] : array_map(
+                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 
@@ -30995,10 +31432,11 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }

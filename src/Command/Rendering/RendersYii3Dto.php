@@ -934,9 +934,13 @@ PHP;
         \$result = new {$this->yii3Lib('Result')}();
         foreach (\$this->validateOpenApiNode(\$this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as \$error) {
             \$path = self::openApiViolationPath(\$error);
+            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
             \$result->addError(
                 str_ends_with(\$error, '.') ? \$error : \$error . '.',
-                valuePath: \$path === null ? [] : explode('.', \$path),
+                valuePath: \$path === null ? [] : array_map(
+                    static fn (string \$key): int|string => ctype_digit(\$key) ? (int)\$key : \$key,
+                    preg_split('/[.\\[\\]]+/', \$path, -1, \\PREG_SPLIT_NO_EMPTY) ?: [],
+                ),
             );
         }
 

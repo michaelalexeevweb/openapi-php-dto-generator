@@ -333,8 +333,8 @@ final class SymfonyWireShapeTest extends TestCase
             $failure = $exception->getPrevious();
             $this->assertInstanceOf(ValidationFailedException::class, $failure);
             // Symfony 8 refuses the item in the serializer already, Symfony 7 leaves it to the DTO's
-            // check: the wording differs, the field it is pinned to does not.
-            $this->assertStringStartsWith('counts', $failure->getViolations()->get(0)->getPropertyPath());
+            // check: the wording differs, the item it is pinned to does not.
+            $this->assertSame('counts[1]', $failure->getViolations()->get(0)->getPropertyPath());
         }
     }
 

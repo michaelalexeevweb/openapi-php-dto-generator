@@ -509,9 +509,10 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         $violations = $this->handleRequest(self::jsonRequest('{"f":[{"b":1}]}'), $fqcn);
         $messages = [];
         foreach ($violations as $violation) {
-            $messages[] = (string)$violation->getMessage();
+            $messages[] = $violation->getPropertyPath() . ': ' . (string)$violation->getMessage();
         }
-        $this->assertStringContainsString('field "f"[0].a is required', implode("\n", $messages));
+        // The item's index is part of the path, the way Symfony's own constraints write it.
+        $this->assertStringContainsString('f[0].a: field "f"[0].a is required', implode("\n", $messages));
     }
 
     public function testRequiredInContentSchemaIsEnforced(): void

@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12410 lines
+# symfony mode — 77 files, 12426 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2094,10 +2094,11 @@ final class ApiTestSerializationGetQueryParams
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -3518,10 +3519,11 @@ final class ApplicatorRefs
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -3953,10 +3955,11 @@ final class ApplicatorRefsConditional
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -4306,10 +4309,11 @@ final class ApplicatorRefsKeyed
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -4592,10 +4596,11 @@ final class ApplicatorRefsPoisonedKey
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -5618,10 +5623,11 @@ final class ContainerAliases
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -6223,10 +6229,11 @@ final class Containers
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -6529,10 +6536,11 @@ final class CountMap
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -7355,10 +7363,11 @@ final class ItemBounds
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -8156,10 +8165,11 @@ final class NestedContainers
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -8686,10 +8696,11 @@ final class NullableContainerValues
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -9135,10 +9146,11 @@ final class ObjectWideRules
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -10461,10 +10473,11 @@ final class TestPostRequest
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -11097,10 +11110,11 @@ final class TreeNode
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -11846,10 +11860,11 @@ final class UnionUnderContainer
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }
@@ -12253,10 +12268,11 @@ final class UniqueScalars
         }
 
         // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`.
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
         $rest = substr($error, $closing + 1);
         $deeper = '';
-        if (str_starts_with($rest, '.')) {
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
             $space = strpos($rest, ' ');
             $deeper = $space === false ? $rest : substr($rest, 0, $space);
         }

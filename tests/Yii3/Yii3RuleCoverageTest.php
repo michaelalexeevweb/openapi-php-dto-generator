@@ -199,6 +199,24 @@ final class Yii3RuleCoverageTest extends TestCase
     }
 
     /**
+     * A message about an item carries the item's index as a key of its own, the value path `Each`
+     * writes: `f`, 0, `a` — never `f` alone, and never one key `f[0]`.
+     */
+    public function testAMessageAboutAnItemIsPinnedToItsIndex(): void
+    {
+        $result = $this->verdictFor(
+            [
+                'type' => 'array',
+                'items' => ['required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]],
+            ],
+            [['a' => 1], ['b' => 1]],
+        );
+
+        self::assertSame(['f.1.a' => 'field "f"[1].a is required.'], $this->messages($result));
+        self::assertSame(['f', 1, 'a'], $result->getErrors()[0]->getValuePath());
+    }
+
+    /**
      * One mistake, one message — the rule every mode in this package follows.
      *
      * A missing required property is reported by the interpreter as "is required"; the rules on that
