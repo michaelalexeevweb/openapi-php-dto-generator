@@ -445,18 +445,18 @@ final class SymfonyDtoBehaviorTest extends TestCase
         require_once $file;
         $source = (string)file_get_contents($file);
 
-        // The attribute owns the bound; the callback literal must not repeat it.
-        $this->assertStringContainsString('new Assert\Range(min: 5)', $source);
-        $this->assertStringNotContainsString("'minimum' => 5", $source);
-        // `type` for a LIST item stays with the callback — the list branch emits no Assert\Type, and
-        // the callback accepts the integral float (42.0) that Assert\Type would refuse.
+        // The callback owns a scalar item's `type` — it accepts the integral float (42.0) that
+        // Assert\Type would refuse — and so its bound as well; no attribute repeats either.
+        $this->assertStringNotContainsString('new Assert\Range(min: 5)', $source);
+        $this->assertStringContainsString("'minimum' => 5", $source);
         $this->assertStringContainsString("'type' => 'integer'", $source);
 
         /** @var class-string $fqcn */
         $fqcn = $ns . '\ItemBounds';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
-        foreach (['setScores' => [1], 'setScoresByKey' => ['a' => 1]] as $setter => $value) {
+        foreach (['setScores' => [1], 'setScoresByKey' => ['a' => 1], 'setScores ' => ['x'], 'setScoresByKey ' => ['a' => 'x']] as $setter => $value) {
+            $setter = trim($setter);
             $dto = new $fqcn();
             $dto->{$setter}($value);
             $messages = [];
@@ -649,11 +649,11 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Counters.php');
         $this->assertStringContainsString('#[Assert\Count(min: 1)]', $content);
-        // No `Assert\Type` for a SCALAR map value, and that is the point: it would refuse `42.0`,
-        // which JSON Schema calls an integer. `type` is left to the callback, exactly as the LIST
-        // spelling of the same schema has always left it.
-        $this->assertStringContainsString('#[Assert\All([new Assert\Range(min: 0)])]', $content);
-        $this->assertStringNotContainsString("new Assert\\Type('int')", $content);
+        // No attribute for a SCALAR map value, and that is the point: `Assert\Type` would refuse
+        // `42.0`, which JSON Schema calls an integer, so `type` is left to the callback — exactly as
+        // the LIST spelling of the same schema leaves it — and the bound goes with it.
+        $this->assertStringNotContainsString('Assert\All', $content);
+        $this->assertStringContainsString("'minimum' => 0", $content);
 
         require_once $this->outputDirectory . '/Counters.php';
         $cls = $ns . '\Counters';
@@ -662,7 +662,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $this->assertCount(0, $validator->validate(new $cls(counts: ['a' => 1, 'b' => 2])));
         // minProperties: empty map fails Count.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(counts: []))));
-        // additionalProperties value constraint: negative value fails Range inside All.
+        // additionalProperties value constraint: a negative value fails the callback's bound.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(counts: ['a' => -1]))));
         // additionalProperties value type: a string value is still refused — by the callback now,
         // which is also what lets an integral float through where `Assert\Type` would not.
@@ -847,14 +847,16 @@ final class SymfonyDtoBehaviorTest extends TestCase
         $ns = 'SymEmails';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $ns, 'symfony');
         $content = (string)file_get_contents($this->outputDirectory . '/Mailing.php');
-        $this->assertStringContainsString('#[Assert\All([new Assert\Email(), new Assert\NotBlank(allowNull: true)])]', $content);
+        // The callback owns a scalar item, its `format` included.
+        $this->assertStringNotContainsString('Assert\All', $content);
+        $this->assertStringContainsString("'format' => 'email'", $content);
 
         require_once $this->outputDirectory . '/Mailing.php';
         $cls = $ns . '\Mailing';
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(0, $validator->validate(new $cls(emails: ['a@b.com', 'c@d.com'])));
-        // One bad item fails the per-item Email constraint.
+        // One bad item fails the callback's email check.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(emails: ['a@b.com', 'nope']))));
         $this->assertGreaterThan(0, count($validator->validate(new $cls(emails: ['']))));
     }

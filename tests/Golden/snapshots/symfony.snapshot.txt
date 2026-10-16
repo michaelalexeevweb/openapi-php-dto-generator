@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12426 lines
+# symfony mode — 77 files, 12623 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5206,6 +5206,7 @@ final class ContainerAliases
             'plain' => [
                 'items' => [
                     'type' => 'string',
+                    'minLength' => 2,
                 ],
             ],
         ],
@@ -5255,7 +5256,6 @@ final class ContainerAliases
     /**
      * @var ?array<string>
      */
-    #[Assert\All([new Assert\Length(min: 2)])]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $plain = null;
@@ -6973,10 +6973,17 @@ use function is_float;
 use function is_int;
 use function is_object;
 use function is_string;
+use function json_encode;
+use function mb_strlen;
 use function method_exists;
+use function preg_last_error;
+use function preg_match;
+use function restore_error_handler;
+use function set_error_handler;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
+use function strlen;
 use function strpos;
 use function substr;
 
@@ -6997,16 +7004,20 @@ final class ItemBounds
             'scores' => [
                 'items' => [
                     'type' => 'integer',
+                    'minimum' => 5,
                 ],
             ],
             'scoresByKey' => [
                 'additionalProperties' => [
                     'type' => 'integer',
+                    'minimum' => 5,
                 ],
             ],
             'codes' => [
                 'items' => [
                     'type' => 'string',
+                    'minLength' => 2,
+                    'pattern' => '^[a-z]+$',
                 ],
             ],
         ],
@@ -7028,14 +7039,12 @@ final class ItemBounds
     /**
      * @var array<int>
      */
-    #[Assert\All([new Assert\Range(min: 5)])]
     #[Groups(['read', 'write'])]
     private readonly array $scores;
 
     /**
      * @var ?array<string, int>
      */
-    #[Assert\All([new Assert\Range(min: 5)])]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $scoresByKey = null;
@@ -7046,7 +7055,6 @@ final class ItemBounds
     /**
      * @var ?array<string>
      */
-    #[Assert\All([new Assert\Length(min: 2), new Assert\Regex('#^[a-z]+$#u'), new Assert\NotBlank(allowNull: true)])]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $codes = null;
@@ -7229,6 +7237,40 @@ final class ItemBounds
             }
         }
 
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
+            if ($minimum !== null && !($normalizedValue >= $minimum)) {
+                $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
+            }
+        }
+
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['minLength', 'pattern'])) {
+            $length = mb_strlen($normalizedValue);
+            $minLength = $this->toIntConstraint($schema['minLength'] ?? null);
+            if ($minLength !== null && $length < $minLength) {
+                $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
+            }
+            if (is_string($pattern = $schema['pattern'] ?? null) && $pattern !== '') {
+                $regex = $this->delimitOpenApiPattern($pattern);
+                set_error_handler(static fn(): bool => true);
+                try {
+                    $match = preg_match($regex, $normalizedValue);
+                } finally {
+                    restore_error_handler();
+                }
+
+                if ($match === false) {
+                    if (preg_last_error() === PREG_BAD_UTF8_ERROR) {
+                        $errors[] = sprintf('%s contains invalid UTF-8 characters', $path);
+                    } else {
+                        $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern);
+                    }
+                } elseif ($match !== 1) {
+                    $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
+                }
+            }
+        }
+
         $definedProperties = [];
         $patternMatchedProperties = [];
 
@@ -7382,6 +7424,107 @@ final class ItemBounds
         return $path === 'payload'
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function delimitOpenApiPattern(string $pattern, bool $unicode = true): string
+    {
+        $delimited = '#';
+        $length = strlen($pattern);
+        $inClass = false;
+        $classOpenedAt = -1;
+        for ($i = 0; $i < $length; $i++) {
+            $character = $pattern[$i];
+            if ($character === '\\' && $i + 1 < $length) {
+                $next = $pattern[$i + 1];
+                // ECMA-262 `\uXXXX` and `\u{X…}` are PCRE's `\x{…}`; PCRE has no `\u` at all.
+                if ($next === 'u' && preg_match('/\G(?:\{([0-9A-Fa-f]{1,6})\}|([0-9A-Fa-f]{4}))/', $pattern, $hex, 0, $i + 2) === 1) {
+                    $delimited .= '\\x{' . ($hex[1] !== '' ? $hex[1] : $hex[2]) . '}';
+                    $i += 1 + strlen($hex[0]);
+                    continue;
+                }
+                $i++;
+                // ECMA-262 `\v` is the one vertical TAB; PCRE's is a class that also holds `\n` and `\r`.
+                if ($next === 'v') {
+                    $delimited .= '\\x{B}';
+                    continue;
+                }
+                // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
+                // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
+                $ascii = !$unicode ? null : ($inClass ? match ($next) {
+                    'd' => '0-9',
+                    'D' => '\x{0}-\x{2F}\x{3A}-\x{10FFFF}',
+                    'w' => 'A-Za-z0-9_',
+                    'W' => '\x{0}-\x{2F}\x{3A}-\x{40}\x{5B}-\x{5E}\x{60}\x{7B}-\x{10FFFF}',
+                    default => null,
+                } : match ($next) {
+                    'd' => '[0-9]',
+                    'D' => '[^0-9]',
+                    'w' => '[A-Za-z0-9_]',
+                    'W' => '[^A-Za-z0-9_]',
+                    'b' => '(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))',
+                    'B' => '(?:(?<=[A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<![A-Za-z0-9_])(?![A-Za-z0-9_]))',
+                    default => null,
+                });
+                $delimited .= $ascii ?? '\\' . $next;
+                continue;
+            }
+            if ($inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ':') {
+                // A POSIX class carries its own `]`; copied whole, it cannot close the outer class.
+                $end = strpos($pattern, ':]', $i + 2);
+                if ($end !== false) {
+                    $delimited .= substr($pattern, $i, $end + 2 - $i);
+                    $i = $end + 1;
+                    continue;
+                }
+            }
+            if (!$inClass && $character === '[') {
+                $inClass = true;
+                $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
+            } elseif ($inClass && $character === ']' && $i > $classOpenedAt + 1) {
+                // PCRE reads a `]` right after `[` or `[^` as a literal member, not as the end.
+                $inClass = false;
+            }
+            $delimited .= $character === '#' ? '\\#' : $character;
+        }
+
+        return $delimited . ($unicode ? '#u' : '#');
+    }
+
+    private function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
+    }
+
+    private function toNumericConstraint(mixed $value): int|float|null
+    {
+        return is_int($value) || is_float($value) ? $value : null;
+    }
+
+    private function stringifyOpenApiNumber(int|float $value): string
+    {
+        $rendered = json_encode($value);
+        return is_string($rendered) ? $rendered : (string)$value;
     }
 }
 
@@ -8254,6 +8397,8 @@ use function is_float;
 use function is_int;
 use function is_object;
 use function is_string;
+use function json_encode;
+use function mb_strlen;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
@@ -8279,12 +8424,14 @@ final class NullableContainerValues
                 'items' => [
                     'type' => 'string',
                     'nullable' => true,
+                    'minLength' => 2,
                 ],
             ],
             'mapOfNullable' => [
                 'additionalProperties' => [
                     'type' => 'integer',
                     'nullable' => true,
+                    'minimum' => 5,
                 ],
             ],
             'listOfNullable31' => [
@@ -8320,14 +8467,12 @@ final class NullableContainerValues
     /**
      * @var array<?string>
      */
-    #[Assert\All([new Assert\Length(min: 2)])]
     #[Groups(['read', 'write'])]
     private readonly array $listOfNullable;
 
     /**
      * @var ?array<string, ?int>
      */
-    #[Assert\All([new Assert\Range(min: 5)])]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $mapOfNullable = null;
@@ -8562,6 +8707,21 @@ final class NullableContainerValues
             }
         }
 
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && $this->schemaHasAnyOpenApiKey($schema, ['minimum'])) {
+            $minimum = $this->toNumericConstraint($schema['minimum'] ?? null);
+            if ($minimum !== null && !($normalizedValue >= $minimum)) {
+                $errors[] = sprintf('%s must be greater than or equal to %s', $path, $this->stringifyOpenApiNumber($minimum));
+            }
+        }
+
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['minLength'])) {
+            $length = mb_strlen($normalizedValue);
+            $minLength = $this->toIntConstraint($schema['minLength'] ?? null);
+            if ($minLength !== null && $length < $minLength) {
+                $errors[] = sprintf('%s length must be at least %d characters', $path, $minLength);
+            }
+        }
+
         $definedProperties = [];
         $patternMatchedProperties = [];
 
@@ -8715,6 +8875,43 @@ final class NullableContainerValues
         return $path === 'payload'
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function toIntConstraint(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_float($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+
+        return null;
+    }
+
+    private function toNumericConstraint(mixed $value): int|float|null
+    {
+        return is_int($value) || is_float($value) ? $value : null;
+    }
+
+    private function stringifyOpenApiNumber(int|float $value): string
+    {
+        $rendered = json_encode($value);
+        return is_string($rendered) ? $rendered : (string)$value;
     }
 }
 

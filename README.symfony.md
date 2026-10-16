@@ -129,7 +129,7 @@ For direct Serializer calls, pass `['require_all_properties' => true]` as the fo
 | `format: date` / `date-time` | `DateTimeImmutable` property and getter; written as the schema says through a `#[Context]` callback (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `items` / `additionalProperties` with `format: date` / `date-time` | `array<DateTimeImmutable>`; written per item the same way (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `format: binary` | `UploadedFile` type |
-| `items` (scalar) / `additionalProperties` | `#[Assert\All([...])]` |
+| `items` / `additionalProperties` of an enum, a date or a DTO | `#[Assert\All([new Assert\Type(X::class)])]` |
 | `anyOf` | `#[Assert\AtLeastOneOf([...])]` |
 | nested DTO / array of DTOs | `#[Assert\Valid]` (cascade) |
 | property name ≠ OpenAPI name | `#[SerializedName('…')]` |
@@ -154,6 +154,7 @@ own callback and are reached via the `#[Assert\Valid]` cascade.
 | `prefixItems` (tuples), `items` | positional then rest items |
 | `contains`, `minContains`, `maxContains` | match count bounds |
 | `oneOf` (+ discriminator mapping), callback-only formats (`uri`,`iri`,`uri-reference`,`iri-reference`,`uri-template`,`duration`,`time`,`regex`,`json-pointer`,`relative-json-pointer`,`byte`,`idn-hostname`), `contentEncoding` / `contentMediaType` / `contentSchema`, `format: int64` / `uint64` | self-contained callback checks (branch XOR / discriminator-class agreement, format/content assertions, int64/uint64 bounds) |
+| a scalar list item or map value: `type` and every keyword beside it | the callback, so an item of the wrong type is one message — `?ids[]=x` is not also asked about `minimum` |
 | scalar keywords inside callback subschemas (`type`, `enum`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum`, `multipleOf`, `minItems`/`maxItems`, `uniqueItems`, `minProperties`/`maxProperties`, `format`) | enforced recursively in `not`/`if`/`then`/`else`/`contains`/`items`/`propertyNames`/`patternProperties`/`dependentSchemas` |
 
 Callback code is emitted only for keywords that actually occur in the schema, and recursion is capped

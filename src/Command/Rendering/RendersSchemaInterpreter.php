@@ -2720,11 +2720,6 @@ PHP,
      *
      * @param array<string, mixed> $constraints
      * @param array<string, true> $forceScalarOnProperties
-     * @param array<string, array<int, string>> $itemKeywordsCoveredByProperty per OpenAPI property
-     *        name, the keywords its `#[Assert\All]` already enforces on the items — dropped from the
-     *        FIRST container hop so one mistake produces one message
-     * @param array<int, string> $coveredItemKeywords the entry above, once the recursion is inside
-     *        that property; empty at every other level
      * @return array<string, mixed>
      */
     private function filterInterpreterConstraints(
@@ -2732,8 +2727,6 @@ PHP,
         bool $allowScalarKeywords = false,
         array $forceScalarOnProperties = [],
         bool $isPropertySchema = false,
-        array $itemKeywordsCoveredByProperty = [],
-        array $coveredItemKeywords = [],
         bool $belowContainer = false,
     ): array {
         $constraints = $this->foldScalarAllOfConstraints($constraints);
@@ -2760,7 +2753,6 @@ PHP,
                                 constraints: $schema,
                                 allowScalarKeywords: $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
                                 isPropertySchema: true,
-                                coveredItemKeywords: $itemKeywordsCoveredByProperty[$name] ?? [],
                                 belowContainer: $belowContainer,
                             );
                         }
@@ -2791,15 +2783,14 @@ PHP,
                     break;
                 case 'items':
                     if (is_array($value)) {
-                        // `allowScalarKeywords: true` stays: `Assert\All` does not nest, so from the
-                        // SECOND container down there is no attribute and the callback owns everything.
-                        // What the attribute does cover at THIS hop is subtracted instead.
+                        // Every keyword of an item is the callback's: Symfony mode emits no
+                        // `Assert\All` with a bound in it — the callback owns a scalar item's `type`,
+                        // and a bound beside it would ask a value of the wrong type about it as well.
                         $nested = $this->filterInterpreterConstraints(
                             $value,
                             allowScalarKeywords: true,
                             belowContainer: true,
                         );
-                        $nested = $this->withoutKeywords($nested, $coveredItemKeywords);
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -2822,9 +2813,6 @@ PHP,
                             allowScalarKeywords: true,
                             belowContainer: true,
                         );
-                        if ($key === 'additionalProperties') {
-                            $nested = $this->withoutKeywords($nested, $coveredItemKeywords);
-                        }
                         if ($nested !== []) {
                             $filtered[$key] = $nested;
                         }
@@ -3042,25 +3030,5 @@ PHP,
         }
 
         return $filtered;
-    }
-
-    /**
-     * A subschema without the named keywords. Empty list, or nothing to drop: the same array back.
-     *
-     * @param array<string, mixed> $schema
-     * @param array<int, string> $keywords
-     * @return array<string, mixed>
-     */
-    private function withoutKeywords(array $schema, array $keywords): array
-    {
-        if ($keywords === []) {
-            return $schema;
-        }
-
-        foreach ($keywords as $keyword) {
-            unset($schema[$keyword]);
-        }
-
-        return $schema;
     }
 }

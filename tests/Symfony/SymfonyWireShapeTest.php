@@ -339,6 +339,81 @@ final class SymfonyWireShapeTest extends TestCase
     }
 
     /**
+     * An item of the wrong type is one mistake, so it is one message: a bound on the items is not
+     * also asked about a value that is not a number at all. A number out of the bound still fails.
+     */
+    public function testAnItemOfTheWrongTypeIsReportedOnce(): void
+    {
+        $target = $this->outputDirectory . '/WireItemOnce';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/sprockets' => [
+                    'get' => [
+                        'parameters' => [
+                            ['name' => 'sizes', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1]]],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+            'components' => [
+                'schemas' => [
+                    'Sprocket' => [
+                        'type' => 'object',
+                        'required' => ['sizes', 'labels', 'weights'],
+                        'properties' => [
+                            'sizes' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1]],
+                            'labels' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]],
+                            'weights' => ['type' => 'object', 'additionalProperties' => ['type' => 'number', 'maximum' => 10]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireItemOnce', 'symfony');
+        require_once $target . '/SprocketsGetQueryParams.php';
+        require_once $target . '/Sprocket.php';
+
+        foreach (['/sprockets?sizes[]=2&sizes[]=x' => 'sizes[1]', '/sprockets?sizes[]=2&sizes[]=0' => 'sizes[1]'] as $uri => $path) {
+            try {
+                $this->resolveQuery(\WireItemOnce\SprocketsGetQueryParams::class, $uri);
+                $this->fail($uri . ' must not pass');
+            } catch (HttpException $exception) {
+                $failure = $exception->getPrevious();
+                $this->assertInstanceOf(ValidationFailedException::class, $failure);
+                $this->assertCount(1, $failure->getViolations(), $uri . ': ' . $failure->getMessage());
+                $this->assertSame($path, $failure->getViolations()->get(0)->getPropertyPath(), $uri);
+            }
+        }
+
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+        $cases = [
+            '{"sizes":["x"],"labels":["ab"],"weights":{}}' => 'sizes[0]',
+            '{"sizes":[0],"labels":["ab"],"weights":{}}' => 'sizes[0]',
+            '{"sizes":[1],"labels":[5],"weights":{}}' => 'labels[0]',
+            '{"sizes":[1],"labels":["a"],"weights":{}}' => 'labels[0]',
+            '{"sizes":[1],"labels":["ab"],"weights":{"a":"heavy"}}' => 'weights',
+            '{"sizes":[1],"labels":["ab"],"weights":{"a":11}}' => 'weights',
+        ];
+        foreach ($cases as $json => $path) {
+            try {
+                $sprocket = $this->serializer()->deserialize($json, \WireItemOnce\Sprocket::class, 'json');
+            } catch (NotNormalizableValueException $exception) {
+                // Symfony 8 refuses an item of the wrong type in the serializer already — one
+                // refusal, and validation never runs. Symfony 7 leaves it to the DTO's check.
+                $this->assertStringStartsWith($path, (string)$exception->getPath(), $json);
+
+                continue;
+            }
+            $violations = $validator->validate($sprocket);
+            $this->assertCount(1, $violations, $json . ': ' . $violations);
+            $this->assertStringStartsWith($path, $violations->get(0)->getPropertyPath(), $json);
+        }
+    }
+
+    /**
      * Null comes in only where the schema allows it. A required nullable property still has to be
      * present — the serializer would pass null for a missing typed nullable argument — and an optional
      * one that may not be null refuses an explicit null and an empty query value alike.

@@ -3,6 +3,23 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.75 — 2026-10-16
+
+- Symfony wrong-type item reported once
+
+Symfony mode:
+
+- an item of the wrong type in a list with a bound — `?ids[]=x` against `items: {type: integer,
+  minimum: 1}` — came back twice at `ids[0]`: `field "ids"[0] must be of type integer.` from the
+  callback and `This value should be a valid number.` from the `Assert\Range` inside `Assert\All`.
+  The callback already owned a scalar item's `type` (it reads `42.0` as an integer, `Assert\Type`
+  does not), and now owns every other keyword of the item too; it checks a bound only on a value of
+  the bound's type. The same for a scalar map value.
+- a bound broken by an item of the right type is now worded by the callback: `field "ids"[0] must be
+  greater than or equal to 1.` instead of `This value should be 1 or more.`, at the same path. A
+  `format` on the item moves the same way: a list of `format: uuid` is checked by the callback, not
+  by `Assert\Uuid`. An enum, date or DTO item keeps its `#[Assert\All([new Assert\Type(X::class)])]`.
+
 ## 2.15.74 — 2026-10-12
 
 - Symfony number and string output documented

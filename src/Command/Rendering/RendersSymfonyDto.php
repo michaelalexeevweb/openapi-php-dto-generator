@@ -186,19 +186,10 @@ trait RendersSymfonyDto
             }
         }
 
-        $itemKeywordsCovered = [];
-        foreach ($properties as $property) {
-            $covered = $this->symfonyItemCoveredKeywords($property);
-            if ($covered !== []) {
-                $itemKeywordsCovered[$property['openApiName']] = $covered;
-            }
-        }
-
         $validationConstraints = $this->filterInterpreterConstraints(
             constraints: $this->extractValidationConstraints($schemaDefinition),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
-            itemKeywordsCoveredByProperty: $itemKeywordsCovered,
         );
 
         // Map php name -> openapi name for constraints matching
@@ -383,14 +374,9 @@ trait RendersSymfonyDto
         // Mirror the renderer: a bound that the PHP type cannot enforce forces a callback even
         // when nothing else would, and those are exactly the classes that read a nested DTO.
         $forceRootCallbackBounds = [];
-        $itemKeywordsCovered = [];
         foreach ($this->getSchemaProperties($className) as $property) {
             if ($this->shouldForceRootCallbackForProperty($property)) {
                 $forceRootCallbackBounds[$property['openApiName']] = true;
-            }
-            $covered = $this->symfonyItemCoveredKeywords($property);
-            if ($covered !== []) {
-                $itemKeywordsCovered[$property['openApiName']] = $covered;
             }
         }
 
@@ -401,7 +387,6 @@ trait RendersSymfonyDto
             constraints: $this->extractValidationConstraints($schemaDefinition),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
-            itemKeywordsCoveredByProperty: $itemKeywordsCovered,
         );
     }
 
@@ -1266,34 +1251,14 @@ PHP;
             $attributes[] = '#[Assert\Count(' . implode(', ', $count) . ')]';
         }
 
-        // Typed map values (additionalProperties: { schema }) — validate every value via All.
-        //
-        // Unless the value is itself a CONTAINER. There `valueConstraintExpressions()` has nothing to
-        // say but `new Assert\Type('array')`, and the interpreter already asserts exactly that from
-        // `additionalProperties.type` — measured, a map of lists given `{"a":"nope"}` came back with
-        // both `field "byKey".a must be of type array` and `This value should be of type array.` The
-        // list spelling of the same schema emits no attribute at all, so this also makes the two agree.
-        $additionalProperties = $constraints['additionalProperties'] ?? null;
-        if (is_array($additionalProperties) && $this->symfonySchemaIsContainer($additionalProperties)) {
-            $additionalProperties = null;
-        }
-        if (is_array($additionalProperties)) {
-            $mapValueTypeExpression = $this->symfonyPreferredTypeForMapValue($property['type']);
-            $valueExpressions = $this->valueConstraintExpressions(
-                schema: $additionalProperties,
-                preferredPhpTypeExpression: $mapValueTypeExpression,
-                skipScalarConstraintSpecs: $this->shouldSkipSymfonyScalarSpecsForPreferredType($mapValueTypeExpression),
-                // A CLASS still gets its `Assert\Type` — nothing else can say "this is that enum".
-                // A SCALAR does not: `Assert\Type('int')` refuses `42.0`, which JSON Schema 2020-12
-                // §6.1.1 calls an integer and the callback accepts. The LIST spelling of the same
-                // schema always left `type` to the callback and answered correctly — measured, a map
-                // refused `{"a":42.0}` while a list accepted `[42.0]`. One schema, one answer now;
-                // `symfonyItemCoveredKeywords()` stops claiming `type` in step.
-                assertType: $mapValueTypeExpression !== null,
-            );
-            if ($valueExpressions !== []) {
-                $attributes[] = '#[Assert\All([' . implode(', ', $valueExpressions) . '])]';
-            }
+        // Typed map values (additionalProperties: { schema }) of an enum, a date or a DTO: every value
+        // is that class, which nothing but `Assert\Type` can say. Any other value gets no attribute,
+        // for the reason the list items below give: the callback owns its `type` — it reads `42.0` as
+        // the integer JSON Schema 2020-12 §6.1.1 calls it, where `Assert\Type('int')` refuses it — so
+        // it owns the value's bounds as well, or `{"a":"x"}` against `maximum: 10` is reported twice.
+        $mapValueTypeExpression = $this->symfonyPreferredTypeForMapValue($property['type']);
+        if (is_array($constraints['additionalProperties'] ?? null) && $mapValueTypeExpression !== null) {
+            $attributes[] = '#[Assert\All([new Assert\Type(' . $mapValueTypeExpression . ')])]';
         }
 
         // anyOf — the value must satisfy at least one branch.
@@ -1316,21 +1281,16 @@ PHP;
             }
         }
 
-        // Per-item constraints for arrays of scalars (array of DTOs cascades via Valid instead).
+        // Per-item constraints for arrays of enums and dates (array of DTOs cascades via Valid instead).
+        // A SCALAR item gets none: the callback owns its `type`, and an `Assert\Range` beside it asked
+        // `"x"` about its bound as well — measured, `?ids[]=x` against `minimum: 1` came back as both
+        // `field "ids"[0] must be of type integer.` and `This value should be a valid number.` The
+        // callback checks a bound only on a value of the bound's type, so it owns the bounds too.
         $items = $constraints['items'] ?? null;
         if (is_array($items) && !$this->symfonyPropertyCascades($property)) {
             $itemTypeExpression = $this->symfonyPreferredTypeForArrayItem($property['type']);
-            if ($this->shouldSkipSymfonyScalarSpecsForPreferredType($itemTypeExpression)) {
+            if ($itemTypeExpression !== null) {
                 $attributes[] = '#[Assert\All([new Assert\Type(' . $itemTypeExpression . ')])]';
-            } else {
-                $itemSpecs = $this->scalarConstraintSpecs($items);
-                if ($itemSpecs !== []) {
-                    $expressions = array_map(
-                        static fn(array $spec): string => 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')',
-                        $itemSpecs,
-                    );
-                    $attributes[] = '#[Assert\All([' . implode(', ', $expressions) . '])]';
-                }
             }
         }
 
@@ -1382,78 +1342,6 @@ PHP;
         }
 
         return $baseType === 'DateTimeImmutable';
-    }
-
-    /**
-     * The keywords a property's `#[Assert\All]` already enforces on its ITEMS or its MAP VALUES.
-     *
-     * The callback drops exactly these, and nothing more — the same contract
-     * `filterInterpreterConstraints()` states for the property level ("supported scalar / count
-     * / regex constraints are intentionally removed here so the callback does not duplicate
-     * attribute-based violations") and did not keep one level down: the `items` recursion handed the
-     * callback every scalar keyword while `Assert\All` was enforcing them too. Measured before this:
-     * `{"flatMap":{"a":"x"}}` came back with THREE messages for one mistake, and every bound with two.
-     *
-     * The branches below mirror `resolveSymfonyAttributes()` exactly, because a keyword dropped here
-     * that no attribute actually emits is a check lost:
-     *
-     *  - an array of DTOs cascades through `#[Assert\Valid]` and emits no `All`, so nothing is covered;
-     *  - an item typed as an enum or a date emits `All([Type(X::class)])` INSTEAD of the scalar specs;
-     *  - a map value that is itself a container emits nothing at all (see `symfonySchemaIsContainer()`);
-     *  - `type` is never covered — no spec asserts it, so the callback keeps it at every level.
-     *
-     * @param SchemaProperty $property
-     * @return array<int, string>
-     */
-    private function symfonyItemCoveredKeywords(array $property): array
-    {
-        $constraints = $this->extractValidationConstraints($property['constraints'] ?? []);
-
-        $items = $constraints['items'] ?? null;
-        if (is_array($items) && !$this->symfonyPropertyCascades($property)) {
-            $itemTypeExpression = $this->symfonyPreferredTypeForArrayItem($property['type']);
-            if ($this->shouldSkipSymfonyScalarSpecsForPreferredType($itemTypeExpression)) {
-                return [];
-            }
-
-            return $this->scalarConstraintSpecList($items)['covered'];
-        }
-
-        $additionalProperties = $constraints['additionalProperties'] ?? null;
-        if (is_array($additionalProperties) && !$this->symfonySchemaIsContainer($additionalProperties)) {
-            $mapValueTypeExpression = $this->symfonyPreferredTypeForMapValue($property['type']);
-            if ($this->shouldSkipSymfonyScalarSpecsForPreferredType($mapValueTypeExpression)) {
-                return [];
-            }
-
-            // `type` is deliberately absent, exactly as in the list branch above: no attribute
-            // asserts it for a scalar map value any more, so the callback owns it — and the callback
-            // is the one that reads `42.0` as the integer the spec calls it.
-            return $this->scalarConstraintSpecList($additionalProperties)['covered'];
-        }
-
-        return [];
-    }
-
-    /**
-     * Whether a subschema describes a CONTAINER — an array, or an object used as a map.
-     *
-     * @param array<string, mixed> $schema
-     */
-    private function symfonySchemaIsContainer(array $schema): bool
-    {
-        return in_array($schema['type'] ?? null, ['array', 'object'], true)
-            || is_array($schema['items'] ?? null)
-            || is_array($schema['additionalProperties'] ?? null);
-    }
-
-    private function shouldSkipSymfonyScalarSpecsForPreferredType(?string $preferredTypeExpression): bool
-    {
-        if ($preferredTypeExpression === null) {
-            return false;
-        }
-
-        return str_ends_with($preferredTypeExpression, '::class');
     }
 
     private function symfonyPreferredTypeForArrayItem(string $propertyType): ?string
@@ -1635,34 +1523,23 @@ PHP;
     }
 
     /**
-     * Builds `new Assert\*(...)` expressions enforcing a (sub)schema on a value that has no own PHP
-     * type hint — array/map items and anyOf branches. Includes a Type constraint (the element type
-     * cannot be expressed in the declared `array` hint) plus the scalar constraint specs.
+     * Builds `new Assert\*(...)` expressions enforcing an anyOf branch, a value with no PHP type hint
+     * of its own: a Type constraint plus the scalar constraint specs.
      *
      * @param array<string, mixed> $schema
      * @return array<int, string>
      */
-    private function valueConstraintExpressions(
-        array $schema,
-        ?string $preferredPhpTypeExpression = null,
-        bool $skipScalarConstraintSpecs = false,
-        bool $assertType = true,
-    ): array {
+    private function valueConstraintExpressions(array $schema): array
+    {
         $expressions = [];
 
-        if ($preferredPhpTypeExpression !== null) {
-            $expressions[] = 'new Assert\Type(' . $preferredPhpTypeExpression . ')';
-        } elseif ($assertType) {
-            $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
-            if ($symfonyType !== null) {
-                $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
-            }
+        $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
+        if ($symfonyType !== null) {
+            $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
         }
 
-        if (!$skipScalarConstraintSpecs) {
-            foreach ($this->scalarConstraintSpecs($schema) as $spec) {
-                $expressions[] = 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')';
-            }
+        foreach ($this->scalarConstraintSpecs($schema) as $spec) {
+            $expressions[] = 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')';
         }
 
         return $expressions;

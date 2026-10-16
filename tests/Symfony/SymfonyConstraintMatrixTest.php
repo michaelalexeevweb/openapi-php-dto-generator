@@ -303,13 +303,6 @@ final class SymfonyConstraintMatrixTest extends TestCase
                 'valid' => 100,
                 'invalid' => -1,
             ],
-            'arrayItemConstraints' => [
-                'class' => 'ItemAll',
-                'schema' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2]],
-                'attribute' => '#[Assert\All([new Assert\Length(min: 2)])]',
-                'valid' => ['ab', 'cd'],
-                'invalid' => ['a'],
-            ],
         ];
     }
 
