@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12671 lines
+# symfony mode — 77 files, 12673 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5864,6 +5864,7 @@ final class Containers
      * @var ?array<string, Tag>
      */
     #[Groups(['read', 'write'])]
+    #[Assert\Valid]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $tagsByKey = null;
 
@@ -7805,6 +7806,7 @@ final class NestedContainers
      * @var ?array<array<Tag>>
      */
     #[Groups(['read', 'write'])]
+    #[Assert\Valid]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $tagRows = null;
 

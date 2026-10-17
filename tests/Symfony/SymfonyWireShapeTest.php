@@ -339,6 +339,54 @@ final class SymfonyWireShapeTest extends TestCase
     }
 
     /**
+     * A format is one sentence wherever the value sits: a plain property and a list item are both
+     * checked by the callback, as in the runtime mode. A plain one used to get `Assert\Uuid` and its
+     * `This is not a valid UUID.`.
+     */
+    public function testAFormatIsWordedAlikeOnAPropertyAndAnItem(): void
+    {
+        $target = $this->outputDirectory . '/WireFormat';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Ticket' => [
+                        'type' => 'object',
+                        'required' => ['code', 'codes'],
+                        'properties' => [
+                            'code' => ['type' => 'string', 'format' => 'uuid'],
+                            'codes' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'uuid']],
+                            'mail' => ['type' => ['string', 'null'], 'format' => 'email'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireFormat', 'symfony');
+        $source = (string)file_get_contents($target . '/Ticket.php');
+        $this->assertStringNotContainsString('Assert\Uuid', $source);
+        $this->assertStringNotContainsString('Assert\Email', $source);
+        require_once $target . '/Ticket.php';
+
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+        $uuid = '550e8400-e29b-41d4-a716-446655440000';
+        $this->assertCount(0, $validator->validate(\WireFormat\Ticket::create(code: $uuid, codes: [$uuid], mail: null)));
+
+        $messages = [];
+        foreach ($validator->validate(\WireFormat\Ticket::create(code: 'x', codes: [$uuid, 'x'], mail: 'nope')) as $violation) {
+            $messages[$violation->getPropertyPath()] = (string)$violation->getMessage();
+        }
+        $this->assertSame([
+            'code' => 'field "code" must match format uuid.',
+            'codes[1]' => 'field "codes"[1] must match format uuid.',
+            'mail' => 'field "mail" must match format email.',
+        ], $messages);
+
+        $this->assertCount(1, $validator->validate(\WireFormat\Ticket::create(code: '', codes: [])), 'an empty string is one mistake');
+    }
+
+    /**
      * A query list binds in the form its `style` and `explode` name as well as PHP's bracket form: the
      * DTO takes the string through its constructor and splits it there. An item that is not of the
      * type is still one violation at its index.

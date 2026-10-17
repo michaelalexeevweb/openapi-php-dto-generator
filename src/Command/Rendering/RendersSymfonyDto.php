@@ -1474,9 +1474,9 @@ PHP;
      * @param array<string, mixed> $constraints
      * @return array<int, array{name: string, args: string}>
      */
-    private function scalarConstraintSpecs(array $constraints): array
+    private function scalarConstraintSpecs(array $constraints, bool $inAnyOfBranch = false): array
     {
-        return $this->scalarConstraintSpecList($constraints)['specs'];
+        return $this->scalarConstraintSpecList($constraints, $inAnyOfBranch)['specs'];
     }
 
     /**
@@ -1490,7 +1490,7 @@ PHP;
      * @param array<string, mixed> $constraints
      * @return array{specs: array<int, array{name: string, args: string}>, covered: array<int, string>}
      */
-    private function scalarConstraintSpecList(array $constraints): array
+    private function scalarConstraintSpecList(array $constraints, bool $inAnyOfBranch = false): array
     {
         $specs = [];
         $covered = [];
@@ -1581,7 +1581,7 @@ PHP;
             }
         }
 
-        $formatSpecs = $this->formatConstraintSpecs($constraints['format'] ?? null);
+        $formatSpecs = $this->formatConstraintSpecs($constraints['format'] ?? null, $inAnyOfBranch);
         foreach ($formatSpecs as $spec) {
             $specs[] = $spec;
         }
@@ -1606,19 +1606,35 @@ PHP;
      *
      * @return array<int, array{name: string, args: string}>
      */
-    private function formatConstraintSpecs(mixed $format): array
+    private function formatConstraintSpecs(mixed $format, bool $inAnyOfBranch = false): array
     {
         if (!is_string($format)) {
             return [];
         }
 
+        // A branch of `Assert\AtLeastOneOf` is checked by Symfony alone — the callback has no say in
+        // which branch matched — so there the format keeps its constraint, worded as Symfony words it.
+        if ($inAnyOfBranch) {
+            $branchSpec = match ($format) {
+                'email', 'idn-email' => ['name' => 'Email', 'args' => ''],
+                'uuid' => ['name' => 'Uuid', 'args' => ''],
+                'hostname' => ['name' => 'Hostname', 'args' => ''],
+                'ipv4' => ['name' => 'Ip', 'args' => "version: '4'"],
+                'ipv6' => ['name' => 'Ip', 'args' => "version: '6'"],
+                default => null,
+            };
+            if ($branchSpec !== null) {
+                return [$branchSpec];
+            }
+        }
+
+        // `uuid`, `email`, `hostname` and the IP formats are the callback's: it checks them on a list
+        // item, where an `Assert\All` beside it reported a wrong-typed item twice, and a constraint
+        // here worded the same mistake on a plain property differently — `This is not a valid UUID.`
+        // against `field "ids"[0] must match format uuid.`. The callback words both alike, as the
+        // runtime mode does.
         return match ($format) {
-            'email', 'idn-email' => [['name' => 'Email', 'args' => '']],
-            'uuid' => [['name' => 'Uuid', 'args' => '']],
             'url' => [['name' => 'Url', 'args' => '']],
-            'hostname' => [['name' => 'Hostname', 'args' => '']],
-            'ipv4' => [['name' => 'Ip', 'args' => "version: '4'"]],
-            'ipv6' => [['name' => 'Ip', 'args' => "version: '6'"]],
             'int32' => [['name' => 'Range', 'args' => 'min: -2147483648, max: 2147483647']],
             'uint32' => [['name' => 'Range', 'args' => 'min: 0, max: 4294967295']],
             default => [],
@@ -1641,7 +1657,7 @@ PHP;
             $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
         }
 
-        foreach ($this->scalarConstraintSpecs($schema) as $spec) {
+        foreach ($this->scalarConstraintSpecs($schema, inAnyOfBranch: true) as $spec) {
             $expressions[] = 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')';
         }
 
@@ -1712,11 +1728,15 @@ PHP;
      */
     private function symfonyPropertyCascades(array $property): bool
     {
-        $type = $property['type'];
-        if (preg_match('/^array<(.+)>$/', $type, $matches) === 1) {
-            $type = $matches[1];
+        // Down through every container, a map's key type included: `array<string, array<Item>>` holds
+        // Items as surely as `array<Item>` does. Read one level only, a map of lists never cascaded,
+        // and an Item with a callback of its own went unchecked — the parent's callback leaves a DTO
+        // with one to the cascade.
+        $type = ltrim($property['type'], '?');
+        while (preg_match('/^array<(?:[^,<>]+,\s*)?(.+)>$/', $type, $matches) === 1) {
+            $type = ltrim(trim($matches[1]), '?');
         }
-        $type = ltrim($type, '?');
+        $type = (string)preg_replace('/\|null$/', '', $type);
         $shortName = $this->shortClassName($type);
 
         return array_key_exists($shortName, $this->dtoSchemas);
@@ -1822,6 +1842,12 @@ PHP;
         return in_array(
             $format,
             [
+                'uuid',
+                'email',
+                'idn-email',
+                'hostname',
+                'ipv4',
+                'ipv6',
                 'duration',
                 'time',
                 'regex',

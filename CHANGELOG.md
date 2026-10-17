@@ -3,6 +3,23 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.78 — 2026-10-17
+
+- Symfony format errors worded alike
+- Symfony nested container DTOs cascade
+
+Symfony mode:
+
+- `format: uuid`, `email`, `idn-email`, `hostname`, `ipv4` and `ipv6` on a property are checked by the
+  callback, as on a list item since 2.15.75: `field "code" must match format uuid.` where the property
+  said `This is not a valid UUID.` and its list item the callback's sentence. What passes and what fails
+  is the same. A branch of `anyOf` keeps `Assert\Uuid` and the rest inside its `Assert\AtLeastOneOf`,
+  which the callback has no part in. `format: url` keeps `Assert\Url`.
+- a DTO inside a container inside a container — `array<string, Tag>`, `array<array<Tag>>`, a map of
+  lists — got no `#[Assert\Valid]`: the type was read one level deep. The DTO's own callback never ran,
+  and the parent's callback leaves a DTO with a callback to the cascade, so a constraint only that
+  callback checks went unchecked.
+
 ## 2.15.77 — 2026-10-17
 
 - Symfony path params DTO option

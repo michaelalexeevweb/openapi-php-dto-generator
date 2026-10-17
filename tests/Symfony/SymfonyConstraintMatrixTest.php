@@ -247,47 +247,12 @@ final class SymfonyConstraintMatrixTest extends TestCase
                 'valid' => 0.5,
                 'invalid' => 0.3,
             ],
-            'formatEmail' => [
-                'class' => 'Em',
-                'schema' => ['type' => 'string', 'format' => 'email'],
-                'attribute' => '#[Assert\Email]',
-                'valid' => 'a@b.com',
-                'invalid' => 'not-an-email',
-            ],
-            'formatUuid' => [
-                'class' => 'Uid',
-                'schema' => ['type' => 'string', 'format' => 'uuid'],
-                'attribute' => '#[Assert\Uuid]',
-                'valid' => '550e8400-e29b-41d4-a716-446655440000',
-                'invalid' => 'not-a-uuid',
-            ],
             'formatUrl' => [
                 'class' => 'Url',
                 'schema' => ['type' => 'string', 'format' => 'url'],
                 'attribute' => '#[Assert\Url]',
                 'valid' => 'https://example.com',
                 'invalid' => 'not a url',
-            ],
-            'formatIpv4' => [
-                'class' => 'Ip4',
-                'schema' => ['type' => 'string', 'format' => 'ipv4'],
-                'attribute' => "#[Assert\\Ip(version: '4')]",
-                'valid' => '192.168.0.1',
-                'invalid' => '999.999.999.999',
-            ],
-            'formatHostname' => [
-                'class' => 'Host',
-                'schema' => ['type' => 'string', 'format' => 'hostname'],
-                'attribute' => '#[Assert\Hostname]',
-                'valid' => 'example.com',
-                'invalid' => 'not a hostname',
-            ],
-            'formatIpv6' => [
-                'class' => 'Ip6',
-                'schema' => ['type' => 'string', 'format' => 'ipv6'],
-                'attribute' => "#[Assert\\Ip(version: '6')]",
-                'valid' => '2001:db8::1',
-                'invalid' => 'not-an-ip',
             ],
             'formatInt32' => [
                 'class' => 'I32',
@@ -584,7 +549,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
     }
 
     /**
-     * The formats Symfony has no constraint for: they are enforced by the generated callback, so
+     * The formats the generated callback enforces — those Symfony has no constraint for, and those it
+     * words differently from a list item's check (`uuid`, `email`, `hostname`, the IP versions) — so
      * each one needs a value that passes and a value that must be rejected.
      *
      * @return array<string, array{0: string, 1: string, 2: string, 3: string}>
@@ -592,6 +558,11 @@ final class SymfonyConstraintMatrixTest extends TestCase
     public static function callbackOnlyFormatProvider(): array
     {
         return [
+            'email' => ['CbEmail', 'email', 'a@b.com', 'not-an-email'],
+            'uuid' => ['CbUuid', 'uuid', '550e8400-e29b-41d4-a716-446655440000', 'not-a-uuid'],
+            'ipv4' => ['CbIpv4', 'ipv4', '192.168.0.1', '999.999.999.999'],
+            'ipv6' => ['CbIpv6', 'ipv6', '2001:db8::1', 'not-an-ip'],
+            'hostname' => ['CbHostname', 'hostname', 'example.com', 'not a hostname'],
             'time' => ['CbTime', 'time', '13:45:00Z', '99:99'],
             'json-pointer' => ['CbJsonPointer', 'json-pointer', '/a/b', 'a/b'],
             'relative-json-pointer' => ['CbRelPointer', 'relative-json-pointer', '1/a', '/a'],

@@ -126,7 +126,7 @@ For direct Serializer calls, pass `['require_all_properties' => true]` as the fo
 | `uniqueItems` | callback with JSON equality |
 | `const` | callback with JSON equality |
 | `enum` | generated PHP backed enum when representable; inline Choice for non-nullable string/bool members; callback for numeric, structural and nullable enums |
-| `format: email` / `uuid` / `url` / `ipv4`,`ipv6` / `hostname` | `#[Assert\Email]` / `Uuid` / `Url` / `Ip` / `Hostname` |
+| `format: url` | `#[Assert\Url]` |
 | `format: int32` / `uint32` | `#[Assert\Range]` (bounds) |
 | `format: date` / `date-time` | `DateTimeImmutable` property and getter; written as the schema says through a `#[Context]` callback (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `items` / `additionalProperties` with `format: date` / `date-time` | `array<DateTimeImmutable>`; written per item the same way (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
@@ -155,7 +155,7 @@ own callback and are reached via the `#[Assert\Valid]` cascade.
 | `not`, `if` / `then` / `else` | negation, conditional branch |
 | `prefixItems` (tuples), `items` | positional then rest items |
 | `contains`, `minContains`, `maxContains` | match count bounds |
-| `oneOf` (+ discriminator mapping), callback-only formats (`uri`,`iri`,`uri-reference`,`iri-reference`,`uri-template`,`duration`,`time`,`regex`,`json-pointer`,`relative-json-pointer`,`byte`,`idn-hostname`), `contentEncoding` / `contentMediaType` / `contentSchema`, `format: int64` / `uint64` | self-contained callback checks (branch XOR / discriminator-class agreement, format/content assertions, int64/uint64 bounds) |
+| `oneOf` (+ discriminator mapping), callback-only formats (`uuid`,`email`,`idn-email`,`hostname`,`ipv4`,`ipv6`,`uri`,`iri`,`uri-reference`,`iri-reference`,`uri-template`,`duration`,`time`,`regex`,`json-pointer`,`relative-json-pointer`,`byte`,`idn-hostname`), `contentEncoding` / `contentMediaType` / `contentSchema`, `format: int64` / `uint64` | self-contained callback checks (branch XOR / discriminator-class agreement, format/content assertions, int64/uint64 bounds) |
 | a scalar list item or map value: `type` and every keyword beside it | the callback, so an item of the wrong type is one message — `?ids[]=x` is not also asked about `minimum` |
 | scalar keywords inside callback subschemas (`type`, `enum`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum`, `multipleOf`, `minItems`/`maxItems`, `uniqueItems`, `minProperties`/`maxProperties`, `format`) | enforced recursively in `not`/`if`/`then`/`else`/`contains`/`items`/`propertyNames`/`patternProperties`/`dependentSchemas` |
 
