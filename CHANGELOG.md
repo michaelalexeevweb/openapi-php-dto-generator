@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.77 — 2026-10-17
+
+- Symfony path params DTO option
+
+Symfony mode:
+
+- `--symfony-path-params` also writes `<Operation>PathParams`, a DTO of the operation's `in: path`
+  parameters with the constraints a body property gets — `format`, `enum`, bounds, `pattern`. Symfony
+  has no attribute that binds route parameters to an object and the generator writes DTOs only, so
+  README.symfony.md shows a value resolver, `#[MapPathParams]`, to copy; a test runs it from the README.
+  Without the option nothing changes: no such class is written. With it, an inline path `enum` is the
+  DTO's own class, under the name it had before.
+- a `simple` list in the path is split on commas, as a query list is.
+
 ## 2.15.76 — 2026-10-17
 
 - Symfony query list binds by style

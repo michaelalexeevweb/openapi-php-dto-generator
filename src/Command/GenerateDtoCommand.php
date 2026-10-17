@@ -373,6 +373,13 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, string> */
     public array $refNamespaceMap = [];
 
+    /**
+     * Symfony mode: also emit `<Op>PathParams`, a DTO of the operation's `in: path` parameters. Symfony
+     * has no attribute that binds route parameters to an object, so the class is only of use to an
+     * application that registers a value resolver of its own — README.symfony.md shows one.
+     */
+    public bool $symfonyPathParams = false;
+
     public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
     public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
 
@@ -416,6 +423,11 @@ final class GenerateDtoCommand extends Command
             name: 'with-psr7',
             mode: InputOption::VALUE_NONE,
             description: 'Also copy the PSR-7 deserializer (DtoDeserializerPsr7) when vendoring the runtime. Requires symfony/psr-http-message-bridge in the consuming project.',
+        );
+        $this->addOption(
+            name: 'symfony-path-params',
+            mode: InputOption::VALUE_NONE,
+            description: 'With --attributes=symfony: also generate <Operation>PathParams DTOs of the path parameters, for a value resolver of your own (see README.symfony.md).',
         );
         $this->addOption(
             name: 'ref',
@@ -516,6 +528,7 @@ final class GenerateDtoCommand extends Command
         $refNamespacePairs = is_array($refNamespaceOption) ? array_values(array_filter($refNamespaceOption, 'is_string')) : [];
 
         $withPsr7 = $input->getOption('with-psr7') === true;
+        $this->symfonyPathParams = $input->getOption('symfony-path-params') === true;
 
         try {
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
@@ -526,6 +539,12 @@ final class GenerateDtoCommand extends Command
             // The copied services are the runtime mode's own deserializer, normalizer and validator;
             // a DTO of any other mode never references them, so copying them there only left
             // dead code in the consumer's tree.
+            if ($this->symfonyPathParams && $mode !== self::ATTRIBUTE_MODE_SYMFONY) {
+                $this->generationWarnings[] = sprintf(
+                    'Option --symfony-path-params is ignored with --attributes=%s: path parameters are already part of its DTO.',
+                    $mode,
+                );
+            }
             if ($dtoGeneratorDirectory !== null && $mode !== self::ATTRIBUTE_MODE_RUNTIME) {
                 $this->generationWarnings[] = sprintf(
                     'Option --dto-generator-directory is ignored with --attributes=%s: those DTOs use no runtime services.',
@@ -8578,13 +8597,15 @@ final class GenerateDtoCommand extends Command
                 // Symfony binds route, header and cookie values as controller arguments of their own,
                 // so they are no part of the query DTO — but an inline `enum` on one still deserves
                 // its class: a route argument typed with it is resolved and checked by Symfony itself.
+                // With `<Op>PathParams` on, a path parameter's enum is that class's own, of the same name.
+                $symfonyPathParams = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && $this->symfonyPathParams;
                 if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
                     foreach ($resolvedParameters as $parameter) {
                         $location = $parameter['in'] ?? null;
                         $parameterName = $parameter['name'] ?? null;
                         $schema = $parameter['schema'] ?? null;
                         if (
-                            !in_array($location, ['path', 'header', 'cookie'], true)
+                            !in_array($location, $symfonyPathParams ? ['header', 'cookie'] : ['path', 'header', 'cookie'], true)
                             || !is_string($parameterName)
                             || !is_array($schema)
                             || !is_array($schema['enum'] ?? null)
@@ -8601,6 +8622,28 @@ final class GenerateDtoCommand extends Command
                         $parameterSchemas[$enumName] = $schema;
                         $parameterOwners[$enumName] = $ownerKey;
                     }
+                }
+
+                $pathParameters = $symfonyPathParams
+                    ? array_values(array_filter(
+                        $resolvedParameters,
+                        static fn(array $parameter): bool => ($parameter['in'] ?? null) === 'path',
+                    ))
+                    : [];
+                if ($pathParameters !== []) {
+                    $pathSchemaName = $this->uniqueEndpointSchemaName(
+                        path: $this->pathItemNamingKey($path),
+                        tail: ucfirst(strtolower($method)) . 'PathParams',
+                        ownerKey: $ownerKey,
+                        owners: $parameterOwners,
+                    );
+                    $parameterSchemas[$pathSchemaName] = $this->markSchemaDeprecatedByOperation(
+                        schema: $this->buildParameterSchema($pathParameters),
+                        operation: $operation,
+                    );
+                    $parameterOwners[$pathSchemaName] = $ownerKey;
+                    $this->endpointByClass[$this->schemaClassName($pathSchemaName)] = $ownerKey;
+                    $this->requestPayloadClasses[$this->schemaClassName($pathSchemaName)] = true;
                 }
 
                 if ($pathAndQueryParameters === []) {

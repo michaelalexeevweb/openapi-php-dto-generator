@@ -921,7 +921,7 @@ PHP;
         $inputDocType = $docType !== null ? $this->composePhpTypeHint($docType, $schemaNullable) : null;
         $factoryDocType = $docType !== null ? $this->composePhpTypeHint($docType, $required ? $declaredNullable : true) : null;
         if (
-            ($property['inQuery'] ?? false) === true
+            (($property['inQuery'] ?? false) === true || ($property['inPath'] ?? false) === true)
             && preg_match('/^array<\??(int|float|bool)(\|null)?>$/', $property['type'], $itemMatch) === 1
         ) {
             $queryReader = 'readQuery' . ucfirst($itemMatch[1]) . 's';
@@ -1030,9 +1030,10 @@ PHP;
     }
 
     /**
-     * How a query list of scalars or enum cases arrives as one string, or null for anything else: the
-     * delimiter its `style` joins the items with — null for `form` exploded, which sends one item per
-     * key, so a lone string is a list of one — the enum it holds, and the type the constructor takes.
+     * How a query or path list of scalars or enum cases arrives as one string, or null for anything
+     * else: the delimiter its `style` joins the items with — null for `form` exploded, which sends one
+     * item per key, so a lone string is a list of one — the enum it holds, and the type the constructor
+     * takes. A path list is `simple`, comma-joined; `label` and `matrix` are left to the bracket form.
      *
      * @param SchemaProperty $property
      * @return array{delimiter: ?string, enumReader: ?string, enumClass: ?string, docType: string}|null
@@ -1040,7 +1041,7 @@ PHP;
     private function symfonyQueryList(array $property, string $namespace): ?array
     {
         if (
-            ($property['inQuery'] ?? false) !== true
+            (($property['inQuery'] ?? false) !== true && ($property['inPath'] ?? false) !== true)
             || preg_match('/^array<(\?)?([A-Za-z_\\\][\w\\\]*)(\|null)?>$/', $property['type'], $itemMatch) !== 1
         ) {
             return null;
@@ -1052,6 +1053,7 @@ PHP;
             'form' => $explode ? null : ',',
             'spaceDelimited' => ' ',
             'pipeDelimited' => '|',
+            'simple' => ',',
             default => false,
         };
         if ($delimiter === false) {

@@ -393,7 +393,8 @@ The multipart `encoding` of the document (`contentType: text/csv`) is not applie
 
 `#[MapQueryString]` binds a DTO from the query string alone, so the generated `…QueryParams` class
 holds the `in: query` parameters only. A path parameter reaches the controller as an argument of its
-own (with the route's `requirements` for its pattern), and so do headers and cookies:
+own (with the route's `requirements` for its pattern), or through a DTO of its own — see
+[Path parameters as a DTO](#path-parameters-as-a-dto) — and headers and cookies as arguments:
 
 ```php
 #[Route('/widgets/{widgetId}', requirements: ['widgetId' => '\d+'])]
@@ -434,6 +435,112 @@ one item, or the bracket form. Send the bracket form for more than one (axios an
 do by default), declare `explode: false`, or use [runtime mode](README.runtime.md), which reads the
 raw query string — see `Request binding` in [the support matrix](README.support-matrix.md). A list of
 dates or of objects in the query binds from the bracket form only.
+
+A request that already fails on another constructor argument — `?page=x&ids=1,22` against a required
+integer `page` — also reports `ids` as "This value should be of type array". The serializer gives up on
+the constructor at the first wrong type, builds the object without it and writes the rest by the
+property's type, which the string does not fit. The bracket form, or a valid `page`, gives the one error.
+
+### Path parameters as a DTO
+
+A route parameter is checked by its `requirements` and its argument's type: `\d+`, `Uuid $id` or a
+backed enum answer 404 for a value that does not fit. That covers a pattern, not `minimum`, `maxLength`
+or a `format` the type cannot say. With `--symfony-path-params` the generator also writes
+`<Operation>PathParams`, a DTO of the operation's `in: path` parameters with the same constraints a body
+property gets.
+
+Symfony has no attribute that binds route parameters to an object, and the generator writes DTOs only,
+so the class needs a value resolver of yours. This one reads the route parameters the way
+`#[MapQueryString]` reads the query and reports a failure the same way, so the error response is the
+one the query and the body already get:
+
+```php
+namespace App\Http;
+
+use Attribute;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Attribute\AsTargetedValueResolver;
+use Symfony\Component\HttpKernel\Attribute\ValueResolver;
+use Symfony\Component\HttpKernel\Controller\ValueResolverInterface;
+use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Serializer\Exception\PartialDenormalizationException;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Symfony\Component\Validator\ConstraintViolation;
+use Symfony\Component\Validator\ConstraintViolationList;
+use Symfony\Component\Validator\Exception\ValidationFailedException;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+
+#[Attribute(Attribute::TARGET_PARAMETER)]
+final class MapPathParams extends ValueResolver
+{
+    public function __construct(public readonly int $validationFailedStatusCode = Response::HTTP_NOT_FOUND)
+    {
+        parent::__construct(PathParamsValueResolver::class);
+    }
+}
+
+#[AsTargetedValueResolver]
+final readonly class PathParamsValueResolver implements ValueResolverInterface
+{
+    public function __construct(
+        private DenormalizerInterface $denormalizer,
+        private ValidatorInterface $validator,
+    ) {
+    }
+
+    public function resolve(Request $request, ArgumentMetadata $argument): iterable
+    {
+        $attribute = $argument->getAttributesOfType(MapPathParams::class)[0] ?? null;
+        $type = $argument->getType();
+        if ($attribute === null || $type === null) {
+            return [];
+        }
+
+        // Route values are strings, as query values are: 'csv' and filter_bool read them the same way.
+        $violations = new ConstraintViolationList();
+        try {
+            $dto = $this->denormalizer->denormalize(
+                $request->attributes->get('_route_params', []),
+                $type,
+                'csv',
+                ['collect_denormalization_errors' => true, 'filter_bool' => true],
+            );
+        } catch (PartialDenormalizationException $exception) {
+            $dto = $exception->getData();
+            foreach ($exception->getErrors() as $error) {
+                $message = sprintf('This value should be of type %s.', implode('|', $error->getExpectedTypes() ?? []));
+                $violations->add(new ConstraintViolation($message, null, [], null, (string)$error->getPath(), null));
+            }
+        }
+        if ($violations->count() === 0) {
+            $violations = $this->validator->validate($dto);
+        }
+        if ($violations->count() > 0) {
+            throw new HttpException(
+                $attribute->validationFailedStatusCode,
+                (string)$violations,
+                new ValidationFailedException($dto, $violations),
+            );
+        }
+
+        return [$dto];
+    }
+}
+```
+
+```php
+#[Route('/widgets/{widgetId}')]
+public function show(#[MapPathParams] WidgetsGetPathParams $path): Response
+```
+
+A list in the path is `style: simple`, comma-joined, and the DTO splits it as a query list's; the
+note on a request that already fails elsewhere applies to it as well. A failure answers 404, as
+`#[MapQueryString]` and a route requirement do; pass
+`validationFailedStatusCode: 400` for another. Without the option no such class is written: nothing in
+Symfony would fill it. An inline `enum` on a path parameter is generated either way, as
+`<Operation>PathParams<Name>`, for a route argument typed with it.
 
 ### Dates are formatted by the DTO, not the normalizer
 
