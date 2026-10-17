@@ -261,9 +261,16 @@ trait RendersSymfonyDto
             $useStatements[] = 'Symfony\Component\Serializer\Attribute\Ignore';
         }
         $queryReaders = [];
+        $queryListReaders = [];
         foreach ($params as $param) {
             if ($param['queryReader'] !== null) {
                 $queryReaders[$param['queryReader']] = $param['queryReader'];
+            }
+            if ($param['queryList']) {
+                $queryListReaders['readQueryList'] = 'readQueryList';
+            }
+            if ($param['enumReader'] !== null) {
+                $queryListReaders[$param['enumReader']] = $param['enumReader'];
             }
         }
         $temporalFormatters = [];
@@ -307,6 +314,7 @@ trait RendersSymfonyDto
             'params' => $params,
             'temporalFormatters' => array_values($temporalFormatters),
             'queryReaders' => array_values($queryReaders),
+            'queryListReaders' => array_values($queryListReaders),
             'factoryLocal' => $this->symfonyFactoryLocalName($params),
             'validationConstsBlock' => $validationParts['consts'],
             'validationMethodsBlock' => $validationParts['methods'],
@@ -828,8 +836,11 @@ PHP;
      *     constructorType: string,
      *     constructorDocType: ?string,
      *     queryReader: ?string,
+     *     queryList: bool,
+     *     enumReader: ?string,
      *     inputDocType: ?string,
      *     assignedValue: string,
+     *     constructorValue: string,
      *     temporalDefault: ?string,
      * }
      */
@@ -854,7 +865,8 @@ PHP;
 
         // An optional property is nullable with a default (null unless the schema declares one).
         // It is NOT a constructor parameter: the serializer fills it through the setter, and the
-        // setter is what records that the payload carried the key — see the class docblock.
+        // setter is what records that the payload carried the key — see the class docblock. A query
+        // list is the one exception — see `$queryList` below.
         // `nullable` on the property also covers "optional", which is what the runtime mode needs;
         // here only the schema's own word counts, since an optional property WITH a default never
         // holds null unless the schema allows it — `?Kind $kind = Kind::A` invited a null the
@@ -925,6 +937,30 @@ PHP;
                 : sprintf('self::%s($%s)', $queryReader, $property['name']);
         }
 
+        // A query list as the spec's `style` sends it — `?ids=1,22` — reaches the DTO as one string.
+        // The serializer reads a setter by the PROPERTY's type, a list, and refuses the string before
+        // the setter runs; a constructor parameter it reads by the parameter's own type once that
+        // admits a type the property does not. So a query list is a constructor parameter of
+        // `array|string`, optional ones included, and the DTO splits the string itself.
+        $queryList = $schemaNullable ? null : $this->symfonyQueryList($property, $namespace);
+        $constructorType = $required && $schemaNullable ? '' : $declaredType;
+        $constructorDocType = $required && $schemaNullable ? ($inputDocType ?? $declaredType) : $inputDocType;
+        $constructorValue = $assignedValue;
+        if ($queryList !== null) {
+            $constructorType = $required ? 'array|string' : 'array|string|null';
+            $constructorDocType = $queryList['docType'] . ($required ? '|string' : '|string|null');
+            $constructorValue = sprintf(
+                'self::readQueryList($%s, %s)',
+                $property['name'],
+                $queryList['delimiter'] === null ? 'null' : var_export($queryList['delimiter'], true),
+            );
+            if ($queryReader !== null) {
+                $constructorValue = sprintf('self::%s(%s)', $queryReader, $constructorValue);
+            } elseif ($queryList['enumReader'] !== null) {
+                $constructorValue = sprintf('self::%s(%s::class, %s)', $queryList['enumReader'], $queryList['enumClass'], $constructorValue);
+            }
+        }
+
         return [
             'declaredType' => $declaredType,
             'docType' => $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null,
@@ -947,11 +983,14 @@ PHP;
             // nullable one the serializer passes null when the key is missing, so `{}` came in as
             // `{"score": null}`; without a type it reports the key missing at its path instead, and still
             // reads the value by the property's type. The docblock keeps the type for every other caller.
-            'constructorType' => $required && $schemaNullable ? '' : $declaredType,
-            'constructorDocType' => $required && $schemaNullable ? ($inputDocType ?? $declaredType) : $inputDocType,
+            'constructorType' => $constructorType,
+            'constructorDocType' => $constructorDocType,
             'queryReader' => $queryReader,
+            'queryList' => $queryList !== null,
+            'enumReader' => $queryList['enumReader'] ?? null,
             'inputDocType' => $inputDocType,
             'assignedValue' => $assignedValue,
+            'constructorValue' => $constructorValue,
             'setter' => 'set' . ucfirst($property['name']),
             'providedFlag' => $property['name'] . 'Provided',
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
@@ -988,6 +1027,63 @@ PHP;
         }
 
         return $candidate;
+    }
+
+    /**
+     * How a query list of scalars or enum cases arrives as one string, or null for anything else: the
+     * delimiter its `style` joins the items with — null for `form` exploded, which sends one item per
+     * key, so a lone string is a list of one — the enum it holds, and the type the constructor takes.
+     *
+     * @param SchemaProperty $property
+     * @return array{delimiter: ?string, enumReader: ?string, enumClass: ?string, docType: string}|null
+     */
+    private function symfonyQueryList(array $property, string $namespace): ?array
+    {
+        if (
+            ($property['inQuery'] ?? false) !== true
+            || preg_match('/^array<(\?)?([A-Za-z_\\\][\w\\\]*)(\|null)?>$/', $property['type'], $itemMatch) !== 1
+        ) {
+            return null;
+        }
+
+        $style = $property['parameterStyle'] ?? 'form';
+        $explode = $property['parameterExplode'] ?? $style === 'form';
+        $delimiter = match ($style) {
+            'form' => $explode ? null : ',',
+            'spaceDelimited' => ' ',
+            'pipeDelimited' => '|',
+            default => false,
+        };
+        if ($delimiter === false) {
+            return null;
+        }
+
+        $itemType = $itemMatch[2];
+        $enumReader = null;
+        $enumClass = null;
+        $itemDocType = match ($itemType) {
+            'int', 'float' => $itemType . '|numeric-string',
+            'bool' => 'bool|string',
+            'string' => 'string',
+            default => null,
+        };
+        if ($itemDocType === null) {
+            $enum = $this->enumSchemas[$this->shortClassName($itemType)] ?? null;
+            if ($enum === null) {
+                return null;
+            }
+            $enumClass = $this->formatPhpTypeForNamespace($itemType, $namespace);
+            $enumReader = $enum['type'] === 'int' ? 'readQueryIntEnums' : 'readQueryEnums';
+            $itemDocType = $enumClass . '|string';
+        }
+        $itemNullable = $itemMatch[1] === '?' || ($itemMatch[3] ?? '') === '|null';
+
+        return [
+            'delimiter' => $delimiter,
+            'enumReader' => $enumReader,
+            'enumClass' => $enumClass,
+            'docType' => 'array<' . $itemDocType . ($itemNullable ? '|null' : '') . '>',
+        ];
     }
 
     /**
@@ -1286,10 +1382,15 @@ PHP;
         // `"x"` about its bound as well — measured, `?ids[]=x` against `minimum: 1` came back as both
         // `field "ids"[0] must be of type integer.` and `This value should be a valid number.` The
         // callback checks a bound only on a value of the bound's type, so it owns the bounds too.
+        // A query list of enum cases is read by the DTO, not the serializer, so an item that names no
+        // case reaches validation as the string it was. Where the item constraints carry the `enum`,
+        // the callback reports it, and `Assert\Type` beside it would say the same thing twice; where
+        // they do not, `Assert\Type` is the only check the item gets.
         $items = $constraints['items'] ?? null;
-        if (is_array($items) && !$this->symfonyPropertyCascades($property)) {
+        $queryEnumList = ($this->symfonyQueryList($property, '')['enumClass'] ?? null) !== null;
+        if ((is_array($items) || $queryEnumList) && !$this->symfonyPropertyCascades($property)) {
             $itemTypeExpression = $this->symfonyPreferredTypeForArrayItem($property['type']);
-            if ($itemTypeExpression !== null) {
+            if ($itemTypeExpression !== null && !($queryEnumList && is_array($items) && array_key_exists('enum', $items))) {
                 $attributes[] = '#[Assert\All([new Assert\Type(' . $itemTypeExpression . ')])]';
             }
         }

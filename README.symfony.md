@@ -13,7 +13,9 @@ with other status codes — measured by installing the lowest versions; CI keeps
 
 Required properties are constructor arguments and stay `readonly`. Optional ones are set by the
 serializer through a setter, and that setter records that the payload carried the key — which is
-what makes PATCH semantics work (see [below](#presence-tracking-patch--partial-updates)). Every
+what makes PATCH semantics work (see [below](#presence-tracking-patch--partial-updates)). An
+optional list in the query is the exception: it is a constructor argument with a `null` default, for
+the reason [the query list section](#a-query-list-binds-in-the-form-its-style-names) gives. Every
 property is declared in the class body in schema order, which is the order the serializer writes the
 keys in.
 
@@ -407,23 +409,31 @@ such a list itself, in its constructor and setter, with `filter_var` — as `#[M
 does — so `getIds()` returns `[1, 22]`. An item that does not read as the type (`?ids[]=x`) is kept
 as the string and refused by validation at its index, `ids[1]`, never turned into a silent `0`.
 
-A list in the query binds from PHP's bracket form only, `?ids[]=1&ids[]=22`, whatever the parameter's
-`style` and `explode` say. That form is not one OpenAPI defines, so a client generated from the spec
-sends something else, and Symfony refuses it before the DTO is reached:
+### A query list binds in the form its `style` names
+
+A list in the query binds from PHP's bracket form, `?ids[]=1&ids[]=22`, and from the form the
+parameter's `style` and `explode` give it:
 
 | What the client sends | Spec | Result |
 |---|---|---|
-| `?ids[]=1&ids[]=22` | not an OpenAPI form | ✅ bound |
-| `?ids=1,22` | `style: form`, `explode: false` | ❌ 400 at `ids`, "invalid type" |
-| `?ids=1%2022`, `?ids=1\|22` | `spaceDelimited`, `pipeDelimited` | ❌ 400 at `ids`, "invalid type" |
-| `?ids=1&ids=22` | `style: form`, `explode: true` — the default | ❌ PHP keeps only the last value, a string: 400 |
-| `?ids=1` | any of the above, one item | ❌ 400 at `ids`, "invalid type" |
+| `?ids[]=1&ids[]=22` | not an OpenAPI form, any spec | ✅ `[1, 22]` |
+| `?ids=1,22` | `style: form`, `explode: false` | ✅ `[1, 22]` |
+| `?ids=1%2022`, `?ids=1\|22` | `spaceDelimited`, `pipeDelimited` | ✅ `[1, 22]` |
+| `?ids=1` | `style: form`, `explode: true` — the default | ✅ `[1]` |
+| `?ids=1&ids=22` | `style: form`, `explode: true` — the default | ❌ PHP keeps only the last value: `[22]` |
 
-The DTO cannot help: the serializer reads the property's type, a list, and rejects a string before the
-setter runs, and a repeated key is already gone when PHP builds `$request->query`. Send the bracket
-form (axios and `http_build_query()` do by default) or use [runtime mode](README.runtime.md), which
-reads `style` and `explode` from the spec — see `Request binding` in
-[the support matrix](README.support-matrix.md).
+The serializer reads a setter by the property's type, a list, and refuses a string before the setter
+runs; a constructor argument it reads by the argument's own type. So a query list of scalars or enum
+cases is a constructor argument of `array|string`, optional ones too, with a `null` default, and the
+DTO splits the string on the delimiter the `style` names. `isIdsProvided()` answers as before, and
+code that builds the DTO itself still calls `create()` or the setter. An item that does not read as
+the type is one violation at its index, `ids[1]`, as in the bracket form.
+
+A repeated key is lost before Symfony builds `$request->query`, so the default `explode: true` binds
+one item, or the bracket form. Send the bracket form for more than one (axios and `http_build_query()`
+do by default), declare `explode: false`, or use [runtime mode](README.runtime.md), which reads the
+raw query string — see `Request binding` in [the support matrix](README.support-matrix.md). A list of
+dates or of objects in the query binds from the bracket form only.
 
 ### Dates are formatted by the DTO, not the normalizer
 

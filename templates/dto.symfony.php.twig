@@ -104,7 +104,11 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 
 {% endfor %}
 {% set temporalDefaults = optionalParams|filter(param => param.temporalDefault is not null) %}
-{% if requiredParams is empty %}
+{# An optional query list is a constructor parameter as well: the serializer reads a setter by the
+   property's type, a list, and would refuse the `?ids=1,22` its style sends. #}
+{% set optionalQueryLists = optionalParams|filter(param => param.queryList) %}
+{% set constructorParams = requiredParams|merge(optionalQueryLists) %}
+{% if constructorParams is empty %}
     public function __construct()
     {
 {% for param in temporalDefaults %}
@@ -112,7 +116,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% endfor %}
     }
 {% else %}
-{% set docParams = requiredParams|filter(param => param.constructorDocType is not null) %}
+{% set docParams = constructorParams|filter(param => param.constructorDocType is not null) %}
 {% if docParams is not empty %}
     /**
 {% for param in docParams %}
@@ -124,9 +128,18 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% for param in requiredParams %}
         {{ param.constructorType is empty ? '' : param.constructorType ~ ' ' }}${{ param.name }},
 {% endfor %}
+{% for param in optionalQueryLists %}
+        {{ param.constructorType }} ${{ param.name }} = null,
+{% endfor %}
     ) {
 {% for param in requiredParams %}
-        $this->{{ param.name }} = {{ param.assignedValue|raw }};
+        $this->{{ param.name }} = {{ param.constructorValue|raw }};
+{% endfor %}
+{% for param in optionalQueryLists %}
+        if (${{ param.name }} !== null) {
+            $this->{{ param.name }} = {{ param.constructorValue|raw }};
+            $this->{{ param.providedFlag }} = true;
+        }
 {% endfor %}
 {% for param in temporalDefaults %}
         $this->{{ param.name }} = {{ param.temporalDefault|raw }};
@@ -233,6 +246,69 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
         );
     }
 {% endfor %}
+{% if 'readQueryList' in queryListReaders %}
+
+    /**
+     * A query list in either form the URL carries it: PHP's `ids[]=1&ids[]=22` arrives as a list, the
+     * spec's own `ids=1,22` as one string, split here on the delimiter the parameter's `style` names.
+     * A parameter without one sends an item per key, so a lone string is a list of one.
+     *
+     * @param array<mixed>|string $value
+     * @param ?non-empty-string $delimiter
+     * @return array<mixed>
+     */
+    private static function readQueryList(array|string $value, ?string $delimiter): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if ($delimiter === null) {
+            return [$value];
+        }
+
+        return $value === '' ? [] : explode($delimiter, $value);
+    }
+{% endif %}
+{% if 'readQueryEnums' in queryListReaders %}
+
+    /**
+     * Query items read as cases of a string-backed enum. An item that names no case is kept, for
+     * validation to report at its index.
+     *
+     * @param class-string<\BackedEnum> $enum
+     * @param array<mixed> $items
+     * @return array<mixed>
+     */
+    private static function readQueryEnums(string $enum, array $items): array
+    {
+        return array_map(
+            static fn (mixed $item): mixed => is_string($item) ? $enum::tryFrom($item) ?? $item : $item,
+            $items,
+        );
+    }
+{% endif %}
+{% if 'readQueryIntEnums' in queryListReaders %}
+
+    /**
+     * Query items read as cases of an int-backed enum. An item that names no case is kept, for
+     * validation to report at its index.
+     *
+     * @param class-string<\BackedEnum> $enum
+     * @param array<mixed> $items
+     * @return array<mixed>
+     */
+    private static function readQueryIntEnums(string $enum, array $items): array
+    {
+        return array_map(
+            static function (mixed $item) use ($enum): mixed {
+                $number = is_string($item) ? filter_var($item, \FILTER_VALIDATE_INT, \FILTER_NULL_ON_FAILURE) : null;
+
+                return is_int($number) ? $enum::tryFrom($number) ?? $item : $item;
+            },
+            $items,
+        );
+    }
+{% endif %}
 {% if temporalFormatters is not empty %}
 {% if 'formatOpenApiDate' in temporalFormatters %}
 

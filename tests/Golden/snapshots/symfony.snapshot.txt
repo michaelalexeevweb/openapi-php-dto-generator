@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12623 lines
+# symfony mode — 77 files, 12671 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1399,6 +1399,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function explode;
 use function filter_var;
 use function floor;
 use function get_object_vars;
@@ -1569,8 +1570,34 @@ final class ApiTestSerializationGetQueryParams
     #[Ignore]
     private bool $filterProvided = false;
 
-    public function __construct()
-    {
+    /**
+     * @param array<int|numeric-string>|string|null $exploded
+     * @param array<string>|string|null $joined
+     * @param array<int|numeric-string>|string|null $spaced
+     * @param array<string>|string|null $piped
+     */
+    public function __construct(
+        array|string|null $exploded = null,
+        array|string|null $joined = null,
+        array|string|null $spaced = null,
+        array|string|null $piped = null,
+    ) {
+        if ($exploded !== null) {
+            $this->exploded = self::readQueryInts(self::readQueryList($exploded, null));
+            $this->explodedProvided = true;
+        }
+        if ($joined !== null) {
+            $this->joined = self::readQueryList($joined, ',');
+            $this->joinedProvided = true;
+        }
+        if ($spaced !== null) {
+            $this->spaced = self::readQueryInts(self::readQueryList($spaced, ' '));
+            $this->spacedProvided = true;
+        }
+        if ($piped !== null) {
+            $this->piped = self::readQueryList($piped, '|');
+            $this->pipedProvided = true;
+        }
     }
 
     /**
@@ -1861,6 +1888,27 @@ final class ApiTestSerializationGetQueryParams
                 : $item,
             $items,
         );
+    }
+
+    /**
+     * A query list in either form the URL carries it: PHP's `ids[]=1&ids[]=22` arrives as a list, the
+     * spec's own `ids=1,22` as one string, split here on the delimiter the parameter's `style` names.
+     * A parameter without one sends an item per key, so a lone string is a list of one.
+     *
+     * @param array<mixed>|string $value
+     * @param ?non-empty-string $delimiter
+     * @return array<mixed>
+     */
+    private static function readQueryList(array|string $value, ?string $delimiter): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if ($delimiter === null) {
+            return [$value];
+        }
+
+        return $value === '' ? [] : explode($delimiter, $value);
     }
 
     #[Assert\Callback]

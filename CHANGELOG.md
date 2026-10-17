@@ -3,6 +3,24 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.76 — 2026-10-17
+
+- Symfony query list binds by style
+
+Symfony mode:
+
+- a query list binds in the form its `style` and `explode` give it, not only PHP's
+  `?ids[]=1&ids[]=22`: `?ids=1,22` for `explode: false`, `?ids=1%2022` and `?ids=1|22` for
+  `spaceDelimited` and `pipeDelimited`, and `?ids=1` as a list of one for the default `explode: true`.
+  Before, each came back 400. The serializer reads a setter by the property's type and refuses the
+  string before the setter runs, so a query list of scalars or enum cases is now a constructor
+  argument of `array|string`, optional ones with a `null` default, and the DTO splits the string.
+  `isXxxProvided()`, the setters and `create()` are unchanged. A repeated key (`?ids=1&ids=22`) is
+  still lost: PHP keeps the last one before Symfony runs.
+- an enum item that names no case is now one violation at its index — `field "tints"[1] must be one
+  of: …`, or `This value should be of type Tier.` for an int-backed enum — where the bracket form
+  was refused by the serializer before validation ran.
+
 ## 2.15.75 — 2026-10-16
 
 - Symfony wrong-type item reported once

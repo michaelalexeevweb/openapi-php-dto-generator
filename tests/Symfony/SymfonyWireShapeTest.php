@@ -339,6 +339,85 @@ final class SymfonyWireShapeTest extends TestCase
     }
 
     /**
+     * A query list binds in the form its `style` and `explode` name as well as PHP's bracket form: the
+     * DTO takes the string through its constructor and splits it there. An item that is not of the
+     * type is still one violation at its index.
+     */
+    public function testAQueryListBindsInTheFormItsStyleNames(): void
+    {
+        $target = $this->outputDirectory . '/WireStyle';
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/levers' => [
+                    'get' => [
+                        'parameters' => [
+                            ['name' => 'sizes', 'in' => 'query', 'required' => true, 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 1]]],
+                            ['name' => 'marks', 'in' => 'query', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'boolean']]],
+                            ['name' => 'labels', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                            ['name' => 'spans', 'in' => 'query', 'style' => 'spaceDelimited', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'number']]],
+                            ['name' => 'codes', 'in' => 'query', 'style' => 'pipeDelimited', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                            ['name' => 'tints', 'in' => 'query', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tint']]],
+                            ['name' => 'tiers', 'in' => 'query', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tier']]],
+                        ],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+            'components' => [
+                'schemas' => [
+                    'Tint' => ['type' => 'string', 'enum' => ['amber', 'teal']],
+                    'Tier' => ['type' => 'integer', 'enum' => [1, 2]],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireStyle', 'symfony');
+        foreach (['Tint', 'Tier', 'LeversGetQueryParams'] as $class) {
+            require_once $target . '/' . $class . '.php';
+        }
+        $fqcn = \WireStyle\LeversGetQueryParams::class;
+
+        $joined = $this->resolveQuery($fqcn, '/levers?sizes=1,22&marks=true,0&labels=a,b&spans=1.5%202&codes=x|y&tints=amber,teal&tiers=2,1');
+        $this->assertSame([1, 22], $joined->getSizes());
+        $this->assertSame([true, false], $joined->getMarks());
+        $this->assertSame(['a,b'], $joined->getLabels(), 'exploded: a lone value is a list of one');
+        $this->assertSame([1.5, 2.0], $joined->getSpans());
+        $this->assertSame(['x', 'y'], $joined->getCodes());
+        $this->assertSame([\WireStyle\Tint::AMBER, \WireStyle\Tint::TEAL], $joined->getTints());
+        $this->assertSame([\WireStyle\Tier::VALUE_2, \WireStyle\Tier::VALUE_1], $joined->getTiers());
+        $this->assertTrue($joined->isTintsProvided());
+
+        $bracketed = $this->resolveQuery($fqcn, '/levers?sizes[]=3&labels[]=a&labels[]=b&tints[]=teal&tiers[]=2');
+        $this->assertSame([3], $bracketed->getSizes());
+        $this->assertSame(['a', 'b'], $bracketed->getLabels());
+        $this->assertSame([\WireStyle\Tint::TEAL], $bracketed->getTints());
+        $this->assertSame([\WireStyle\Tier::VALUE_2], $bracketed->getTiers());
+        $this->assertNull($bracketed->getMarks());
+        $this->assertFalse($bracketed->isMarksProvided());
+
+        $this->assertSame([7], $this->resolveQuery($fqcn, '/levers?sizes=7')->getSizes());
+
+        $refusals = [
+            '/levers?sizes=1,x' => 'sizes[1]',
+            '/levers?sizes=1,0' => 'sizes[1]',
+            '/levers?sizes=1&tints=amber,grey' => 'tints[1]',
+            '/levers?sizes=1&tiers=1,9' => 'tiers[1]',
+        ];
+        foreach ($refusals as $uri => $path) {
+            try {
+                $this->resolveQuery($fqcn, $uri);
+                $this->fail($uri . ' must not pass');
+            } catch (HttpException $exception) {
+                $failure = $exception->getPrevious();
+                $this->assertInstanceOf(ValidationFailedException::class, $failure);
+                $this->assertCount(1, $failure->getViolations(), $uri . ': ' . $failure->getMessage());
+                $this->assertSame($path, $failure->getViolations()->get(0)->getPropertyPath(), $uri);
+            }
+        }
+    }
+
+    /**
      * An item of the wrong type is one mistake, so it is one message: a bound on the items is not
      * also asked about a value that is not a number at all. A number out of the bound still fails.
      */
