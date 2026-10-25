@@ -3,6 +3,27 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.79 — 2026-10-25
+
+- Laravel dotted property names
+- Laravel FormRequest opt-out
+
+Laravel mode:
+
+- a property name containing `.` failed the whole run with `Laravel validation cannot safely represent
+  property name`. It is one literal key on the wire — a form field name, say — and now the rule key
+  escapes it (`'invoice\.note'`), which Laravel reads as a literal dot: `{"invoice.note": "x"}`
+  validates, `{"invoice": {"note": "x"}}` does not stand in for it, and `fromValidated()` reads the
+  key as sent. A name containing `*` is still refused — Laravel has no escape for its wildcard — and
+  laravel-data mode refuses both, as before.
+- `withValidator()` read the payload through `getData()`, where Laravel keeps every `.` and `*` of a
+  KEY as a placeholder. The interpreter now reads it with the placeholders undone: a map key `a.b`
+  failed `propertyNames: {pattern: '^[a-z.]+$'}`, and `additionalProperties: false` named the key
+  with the placeholder in it.
+- `--no-laravel-form-request` writes the DTOs without their `<Dto>FormRequest`, for a project with
+  `illuminate/validation` but no `laravel/framework`, where `FormRequest` does not exist.
+  README.laravel.md shows the validator wiring that replaces it. Ignored with a warning in other modes.
+
 ## 2.15.78 — 2026-10-17
 
 - Symfony format errors worded alike

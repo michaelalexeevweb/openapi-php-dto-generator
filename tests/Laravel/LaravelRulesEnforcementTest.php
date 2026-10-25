@@ -1196,4 +1196,90 @@ final class LaravelRulesEnforcementTest extends TestCase
             'the same payload with the dependency satisfied',
         );
     }
+
+    /**
+     * A property name with a dot is ONE key on the wire — a form field name, say — not a path. The rule
+     * key escapes it, and the interpreter reads the payload with Laravel's placeholders undone; before
+     * 2.15.79 generation refused such a name outright.
+     */
+    public function testAPropertyNameWithADotIsOneLiteralKey(): void
+    {
+        $namespace = 'LvDottedName';
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+
+        (new GenerateDtoCommand())->generateFromArray([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Line' => [
+                        'type' => 'object',
+                        'required' => ['unit.price'],
+                        'properties' => ['unit.price' => ['type' => 'integer']],
+                    ],
+                    'Invoice' => [
+                        'type' => 'object',
+                        'required' => ['invoice.note', 'line.items'],
+                        'dependentRequired' => ['invoice.note' => ['currency']],
+                        'properties' => [
+                            'invoice.note' => ['type' => 'string', 'maxLength' => 3],
+                            'currency' => ['type' => 'string'],
+                            'line.items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Line']],
+                            'main.line' => ['$ref' => '#/components/schemas/Line'],
+                            'labels' => [
+                                'type' => 'object',
+                                'additionalProperties' => ['type' => 'string'],
+                                'propertyNames' => ['pattern' => '^[a-z.]+$'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], $target, $namespace, 'laravel');
+
+        foreach (['Line', 'Invoice'] as $class) {
+            require_once $target . '/' . $class . '.php';
+        }
+
+        $fqcn = $namespace . '\Invoice';
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $errors = function (string $json) use ($fqcn, $rules): array {
+            $validator = $this->validatorFactory()->make(json_decode($json, true), $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+
+            return $validator->errors()->toArray();
+        };
+
+        $valid = '{"invoice.note":"abc","currency":"EUR","line.items":[{"unit.price":1}],'
+            . '"main.line":{"unit.price":2},"labels":{"a.b":"x"}}';
+        $this->assertSame([], $errors($valid));
+        $validator = $this->validatorFactory()->make(json_decode($valid, true), $rules);
+        call_user_func([$fqcn, 'withValidator'], $validator, $valid);
+        $this->assertEquals(
+            json_decode($valid, true),
+            json_decode(json_encode(call_user_func([$fqcn, 'fromValidated'], $validator->validated())->toArray()), true),
+        );
+
+        $this->assertSame(
+            ['invoice.note' => ['validation.present']],
+            $errors('{"invoice":{"note":"abc"},"line.items":[]}'),
+            'a nested object is not the dotted key',
+        );
+        $this->assertSame(['invoice.note' => ['validation.max.string']], $errors('{"invoice.note":"abcd","currency":"EUR","line.items":[]}'));
+        $this->assertSame(
+            ['currency' => ['field "currency" is required when invoice.note is present.']],
+            $errors('{"invoice.note":"abc","line.items":[]}'),
+        );
+        $this->assertSame(
+            ['line.items' => ['line.items[0].unit.price is required.']],
+            $errors('{"invoice.note":"abc","currency":"EUR","line.items":[{}]}'),
+        );
+        $this->assertSame(
+            ['line.items.0.unit.price' => ['validation.integer']],
+            $errors('{"invoice.note":"abc","currency":"EUR","line.items":[{"unit.price":"x"}]}'),
+        );
+        $this->assertArrayHasKey('main.line', $errors('{"invoice.note":"abc","currency":"EUR","line.items":[],"main.line":[]}'));
+    }
 }

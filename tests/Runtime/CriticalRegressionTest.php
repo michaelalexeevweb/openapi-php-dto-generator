@@ -289,7 +289,8 @@ final class CriticalRegressionTest extends TestCase
             'dependent' => ['properties' => ['x' => ['type' => 'string']], 'dependentRequired' => ['x' => [$name]]],
             'trigger' => ['properties' => ['x' => ['type' => 'string']], 'dependentRequired' => [$name => ['x']]],
         ];
-        foreach (['a.b', 'a*b'] as $name) {
+        // Laravel mode escapes a dot (`a\.b`); laravel-data maps a dotted name as a nested path.
+        foreach ($mode === 'laravel' ? ['a*b'] : ['a.b', 'a*b'] as $name) {
             foreach ($named($name) as $where => $schema) {
                 try {
                     (new GenerateDtoCommand())->generateFromArray(

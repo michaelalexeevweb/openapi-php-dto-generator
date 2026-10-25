@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 23607 lines
+# laravel mode — 106 files, 23639 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8806,8 +8806,10 @@ final class ApplicatorRefs
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -9664,8 +9666,10 @@ final class ApplicatorRefsConditional
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -10106,8 +10110,10 @@ final class ApplicatorRefsKeyed
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -10526,8 +10532,10 @@ final class ApplicatorRefsPoisonedKey
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -11855,8 +11863,10 @@ final class ChainLink
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -12279,8 +12289,10 @@ final class ChainMiddle
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -13566,8 +13578,10 @@ final class Containers
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -16131,8 +16145,10 @@ final class NestedContainers
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -17154,8 +17170,10 @@ final class ObjectWideRules
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -17850,8 +17868,10 @@ final class ReadOnlyFields
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -19147,8 +19167,10 @@ final class Test2
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -20175,8 +20197,10 @@ final class TestPostRequest
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -20925,8 +20949,10 @@ final class TreeNode
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -21799,8 +21825,10 @@ final class UnionUnderContainer
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -22497,8 +22525,10 @@ final class UniqueScalars
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -23250,8 +23280,10 @@ final class User2
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {

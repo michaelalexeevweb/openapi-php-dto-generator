@@ -377,6 +377,23 @@ final class GenerateLaravelDtoTest extends TestCase
     }
 
     /**
+     * `--no-laravel-form-request`: a project with `illuminate/validation` but no `laravel/framework` has
+     * no `FormRequest` to extend, so the request DTOs come alone — with the same `rules()`,
+     * `withValidator()` and `fromValidated()` the FormRequest would have delegated to.
+     */
+    public function testFormRequestCanBeTurnedOff(): void
+    {
+        $this->generator->laravelFormRequest = false;
+        $target = $this->generateEndpointSpec('LvNoForm');
+
+        $this->assertSame([], glob($target . '/*FormRequest.php'));
+        $dto = (string)file_get_contents($target . '/ArticlesPostRequest.php');
+        $this->assertStringContainsString('public static function rules(): array', $dto);
+        $this->assertStringContainsString('public static function withValidator(Validator $validator', $dto);
+        $this->assertStringContainsString('public static function fromValidated(array $data): self', $dto);
+    }
+
+    /**
      * A request body written as `$ref: '#/components/schemas/X'` is still a request payload. It used to
      * get no FormRequest at all — the walker only recorded INLINE bodies — so the most idiomatic way to
      * write a spec produced the one shape the mode exists for and then withheld it, leaving the

@@ -95,6 +95,38 @@ everything the schema does.
 **Authorization is never generated.** An OpenAPI document describes payload shape, not policy, so the
 generated FormRequest defines no `authorize()`. Add one where the route needs it.
 
+### Without `laravel/framework`
+
+A project that has `illuminate/validation` but not the framework — a Symfony application, say — has no
+`FormRequest` to extend. Generate with `--no-laravel-form-request` and only the DTOs are written; drive
+the same three methods yourself. The translations ship with `illuminate/translation`:
+
+```php
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Translation\FileLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\Factory;
+use Illuminate\Validation\ValidationException;
+
+$factory = new Factory(new Translator(
+    new FileLoader(new Filesystem(), $projectDir . '/vendor/illuminate/translation/lang'),
+    'en',
+));
+
+// What FormRequest::validationData() would gather: the query string and the body, plus every path,
+// header or cookie parameter the operation declares, under its OpenAPI name.
+$data = [...$query, ...$body, 'articleId' => $routeParameters['articleId']];
+
+$validator = $factory->make($data, ArticlesPostRequest::rules());
+ArticlesPostRequest::withValidator($validator, $rawBody);
+
+try {
+    $dto = ArticlesPostRequest::fromValidated($validator->validate());
+} catch (ValidationException $error) {
+    // $error->errors(): ['title' => ['The title field must be at least 3 characters.']]
+}
+```
+
 ## Two layers, one vocabulary
 
 The mode validates in two passes, and the split is mechanical: whatever Laravel's rules can express is a
@@ -332,6 +364,8 @@ Adjust the path condition to match your API routes. This applies to every field 
 clients must send an explicit JSON `null` when they mean null. The generated rules still reject `null`
 for non-nullable strings. Laravel's separate `TrimStrings` middleware continues to trim whitespace.
 
-Property names containing `.` or `*` are rejected during generation because Laravel treats them
-as path/wildcard syntax. Rename such wire properties or select another generation mode. Generation
-fails before replacing existing output.
+A property name containing `.` is one literal key, not a path: `rules()` writes it as `invoice\.note`,
+which Laravel reads as a literal dot, so `{"invoice.note": "…"}` validates and
+`{"invoice": {"note": "…"}}` does not stand in for it. A name containing `*` is rejected during
+generation — Laravel has no escape for its wildcard. Rename such wire properties or select another
+generation mode. Generation fails before replacing existing output.

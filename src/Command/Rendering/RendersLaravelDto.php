@@ -156,7 +156,7 @@ trait RendersLaravelDto
             $param = $this->resolveLaravelParam($property, $namespace);
             $params[] = $param;
             $rules[] = [
-                'path' => $property['openApiName'],
+                'path' => $this->laravelPathSegment($property['openApiName']),
                 'rules' => $this->laravelRulesLiteral($this->laravelRulesForProperty($property)),
             ];
             foreach ($this->laravelItemRulesForProperty($property) as $path => $itemRules) {
@@ -233,6 +233,10 @@ trait RendersLaravelDto
             'needsIntCoercionHelper' => $this->laravelNeedsIntCoercionHelper($params),
             'scalarCoercionHelpers' => $this->laravelScalarCoercionHelpers($params),
             'objectShapePaths' => $objectShapePaths,
+            'objectShapePathsEscapeDots' => array_filter(
+                $objectShapePaths,
+                static fn(string $objectPath): bool => str_contains($objectPath, '\.'),
+            ) !== [],
             'unionMembers' => null,
             'interfaceExtends' => [],
         ]);
@@ -270,6 +274,7 @@ trait RendersLaravelDto
             'needsIntCoercionHelper' => false,
             'scalarCoercionHelpers' => [],
             'objectShapePaths' => [],
+            'objectShapePathsEscapeDots' => false,
             'interpreterConstsBlock' => '',
             'hasObjectConstraints' => false,
             'interpreterMethodsBlock' => '',
@@ -547,9 +552,9 @@ trait RendersLaravelDto
         $itemClass = $this->laravelDtoItemClass($property);
 
         if ($nestedClass !== null) {
-            $prefix = $property['openApiName'];
+            $prefix = $this->laravelPathSegment($property['openApiName']);
         } elseif ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
-            $prefix = $property['openApiName'] . '.*';
+            $prefix = $this->laravelPathSegment($property['openApiName']) . '.*';
             $nestedClass = $itemClass;
         } else {
             return [];
@@ -564,7 +569,7 @@ trait RendersLaravelDto
 
         $rules = [];
         foreach ($this->getSchemaProperties($nestedClass) as $nestedProperty) {
-            $path = $prefix . '.' . $nestedProperty['openApiName'];
+            $path = $prefix . '.' . $this->laravelPathSegment($nestedProperty['openApiName']);
             $nestedRules = $this->laravelRulesForProperty($nestedProperty);
 
             // A nested property's PRESENCE is not expressible as a rule, so the interpreter owns it.
@@ -747,7 +752,7 @@ trait RendersLaravelDto
             // The item ITSELF must be an object. With no rule on `f.*` a string or a null item reached
             // `fromValidated()` — which skipped it, so `["x"]` hydrated to `[]` without a word.
             return [
-                $property['openApiName'] . '.*' => $this->laravelItemsNullable($property)
+                $this->laravelPathSegment($property['openApiName']) . '.*' => $this->laravelItemsNullable($property)
                     ? ["'nullable'", "'array'"]
                     : ["'array'"],
             ];
@@ -766,7 +771,7 @@ trait RendersLaravelDto
         // `InterpreterMessageParityTest` case exists to protect.
         unset($unique);
 
-        $itemPath = $property['openApiName'] . '.*';
+        $itemPath = $this->laravelPathSegment($property['openApiName']) . '.*';
         $paths = $rules === [] ? [] : [$itemPath => $rules];
 
         // And a container INSIDE the container. Laravel's dotted paths go as deep as the schema does;
@@ -1310,6 +1315,16 @@ trait RendersLaravelDto
         return preg_match('/^\??array<(?:[A-Za-z_][A-Za-z0-9_]*,\s*)?\?/', $property['type']) === 1;
     }
 
+    /**
+     * A property name as ONE segment of a Laravel path. Laravel reads every `.` of a rule key as a step
+     * into a nested array, and `\.` as a literal dot — so `invoice.note` validates the key the client
+     * sent rather than `{"invoice": {"note": …}}`.
+     */
+    private function laravelPathSegment(string $openApiName): string
+    {
+        return str_replace('.', '\.', $openApiName);
+    }
+
     private function laravelIsEnumClass(string $className): bool
     {
         return array_key_exists($className, $this->enumSchemas);
@@ -1837,6 +1852,7 @@ trait RendersLaravelDto
     private function laravelEmitsFormRequestFor(string $className): bool
     {
         return $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
+            && $this->laravelFormRequest
             && array_key_exists($className, $this->requestPayloadClasses)
             && ($this->laravelClassesWithInterpreter[$className] ?? null) !== null;
     }
@@ -2513,7 +2529,8 @@ trait RendersLaravelDto
      */
     private function laravelObjectShapePaths(array $property, string $prefix, array $visitedClasses = []): array
     {
-        $path = $prefix === '' ? $property['openApiName'] : $prefix . '.' . $property['openApiName'];
+        $segment = $this->laravelPathSegment($property['openApiName']);
+        $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
         $constraints = $this->laravelConstraintsFor($property);
         $nestedClass = $this->laravelDtoClass($property);
         $itemClass = $this->laravelDtoItemClass($property);

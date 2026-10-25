@@ -380,6 +380,13 @@ final class GenerateDtoCommand extends Command
      */
     public bool $symfonyPathParams = false;
 
+    /**
+     * Laravel mode: whether every request payload DTO gets its `<Dto>FormRequest`. Off for a project with
+     * `illuminate/validation` but no `laravel/framework`, where `FormRequest` does not exist and the DTO's
+     * `rules()`, `withValidator()` and `fromValidated()` are driven by the project's own code.
+     */
+    public bool $laravelFormRequest = true;
+
     public string $generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
     public string $unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
 
@@ -428,6 +435,11 @@ final class GenerateDtoCommand extends Command
             name: 'symfony-path-params',
             mode: InputOption::VALUE_NONE,
             description: 'With --attributes=symfony: also generate <Operation>PathParams DTOs of the path parameters, for a value resolver of your own (see README.symfony.md).',
+        );
+        $this->addOption(
+            name: 'laravel-form-request',
+            mode: InputOption::VALUE_NEGATABLE,
+            description: 'With --attributes=laravel: generate a <Dto>FormRequest next to every request payload DTO (default). --no-laravel-form-request generates the DTOs only, for a project without laravel/framework (see README.laravel.md).',
         );
         $this->addOption(
             name: 'ref',
@@ -529,6 +541,7 @@ final class GenerateDtoCommand extends Command
 
         $withPsr7 = $input->getOption('with-psr7') === true;
         $this->symfonyPathParams = $input->getOption('symfony-path-params') === true;
+        $this->laravelFormRequest = $input->getOption('laravel-form-request') !== false;
 
         try {
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
@@ -542,6 +555,12 @@ final class GenerateDtoCommand extends Command
             if ($this->symfonyPathParams && $mode !== self::ATTRIBUTE_MODE_SYMFONY) {
                 $this->generationWarnings[] = sprintf(
                     'Option --symfony-path-params is ignored with --attributes=%s: path parameters are already part of its DTO.',
+                    $mode,
+                );
+            }
+            if (!$this->laravelFormRequest && $mode !== self::ATTRIBUTE_MODE_LARAVEL) {
+                $this->generationWarnings[] = sprintf(
+                    'Option --no-laravel-form-request is ignored with --attributes=%s: only laravel mode generates a FormRequest.',
                     $mode,
                 );
             }
@@ -1773,11 +1792,16 @@ final class GenerateDtoCommand extends Command
                 $names[] = $name;
             }
         }
+        // Laravel mode writes a dot as `\.` in a rule key, which Laravel reads as a literal dot. An
+        // asterisk has no such escape, and laravel-data maps a dotted name as a nested path.
+        $unsafe = $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL ? '*' : '.*';
         foreach ($names as $name) {
-            if (is_scalar($name) && strpbrk((string)$name, '.*') !== false) {
+            if (is_scalar($name) && strpbrk((string)$name, $unsafe) !== false) {
                 throw new RuntimeException(
                     message: 'Laravel validation cannot safely represent property name "' . $name . '". '
-                    . 'Rename properties containing dots or asterisks, or use another generation mode.',
+                    . ($unsafe === '*'
+                        ? 'Rename properties containing asterisks, or use another generation mode.'
+                        : 'Rename properties containing dots or asterisks, or use another generation mode.'),
                 );
             }
         }

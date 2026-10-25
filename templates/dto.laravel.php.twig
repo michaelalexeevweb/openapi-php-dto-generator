@@ -188,8 +188,10 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
 {% if interpreterMethodsBlock is not empty %}
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -238,7 +240,13 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
+{% if objectShapePathsEscapeDots %}
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path));
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+{% else %}
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+{% endif %}
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
