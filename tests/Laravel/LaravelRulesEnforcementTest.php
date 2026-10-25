@@ -1488,4 +1488,167 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame([3, 4], $dto->getIds());
         $this->assertSame(['a' => true, 'b' => false], $dto->getFlags());
     }
+
+    /**
+     * `oneOf: [$ref Palette, string, integer]`: the `$ref` branch is spelled out for the interpreter —
+     * dropped, it took the whole union with it and nothing was checked — and a member of the enum is
+     * built as its case, written back as its value.
+     */
+    public function testAUnionWithAnEnumBranchIsCheckedAndBuiltAsTheCase(): void
+    {
+        $fqcn = $this->generateProbe('unionEnumRef', [
+            'oneOf' => [
+                ['$ref' => '#/components/schemas/Palette'],
+                ['type' => 'string', 'pattern' => '^\d+$'],
+                ['type' => 'integer'],
+            ],
+        ], ['Palette' => ['type' => 'string', 'enum' => ['crimson', 'azure']]]);
+        $factory = $this->validatorFactory();
+        $build = static function (mixed $value) use ($factory, $fqcn): mixed {
+            $json = (string)json_encode(['f' => $value]);
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$fqcn, 'rules']);
+            $validator = $factory->make(['f' => $value], $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+            if ($validator->fails()) {
+                return null;
+            }
+
+            return call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        };
+
+        $palette = $build('crimson');
+        $this->assertIsObject($palette);
+        $this->assertSame('crimson', $palette->getF()->value);
+        $this->assertSame(['f' => 'crimson'], $palette->toArray());
+        $this->assertSame('12', $build('12')?->getF());
+        $this->assertSame(5, $build(5)?->getF());
+        $this->assertNull($build('bad'));
+        $this->assertNull($build('-1'));
+        $this->assertNull($build(1.5));
+    }
+
+    /**
+     * A body that is one of several variants named by a discriminator gets a FormRequest that takes the
+     * rules, the schema checks and the DTO from the variant the payload names; a property typed with
+     * the base holds that variant and checks its fields. The allOf base was a class of its own, which
+     * no variant belonged to: the body lost every field a variant adds.
+     *
+     * @param array<string, mixed> $schemas
+     */
+    #[DataProvider('variantSchemasProvider')]
+    public function testADiscriminatedBodyIsCheckedAndBuiltAsTheVariantItNames(array $schemas): void
+    {
+        $namespace = 'LvVariants' . substr(md5((string)json_encode($schemas)), 0, 8);
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+        $json = static fn(string $schema): array => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/' . $schema]]]];
+        (new GenerateDtoCommand())->generateFromArray(
+            openApi: [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'paths' => ['/shapes' => ['post' => [
+                    'operationId' => 'createShape',
+                    'requestBody' => ['required' => true] + $json('Shape'),
+                    'responses' => ['200' => ['description' => 'OK'] + $json('ShapeEnvelope')],
+                ]]],
+                'components' => ['schemas' => $schemas + [
+                    'ShapeEnvelope' => [
+                        'type' => 'object',
+                        'required' => ['payload'],
+                        'properties' => ['payload' => ['$ref' => '#/components/schemas/Shape']],
+                    ],
+                ]],
+            ],
+            outputDirectory: $target,
+            namespace: $namespace,
+            mode: 'laravel',
+        );
+        if (!class_exists(\Illuminate\Foundation\Http\FormRequest::class)) {
+            require_once __DIR__ . '/Stub/form-request.php';
+        }
+        spl_autoload_register(static function (string $class) use ($target, $namespace): void {
+            $file = $target . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (str_starts_with($class, $namespace . '\\') && is_file($file)) {
+                require_once $file;
+            }
+        });
+        $this->assertTrue(interface_exists($namespace . '\Shape'));
+        $this->assertContains($namespace . '\Shape', class_implements($namespace . '\Circle') ?: []);
+
+        $factory = $this->validatorFactory();
+        $formRequestClass = $namespace . '\ShapeFormRequest';
+        $submit = static function (string $body) use ($factory, $formRequestClass): array {
+            $request = $formRequestClass::create(uri: '/shapes', method: 'POST', server: ['CONTENT_TYPE' => 'application/json'], content: $body);
+            $validator = $factory->make($request->validationData(), $request->rules());
+            $request->withValidator($validator);
+
+            return [$request, array_keys($validator->errors()->toArray())];
+        };
+
+        [$circle, $errors] = $submit('{"kind":"circle","radius":3}');
+        $this->assertSame([], $errors);
+        $dto = $circle->toDto();
+        $this->assertInstanceOf($namespace . '\Circle', $dto);
+        $this->assertSame(3, $dto->getRadius());
+        $this->assertSame(['radius'], $submit('{"kind":"circle","radius":0}')[1]);
+        $this->assertSame(['ids'], $submit('{"kind":"square"}')[1]);
+        $this->assertSame(['kind'], $submit('{"kind":"triangle"}')[1]);
+        $this->assertSame(['kind'], $submit('{}')[1]);
+
+        $envelope = $namespace . '\ShapeEnvelope';
+        $check = static function (array $payload) use ($factory, $envelope): object {
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$envelope, 'rules']);
+            $validator = $factory->make(['payload' => $payload], $rules);
+            call_user_func([$envelope, 'withValidator'], $validator, json_encode(['payload' => $payload]));
+
+            return $validator;
+        };
+        $this->assertTrue($check(['kind' => 'square', 'ids' => [1]])->passes());
+        $this->assertFalse($check(['kind' => 'square', 'ids' => 'x'])->passes());
+        $this->assertFalse($check(['kind' => 'triangle'])->passes());
+        $built = call_user_func([$envelope, 'fromValidated'], ['payload' => ['kind' => 'square', 'ids' => [1, 2]]]);
+        $this->assertSame(['payload' => ['kind' => 'square', 'ids' => [1, 2]]], $built->toArray());
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>}>
+     */
+    public static function variantSchemasProvider(): array
+    {
+        $variant = static fn(string $own, array $schema): array => [
+            'type' => 'object',
+            'required' => ['kind', $own],
+            'properties' => ['kind' => ['type' => 'string'], $own => $schema],
+        ];
+        $mapping = ['circle' => '#/components/schemas/Circle', 'square' => '#/components/schemas/Square'];
+
+        return [
+            'allOf base' => [[
+                'Shape' => [
+                    'type' => 'object',
+                    'required' => ['kind'],
+                    'properties' => ['kind' => ['type' => 'string']],
+                    'discriminator' => ['propertyName' => 'kind', 'mapping' => $mapping],
+                ],
+                'Circle' => ['allOf' => [
+                    ['$ref' => '#/components/schemas/Shape'],
+                    ['type' => 'object', 'required' => ['radius'], 'properties' => ['radius' => ['type' => 'integer', 'minimum' => 1]]],
+                ]],
+                'Square' => ['allOf' => [
+                    ['$ref' => '#/components/schemas/Shape'],
+                    ['type' => 'object', 'required' => ['ids'], 'properties' => ['ids' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
+                ]],
+            ]],
+            'oneOf' => [[
+                'Shape' => [
+                    'oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']],
+                    'discriminator' => ['propertyName' => 'kind', 'mapping' => $mapping],
+                ],
+                'Circle' => $variant('radius', ['type' => 'integer', 'minimum' => 1]),
+                'Square' => $variant('ids', ['type' => 'array', 'items' => ['type' => 'integer']]),
+            ]],
+        ];
+    }
 }

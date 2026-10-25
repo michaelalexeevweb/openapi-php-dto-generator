@@ -143,6 +143,17 @@ trait RendersLaravelDto
         if ($unionTypes !== [] || ($isAbstract && is_array($discriminator))) {
             return $this->renderLaravelUnionInterface($namespace, $className, $unionTypes, $discriminator);
         }
+        // The allOf pattern: the base is the interface its variants implement, with the getters of its
+        // own properties, which every variant inherits.
+        if ($this->laravelIsAllOfDiscriminatorBase($className)) {
+            return $this->renderLaravelUnionInterface(
+                namespace: $namespace,
+                className: $className,
+                unionTypes: [],
+                discriminator: $this->discriminatorSchemas[$className],
+                sharedProperties: $properties,
+            );
+        }
 
         $useStatements = [];
         $params = [];
@@ -257,21 +268,44 @@ trait RendersLaravelDto
     /**
      * @param array<int, string> $unionTypes
      * @param array<string, mixed>|null $discriminator
+     * @param array<int, SchemaProperty> $sharedProperties the base's own properties, for an allOf base
      */
     private function renderLaravelUnionInterface(
         string $namespace,
         string $className,
         array $unionTypes,
         ?array $discriminator,
+        array $sharedProperties = [],
     ): string {
         $interfaceExtends = [];
         foreach ($this->symfonyImplementedUnionInterfaces($className, null) as $unionInterface) {
             $interfaceExtends[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
 
+        $imports = [];
+        $interfaceGetters = [];
+        foreach ($sharedProperties as $property) {
+            $interfaceGetters[] = $this->resolveLaravelParam($property, $namespace);
+            // Only what a getter's signature names: the rules and the hydrator stay with the variants.
+            if ($this->symfonyTemporalGetterBody($property) !== null || $this->symfonyTemporalArrayGetterBody($property) !== null) {
+                $imports[] = 'DateTimeImmutable';
+            }
+            if ($this->laravelIsUploadedFileProperty($property)) {
+                $imports[] = 'Symfony\Component\HttpFoundation\File\UploadedFile';
+            }
+            foreach ([$this->laravelEnumClass($property), $this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $referenced) {
+                if ($referenced !== null) {
+                    $this->appendImportForClass($imports, $referenced, $namespace, $className);
+                }
+            }
+        }
+        $imports = array_values(array_unique($imports));
+        sort($imports);
+
         return $this->renderPhpTemplate('dto.laravel.php.twig', [
             'namespace' => $namespace,
-            'imports' => [],
+            'imports' => $imports,
+            'interfaceGetters' => $interfaceGetters,
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
@@ -1032,6 +1066,7 @@ trait RendersLaravelDto
                 ? sprintf('self::toIntIfIntegral(%s)', $raw)
                 : $raw,
         };
+        $raw = $this->laravelWithUnionEnumCast($param['declaredType'], sprintf('$data[%s]', $key), $raw);
 
         $itemsNullable = $this->laravelItemsNullable($property);
         $nestedDtoContainer = $this->laravelNestedDtoContainerExpression($property['type'], $containerRaw, $property['openApiName']);
@@ -1530,6 +1565,14 @@ trait RendersLaravelDto
                 : sprintf('array_values(%s)', $propertyAccess);
         }
 
+        // A union with an enum member writes the case's value, the way a plain enum property does.
+        foreach (explode('|', str_replace('?', '', $property['type'])) as $member) {
+            $enumName = $this->shortClassName(trim($member));
+            if (str_contains($property['type'], '|') && array_key_exists($enumName, $this->enumSchemas)) {
+                return sprintf('%1$s instanceof %2$s ? %1$s->value : %1$s', $propertyAccess, $enumName);
+            }
+        }
+
         return $propertyAccess;
     }
 
@@ -1885,6 +1928,10 @@ trait RendersLaravelDto
      */
     private function renderLaravelFormRequestClass(string $namespace, string $dtoClassName): string
     {
+        if ($this->laravelHasVariantFormRequest($dtoClassName)) {
+            return $this->renderLaravelVariantFormRequestClass($namespace, $dtoClassName);
+        }
+
         $hasInterpreter = $this->laravelClassesWithInterpreter[$dtoClassName] ?? false;
 
         // `withValidator()` is always forwarded: besides the interpreter it keeps the containers
@@ -1919,6 +1966,46 @@ trait RendersLaravelDto
     }
 
     /**
+     * A body that is one of several variants — a discriminated `oneOf`/`anyOf`, or the base of the
+     * allOf pattern — is an interface, with no `rules()` or `fromValidated()` of its own. Its FormRequest
+     * reads the discriminator and takes everything from the variant it names.
+     */
+    private function laravelHasVariantFormRequest(string $className): bool
+    {
+        return $this->laravelDiscriminatorBaseIsInterface($className)
+            && ($this->discriminatorSchemas[$className]['mapping'] ?? []) !== [];
+    }
+
+    private function renderLaravelVariantFormRequestClass(string $namespace, string $dtoClassName): string
+    {
+        $discriminator = $this->discriminatorSchemas[$dtoClassName];
+        $imports = [
+            'Illuminate\Foundation\Http\FormRequest',
+            'Illuminate\Validation\Rule',
+            'Illuminate\Validation\Validator',
+            'LogicException',
+        ];
+        $arms = [];
+        foreach ($discriminator['mapping'] as $value => $variant) {
+            $this->appendImportForClass($imports, $variant, $namespace, $dtoClassName . 'FormRequest');
+            $arms[] = ['value' => $value, 'variant' => $this->shortClassName($variant)];
+        }
+        $imports = array_values(array_unique($imports));
+        sort($imports);
+
+        return $this->renderPhpTemplate('formrequest.laravel-union.php.twig', [
+            'namespace' => $namespace,
+            'imports' => $imports,
+            'className' => $dtoClassName . 'FormRequest',
+            'dtoClassName' => $dtoClassName,
+            'discriminatorProperty' => $discriminator['propertyName'],
+            'arms' => $arms,
+            'sourceEndpoint' => $this->endpointByClass[$dtoClassName] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($dtoClassName),
+        ]);
+    }
+
+    /**
      * A FormRequest is emitted for the classes that describe an INCOMING payload — a request body or an
      * operation's parameters — and for nothing else: a response DTO or a shared component has no
      * request to validate.
@@ -1928,7 +2015,7 @@ trait RendersLaravelDto
         return $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
             && $this->laravelFormRequest
             && array_key_exists($className, $this->requestPayloadClasses)
-            && ($this->laravelClassesWithInterpreter[$className] ?? null) !== null;
+            && (($this->laravelClassesWithInterpreter[$className] ?? null) !== null || $this->laravelHasVariantFormRequest($className));
     }
 
     /**
@@ -2172,6 +2259,14 @@ trait RendersLaravelDto
 
             $enum = $this->enumSchemas[$enumName];
             $backingType = $enum['type'] === 'int' ? 'integer' : 'string';
+            // A `$ref` branch arrives with its members already spelled out; a sibling string branch
+            // given them too would stop matching what it was written for.
+            $members = array_values($enum['values']);
+            foreach ($branches as $branch) {
+                if (is_array($branch) && ($branch['enum'] ?? null) === $members) {
+                    continue 2;
+                }
+            }
             foreach ($branches as $index => $branch) {
                 if (!is_array($branch) || ($branch['type'] ?? null) !== $backingType || array_key_exists('enum', $branch)) {
                     continue;
@@ -2184,6 +2279,40 @@ trait RendersLaravelDto
         $schema[$key] = $branches;
 
         return $schema;
+    }
+
+    /**
+     * A union with an enum member — `oneOf: [$ref Palette, string, integer]` is `Palette|string|int` — takes
+     * the enum case when the value is one of its members, and the scalar otherwise. Handed over as it
+     * came, `"crimson"` stayed a string where the type promised `Palette`.
+     *
+     * The validator has already decided which branch the value matched, so `tryFrom()` on the backing
+     * type is the whole decision; a value of the other scalar type is never passed to it, which under
+     * strict types would be a TypeError.
+     */
+    private function laravelWithUnionEnumCast(string $declaredType, string $raw, string $fallback): string
+    {
+        $members = explode('|', str_replace('?', '', $declaredType));
+        if (count($members) < 2) {
+            return $fallback;
+        }
+
+        $casts = [];
+        foreach ($members as $member) {
+            $enumName = $this->shortClassName(trim($member));
+            if (!array_key_exists($enumName, $this->enumSchemas)) {
+                continue;
+            }
+            $casts[] = sprintf(
+                '(%s(%s) ? %s::tryFrom(%s) : null)',
+                $this->enumSchemas[$enumName]['type'] === 'int' ? 'is_int' : 'is_string',
+                $raw,
+                $enumName,
+                $raw,
+            );
+        }
+
+        return $casts === [] ? $fallback : implode(' ?? ', [...$casts, $fallback]);
     }
 
     /**
@@ -2327,14 +2456,27 @@ trait RendersLaravelDto
     }
 
     /**
-     * Whether a discriminator base is emitted as an interface — true only for a `oneOf`/`anyOf` schema.
+     * Whether a discriminator base is emitted as an interface: a `oneOf`/`anyOf` schema, and in Laravel
+     * mode the object base of the allOf pattern too.
      */
     private function laravelDiscriminatorBaseIsInterface(string $baseClass): bool
     {
         $schema = $this->dtoSchemas[$baseClass] ?? null;
 
-        return is_array($schema)
-            && (array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema));
+        return (is_array($schema) && (array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema)))
+            || $this->laravelIsAllOfDiscriminatorBase($baseClass);
+    }
+
+    /**
+     * The allOf pattern: an object base with a discriminator whose variants `allOf` it. Generated as a
+     * class of its own it was a type no variant belonged to — a property typed with it could not hold
+     * a variant, and a body bound to it lost every field a variant adds. It is the interface the
+     * variants implement instead, as in Symfony mode, and hydration picks the variant by the
+     * discriminator. laravel-data keeps the class: its variants extend nothing either way.
+     */
+    private function laravelIsAllOfDiscriminatorBase(string $className): bool
+    {
+        return $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && $this->isAllOfDiscriminatorBase($className);
     }
 
     /**
@@ -2510,6 +2652,10 @@ trait RendersLaravelDto
         array $visitedClasses,
         bool $insideRecursiveFold = false,
     ): array {
+        if ($this->laravelIsAllOfDiscriminatorBase($className)) {
+            return $this->laravelAllOfDiscriminatorConstraints($className);
+        }
+
         $definition = $this->dtoSchemas[$className] ?? [];
         if (array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
             // Dotted rules cannot select a union member. Keep each branch's complete schema,
@@ -2554,6 +2700,47 @@ trait RendersLaravelDto
         }
         if ($required !== []) {
             $schema['required'] = $required;
+        }
+
+        return $schema;
+    }
+
+    /**
+     * A value typed with an allOf base is one of its variants, chosen by the discriminator. The dotted
+     * rules only know the base's own properties, so each variant's complete schema goes to the
+     * interpreter behind an `if` on its discriminator value — a `oneOf` of the variants would match
+     * twice wherever two of them accept the same payload.
+     *
+     * A discriminator value the mapping does not name is refused here unless the base's property lists
+     * its members itself, in which case the rules already say so; past this point it reached the
+     * hydrator's `match` and came out as a 500.
+     *
+     * @return array<string, mixed>
+     */
+    private function laravelAllOfDiscriminatorConstraints(string $className): array
+    {
+        $discriminator = $this->discriminatorSchemas[$className];
+        $propertyName = $discriminator['propertyName'];
+
+        $branches = [];
+        foreach ($discriminator['mapping'] as $value => $variant) {
+            $variantSchema = $this->extractValidationConstraints($this->inlineNestedContainerValidation(
+                schema: $this->dtoSchemas[$variant] ?? [],
+                belowMaterialization: true,
+            ));
+            if ($variantSchema === []) {
+                continue;
+            }
+            $branches[] = [
+                'if' => ['properties' => [$propertyName => ['const' => $value]], 'required' => [$propertyName]],
+                'then' => $variantSchema,
+            ];
+        }
+
+        $schema = $branches === [] ? [] : ['allOf' => $branches];
+        $baseProperty = $this->dtoSchemas[$className]['properties'][$propertyName] ?? null;
+        if (!is_array($baseProperty) || !array_key_exists('enum', $baseProperty)) {
+            $schema['properties'] = [$propertyName => ['enum' => array_map('strval', array_keys($discriminator['mapping']))]];
         }
 
         return $schema;

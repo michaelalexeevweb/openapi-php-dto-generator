@@ -352,6 +352,15 @@ final class GenerateDtoCommand extends Command
      */
     private array $pureAliasClasses = [];
 
+    /**
+     * The `$ref` union branches being spelled out for Laravel right now, innermost last. Spelling one
+     * out extracts the schema it names, which may hold the same branch again; a branch already on the
+     * stack is left unvalidatable, as it was before it was spelled out at all.
+     *
+     * @var array<string, true>
+     */
+    private array $laravelSpelledOutRefs = [];
+
     /** Set once the registered schemas went through `inlineNullSchemaReferences()`. */
     private bool $referencesNormalized = false;
 
@@ -3569,6 +3578,26 @@ final class GenerateDtoCommand extends Command
                 }
 
                 $extracted = $this->extractValidationConstraints($variant);
+                // Laravel validates the raw payload, before anything is hydrated, so the branch a `$ref`
+                // names has to be spelled out: an enum as its members, an object as its properties.
+                // Dropped instead, it took the whole union with it — `oneOf: [$ref Palette, integer]`
+                // checked nothing, and `1.5` reached the constructor as a TypeError.
+                if (
+                    $extracted === []
+                    && in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)
+                    && is_string($variant['$ref'] ?? null)
+                    && !array_key_exists($variant['$ref'], $this->laravelSpelledOutRefs)
+                ) {
+                    $spelledOutBefore = $this->laravelSpelledOutRefs;
+                    $this->laravelSpelledOutRefs[$variant['$ref']] = true;
+                    try {
+                        $extracted = $this->extractValidationConstraints(
+                            $this->inlineNestedContainerValidation(schema: $variant, belowMaterialization: true),
+                        );
+                    } finally {
+                        $this->laravelSpelledOutRefs = $spelledOutBefore;
+                    }
+                }
                 if (
                     $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
                     && $unionKey === 'oneOf'

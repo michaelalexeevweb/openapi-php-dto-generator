@@ -67,6 +67,35 @@ interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 interface {{ className }}
 {% endif %}
 {
+{% for param in interfaceGetters|default([]) %}
+{% if param.temporalGetterBody is not null %}
+{% if param.temporalGetterDocType is not null %}
+    /**
+     * @return {{ param.temporalGetterDocType }}
+     */
+{% endif %}
+    public function {{ param.getter }}(): {{ param.temporalGetterReturnType }};
+
+{% if param.temporalObjectDocType is not null %}
+    /**
+     * @return {{ param.temporalObjectDocType }}
+     */
+{% endif %}
+    public function {{ param.temporalObjectGetter }}(): {{ param.declaredType }};
+{% else %}
+{% if param.docType is not null %}
+    /**
+     * @return {{ param.docType }}
+     */
+{% endif %}
+    public function {{ param.getter }}(): {{ param.declaredType }};
+{% endif %}
+{% if not param.required %}
+
+    public function {{ param.providedGetter }}(): bool;
+{% endif %}
+
+{% endfor %}
     /**
      * Declared here because a property TYPED as this union is serialized through it: the emitted
      * `toArray()` of an owning DTO calls `$this->prop?->toArray()`, which without this line is a call

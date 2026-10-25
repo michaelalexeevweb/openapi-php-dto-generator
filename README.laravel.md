@@ -95,6 +95,38 @@ everything the schema does.
 **Authorization is never generated.** An OpenAPI document describes payload shape, not policy, so the
 generated FormRequest defines no `authorize()`. Add one where the route needs it.
 
+### A body that is one of several variants
+
+A schema with a `discriminator` — a `oneOf`/`anyOf` of objects, or an object base its variants `allOf`
+— is an interface the variants implement. The base of the allOf pattern declares the getters of its
+own properties, so code that only reads the shared fields needs no `instanceof`:
+
+```php
+interface Shape
+{
+    public function getKind(): ShapeKind;
+    public function toArray(): array;
+}
+
+final class Circle implements Shape { /* kind, radius */ }
+```
+
+A property typed with it holds the variant its discriminator names, and every field of that variant is
+checked. A request body typed with it gets a `ShapeFormRequest` that reads the discriminator and takes
+the rules, the schema checks and the DTO from that variant; an unknown or missing value is a 422 on the
+discriminator itself:
+
+```php
+public function store(ShapeFormRequest $request)
+{
+    $shape = $request->toDto(); // Circle or Square, typed Shape
+}
+```
+
+A union member that is an enum (`oneOf: [$ref Palette, string, integer]`) is checked against its
+members and built as the case, so `getFilter()` answers `Palette::CRIMSON` for `"crimson"` and the
+string or integer otherwise.
+
 ### Without `laravel/framework`
 
 A project that has `illuminate/validation` but not the framework — a Symfony application, say — has no

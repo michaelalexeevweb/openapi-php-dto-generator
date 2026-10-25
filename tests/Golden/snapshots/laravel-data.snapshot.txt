@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15266 lines
+# laravel-data mode — 80 files, 15418 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -12862,6 +12862,82 @@ final class TreeNode extends Data
                                                     ],
                                                     'children' => [
                                                         'type' => 'object',
+                                                        'additionalProperties' => [
+                                                            'oneOf' => [
+                                                                [
+                                                                    'type' => 'object',
+                                                                    'required' => [
+                                                                        'label',
+                                                                        'children',
+                                                                    ],
+                                                                    'properties' => [
+                                                                        'label' => [
+                                                                            'type' => 'string',
+                                                                            'minLength' => 1,
+                                                                        ],
+                                                                        'children' => [
+                                                                            'type' => 'object',
+                                                                            'additionalProperties' => [
+                                                                                'oneOf' => [
+                                                                                    [
+                                                                                        'type' => 'object',
+                                                                                        'required' => [
+                                                                                            'label',
+                                                                                            'children',
+                                                                                        ],
+                                                                                        'properties' => [
+                                                                                            'label' => [
+                                                                                                'type' => 'string',
+                                                                                                'minLength' => 1,
+                                                                                            ],
+                                                                                            'children' => [
+                                                                                                'type' => 'object',
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                    [
+                                                                                        'type' => 'object',
+                                                                                        'additionalProperties' => [
+                                                                                            'type' => 'object',
+                                                                                            'required' => [
+                                                                                                'id',
+                                                                                                'name',
+                                                                                            ],
+                                                                                            'properties' => [
+                                                                                                'id' => [
+                                                                                                    'type' => 'integer',
+                                                                                                ],
+                                                                                                'name' => [
+                                                                                                    'type' => 'string',
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                ],
+                                                                            ],
+                                                                        ],
+                                                                    ],
+                                                                ],
+                                                                [
+                                                                    'type' => 'object',
+                                                                    'additionalProperties' => [
+                                                                        'type' => 'object',
+                                                                        'required' => [
+                                                                            'id',
+                                                                            'name',
+                                                                        ],
+                                                                        'properties' => [
+                                                                            'id' => [
+                                                                                'type' => 'integer',
+                                                                            ],
+                                                                            'name' => [
+                                                                                'type' => 'string',
+                                                                            ],
+                                                                        ],
+                                                                    ],
+                                                                ],
+                                                            ],
+                                                        ],
                                                     ],
                                                 ],
                                             ],
@@ -13547,6 +13623,82 @@ final class UnionUnderContainer extends Data
                                                             ],
                                                             'children' => [
                                                                 'type' => 'object',
+                                                                'additionalProperties' => [
+                                                                    'oneOf' => [
+                                                                        [
+                                                                            'type' => 'object',
+                                                                            'required' => [
+                                                                                'label',
+                                                                                'children',
+                                                                            ],
+                                                                            'properties' => [
+                                                                                'label' => [
+                                                                                    'type' => 'string',
+                                                                                    'minLength' => 1,
+                                                                                ],
+                                                                                'children' => [
+                                                                                    'type' => 'object',
+                                                                                    'additionalProperties' => [
+                                                                                        'oneOf' => [
+                                                                                            [
+                                                                                                'type' => 'object',
+                                                                                                'required' => [
+                                                                                                    'label',
+                                                                                                    'children',
+                                                                                                ],
+                                                                                                'properties' => [
+                                                                                                    'label' => [
+                                                                                                        'type' => 'string',
+                                                                                                        'minLength' => 1,
+                                                                                                    ],
+                                                                                                    'children' => [
+                                                                                                        'type' => 'object',
+                                                                                                    ],
+                                                                                                ],
+                                                                                            ],
+                                                                                            [
+                                                                                                'type' => 'object',
+                                                                                                'additionalProperties' => [
+                                                                                                    'type' => 'object',
+                                                                                                    'required' => [
+                                                                                                        'id',
+                                                                                                        'name',
+                                                                                                    ],
+                                                                                                    'properties' => [
+                                                                                                        'id' => [
+                                                                                                            'type' => 'integer',
+                                                                                                        ],
+                                                                                                        'name' => [
+                                                                                                            'type' => 'string',
+                                                                                                        ],
+                                                                                                    ],
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                ],
+                                                                            ],
+                                                                        ],
+                                                                        [
+                                                                            'type' => 'object',
+                                                                            'additionalProperties' => [
+                                                                                'type' => 'object',
+                                                                                'required' => [
+                                                                                    'id',
+                                                                                    'name',
+                                                                                ],
+                                                                                'properties' => [
+                                                                                    'id' => [
+                                                                                        'type' => 'integer',
+                                                                                    ],
+                                                                                    'name' => [
+                                                                                        'type' => 'string',
+                                                                                    ],
+                                                                                ],
+                                                                            ],
+                                                                        ],
+                                                                    ],
+                                                                ],
                                                             ],
                                                         ],
                                                     ],

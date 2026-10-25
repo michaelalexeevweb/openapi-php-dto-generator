@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.86 — 2026-10-25
+
+- Laravel allOf discriminator becomes interface
+- Laravel FormRequest for variant bodies
+- Laravel checks enum union branches
+
+Laravel mode:
+
+- an object base with a `discriminator` whose variants `allOf` it was generated as a plain class the
+  variants knew nothing of: a property typed with it could not hold a variant, and a body bound to it
+  lost every field a variant adds. The base is now an interface with the getters of its own
+  properties, the variants implement it, and a property typed with it holds the variant the
+  discriminator names, with that variant's fields checked.
+- a request body that is one of several variants — the allOf base above, or a discriminated
+  `oneOf`/`anyOf` — had no FormRequest. It now gets one that takes the rules, the schema checks and the
+  DTO from the variant the discriminator names; an unknown or missing value is refused at the
+  discriminator.
+- a union with a `$ref` branch (`oneOf: [$ref Palette, string, integer]`) dropped the whole union from
+  the schema checks, so any value passed and `1.5` reached the constructor as a TypeError. The branch
+  is now spelled out, and a member of an enum branch is built as the case and written back as its
+  value.
+
+Laravel-data mode:
+
+- the same `$ref` union branch is spelled out for the schema checks.
+
 ## 2.15.85 — 2026-10-25
 
 - Laravel blank-string attribute name

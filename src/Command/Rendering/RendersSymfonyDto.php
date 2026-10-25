@@ -726,9 +726,15 @@ PHP;
     private function isSymfonyAllOfDiscriminatorBase(string $className): bool
     {
         // yii3 shares the interface lookup, but keeps the base a class of its own.
-        if ($this->attributeMode !== self::ATTRIBUTE_MODE_SYMFONY) {
-            return false;
-        }
+        return $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && $this->isAllOfDiscriminatorBase($className);
+    }
+
+    /**
+     * The allOf pattern itself, whatever the mode: an object base with a discriminator whose mapping
+     * names only OTHER schemas, each of which `allOf`s it.
+     */
+    private function isAllOfDiscriminatorBase(string $className): bool
+    {
         $discriminator = $this->discriminatorSchemas[$className] ?? null;
         if ($discriminator === null || $discriminator['mapping'] === [] || $this->isOneOfDiscriminatorBase($className)) {
             return false;
