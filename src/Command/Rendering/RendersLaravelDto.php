@@ -353,6 +353,10 @@ trait RendersLaravelDto
             // request-presence flag is false forever — gating output on it dropped the field from the
             // response of a DTO the SERVER had just built and filled.
             'readOnly' => ($property['readOnly'] ?? false) === true,
+            // An optional property the SCHEMA lets be null is always written, null included, as in Symfony
+            // mode: its constructor default is that same null, so a builder passing `photo: null` could not
+            // be told from one passing nothing, and the key silently left the response.
+            'schemaNullable' => $schemaNullable,
             'openApiName' => $property['openApiName'],
             'default' => $defaultLiteral,
             // The bare expression after ` = `, which the constructor compares an argument against.
@@ -386,6 +390,7 @@ trait RendersLaravelDto
             'toArrayExpression' => $this->laravelToArrayExpression($property),
             'needsIntCoercion' => $this->laravelPropertyAcceptsInt($declaredType),
             'scalarCoercion' => $this->laravelScalarCoercion($declaredType),
+            'itemScalarCoercion' => $this->laravelItemScalarCoercion($property['type']),
         ];
     }
 
@@ -1081,6 +1086,14 @@ trait RendersLaravelDto
             // of them. Declared as the class, as in runtime and Symfony mode, but handed over as the
             // plain arrays `validated()` holds, so `->getId()` on one was a fatal error.
             $nestedDtoContainer !== null => $nestedDtoContainer,
+            // The ITEMS of a list or map of one scalar type, for the reason the scalar above is cast: a
+            // query string carries `?ids[]=3` as `["3"]`, which passed `ids.*: integer` and reached a
+            // property documented `array<int>` as strings.
+            $param['itemScalarCoercion'] !== null => sprintf(
+                'array_map(self::to%sValue(...), %s)',
+                ucfirst($param['itemScalarCoercion']),
+                $containerRaw,
+            ),
             // A container with no class of its own — a list of lists, a map of scalars — still reaches
             // a constructor parameter typed `array`, so it needs the same accessor.
             default => $param['declaredType'] === 'array' || str_starts_with($param['declaredType'], '?array')
@@ -2329,6 +2342,10 @@ trait RendersLaravelDto
         $itemClass = $nestedClass === null ? $this->laravelDtoItemClass($property) : null;
         $target = $nestedClass ?? $itemClass;
 
+        if ($target !== null && $itemClass !== null && $this->laravelIsEnumClass($target)) {
+            return $this->laravelWithItemEnumMembers($schema, $property, $target);
+        }
+
         if ($target === null || $this->laravelIsEnumClass($target)) {
             return $schema;
         }
@@ -2385,6 +2402,33 @@ trait RendersLaravelDto
     private function laravelContainerValueKey(array $property): string
     {
         return ($property['isMap'] ?? null) === true ? 'additionalProperties' : 'items';
+    }
+
+    /**
+     * The members of an enum-valued container's items, for the interpreter. A local `$ref` arrives here
+     * already resolved, members included; one into ANOTHER file does not, and there was no rule on
+     * `field.*` either — so `["bad"]` passed validation and `fromValidated()` died on `Enum::from()`, a
+     * 500. The generated enum knows its members, wherever its schema lives.
+     *
+     * @param array<string, mixed> $schema
+     * @param SchemaProperty $property
+     * @return array<string, mixed>
+     */
+    private function laravelWithItemEnumMembers(array $schema, array $property, string $enumClass): array
+    {
+        $key = $this->laravelContainerValueKey($property);
+        $items = is_array($schema[$key] ?? null) ? $schema[$key] : [];
+        if (array_key_exists('enum', $items)) {
+            return $schema;
+        }
+
+        $members = array_values($this->enumSchemas[$enumClass]['values']);
+        if ($this->laravelItemsNullable($property)) {
+            $members[] = null;
+        }
+        $schema[$key] = [...$items, 'enum' => $members];
+
+        return $schema;
     }
 
     /**
@@ -2509,6 +2553,19 @@ trait RendersLaravelDto
     }
 
     /**
+     * The same answer for the ITEMS of a one-level list or map of one scalar type — `array<int>`,
+     * `array<string, ?bool>` — or null for anything else.
+     */
+    private function laravelItemScalarCoercion(string $phpType): ?string
+    {
+        if (preg_match('/^\??array<(?:(?:int|string),\s*)?(\??[a-z]+)>$/', $phpType, $match) !== 1) {
+            return null;
+        }
+
+        return $this->laravelScalarCoercion($match[1]);
+    }
+
+    /**
      * The scalar coercion helpers the class's hydrator calls.
      *
      * @param array<int, array<string, mixed>> $params
@@ -2518,9 +2575,10 @@ trait RendersLaravelDto
     {
         $kinds = [];
         foreach ($params as $param) {
-            $kind = $param['scalarCoercion'] ?? null;
-            if (is_string($kind) && !in_array($kind, $kinds, true)) {
-                $kinds[] = $kind;
+            foreach ([$param['scalarCoercion'] ?? null, $param['itemScalarCoercion'] ?? null] as $kind) {
+                if (is_string($kind) && !in_array($kind, $kinds, true)) {
+                    $kinds[] = $kind;
+                }
             }
         }
 

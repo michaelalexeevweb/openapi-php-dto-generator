@@ -91,8 +91,9 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -556,6 +557,8 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         if ($this->{{ param.name }} !== null) {
             $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
         }
+{% elseif param.schemaNullable %}
+        $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
 {% else %}
 
         if ($this->{{ param.providedGetter }}()) {

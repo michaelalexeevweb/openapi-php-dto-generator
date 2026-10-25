@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 25124 lines
+# laravel mode — 106 files, 25243 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1643,8 +1643,9 @@ final class ApiTestCatsActionsGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -2015,8 +2016,9 @@ final class ApiTestCatsActionsPostQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -2387,8 +2389,9 @@ final class ApiTestDogsTagsGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -2759,8 +2762,9 @@ final class ApiTestDogsTagsPatchQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -4998,8 +5002,9 @@ final class ApiTestLegacyPostQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -6627,7 +6632,12 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 
+use function array_map;
 use function array_values;
+use function filter_var;
+use function floor;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function trim;
 
@@ -6773,7 +6783,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            matrixIds: ($data['matrixIds'] ?? []),
+            matrixIds: array_map(self::toIntValue(...), ($data['matrixIds'] ?? [])),
             labelIds: ($data['labelIds'] ?? []),
         );
 
@@ -6794,6 +6804,24 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
     public function getLabelIds(): array
     {
         return $this->labelIds;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -6907,13 +6935,18 @@ use stdClass;
 
 use function array_is_list;
 use function array_keys;
+use function array_map;
 use function array_shift;
 use function array_unique;
 use function array_values;
 use function explode;
+use function filter_var;
+use function floor;
 use function get_object_vars;
 use function in_array;
 use function is_array;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -6948,8 +6981,9 @@ final class ApiTestSerializationGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -7217,9 +7251,9 @@ final class ApiTestSerializationGetQueryParams
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            exploded: ($data['exploded'] ?? null) === null ? null : $data['exploded'],
+            exploded: ($data['exploded'] ?? null) === null ? null : array_map(self::toIntValue(...), $data['exploded']),
             joined: ($data['joined'] ?? null) === null ? null : $data['joined'],
-            spaced: ($data['spaced'] ?? null) === null ? null : $data['spaced'],
+            spaced: ($data['spaced'] ?? null) === null ? null : array_map(self::toIntValue(...), $data['spaced']),
             piped: ($data['piped'] ?? null) === null ? null : $data['piped'],
             nested: ($data['nested'] ?? null) === null ? null : $data['nested'],
             flag: ($data['flag'] ?? null) === null ? null : self::toBoolValue($data['flag']),
@@ -7375,6 +7409,24 @@ final class ApiTestSerializationGetQueryParams
     }
 
     /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
+    }
+
+    /**
      * A `bool` property's value as Laravel's `boolean` rule accepted it: `true`, `false`, `0`, `1`,
      * `"0"`, `"1"`.
      */
@@ -7507,8 +7559,9 @@ final class ApiTestSerializationGetQueryParamsFilter
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -7813,8 +7866,9 @@ final class ApiTestSharedPathGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -8092,8 +8146,9 @@ final class ApiTestTenantsDeleteQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -8448,8 +8503,9 @@ final class ApiTestTenantsGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -8973,8 +9029,9 @@ final class ApplicatorRefs
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -9916,8 +9973,9 @@ final class ApplicatorRefsConditional
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -10358,8 +10416,9 @@ final class ApplicatorRefsKeyed
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -10778,8 +10837,9 @@ final class ApplicatorRefsPoisonedKey
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -11127,8 +11187,9 @@ final class AwkwardNames
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -12168,8 +12229,9 @@ final class ChainLink
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -13471,8 +13533,9 @@ final class ContainerAliases
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -13966,8 +14029,9 @@ final class Containers
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -16242,13 +16306,18 @@ use stdClass;
 
 use function array_is_list;
 use function array_keys;
+use function array_map;
 use function array_shift;
 use function array_unique;
 use function array_values;
 use function explode;
+use function filter_var;
+use function floor;
 use function get_object_vars;
 use function in_array;
 use function is_array;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -16281,8 +16350,9 @@ final class ItemBounds
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -16525,8 +16595,8 @@ final class ItemBounds
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            scores: ($data['scores'] ?? []),
-            scoresByKey: ($data['scoresByKey'] ?? null) === null ? null : $data['scoresByKey'],
+            scores: array_map(self::toIntValue(...), ($data['scores'] ?? [])),
+            scoresByKey: ($data['scoresByKey'] ?? null) === null ? null : array_map(self::toIntValue(...), $data['scoresByKey']),
             codes: ($data['codes'] ?? null) === null ? null : $data['codes'],
         );
         $dto->providedOpenApiKeys = array_keys($data);
@@ -16578,6 +16648,24 @@ final class ItemBounds
         $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
 
         return $copy;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -16717,8 +16805,9 @@ final class NestedContainers
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -17362,13 +17451,18 @@ use stdClass;
 
 use function array_is_list;
 use function array_keys;
+use function array_map;
 use function array_shift;
 use function array_unique;
 use function array_values;
 use function explode;
+use function filter_var;
+use function floor;
 use function get_object_vars;
 use function in_array;
 use function is_array;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -17401,8 +17495,9 @@ final class NullableContainerValues
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -17654,9 +17749,9 @@ final class NullableContainerValues
     {
         $dto = new self(
             listOfNullable: ($data['listOfNullable'] ?? []),
-            mapOfNullable: ($data['mapOfNullable'] ?? null) === null ? null : $data['mapOfNullable'],
+            mapOfNullable: ($data['mapOfNullable'] ?? null) === null ? null : array_map(self::toIntValue(...), $data['mapOfNullable']),
             listOfNullable31: ($data['listOfNullable31'] ?? null) === null ? null : $data['listOfNullable31'],
-            mapOfNullable31: ($data['mapOfNullable31'] ?? null) === null ? null : $data['mapOfNullable31'],
+            mapOfNullable31: ($data['mapOfNullable31'] ?? null) === null ? null : array_map(self::toIntValue(...), $data['mapOfNullable31']),
         );
         $dto->providedOpenApiKeys = array_keys($data);
 
@@ -17720,6 +17815,24 @@ final class NullableContainerValues
         $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
 
         return $copy;
+    }
+
+    /**
+     * An `int` property's value as Laravel's `integer` rule accepted it: a JSON integer, `42.0`
+     * (JSON Schema §6.1.1), or an integer string — the wire form of a query, path or header value.
+     */
+    private static function toIntValue(mixed $value): mixed
+    {
+        if (is_float($value) && is_finite($value) && floor($value) === $value) {
+            return (int)$value;
+        }
+        if (is_string($value)) {
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $parsed === false ? $value : $parsed;
+        }
+
+        return $value;
     }
 
     /**
@@ -17856,8 +17969,9 @@ final class ObjectWideRules
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -18551,8 +18665,9 @@ final class ReadOnlyFields
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -20257,8 +20372,9 @@ final class Test2
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -20795,8 +20911,9 @@ final class Test2UserType
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -21434,8 +21551,9 @@ final class TestPostRequest
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */
@@ -23125,8 +23243,9 @@ final class UnionUnderContainer
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default (an explicit `null`, say) cannot be told apart from
-     * an omitted one by the constructor; `withProvided()` names such a key when the output needs it.
+     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
+     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
+     * lets be null is written by `toArray()` either way.
      *
      * @var array<int, string>
      */

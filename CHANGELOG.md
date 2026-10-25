@@ -3,6 +3,29 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.83 — 2026-10-25
+
+- Laravel external enum items checked
+- Laravel scalar container items cast
+- Laravel nullable optionals always written
+
+Laravel mode:
+
+- a list or map whose items `$ref` an enum in ANOTHER file had no member check: no `field.*` rule, and
+  the interpreter got no members, as it does for a local `$ref`. `["bad"]` passed validation and
+  `fromValidated()` died on `Enum::from()` — a 500. The interpreter now takes the members from the
+  generated enum: `designations[0] must be one of: "Founder", "Co-Founder".`, the same sentence a local
+  enum and every other mode give.
+- a list or map of one scalar type was handed to the constructor as validated: `?ids[]=3` reached a
+  property documented `array<int>` as `["3"]`. Each item is now cast the way a scalar property is —
+  `toIntValue()`, `toFloatValue()`, `toBoolValue()` — map keys kept.
+- an optional property the schema lets be null was left out of `toArray()` when a builder passed
+  `null`, since the constructor cannot tell that from no argument; a response silently lost the key that
+  runtime and Symfony mode write. It is now always written, `null` included, as in Symfony mode since
+  2.15.66. A non-nullable optional property is still written only when provided.
+- README.laravel.md lists a top-level array request body as something the mode leaves to the framework:
+  its item gets a DTO, the list gets no FormRequest.
+
 ## 2.15.82 — 2026-10-25
 
 - Laravel optional defaults kept

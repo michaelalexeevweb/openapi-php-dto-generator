@@ -220,11 +220,13 @@ $dto->isNicknameProvided();   // true — sent, explicitly as null
 
 No sentinel value and no setter is involved, which makes this the simplest of the emitted presence
 implementations. `toArray()` omits a property that was never provided, so a PATCH response mirrors the
-request.
+request — except one the schema lets be null, which is always written, `null` included, as in Symfony
+mode.
 
 An optional property with a schema `default` is that default when the key is absent —
 `getKind()` returns `Kind::All`, not `null` — and its type admits `null` only if the schema does.
-`isKindProvided()` still says the key was not sent, and `toArray()` still leaves it out. A REQUIRED
+`isKindProvided()` still says the key was not sent, and `toArray()` still leaves it out unless the schema
+lets the property be null. A REQUIRED
 property with a default stays required: the default does not make the key optional, as in Symfony mode.
 
 ## The response direction
@@ -261,13 +263,16 @@ that flag is false forever, which is why 2.15.36 through 2.15.41 dropped the fie
 built in code (fixed in 2.15.42).
 
 A response built with the constructor writes every optional field it was given: an argument that differs
-from its default counts as provided. One EQUAL to its default — an explicit `null` where the default is
-`null` — cannot be told apart from an omitted one by the constructor, so name it when the output must
-carry it (before 2.15.55 a hand-built instance wrote no optional field at all):
+from its default counts as provided (before 2.15.55 a hand-built instance wrote no optional field at all).
+A property the schema lets be null is written whether it was given or not — its default is that same
+`null`, and the constructor cannot tell `photo: null` from no argument, so before 2.15.83 the key left
+the response. One EQUAL to any other default cannot be told apart from an omitted one either; name it
+when the output must carry it:
 
 ```php
-(new JobResponse(id: 1, title: 'A', url: 'https://example.test'))->toArray(); // id, title, url
-(new JobResponse(id: 1, title: 'A'))->withProvided('notes')->toArray();      // id, title, notes: null
+// `url` and `notes` nullable, `rank` an integer with default 1
+(new JobResponse(id: 1, title: 'A', url: 'https://example.test'))->toArray(); // id, title, url, notes: null
+(new JobResponse(id: 1, title: 'A', rank: 1))->withProvided('rank')->toArray(); // ..., rank: 1
 ```
 
 ### Path, header and cookie parameters
@@ -299,6 +304,7 @@ a root `not` or conditional — reports under the property it names (`"bad"`, `"
 | multipart `encoding` parts | same reason |
 | generating `authorize()` | policy is not in the document |
 | a `spatie/laravel-data` class | possible as an opt-in target later; the default stays first-party |
+| a top-level array request body | `type: array` at the root of a body is a list, not a class: its ITEM gets a DTO, the list gets no FormRequest. Validate each item with that DTO's `rules()`, `withValidator()` and `fromValidated()` — the generator emits DTOs only, the framework does the rest |
 | one FormRequest per operation | the parameters and the body are separate DTOs, so an operation with both gets `<Operation>QueryParamsFormRequest` and `<Operation>RequestFormRequest`, and the action takes two arguments. The `QueryParams` class also carries the path parameters; its name is shared by every mode and stays until a major version |
 
 ## Verification

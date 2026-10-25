@@ -398,6 +398,8 @@ final class LaravelRulesEnforcementTest extends TestCase
     /**
      * A response built in code keeps every optional field it was given: the constructor counts an
      * argument that differs from its default as provided, and `withProvided()` names one that does not.
+     * A property the schema lets be null is written either way, null included, as in Symfony mode — a
+     * builder passing `photo: null` lost the key before 2.15.83.
      */
     public function testAHandBuiltDtoSerializesTheFieldsItWasGiven(): void
     {
@@ -408,13 +410,20 @@ final class LaravelRulesEnforcementTest extends TestCase
                 'id' => ['type' => 'integer'],
                 'url' => ['type' => ['string', 'null']],
                 'note' => ['type' => ['string', 'null']],
+                'tag' => ['type' => 'string'],
+                'rank' => ['type' => 'integer', 'default' => 1],
             ],
         ]);
 
-        $dto = new $fqcn(id: 1, url: 'https://example.test');
-        $this->assertSame(['id' => 1, 'url' => 'https://example.test'], $dto->toArray());
-        $this->assertSame(['id' => 1, 'url' => 'https://example.test', 'note' => null], $dto->withProvided('note')->toArray());
-        $this->assertSame(['id' => 1], call_user_func([$fqcn, 'fromValidated'], ['id' => 1])->toArray());
+        $dto = new $fqcn(id: 1, url: 'https://example.test', tag: 'x');
+        $this->assertSame(['id' => 1, 'url' => 'https://example.test', 'note' => null, 'tag' => 'x'], $dto->toArray());
+        $this->assertSame(['id' => 1, 'url' => null, 'note' => null], (new $fqcn(id: 1, url: null))->toArray());
+        $this->assertSame(
+            ['id' => 1, 'url' => null, 'note' => null, 'rank' => 1],
+            (new $fqcn(id: 1, rank: 1))->withProvided('rank')->toArray(),
+            'an argument equal to its default is named by withProvided()',
+        );
+        $this->assertSame(['id' => 1, 'url' => null, 'note' => null], call_user_func([$fqcn, 'fromValidated'], ['id' => 1])->toArray());
     }
 
     /**
@@ -1376,7 +1385,11 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame('none', $absent->getLabel());
         $this->assertSame('server', $absent->getOrigin());
         $this->assertFalse($absent->isKindProvided());
-        $this->assertSame(['origin' => 'server'], $absent->toArray(), 'a default the client did not send is not echoed');
+        $this->assertSame(
+            ['label' => 'none', 'origin' => 'server'],
+            $absent->toArray(),
+            'a default the client did not send is not echoed, unless the schema lets the property be null',
+        );
 
         $sent = $hydrate('{"kind":"some","limit":5,"label":null}');
         $this->assertSame('some', $sent->getKind()->value);
@@ -1391,5 +1404,61 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame('int', $types['limit']);
         $this->assertStringStartsNotWith('?', $types['kind']);
         $this->assertSame('?string', $types['label']);
+    }
+
+    /**
+     * Two container cases that reached the constructor wrong after validation passed:
+     *  - items `$ref`'d to an enum in ANOTHER file had no member check at all — no `field.*` rule, and
+     *    no members for the interpreter — so `["bad"]` died on `Enum::from()`, a 500;
+     *  - a list of integers from the query string (`?ids[]=3`) passed `ids.*: integer` and was handed to
+     *    a property documented `array<int>` as strings.
+     */
+    public function testContainerItemsAreCheckedAndCastLikeTheirScalars(): void
+    {
+        // One level deep, which is what tearDown() cleans: the specs beside the output, not under it.
+        $root = $this->outputDirectory;
+        file_put_contents($root . '/lv-items-enums.json', (string)json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'E', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => ['Role' => ['type' => 'string', 'enum' => ['Owner', 'Guest']]]],
+        ]));
+        file_put_contents($root . '/lv-items-main.json', (string)json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => ['Probe' => [
+                'type' => 'object',
+                'properties' => [
+                    'roles' => ['type' => 'array', 'items' => ['$ref' => 'lv-items-enums.json#/components/schemas/Role']],
+                    'ids' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                    'flags' => ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']],
+                ],
+            ]]],
+        ]));
+        (new GenerateDtoCommand())->generateFromFile($root . '/lv-items-enums.json', $root . '/LvItemsEnums', 'LvItems', 'laravel');
+        (new GenerateDtoCommand())->generateFromFile($root . '/lv-items-main.json', $root . '/LvItemsMain', 'LvItems', 'laravel');
+        require_once $root . '/LvItemsEnums/Role.php';
+        require_once $root . '/LvItemsMain/Probe.php';
+
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func(['LvItems\Probe', 'rules']);
+        $validate = function (array $data) use ($rules): \Illuminate\Validation\Validator {
+            $validator = $this->validatorFactory()->make($data, $rules);
+            call_user_func(['LvItems\Probe', 'withValidator'], $validator);
+
+            return $validator;
+        };
+
+        $this->assertSame(
+            ['roles' => ['roles[0] must be one of: "Owner", "Guest".']],
+            $validate(['roles' => ['bad']])->errors()->toArray(),
+        );
+
+        $validator = $validate(['roles' => ['Owner'], 'ids' => ['3', 4.0], 'flags' => ['a' => '1', 'b' => 0]]);
+        $this->assertSame([], $validator->errors()->toArray());
+        $dto = call_user_func(['LvItems\Probe', 'fromValidated'], $validator->validated());
+        $this->assertSame([3, 4], $dto->getIds());
+        $this->assertSame(['a' => true, 'b' => false], $dto->getFlags());
     }
 }
