@@ -247,7 +247,7 @@ final class Animal2AnyOf4 implements Animal2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -418,7 +418,7 @@ final class AnimalOneOf3 implements Animal
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -591,7 +591,7 @@ final class ApiTest2403
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -777,7 +777,7 @@ final class ApiTest2PatchRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -1149,7 +1149,7 @@ final class ApiTest2PostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -1513,7 +1513,7 @@ final class ApiTest403
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -1724,7 +1724,7 @@ final class ApiTestCatsActionsGetQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -2097,7 +2097,7 @@ final class ApiTestCatsActionsPostQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -2470,7 +2470,7 @@ final class ApiTestDogsTagsGetQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -2843,7 +2843,7 @@ final class ApiTestDogsTagsPatchQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -3181,7 +3181,7 @@ final class ApiTestFileDeleteQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -3435,7 +3435,7 @@ final class ApiTestFilePatchQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -3687,7 +3687,7 @@ final class ApiTestFilePostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -3928,7 +3928,7 @@ final class ApiTestJobs200
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -4195,7 +4195,7 @@ final class ApiTestJobs404
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -4368,7 +4368,7 @@ final class ApiTestJobsDefault
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -4541,7 +4541,7 @@ final class ApiTestJobsPostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -4782,7 +4782,7 @@ final class ApiTestLegacy200
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -5071,7 +5071,7 @@ final class ApiTestLegacyPostQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -5334,7 +5334,7 @@ final class ApiTestLegacyPostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -5575,7 +5575,7 @@ final class ApiTestRepresentations200
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -5842,7 +5842,7 @@ final class ApiTestRepresentations200Csv
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -6015,7 +6015,7 @@ final class ApiTestRepresentationsPostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -6188,7 +6188,7 @@ final class ApiTestRepresentationsPostRequestForm
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -6481,7 +6481,7 @@ final class ApiTestRepresentationsPostRequestXml
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -6728,7 +6728,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -7115,7 +7115,7 @@ final class ApiTestSerializationGetQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -7628,7 +7628,7 @@ final class ApiTestSerializationGetQueryParamsFilter
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -7935,7 +7935,7 @@ final class ApiTestSharedPathGetQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -8222,7 +8222,7 @@ final class ApiTestTenantsDeleteQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -8584,7 +8584,7 @@ final class ApiTestTenantsGetQueryParams
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -9167,7 +9167,7 @@ final class ApplicatorRefs
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -10042,7 +10042,7 @@ final class ApplicatorRefsConditional
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -10485,7 +10485,7 @@ final class ApplicatorRefsKeyed
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -10906,7 +10906,7 @@ final class ApplicatorRefsPoisonedKey
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -11265,7 +11265,7 @@ final class AwkwardNames
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -11603,7 +11603,7 @@ final class CallbackJobDonePostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -11836,7 +11836,7 @@ final class CallbackJobFailedPostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -12069,7 +12069,7 @@ final class Cat implements Animal, Animal2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -12305,7 +12305,7 @@ final class ChainLink
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -12729,7 +12729,7 @@ final class ChainMiddle
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -13093,7 +13093,7 @@ final class ChainTag
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -13277,7 +13277,7 @@ final class Circle implements Shape
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -13627,7 +13627,7 @@ final class ContainerAliases
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -14126,7 +14126,7 @@ final class Containers
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -14938,7 +14938,7 @@ final class Discriminator
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -15132,7 +15132,7 @@ final class Discriminator1
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -15450,7 +15450,7 @@ final class Discriminator2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -15778,7 +15778,7 @@ final class Dog implements Animal, Animal2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -15958,7 +15958,7 @@ final class Dog2 implements Animal2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -16141,7 +16141,7 @@ final class FileRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -16435,7 +16435,7 @@ final class ItemBounds
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -16932,7 +16932,7 @@ final class NestedContainers
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -17587,7 +17587,7 @@ final class NullableContainerValues
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -18046,7 +18046,7 @@ final class ObjectWideRules
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -18512,7 +18512,7 @@ final class Pet
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -18747,7 +18747,7 @@ final class ReadOnlyFields
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -19159,7 +19159,7 @@ final class RetiredShape
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -19481,7 +19481,7 @@ final class Square implements Shape
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -19787,7 +19787,7 @@ final class Tag
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -20091,7 +20091,7 @@ final class Test
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -20469,7 +20469,7 @@ final class Test2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -20983,7 +20983,7 @@ final class Test2UserType
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -21190,7 +21190,7 @@ final class TestPatchRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -21634,7 +21634,7 @@ final class TestPostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -22454,7 +22454,7 @@ final class TreeNode
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -23329,7 +23329,7 @@ final class UnionUnderContainer
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -24042,7 +24042,7 @@ final class UniqueScalars
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -24410,7 +24410,7 @@ final class User
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -24806,7 +24806,7 @@ final class User2
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -25235,7 +25235,7 @@ final class User2Pet
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule
@@ -25429,7 +25429,7 @@ final class WebhookOrderPlacedPostRequest
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends Validator {
                     /**
                      * @param object|string $rule

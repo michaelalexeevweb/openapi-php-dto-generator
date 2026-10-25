@@ -3,6 +3,17 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.85 — 2026-10-25
+
+- Laravel blank-string attribute name
+
+Laravel and laravel-data mode:
+
+- A blank string is checked by a validator of its own, which was handed the raw key, so `""` read
+  "The startDate field must match the format Y-m-d." where `"tomorrow"` read "The start date
+  field …". It now gets the outer validator's displayable name — snake-cased into words, or the custom
+  attribute or `validation.attributes` line the application set.
+
 ## 2.15.84 — 2026-10-25
 
 - Laravel toArray keys in schema order

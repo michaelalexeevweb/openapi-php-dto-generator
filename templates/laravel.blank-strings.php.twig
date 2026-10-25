@@ -38,7 +38,7 @@
                     translator: $this->validator->getTranslator(),
                     data: ['value' => $value],
                     rules: ['value' => $this->rules],
-                    attributes: ['value' => $attribute],
+                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
                 ) extends \Illuminate\Validation\Validator {
                     /**
                      * @param object|string $rule

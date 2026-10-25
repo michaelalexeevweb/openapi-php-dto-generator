@@ -455,6 +455,33 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * A blank string is checked by a validator of its own, which knows the field only by the name it is
+     * handed. It gets the name the outer validator would print — snake-cased into words, or the custom
+     * attribute a caller set — so `""` and `"tomorrow"` read the same.
+     */
+    public function testABlankStringErrorNamesTheFieldLikeAnyOtherError(): void
+    {
+        $fqcn = $this->generateProbeClass('LvRuleBlankAttribute', [
+            'type' => 'object',
+            'required' => ['startDate', 'endDate'],
+            'properties' => ['startDate' => ['type' => 'string', 'format' => 'date'], 'endDate' => ['type' => 'string', 'format' => 'date']],
+        ]);
+        $loader = new ArrayLoader();
+        $loader->addMessages('en', 'validation', ['date_format' => 'The :attribute field must match the format :format.']);
+        $factory = new Factory(new Translator($loader, 'en'));
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $errors = static fn(array $data): array => $factory->make($data, $rules, [], ['endDate' => 'last day'])->errors()->toArray();
+
+        $expected = [
+            'startDate' => ['The start date field must match the format Y-m-d.'],
+            'endDate' => ['The last day field must match the format Y-m-d.'],
+        ];
+        $this->assertSame($expected, $errors(['startDate' => 'tomorrow', 'endDate' => 'tomorrow']));
+        $this->assertSame($expected, $errors(['startDate' => '', 'endDate' => ' ']));
+    }
+
+    /**
      * @param array<string, mixed> $schema
      * @return class-string
      */
