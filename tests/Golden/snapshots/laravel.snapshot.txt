@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 23439 lines
+# laravel mode — 106 files, 25124 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -681,12 +681,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -800,7 +807,19 @@ final class ApiTest2PatchRequest
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'idPatchTest2' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -809,6 +828,8 @@ final class ApiTest2PatchRequest
      *         ApiTest2PatchRequest::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -817,6 +838,77 @@ final class ApiTest2PatchRequest
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -923,7 +1015,9 @@ final class ApiTest2PatchRequestFormRequest extends FormRequest
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator`. It runs against the raw
+     * payload, so an undeclared key is still visible to `additionalProperties: false`.
      */
     public function withValidator(Validator $validator): void
     {
@@ -957,12 +1051,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -1078,7 +1179,19 @@ final class ApiTest2PostRequest
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'idPostTest2' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -1087,6 +1200,8 @@ final class ApiTest2PostRequest
      *         ApiTest2PostRequest::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -1095,6 +1210,77 @@ final class ApiTest2PostRequest
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -1208,7 +1394,9 @@ final class ApiTest2PostRequestFormRequest extends FormRequest
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator`. It runs against the raw
+     * payload, so an undeclared key is still visible to `additionalProperties: false`.
      */
     public function withValidator(Validator $validator): void
     {
@@ -3645,9 +3833,16 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
+use function get_object_vars;
 use function in_array;
+use function is_array;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -3759,7 +3954,19 @@ final class ApiTestJobs200
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'accepted' => 'boolean',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -3768,6 +3975,8 @@ final class ApiTestJobs200
      *         ApiTestJobs200::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -3776,6 +3985,77 @@ final class ApiTestJobs200
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -4407,9 +4687,16 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
+use function get_object_vars;
 use function in_array;
+use function is_array;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -4521,7 +4808,19 @@ final class ApiTestLegacy200
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'ok' => 'boolean',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -4530,6 +4829,8 @@ final class ApiTestLegacy200
      *         ApiTestLegacy200::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -4538,6 +4839,77 @@ final class ApiTestLegacy200
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -5107,9 +5479,16 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
+use function get_object_vars;
 use function in_array;
+use function is_array;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -5221,7 +5600,19 @@ final class ApiTestRepresentations200
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'ok' => 'boolean',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -5230,6 +5621,8 @@ final class ApiTestRepresentations200
      *         ApiTestRepresentations200::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -5238,6 +5631,77 @@ final class ApiTestRepresentations200
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -6680,7 +7144,7 @@ final class ApiTestSerializationGetQueryParams
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
@@ -6688,7 +7152,7 @@ final class ApiTestSerializationGetQueryParams
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -6698,7 +7162,8 @@ final class ApiTestSerializationGetQueryParams
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -8727,7 +9192,7 @@ final class ApplicatorRefs
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
@@ -8735,7 +9200,7 @@ final class ApplicatorRefs
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -8745,7 +9210,8 @@ final class ApplicatorRefs
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -10616,16 +11082,23 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
 use function array_keys;
+use function array_shift;
 use function array_unique;
 use function array_values;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
 use function in_array;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -10761,7 +11234,19 @@ final class AwkwardNames
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'both\\\'s' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -10770,6 +11255,8 @@ final class AwkwardNames
      *         AwkwardNames::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -10778,6 +11265,77 @@ final class AwkwardNames
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -11764,7 +12322,7 @@ final class ChainLink
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
@@ -11772,7 +12330,7 @@ final class ChainLink
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -11782,7 +12340,8 @@ final class ChainLink
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -12188,7 +12747,7 @@ final class ChainMiddle
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
@@ -12196,7 +12755,7 @@ final class ChainMiddle
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -12206,7 +12765,8 @@ final class ChainMiddle
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -12561,12 +13121,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -12678,7 +13245,19 @@ final class Circle implements Shape
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'radius' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -12687,6 +13266,8 @@ final class Circle implements Shape
      *         Circle::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -12695,6 +13276,77 @@ final class Circle implements Shape
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -12952,7 +13604,19 @@ final class ContainerAliases
     ];
 
     /**
-     * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'listOfMaps.*.*' => 'integer',
+    ];
+
+    /**
+     * What Laravel's rules cannot check: `type: object` given a JSON array, and a JSON string or 0/1 where
+     * the schema says integer, number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -12975,15 +13639,18 @@ final class ContainerAliases
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -12993,9 +13660,20 @@ final class ContainerAliases
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -13426,6 +14104,17 @@ final class Containers
     ];
 
     /**
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'tagsByKey.*.id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -13466,15 +14155,18 @@ final class Containers
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -13484,9 +14176,20 @@ final class Containers
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -14268,12 +14971,19 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -14387,7 +15097,19 @@ final class Discriminator1
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -14396,6 +15118,8 @@ final class Discriminator1
      *         Discriminator1::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -14404,6 +15128,77 @@ final class Discriminator1
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -14492,12 +15287,19 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -14613,7 +15415,19 @@ final class Discriminator2
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -14622,6 +15436,8 @@ final class Discriminator2
      *         Discriminator2::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -14630,6 +15446,77 @@ final class Discriminator2
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -15516,7 +16403,20 @@ final class ItemBounds
     ];
 
     /**
-     * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'scores.*' => 'integer',
+        'scoresByKey.*' => 'integer',
+    ];
+
+    /**
+     * What Laravel's rules cannot check: `type: object` given a JSON array, and a JSON string or 0/1 where
+     * the schema says integer, number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -15539,15 +16439,18 @@ final class ItemBounds
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -15557,9 +16460,20 @@ final class ItemBounds
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -15970,6 +16884,19 @@ final class NestedContainers
     ];
 
     /**
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'matrix.*.*' => 'integer',
+        'mapsByKey.*.*' => 'integer',
+        'numRows.*.*' => 'number',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -16010,15 +16937,18 @@ final class NestedContainers
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -16028,9 +16958,20 @@ final class NestedContainers
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -16590,7 +17531,20 @@ final class NullableContainerValues
     ];
 
     /**
-     * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'mapOfNullable.*' => 'integer',
+        'mapOfNullable31.*' => 'integer',
+    ];
+
+    /**
+     * What Laravel's rules cannot check: `type: object` given a JSON array, and a JSON string or 0/1 where
+     * the schema says integer, number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -16613,15 +17567,18 @@ final class NullableContainerValues
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -16631,9 +17588,20 @@ final class NullableContainerValues
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -17521,18 +18489,25 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
+use stdClass;
 
 use function array_diff;
 use function array_key_exists;
 use function array_keys;
+use function array_shift;
 use function array_unique;
 use function array_values;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
 use function in_array;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function str_ends_with;
 use function trim;
 
@@ -17686,6 +18661,17 @@ final class ReadOnlyFields
     }
 
     /**
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'serverId' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -17697,6 +18683,8 @@ final class ReadOnlyFields
      *         ReadOnlyFields::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -17721,7 +18709,76 @@ final class ReadOnlyFields
                     $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
                 }
             }
+
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
         });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -17893,12 +18950,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -18008,7 +19072,19 @@ final class RetiredShape
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'legacyId' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -18017,6 +19093,8 @@ final class RetiredShape
      *         RetiredShape::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -18025,6 +19103,77 @@ final class RetiredShape
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -18121,12 +19270,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -18238,7 +19394,19 @@ final class Square implements Shape
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'side' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -18247,6 +19415,8 @@ final class Square implements Shape
      *         Square::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -18255,6 +19425,77 @@ final class Square implements Shape
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -18335,12 +19576,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -18452,7 +19700,19 @@ final class Tag
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -18461,6 +19721,8 @@ final class Tag
      *         Tag::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -18469,6 +19731,77 @@ final class Tag
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -18549,12 +19882,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -18664,7 +20004,19 @@ final class Test
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -18673,6 +20025,8 @@ final class Test
      *         Test::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -18681,6 +20035,77 @@ final class Test
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -18968,6 +20393,19 @@ final class Test2
     ];
 
     /**
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+        'tags.*.id' => 'integer',
+        'user.id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -19008,15 +20446,18 @@ final class Test2
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -19026,9 +20467,20 @@ final class Test2
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -19522,12 +20974,19 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use stdClass;
 
+use function array_shift;
+use function explode;
 use function filter_var;
 use function floor;
+use function get_object_vars;
+use function is_array;
 use function is_finite;
 use function is_float;
 use function is_string;
+use function json_decode;
+use function property_exists;
 use function trim;
 
 /**
@@ -19641,7 +21100,19 @@ final class TestPatchRequest
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one type Laravel's rules cannot check: a JSON string or 0/1 where the schema says integer,
+     * number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -19650,6 +21121,8 @@ final class TestPatchRequest
      *         TestPatchRequest::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -19658,6 +21131,77 @@ final class TestPatchRequest
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
+        });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -19769,7 +21313,9 @@ final class TestPatchRequestFormRequest extends FormRequest
     }
 
     /**
-     * Keeps every container `validated()` returns whole, in the order it was sent.
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator`. It runs against the raw
+     * payload, so an undeclared key is still visible to `additionalProperties: false`.
      */
     public function withValidator(Validator $validator): void
     {
@@ -19804,13 +21350,16 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
+use stdClass;
 
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_pop;
+use function array_shift;
 use function array_unique;
 use function array_values;
+use function explode;
 use function filter_var;
 use function floor;
 use function get_object_vars;
@@ -19824,6 +21373,7 @@ use function is_int;
 use function is_object;
 use function is_scalar;
 use function is_string;
+use function json_decode;
 use function json_encode;
 use function ltrim;
 use function preg_match;
@@ -19993,6 +21543,17 @@ final class TestPostRequest
     }
 
     /**
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -20004,6 +21565,8 @@ final class TestPostRequest
      *         TestPostRequest::withValidator($validator, $this->getContent());
      *     }
      *
+     * `$rawJson` is the UNDECODED body: Laravel's `integer` rule passes `"5"`, and only the wire still
+     * says it was a string. Omit the argument and that check is skipped; everything else still runs.
      */
     public static function withValidator(Validator $validator, ?string $rawJson = null): void
     {
@@ -20028,7 +21591,76 @@ final class TestPostRequest
                     $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
                 }
             }
+
+            if ($rawJson !== null && $rawJson !== '') {
+                self::assertRawJsonShapes($validator, $rawJson);
+            }
         });
+    }
+
+    /**
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
+     */
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    {
+        // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
+        // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
+        $decoded = json_decode($rawJson, false);
+        if (!$decoded instanceof stdClass) {
+            return;
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
+                }
+            }
+        }
+    }
+
+    /**
+     * Every node a (possibly wildcarded) path reaches, keyed by the concrete path that got there.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function rawNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            // `*` stands for both an array index and a map key, so a JSON object node is walked too.
+            if ($node instanceof stdClass) {
+                $node = get_object_vars($node);
+            }
+            if (!is_array($node)) {
+                return [];
+            }
+
+            $found = [];
+            foreach ($node as $index => $item) {
+                $itemPath = $path === '' ? (string)$index : $path . '.' . $index;
+                foreach (self::rawNodesAt($item, $segments, $itemPath) as $deepPath => $deepNode) {
+                    $found[$deepPath] = $deepNode;
+                }
+            }
+
+            return $found;
+        }
+
+        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+            return [];
+        }
+
+        return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
     }
 
     /**
@@ -20780,7 +22412,7 @@ final class TreeNode
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
@@ -20788,7 +22420,7 @@ final class TreeNode
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -20798,7 +22430,8 @@ final class TreeNode
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -21654,7 +23287,7 @@ final class UnionUnderContainer
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
@@ -21662,7 +23295,7 @@ final class UnionUnderContainer
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -21672,7 +23305,8 @@ final class UnionUnderContainer
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -22692,7 +24326,19 @@ final class User
     ];
 
     /**
-     * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * What Laravel's rules cannot check: `type: object` given a JSON array, and a JSON string or 0/1 where
+     * the schema says integer, number or boolean.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -22715,15 +24361,18 @@ final class User
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -22733,9 +24382,20 @@ final class User
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }
@@ -23062,6 +24722,17 @@ final class User2
     ];
 
     /**
+     * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
+     * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
+     * the way the schema does. A `*` segment matches every index of an array.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -23102,15 +24773,18 @@ final class User2
             }
 
             if ($rawJson !== null && $rawJson !== '') {
-                self::assertRawObjectShapes($validator, $rawJson);
+                self::assertRawJsonShapes($validator, $rawJson);
             }
         });
     }
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
+     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
+     * alone, so one mistake is reported once.
      */
-    private static function assertRawObjectShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
@@ -23120,9 +24794,20 @@ final class User2
         }
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
-            foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
+                }
+            }
+        }
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            $segments = explode('.', $path);
+            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
+                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                if ($lenient && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
             }
         }

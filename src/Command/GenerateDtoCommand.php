@@ -99,6 +99,15 @@ final class GenerateDtoCommand extends Command
      */
     private array $requestPayloadClasses = [];
 
+    /**
+     * The subset of {@see $requestPayloadClasses} built from an operation's PARAMETERS. Their values come
+     * from the path, query, headers and cookies — never from the JSON body — so nothing read off the raw
+     * body may be checked against them.
+     *
+     * @var array<string, true>
+     */
+    private array $parameterPayloadClasses = [];
+
     /** Generation mode backed by this library's runtime (DtoValidator/Normalizer/Deserializer). */
     public const string ATTRIBUTE_MODE_RUNTIME = 'runtime';
 
@@ -992,6 +1001,7 @@ final class GenerateDtoCommand extends Command
         $this->documentSelfUri = null;
         $this->generationWarnings = [];
         $this->requestPayloadClasses = [];
+        $this->parameterPayloadClasses = [];
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
         $this->discriminatorSchemas = [];
@@ -8671,6 +8681,7 @@ final class GenerateDtoCommand extends Command
                     $parameterOwners[$pathSchemaName] = $ownerKey;
                     $this->endpointByClass[$this->schemaClassName($pathSchemaName)] = $ownerKey;
                     $this->requestPayloadClasses[$this->schemaClassName($pathSchemaName)] = true;
+                    $this->parameterPayloadClasses[$this->schemaClassName($pathSchemaName)] = true;
                 }
 
                 if ($pathAndQueryParameters === []) {
@@ -8690,6 +8701,7 @@ final class GenerateDtoCommand extends Command
                 $parameterOwners[$schemaName] = $ownerKey;
                 $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                 $this->requestPayloadClasses[$this->schemaClassName($schemaName)] = true;
+                $this->parameterPayloadClasses[$this->schemaClassName($schemaName)] = true;
             }
         }
 

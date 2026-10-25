@@ -151,6 +151,10 @@ trait RendersLaravelDto
         $ignoredKeys = [];
 
         $objectShapePaths = [];
+        $scalarTypePaths = [];
+        // A parameters DTO is handed the request BODY as `$rawJson` by its FormRequest; a body field that
+        // happens to share a parameter's name says nothing about that parameter.
+        $readsRawBody = !array_key_exists($className, $this->parameterPayloadClasses);
 
         foreach ($properties as $property) {
             $param = $this->resolveLaravelParam($property, $namespace);
@@ -167,6 +171,11 @@ trait RendersLaravelDto
             }
             foreach ($this->laravelObjectShapePaths($property, '', [$className]) as $objectPath) {
                 $objectShapePaths[] = $objectPath;
+            }
+            if ($readsRawBody) {
+                foreach ($this->laravelScalarTypePaths($property, '', [$className]) as $scalarPath => $scalarType) {
+                    $scalarTypePaths[$scalarPath] = $scalarType;
+                }
             }
             $hydrators[] = $this->laravelHydratorFor($property, $param);
             if (($property['readOnly'] ?? null) === true) {
@@ -190,14 +199,14 @@ trait RendersLaravelDto
             // to nothing, which is what "nothing left to check here" means.
             recursiveSchemas: array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
         );
-        $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [];
+        $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [] || $scalarTypePaths !== [];
         $this->laravelClassesWithInterpreter[$className] = $hasWithValidator;
         foreach ($interpreter['imports'] as $interpreterImport) {
             $useStatements[] = $interpreterImport;
         }
         // `withValidator()` is emitted for every class now (it keeps `validated()` containers whole).
         $useStatements[] = 'Illuminate\Validation\Validator';
-        if ($objectShapePaths !== []) {
+        if ($objectShapePaths !== [] || $scalarTypePaths !== []) {
             $useStatements[] = 'stdClass';
         }
 
@@ -233,9 +242,11 @@ trait RendersLaravelDto
             'needsIntCoercionHelper' => $this->laravelNeedsIntCoercionHelper($params),
             'scalarCoercionHelpers' => $this->laravelScalarCoercionHelpers($params),
             'objectShapePaths' => $objectShapePaths,
-            'objectShapePathsEscapeDots' => array_filter(
-                $objectShapePaths,
-                static fn(string $objectPath): bool => str_contains($objectPath, '\.'),
+            'scalarTypePaths' => $scalarTypePaths,
+            'laravelFormRequest' => $this->laravelFormRequest,
+            'rawPathsEscapeDots' => array_filter(
+                [...$objectShapePaths, ...array_keys($scalarTypePaths)],
+                static fn(string $rawPath): bool => str_contains($rawPath, '\.'),
             ) !== [],
             'unionMembers' => null,
             'interfaceExtends' => [],
@@ -274,7 +285,9 @@ trait RendersLaravelDto
             'needsIntCoercionHelper' => false,
             'scalarCoercionHelpers' => [],
             'objectShapePaths' => [],
-            'objectShapePathsEscapeDots' => false,
+            'scalarTypePaths' => [],
+            'laravelFormRequest' => $this->laravelFormRequest,
+            'rawPathsEscapeDots' => false,
             'interpreterConstsBlock' => '',
             'hasObjectConstraints' => false,
             'interpreterMethodsBlock' => '',
@@ -2562,6 +2575,70 @@ trait RendersLaravelDto
         foreach ($this->getSchemaProperties($recurseClass) as $childProperty) {
             foreach ($this->laravelObjectShapePaths($childProperty, $childPrefix, $visitedClasses) as $childPath) {
                 $paths[] = $childPath;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * Every path whose schema is `integer`, `number` or `boolean` — at the property, inside nested DTOs and
+     * in container items (`score`, `author.age`, `scores.*`) — with that type.
+     *
+     * Laravel's own rules for those types are lenient: `integer` passes `"5"`, `boolean` passes `0`, `1`,
+     * `"0"` and `"1"`. Over a query string that is right, everything there is a string; over a JSON body it
+     * accepts a value the schema refuses and every other mode rejects. The strict rule variants are no
+     * answer: they arrived in Laravel 12.22, above this mode's floor, and `integer:strict` also refuses
+     * `42.0`, which JSON Schema counts as an integer. So these paths are checked against the raw body
+     * instead, where a string is still a string, from `withValidator()`.
+     *
+     * @param SchemaProperty $property
+     * @param array<int, string> $visitedClasses guards a self-referential schema
+     * @return array<string, string>
+     */
+    private function laravelScalarTypePaths(array $property, string $prefix, array $visitedClasses = []): array
+    {
+        $segment = $this->laravelPathSegment($property['openApiName']);
+        $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
+        $paths = $this->laravelScalarTypePathsIn($this->laravelConstraintsFor($property), $path, 1);
+
+        $nestedClass = $this->laravelDtoClass($property);
+        $itemClass = $this->laravelDtoItemClass($property);
+        $recurseClass = $nestedClass ?? ($itemClass !== null && !$this->laravelIsEnumClass($itemClass) ? $itemClass : null);
+        if ($recurseClass === null || in_array($recurseClass, $visitedClasses, true)) {
+            return $paths;
+        }
+
+        $visitedClasses[] = $recurseClass;
+        $childPrefix = $nestedClass !== null ? $path : $path . '.*';
+        foreach ($this->getSchemaProperties($recurseClass) as $childProperty) {
+            foreach ($this->laravelScalarTypePaths($childProperty, $childPrefix, $visitedClasses) as $childPath => $childType) {
+                $paths[$childPath] = $childType;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, string>
+     */
+    private function laravelScalarTypePathsIn(array $schema, string $path, int $hop): array
+    {
+        $type = $schema['type'] ?? null;
+        $type = is_array($type) ? $this->laravelSoleNonNullType($type) : $type;
+        if (in_array($type, ['integer', 'number', 'boolean'], true)) {
+            return [$path => $type];
+        }
+
+        // As deep as the dotted rules go, and no deeper: past that hop nothing is validated by a rule.
+        $paths = [];
+        if ($hop < self::LARAVEL_MAX_DOTTED_RULE_HOP) {
+            foreach (['items', 'additionalProperties'] as $key) {
+                if (is_array($schema[$key] ?? null)) {
+                    $paths = [...$paths, ...$this->laravelScalarTypePathsIn($schema[$key], $path . '.*', $hop + 1)];
+                }
             }
         }
 

@@ -3,6 +3,26 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.81 — 2026-10-25
+
+- Laravel JSON scalars strict
+- Laravel docblock without FormRequest
+
+Laravel mode:
+
+- a JSON body sending `"5"` for `type: integer`, `"1.5"` for `number`, or `0`, `1`, `"0"`, `"1"` for
+  `boolean` was accepted: Laravel's own `integer`, `numeric` and `boolean` rules let those through, and
+  every other strict mode refuses them. `withValidator()` now checks those paths against the raw body
+  it already reads for `type: object`, and adds Laravel's own failure — `The score field must be an
+  integer.` — once, only where no rule has already failed. `42.0` stays a valid integer, as JSON Schema
+  says; a form body and a parameters DTO, which have no JSON types, stay lenient. The `:strict` rule
+  variants are not used: they need Laravel 12.22, above this mode's floor, and `integer:strict` refuses
+  `42.0`. `assertRawObjectShapes()` is now `assertRawJsonShapes()` and decodes the body once for both.
+- with `--no-laravel-form-request` the DTO docblock showed a `FormRequest` example for a class that is
+  not generated. It now shows the validator wiring instead.
+- README.laravel.md lists the two FormRequests an operation with parameters and a body gets, and the
+  `QueryParams` name that also carries path parameters, as a known limitation.
+
 ## 2.15.80 — 2026-10-25
 
 - Qualified names become imports

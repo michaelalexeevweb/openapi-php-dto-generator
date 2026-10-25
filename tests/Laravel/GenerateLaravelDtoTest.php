@@ -391,6 +391,9 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertStringContainsString('public static function rules(): array', $dto);
         $this->assertStringContainsString('public static function withValidator(Validator $validator', $dto);
         $this->assertStringContainsString('public static function fromValidated(array $data): self', $dto);
+        // The usage example in the docblock no longer points at a class that does not exist.
+        $this->assertStringNotContainsString('FormRequest', $dto);
+        $this->assertStringContainsString('ArticlesPostRequest::fromValidated($validator->validate());', $dto);
     }
 
     /**

@@ -274,8 +274,11 @@ rule failed on every request. A value of one scalar type (`integer`, `number`, `
 string and is hydrated into the declared PHP type.
 
 Laravel's own type rules are lenient in the BODY too: `integer` passes `"5"`, `boolean` passes `0`, `1`,
-`"0"` and `"1"`. Such a value is accepted and hydrated as the declared type rather than failing with a 500;
-the strict variants that would refuse it arrived in Laravel 12.22, above this mode's floor.
+`"0"` and `"1"`. For a JSON body `withValidator()` reads the raw body and refuses those with Laravel's own
+message (`The score field must be an integer.`), as every other strict mode does; `42.0` stays a valid
+integer, as JSON Schema says. The strict rule variants are not used: they arrived in Laravel 12.22, above
+this mode's floor, and `integer:strict` refuses `42.0`. A form body has no JSON types, so there a value is
+accepted and hydrated as the declared type.
 
 ### Errors about the object itself
 
@@ -291,6 +294,7 @@ a root `not` or conditional — reports under the property it names (`"bad"`, `"
 | multipart `encoding` parts | same reason |
 | generating `authorize()` | policy is not in the document |
 | a `spatie/laravel-data` class | possible as an opt-in target later; the default stays first-party |
+| one FormRequest per operation | the parameters and the body are separate DTOs, so an operation with both gets `<Operation>QueryParamsFormRequest` and `<Operation>RequestFormRequest`, and the action takes two arguments. The `QueryParams` class also carries the path parameters; its name is shared by every mode and stays until a major version |
 
 ## Verification
 

@@ -1071,13 +1071,13 @@ final class ValidationParityTest extends TestCase
 
     /**
      * A JSON string or 0/1 where the schema says integer, number or boolean: refused by the modes that
-     * check the JSON type, accepted by the three whose framework rules (or hydrator) are lenient — the
-     * support matrix row "a numeric string for `type: integer`". Laravel accepts rather than answering a
-     * 500 after validation, which is what it did before 2.15.55.
+     * check the JSON type, accepted by the two whose framework rules (or hydrator) are lenient — the
+     * support matrix row "a numeric string for `type: integer`". Laravel mode joined the strict side in
+     * 2.15.81: its rules are as lenient as laravel-data's, but `withValidator()` reads the raw body.
      */
     public function testLenientScalarsArePinnedPerMode(): void
     {
-        $lenient = [GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3];
+        $lenient = [GenerationMode::LaravelData, GenerationMode::Yii3];
         foreach ([['integer', '5', '"5"'], ['number', '1.5', '"1.5"'], ['boolean', 'true', '1'], ['boolean', 'false', '"0"']] as [$type, $valid, $invalid]) {
             foreach (GenerationMode::cases() as $mode) {
                 $this->assertSame(

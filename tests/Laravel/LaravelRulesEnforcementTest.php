@@ -1282,4 +1282,64 @@ final class LaravelRulesEnforcementTest extends TestCase
         );
         $this->assertArrayHasKey('main.line', $errors('{"invoice.note":"abc","currency":"EUR","line.items":[],"main.line":[]}'));
     }
+
+    /**
+     * Laravel's `integer`, `numeric` and `boolean` rules accept `"5"`, `"1.5"` and `0`/`1`. In a JSON body
+     * the schema refuses them, so `withValidator()` checks the raw body — with Laravel's own message, once,
+     * and only where the wire had JSON types: `42.0` is an integer, a form body stays lenient, and a
+     * parameters DTO is never checked against the body its FormRequest hands it.
+     */
+    public function testAJsonBodyRefusesAScalarLaravelsRulesLetThrough(): void
+    {
+        $namespace = 'LvStrictScalars';
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+
+        (new GenerateDtoCommand())->generateFromArray([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/scores/{id}' => [
+                    'put' => [
+                        'parameters' => [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']]],
+                        'requestBody' => ['content' => ['application/json' => ['schema' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'score' => ['type' => 'integer'],
+                                'ratio' => ['type' => 'number'],
+                                'flag' => ['type' => 'boolean'],
+                                'scores' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                            ],
+                        ]]]],
+                        'responses' => ['200' => ['description' => 'ok']],
+                    ],
+                ],
+            ],
+        ], $target, $namespace, 'laravel');
+
+        foreach (['ScoresPutRequest', 'ScoresPutQueryParams'] as $class) {
+            require_once $target . '/' . $class . '.php';
+        }
+
+        $errors = function (string $class, array $data, ?string $rawJson): array {
+            $fqcn = 'LvStrictScalars\\' . $class;
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$fqcn, 'rules']);
+            $validator = $this->validatorFactory()->make($data, $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $rawJson);
+
+            return $validator->errors()->toArray();
+        };
+        $json = static fn(string $raw): array => [json_decode($raw, true), $raw];
+
+        $this->assertSame([], $errors('ScoresPutRequest', ...$json('{"score":42.0,"ratio":1,"flag":false,"scores":[1]}')));
+        $this->assertSame(['score' => ['validation.integer']], $errors('ScoresPutRequest', ...$json('{"score":"5"}')));
+        $this->assertSame(['score' => ['validation.integer']], $errors('ScoresPutRequest', ...$json('{"score":"x"}')), 'one message, not two');
+        $this->assertSame(['ratio' => ['validation.numeric']], $errors('ScoresPutRequest', ...$json('{"ratio":"1.5"}')));
+        $this->assertSame(['flag' => ['validation.boolean']], $errors('ScoresPutRequest', ...$json('{"flag":1}')));
+        $this->assertSame(['scores.1' => ['validation.integer']], $errors('ScoresPutRequest', ...$json('{"scores":[1,"2"]}')));
+
+        $this->assertSame([], $errors('ScoresPutRequest', ['score' => '5'], 'score=5'), 'a form body has no JSON types');
+        $this->assertSame([], $errors('ScoresPutQueryParams', ['id' => '7'], '{"id":"7"}'), 'the body is not the parameters');
+    }
 }
