@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 25633 lines
+# laravel mode — 106 files, 25714 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -6681,9 +6681,9 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams
     public static function rules(): array
     {
         return [
-            'matrixIds' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'matrixIds' => self::withBlankStringValidation(['present', 'list']),
             'matrixIds.*' => self::withBlankStringValidation(['integer']),
-            'labelIds' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'labelIds' => self::withBlankStringValidation(['present', 'list']),
             'labelIds.*' => self::withBlankStringValidation(['string']),
         ];
     }
@@ -7054,20 +7054,20 @@ final class ApiTestSerializationGetQueryParams
     public static function rules(): array
     {
         return [
-            'exploded' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'exploded' => self::withBlankStringValidation(['sometimes', 'list']),
             'exploded.*' => self::withBlankStringValidation(['integer']),
-            'joined' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'joined' => self::withBlankStringValidation(['sometimes', 'list']),
             'joined.*' => self::withBlankStringValidation(['string']),
-            'spaced' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'spaced' => self::withBlankStringValidation(['sometimes', 'list']),
             'spaced.*' => self::withBlankStringValidation(['integer']),
-            'piped' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'piped' => self::withBlankStringValidation(['sometimes', 'list']),
             'piped.*' => self::withBlankStringValidation(['string']),
             'nested' => self::withBlankStringValidation(['sometimes', 'array']),
             'nested.*' => self::withBlankStringValidation(['string']),
             'flag' => self::withBlankStringValidation(['sometimes', 'boolean']),
             'strict' => self::withBlankStringValidation(['sometimes', 'string']),
             'raw' => self::withBlankStringValidation(['sometimes', 'string']),
-            'X-Codes' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'X-Codes' => self::withBlankStringValidation(['sometimes', 'list']),
             'X-Codes.*' => self::withBlankStringValidation(['string']),
             'session' => self::withBlankStringValidation(['sometimes', 'string']),
             'filter' => self::withBlankStringValidation(['sometimes', 'array']),
@@ -7198,7 +7198,9 @@ final class ApiTestSerializationGetQueryParams
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -8844,6 +8846,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -8872,6 +8875,7 @@ use function is_object;
 use function is_string;
 use function json_decode;
 use function mb_strlen;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -9106,18 +9110,18 @@ final class ApplicatorRefs
     public static function rules(): array
     {
         return [
-            'mustContain' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'mustContain' => self::withBlankStringValidation(['present', 'list']),
             'mustContain.*' => self::withBlankStringValidation(['array']),
-            'positions' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'rest' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'closedPair' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'positions' => self::withBlankStringValidation(['sometimes', 'list']),
+            'rest' => self::withBlankStringValidation(['sometimes', 'list']),
+            'closedPair' => self::withBlankStringValidation(['sometimes', 'list']),
             'impossible' => self::withBlankStringValidation(['sometimes']),
             'vacuous' => self::withBlankStringValidation(['sometimes', 'string', 'min:3']),
             'имя' => self::withBlankStringValidation(['sometimes', 'string']),
             '名前' => self::withBlankStringValidation(['sometimes', 'string']),
             'forbiddenKey' => self::withBlankStringValidation(['sometimes']),
             'neverMatches' => self::withBlankStringValidation(['sometimes']),
-            'closedFirstSlot' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'closedFirstSlot' => self::withBlankStringValidation(['sometimes', 'list']),
             'poisonedKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'poisonedKey.trigger' => self::withBlankStringValidation(['string']),
             'conditional' => self::withBlankStringValidation(['sometimes', 'array']),
@@ -9269,7 +9273,9 @@ final class ApplicatorRefs
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -9826,6 +9832,30 @@ final class ApplicatorRefs
     }
 
     /**
+     * A value whose type the document leaves open — the items of a list of a union of classes, or a
+     * union of a list and a map — written as the wire needs it, at every level: a generated DTO as its
+     * `toArray()`, an enum as its value, a keyed array as an object, a list as a list.
+     */
+    private static function toJsonValue(mixed $value): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            $array = $value->toArray();
+
+            return $array === [] ? new stdClass() : $array;
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $converted = array_map(self::toJsonValue(...), $value);
+
+        return array_is_list($value) ? $converted : (object)$converted;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -9834,15 +9864,15 @@ final class ApplicatorRefs
         $result['mustContain'] = array_map(static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item), array_values($this->mustContain));
 
         if ($this->isPositionsProvided()) {
-            $result['positions'] = $this->positions === null ? null : array_values($this->positions);
+            $result['positions'] = $this->positions === null ? null : array_map(self::toJsonValue(...), array_values($this->positions));
         }
 
         if ($this->isRestProvided()) {
-            $result['rest'] = $this->rest === null ? null : array_values($this->rest);
+            $result['rest'] = $this->rest === null ? null : array_map(self::toJsonValue(...), array_values($this->rest));
         }
 
         if ($this->isClosedPairProvided()) {
-            $result['closedPair'] = $this->closedPair === null ? null : array_values($this->closedPair);
+            $result['closedPair'] = $this->closedPair === null ? null : array_map(self::toJsonValue(...), array_values($this->closedPair));
         }
 
         if ($this->isImpossibleProvided()) {
@@ -9870,7 +9900,7 @@ final class ApplicatorRefs
         }
 
         if ($this->isClosedFirstSlotProvided()) {
-            $result['closedFirstSlot'] = $this->closedFirstSlot === null ? null : array_values($this->closedFirstSlot);
+            $result['closedFirstSlot'] = $this->closedFirstSlot === null ? null : array_map(self::toJsonValue(...), array_values($this->closedFirstSlot));
         }
 
         if ($this->isPoisonedKeyProvided()) {
@@ -12259,7 +12289,7 @@ final class ChainLink
     {
         return [
             'code' => self::withBlankStringValidation(['present', 'string', 'min:3']),
-            'tags' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'tags' => self::withBlankStringValidation(['sometimes', 'list']),
             'tags.*' => self::withBlankStringValidation(['array']),
             'tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
         ];
@@ -12404,7 +12434,9 @@ final class ChainLink
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -12680,10 +12712,10 @@ final class ChainMiddle
     public static function rules(): array
     {
         return [
-            'links' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'links' => self::withBlankStringValidation(['present', 'list']),
             'links.*' => self::withBlankStringValidation(['array']),
             'links.*.code' => self::withBlankStringValidation(['string', 'min:3']),
-            'links.*.tags' => self::withBlankStringValidation(['array', 'list']),
+            'links.*.tags' => self::withBlankStringValidation(['list']),
             'links.*.tags.*' => self::withBlankStringValidation(['array']),
             'links.*.tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
         ];
@@ -12829,7 +12861,9 @@ final class ChainMiddle
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -13573,16 +13607,16 @@ final class ContainerAliases
     public static function rules(): array
     {
         return [
-            'listOfLists' => self::withBlankStringValidation(['present', 'array', 'list']),
-            'listOfLists.*' => self::withBlankStringValidation(['array', 'list']),
+            'listOfLists' => self::withBlankStringValidation(['present', 'list']),
+            'listOfLists.*' => self::withBlankStringValidation(['list']),
             'listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
-            'listOfMaps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'listOfMaps' => self::withBlankStringValidation(['sometimes', 'list']),
             'listOfMaps.*' => self::withBlankStringValidation(['array']),
             'listOfMaps.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
             'mapOfLists' => self::withBlankStringValidation(['sometimes', 'array']),
-            'mapOfLists.*' => self::withBlankStringValidation(['array', 'list']),
+            'mapOfLists.*' => self::withBlankStringValidation(['list']),
             'mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
-            'plain' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'plain' => self::withBlankStringValidation(['sometimes', 'list']),
             'plain.*' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
@@ -13725,7 +13759,9 @@ final class ContainerAliases
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -14071,13 +14107,13 @@ final class Containers
     public static function rules(): array
     {
         return [
-            'dates' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'dates' => self::withBlankStringValidation(['present', 'list']),
             'dates.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
-            'shapes' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'shapes' => self::withBlankStringValidation(['present', 'list']),
             'shapes.*' => self::withBlankStringValidation(['array']),
             'datesByDay' => self::withBlankStringValidation(['sometimes', 'array']),
             'datesByDay.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
-            'timestamps' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'timestamps' => self::withBlankStringValidation(['sometimes', 'list']),
             'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'tagsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'tagsByKey.*' => self::withBlankStringValidation(['array']),
@@ -14242,7 +14278,9 @@ final class Containers
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -16232,11 +16270,11 @@ final class ItemBounds
     public static function rules(): array
     {
         return [
-            'scores' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'scores' => self::withBlankStringValidation(['present', 'list']),
             'scores.*' => self::withBlankStringValidation(['integer', 'min:5']),
             'scoresByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'scoresByKey.*' => self::withBlankStringValidation(['integer', 'min:5']),
-            'codes' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'codes' => self::withBlankStringValidation(['sometimes', 'list']),
             'codes.*' => self::withBlankStringValidation(['string', 'min:2', 'regex:#^[a-z]+$#u']),
         ];
     }
@@ -16379,7 +16417,9 @@ final class ItemBounds
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -16709,29 +16749,29 @@ final class NestedContainers
     public static function rules(): array
     {
         return [
-            'matrix' => self::withBlankStringValidation(['present', 'array', 'list']),
-            'matrix.*' => self::withBlankStringValidation(['array', 'list']),
+            'matrix' => self::withBlankStringValidation(['present', 'list']),
+            'matrix.*' => self::withBlankStringValidation(['list']),
             'matrix.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
-            'rowsOfMaps' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'rowsOfMaps' => self::withBlankStringValidation(['present', 'list']),
             'rowsOfMaps.*' => self::withBlankStringValidation(['array']),
             'rowsOfMaps.*.*' => self::withBlankStringValidation(['string']),
             'listsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
-            'listsByKey.*' => self::withBlankStringValidation(['array', 'list']),
+            'listsByKey.*' => self::withBlankStringValidation(['list']),
             'listsByKey.*.*' => self::withBlankStringValidation(['string']),
             'mapsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'mapsByKey.*' => self::withBlankStringValidation(['array']),
             'mapsByKey.*.*' => self::withBlankStringValidation(['integer']),
-            'dateRows' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'dateRows.*' => self::withBlankStringValidation(['array', 'list']),
+            'dateRows' => self::withBlankStringValidation(['sometimes', 'list']),
+            'dateRows.*' => self::withBlankStringValidation(['list']),
             'dateRows.*.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
-            'numRows' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'numRows.*' => self::withBlankStringValidation(['array', 'list']),
+            'numRows' => self::withBlankStringValidation(['sometimes', 'list']),
+            'numRows.*' => self::withBlankStringValidation(['list']),
             'numRows.*.*' => self::withBlankStringValidation(['numeric']),
-            'enumRows' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'enumRows.*' => self::withBlankStringValidation(['array', 'list']),
+            'enumRows' => self::withBlankStringValidation(['sometimes', 'list']),
+            'enumRows.*' => self::withBlankStringValidation(['list']),
             'enumRows.*.*' => self::withBlankStringValidation(['string']),
-            'tagRows' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'tagRows.*' => self::withBlankStringValidation(['array', 'list']),
+            'tagRows' => self::withBlankStringValidation(['sometimes', 'list']),
+            'tagRows.*' => self::withBlankStringValidation(['list']),
             'tagRows.*.*' => self::withBlankStringValidation(['array']),
             'tagRows.*.*.id' => self::withBlankStringValidation(['integer']),
             'tagRows.*.*.name' => self::withBlankStringValidation(['string']),
@@ -16896,7 +16936,9 @@ final class NestedContainers
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -17382,11 +17424,11 @@ final class NullableContainerValues
     public static function rules(): array
     {
         return [
-            'listOfNullable' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'listOfNullable' => self::withBlankStringValidation(['present', 'list']),
             'listOfNullable.*' => self::withBlankStringValidation(['nullable', 'string', 'min:2']),
             'mapOfNullable' => self::withBlankStringValidation(['sometimes', 'array']),
             'mapOfNullable.*' => self::withBlankStringValidation(['nullable', 'integer', 'min:5']),
-            'listOfNullable31' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'listOfNullable31' => self::withBlankStringValidation(['sometimes', 'list']),
             'listOfNullable31.*' => self::withBlankStringValidation(['nullable', 'string']),
             'mapOfNullable31' => self::withBlankStringValidation(['sometimes', 'array']),
             'mapOfNullable31.*' => self::withBlankStringValidation(['nullable', 'integer']),
@@ -17532,7 +17574,9 @@ final class NullableContainerValues
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -20327,7 +20371,7 @@ final class Test2
         return [
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
-            'tags' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'tags' => self::withBlankStringValidation(['present', 'list']),
             'tags.*' => self::withBlankStringValidation(['array']),
             'tags.*.id' => self::withBlankStringValidation(['integer']),
             'tags.*.name' => self::withBlankStringValidation(['string']),
@@ -20500,7 +20544,9 @@ final class Test2
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -22624,7 +22670,9 @@ final class TreeNode
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -23048,6 +23096,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -23059,6 +23108,7 @@ use stdClass;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_pop;
 use function array_shift;
 use function array_unique;
@@ -23079,6 +23129,7 @@ use function is_string;
 use function json_decode;
 use function ltrim;
 use function mb_strlen;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -23392,9 +23443,9 @@ final class UnionUnderContainer
             'tree' => self::withBlankStringValidation(['present']),
             'tree.label' => self::withBlankStringValidation(['string', 'min:1']),
             'tree.children' => self::withBlankStringValidation(['array']),
-            'chain' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'chainAllOf' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
-            'listOfUnions' => self::withBlankStringValidation(['sometimes', 'array', 'list']),
+            'chain' => self::withBlankStringValidation(['sometimes', 'list']),
+            'chainAllOf' => self::withBlankStringValidation(['sometimes', 'list']),
+            'listOfUnions' => self::withBlankStringValidation(['sometimes', 'list']),
         ];
     }
 
@@ -23538,7 +23589,9 @@ final class UnionUnderContainer
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -24001,6 +24054,30 @@ final class UnionUnderContainer
     }
 
     /**
+     * A value whose type the document leaves open — the items of a list of a union of classes, or a
+     * union of a list and a map — written as the wire needs it, at every level: a generated DTO as its
+     * `toArray()`, an enum as its value, a keyed array as an object, a list as a list.
+     */
+    private static function toJsonValue(mixed $value): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            $array = $value->toArray();
+
+            return $array === [] ? new stdClass() : $array;
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $converted = array_map(self::toJsonValue(...), $value);
+
+        return array_is_list($value) ? $converted : (object)$converted;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -24008,17 +24085,17 @@ final class UnionUnderContainer
         $result = [];
 
         if ($this->isChainProvided()) {
-            $result['chain'] = $this->chain === null ? null : array_values($this->chain);
+            $result['chain'] = $this->chain === null ? null : array_map(self::toJsonValue(...), array_values($this->chain));
         }
 
         if ($this->isChainAllOfProvided()) {
-            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_values($this->chainAllOf);
+            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_map(self::toJsonValue(...), array_values($this->chainAllOf));
         }
 
         $result['tree'] = $this->tree->toArray() ?: (object)[];
 
         if ($this->isListOfUnionsProvided()) {
-            $result['listOfUnions'] = $this->listOfUnions === null ? null : array_values($this->listOfUnions);
+            $result['listOfUnions'] = $this->listOfUnions === null ? null : array_map(self::toJsonValue(...), array_values($this->listOfUnions));
         }
 
         return $result;
@@ -24106,7 +24183,7 @@ final class UniqueScalars
     public static function rules(): array
     {
         return [
-            'tags' => self::withBlankStringValidation(['present', 'array', 'list']),
+            'tags' => self::withBlankStringValidation(['present', 'list']),
             'tags.*' => self::withBlankStringValidation(['string']),
         ];
     }
@@ -24713,7 +24790,9 @@ final class User
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -25305,7 +25384,9 @@ final class User2
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }

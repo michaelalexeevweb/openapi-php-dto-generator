@@ -3,6 +3,31 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.88 — 2026-10-25
+
+- Laravel create() omits unset nullables
+- Laravel accepts [] as empty object
+- Laravel int enum from string
+- Laravel union containers keep items, keys
+- Laravel one message for scalar list
+
+Laravel mode:
+
+- a nullable optional field could not be left out of a response: the constructor cannot tell an
+  omitted argument from an explicit `null`, so it writes every such key. `create()` takes the same
+  arguments and treats `null` there as "not given", so its key stays out — as in Symfony mode.
+- an empty JSON array sent for a `type: object` property was refused ("expects object, got array").
+  `[]` is how PHP encodes an empty array, so it is what PHP clients send for `{}`, and runtime and
+  Symfony mode accept it. A non-empty list is still refused. laravel-data likewise.
+- an int-backed enum read from a query, path or header value (`?level=1`) passed `Rule::enum` and then
+  failed `from()` on the string under strict types — a 500. It is read as an integer first, list items
+  too.
+- a list whose items are a union of classes wrote each DTO item as `{}`, and a union of a list and a
+  map lost the map's keys to `array_values()`. Both are written as the value is: a DTO as its array, a
+  keyed array as an object.
+- a scalar sent for a list got two messages ("must be an array", "must be a list"); `list` alone
+  checks both and reports once.
+
 ## 2.15.87 — 2026-10-25
 
 - Laravel external refs resolve per file

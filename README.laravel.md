@@ -226,9 +226,11 @@ That is why `withValidator()` takes a second argument:
 UserPostRequest::withValidator($validator, $this->getContent());
 ```
 
-The generated FormRequest passes it for you. With the raw body in hand, a JSON array sent for a
-`type: object` property is refused (`flags expects object, got array.`) while a JSON object keyed
-`0..n-1` still passes. Omit the argument and only that one check is skipped — everything else runs.
+The generated FormRequest passes it for you. With the raw body in hand, a non-empty JSON array sent
+for a `type: object` property is refused (`flags expects object, got array.`) while a JSON object keyed
+`0..n-1` still passes. An EMPTY array passes as the empty object: it is what `json_encode([])` writes,
+so every PHP client sends `[]` for `{}`, and runtime and Symfony mode accept it too. Omit the argument
+and only that one check is skipped — everything else runs.
 
 ### One thing this mode can do that the others cannot
 
@@ -308,6 +310,19 @@ when the output must carry it:
 (new JobResponse(id: 1, title: 'A', url: 'https://example.test'))->toArray(); // id, title, url, notes: null
 (new JobResponse(id: 1, title: 'A', rank: 1))->withProvided('rank')->toArray(); // ..., rank: 1
 ```
+
+Where a nullable optional field must stay OUT unless it was given — a client that treats any key as
+set — build it with `create()`. It takes the same arguments, and a nullable optional one left `null`
+means "not given": its key is omitted. A class gets `create()` when it has such a field.
+
+```php
+JobResponse::create(id: 1, title: 'A', url: 'https://example.test')->toArray(); // id, title, url
+JobResponse::create(id: 1, title: 'A')->withProvided('notes')->toArray();       // id, title, notes: null
+```
+
+A container the generator cannot type — a list whose items are a union of classes, or a union of a list
+and a map — is written as its value is: a DTO item as its own array, a keyed array as an object, a list
+as a list.
 
 ### Path, header and cookie parameters
 

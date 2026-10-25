@@ -251,6 +251,7 @@ trait RendersLaravelDto
             'hydrators' => $hydrators,
             'ignoredKeys' => $ignoredKeys,
             'needsJsonObjectHelper' => $this->laravelNeedsJsonObjectHelper($properties),
+            'needsJsonValueHelper' => $this->laravelNeedsJsonValueHelper($properties),
             'needsIntCoercionHelper' => $this->laravelNeedsIntCoercionHelper($params),
             'scalarCoercionHelpers' => $this->laravelScalarCoercionHelpers($params),
             'objectShapePaths' => $objectShapePaths,
@@ -425,8 +426,13 @@ trait RendersLaravelDto
             'isDtoList' => $itemClass !== null,
             'toArrayExpression' => $this->laravelToArrayExpression($property),
             'needsIntCoercion' => $this->laravelPropertyAcceptsInt($declaredType),
-            'scalarCoercion' => $this->laravelScalarCoercion($declaredType),
-            'itemScalarCoercion' => $this->laravelItemScalarCoercion($property['type']),
+            // An int-backed enum is read the way an `int` is: `?level=1` arrives as `"1"`, which
+            // `Rule::enum` accepts and `Enum::from()` refuses under strict types — a 500 after the
+            // validator had said yes.
+            'scalarCoercion' => $this->laravelScalarCoercion($declaredType)
+                ?? ($this->laravelIsIntBackedEnum($this->laravelEnumClass($property)) ? 'int' : null),
+            'itemScalarCoercion' => $this->laravelItemScalarCoercion($property['type'])
+                ?? ($this->laravelIsIntBackedEnum($this->laravelDtoItemClass($property)) ? 'int' : null),
         ];
     }
 
@@ -708,9 +714,10 @@ trait RendersLaravelDto
             'integer' => "'integer'",
             'number' => "'numeric'",
             'boolean' => "'boolean'",
-            // `array` also accepts an associative array, so a JSON array needs `list` as well. A
+            // `list` alone: it is `is_array() && array_is_list()`, so `array` beside it only doubled
+            // the message for a scalar — "must be an array" and "must be a list" for one mistake. A
             // JSON object is `array` only — the object-vs-list distinction is the interpreter's job.
-            'array' => "'array', 'list'",
+            'array' => "'list'",
             'object' => "'array'",
             default => null,
         };
@@ -1058,7 +1065,7 @@ trait RendersLaravelDto
         // the same way (`integer` passes `"5"`). Handed over as it came, an `int` property threw a
         // TypeError — a 500 after the validator said yes. A union such as `int|string` is left alone:
         // there `"5"` is a legitimate string.
-        $raw = match ($this->laravelScalarCoercion($param['declaredType'])) {
+        $raw = match ($param['scalarCoercion']) {
             'int' => sprintf('self::toIntValue(%s)', $raw),
             'float' => sprintf('self::toFloatValue(%s)', $raw),
             'bool' => sprintf('self::toBoolValue(%s)', $raw),
@@ -1093,14 +1100,16 @@ trait RendersLaravelDto
                 $property['openApiName'],
             ),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) && $itemsNullable => sprintf(
-                'array_map(static fn(int|string|null $item): ?%1$s => $item === null ? null : %1$s::from($item), %2$s)',
+                'array_map(static fn(int|string|null $item): ?%1$s => $item === null ? null : %1$s::from(%3$s), %2$s)',
                 $this->shortClassName($itemClass),
                 $containerRaw,
+                $this->laravelIsIntBackedEnum($itemClass) ? 'self::toIntValue($item)' : '$item',
             ),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) => sprintf(
-                'array_map(static fn(int|string $item): %1$s => %1$s::from($item), %2$s)',
+                'array_map(static fn(int|string $item): %1$s => %1$s::from(%3$s), %2$s)',
                 $this->shortClassName($itemClass),
                 $containerRaw,
+                $this->laravelIsIntBackedEnum($itemClass) ? 'self::toIntValue($item)' : '$item',
             ),
             // The ITEM is built exactly the way a scalar nested value is — through the one place
             // that knows a discriminated union base is an interface with no `fromValidated()` to
@@ -1436,6 +1445,11 @@ trait RendersLaravelDto
         return array_key_exists($className, $this->enumSchemas);
     }
 
+    private function laravelIsIntBackedEnum(?string $className): bool
+    {
+        return $className !== null && $this->laravelIsEnumClass($className) && $this->enumSchemas[$className]['type'] === 'int';
+    }
+
     private function laravelLooksLikeClassType(string $phpType): bool
     {
         $base = $this->laravelBaseTypeName($phpType);
@@ -1555,6 +1569,19 @@ trait RendersLaravelDto
                 : sprintf('array_map(%s, array_values(%s))', $mapper, $propertyAccess);
         }
 
+        // A container whose type says nothing about its items — the items are a union of classes, or
+        // the property itself is a union of a list and a map — is written through `toJsonValue()`: a
+        // DTO item as its `toArray()`, which `json_encode()` would otherwise write as `{}` from private
+        // state. A union that admits a map goes out keyed as the value is, as in runtime mode;
+        // `array_values()` turned `{"702": "label"}` into `["label"]`.
+        if ($this->laravelIsUntypedContainer($property)) {
+            $wire = ($property['isShapeUnion'] ?? false) === true
+                ? sprintf('self::toJsonValue(%s)', $propertyAccess)
+                : sprintf('array_map(self::toJsonValue(...), array_values(%s))', $propertyAccess);
+
+            return $nullable ? sprintf('%s === null ? null : %s', $propertyAccess, $wire) : $wire;
+        }
+
         // A LIST is reindexed on the way out, for the reason spelled out in `RendersRuntimeDto`: the
         // document promised a JSON array, PHP keys are not part of that promise, and the result of an
         // `array_filter()` handed to the constructor would otherwise be written as `{"0":…,"2":…}`. A
@@ -1574,6 +1601,30 @@ trait RendersLaravelDto
         }
 
         return $propertyAccess;
+    }
+
+    /**
+     * A bare `array`: no item type the generator could name, so the value decides how it is written.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelIsUntypedContainer(array $property): bool
+    {
+        return ltrim($property['type'], '?') === 'array' && ($property['isMap'] ?? null) !== true;
+    }
+
+    /**
+     * @param array<int, SchemaProperty> $properties
+     */
+    private function laravelNeedsJsonValueHelper(array $properties): bool
+    {
+        foreach ($properties as $property) {
+            if (($property['writeOnly'] ?? null) !== true && $this->laravelIsUntypedContainer($property)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

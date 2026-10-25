@@ -122,7 +122,7 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertStringContainsString("'status' => self::withBlankStringValidation(['present', Rule::enum(Status::class)])", $article);
         $this->assertStringContainsString('use Illuminate\Validation\Rule;', $article);
         // `array` alone accepts an associative array, so a JSON array needs `list` too.
-        $this->assertStringContainsString("'tags' => self::withBlankStringValidation(['sometimes', 'array', 'list'])", $article);
+        $this->assertStringContainsString("'tags' => self::withBlankStringValidation(['sometimes', 'list'])", $article);
         // The date-time formats are the ones every mode accepts.
         $this->assertStringContainsString("'date_format:Y-m-d\\TH:i:sP,", $article);
 
@@ -574,6 +574,8 @@ final class GenerateLaravelDtoTest extends TestCase
         // A JSON object whose keys are 0..n-1 is still an object — the check must not overreach.
         $this->assertSame([], $verdict('{"flags":{"0":1,"1":2}}'));
         $this->assertSame(['flags expects object, got array.'], $verdict('{"flags":[1,2]}'));
+        // `[]` is the empty object PHP clients send (`json_encode([])`); runtime and Symfony accept it.
+        $this->assertSame([], $verdict('{"flags":[]}'));
     }
 
     private function generateEndpointSpec(string $namespace): string

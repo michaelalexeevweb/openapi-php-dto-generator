@@ -129,6 +129,15 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     private array $providedOpenApiKeys = [];
 
 {% endif %}
+{% set createParams = optionalParams|filter(param => param.schemaNullable and not param.readOnly) %}
+{% if createParams is not empty %}
+    /**
+     * Set by `create()`: a nullable optional property left null was not given, and `toArray()` omits it
+     * instead of writing `null`.
+     */
+    private bool $omitsUnsetNulls = false;
+
+{% endif %}
 {% set docParams = params|filter(param => param.docType is not null or param.docDescription is not null) %}
 {% if docParams is not empty %}
     /**
@@ -160,6 +169,39 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     }
 {% endif %}
 
+{% if createParams is not empty %}
+    /**
+     * The constructor for a response built in code: a nullable optional argument left `null` means "not
+     * given", and `toArray()` leaves its key out. The constructor cannot tell that `null` from an
+     * explicit one, so it writes every such key; use it where `null` has to reach the wire.
+     *
+{% for param in docParams %}
+     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
+{% endfor %}
+     */
+    public static function create(
+{% for param in requiredParams %}
+        {{ param.declaredType }} ${{ param.name }},
+{% endfor %}
+{% for param in optionalParams %}
+        {{ param.declaredType }} ${{ param.name }}{{ param in createParams ? ' = null' : param.default }},
+{% endfor %}
+    ): self {
+        $dto = new self(
+{% for param in params %}
+{% if param in createParams and param.defaultExpression is not null and param.defaultExpression != 'null' %}
+            {{ param.name }}: ${{ param.name }} ?? {{ param.defaultExpression|raw }},
+{% else %}
+            {{ param.name }}: ${{ param.name }},
+{% endif %}
+{% endfor %}
+        );
+        $dto->omitsUnsetNulls = true;
+
+        return $dto;
+    }
+
+{% endif %}
     /**
      * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
      * what the request payload carries, not the PHP property names.
@@ -326,7 +368,9 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
 {{ splitPath }}            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
+                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -564,6 +608,32 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     }
 
 {% endif %}
+{% if needsJsonValueHelper|default(false) %}
+    /**
+     * A value whose type the document leaves open — the items of a list of a union of classes, or a
+     * union of a list and a map — written as the wire needs it, at every level: a generated DTO as its
+     * `toArray()`, an enum as its value, a keyed array as an object, a list as a list.
+     */
+    private static function toJsonValue(mixed $value): mixed
+    {
+        if ($value instanceof \BackedEnum) {
+            return $value->value;
+        }
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            $array = $value->toArray();
+
+            return $array === [] ? new \stdClass() : $array;
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $converted = array_map(self::toJsonValue(...), $value);
+
+        return array_is_list($value) ? $converted : (object)$converted;
+    }
+
+{% endif %}
     /**
      * @return array<string, mixed>
      */
@@ -588,7 +658,11 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         }
 
 {% elseif param.schemaNullable %}
-        $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
+
+        if (!$this->omitsUnsetNulls || $this->{{ param.providedGetter }}()) {
+            $result['{{ param.openApiName|php_string }}'] = {{ param.toArrayExpression|raw }};
+        }
+
 {% else %}
 
         if ($this->{{ param.providedGetter }}()) {

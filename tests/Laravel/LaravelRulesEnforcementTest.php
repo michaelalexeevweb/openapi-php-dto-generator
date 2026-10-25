@@ -1721,4 +1721,85 @@ final class LaravelRulesEnforcementTest extends TestCase
             rmdir($root);
         }
     }
+
+    /**
+     * A scalar where a list belongs is ONE mistake and reads as one: `array` beside `list` reported it
+     * twice, and `list` alone already asks `is_array()`.
+     */
+    public function testAScalarForAListIsReportedOnce(): void
+    {
+        $fqcn = $this->generateProbe('scalarForList', ['type' => 'array', 'items' => ['type' => 'integer']]);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $errors = $this->validatorFactory()->make(['f' => '1'], $rules)->errors()->get('f');
+
+        $this->assertCount(1, $errors);
+        $this->assertTrue($this->validatorFactory()->make(['f' => [1, 2]], $rules)->passes());
+    }
+
+    /**
+     * An int-backed enum read from the wire as a string — every query and path value is one — passes
+     * `Rule::enum`, and `from()` under strict types refused it: a 500 for a correct request.
+     */
+    public function testAnIntBackedEnumIsBuiltFromItsStringForm(): void
+    {
+        $fqcn = $this->generateProbe('intEnumString', ['type' => 'integer', 'enum' => [0, 1]]);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $validator = $this->validatorFactory()->make(['f' => '1'], $rules);
+        $this->assertTrue($validator->passes());
+
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        $this->assertSame(1, $dto->getF()->value);
+        $this->assertFalse($this->validatorFactory()->make(['f' => '2'], $rules)->passes());
+    }
+
+    /**
+     * `create()` is the constructor for a response built in code: a nullable optional argument left
+     * null was not given and its key stays out. The constructor still writes every such key, an
+     * explicit null included.
+     */
+    public function testCreateLeavesOutTheNullablesItWasNotGiven(): void
+    {
+        $fqcn = $this->generateProbeClass('LvRuleCreate', [
+            'type' => 'object',
+            'required' => ['code'],
+            'properties' => [
+                'code' => ['type' => 'string'],
+                'hint' => ['type' => 'string', 'nullable' => true],
+                'tone' => ['type' => 'string', 'nullable' => true],
+            ],
+        ]);
+
+        $this->assertSame(['code' => 'x', 'hint' => 'h'], call_user_func([$fqcn, 'create'], code: 'x', hint: 'h')->toArray());
+        $this->assertSame(['code' => 'x'], call_user_func([$fqcn, 'create'], code: 'x')->toArray());
+        $this->assertSame(['code' => 'x', 'tone' => null], call_user_func([$fqcn, 'create'], code: 'x')->withProvided('tone')->toArray());
+        $this->assertSame(['code' => 'x', 'hint' => null, 'tone' => null], (new $fqcn(code: 'x'))->toArray());
+    }
+
+    /**
+     * A container whose items are a union of classes, or that is itself a union of a list and a map,
+     * has a bare `array` type: its DTO items were written as `{}` from private state, and the map's
+     * keys were dropped by `array_values()`.
+     */
+    public function testAnUntypedContainerWritesItsItemsAndKeys(): void
+    {
+        $leaf = ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string']]];
+        $list = $this->generateProbe('unionItems', [
+            'type' => 'array',
+            'items' => ['oneOf' => [['$ref' => '#/components/schemas/Leaf'], ['type' => 'integer']]],
+        ], ['Leaf' => $leaf]);
+        $leafClass = substr($list, 0, (int)strrpos($list, '\\')) . '\Leaf';
+        $this->assertSame(
+            ['f' => [['label' => 'a'], 7]],
+            json_decode((string)json_encode((new $list(f: [new $leafClass(label: 'a'), 7]))->toArray()), true),
+        );
+
+        $shape = $this->generateProbe('listOrMap', ['anyOf' => [
+            ['type' => 'array', 'items' => ['type' => 'string']],
+            ['type' => 'object', 'additionalProperties' => ['type' => 'string']],
+        ]]);
+        $this->assertSame('{"f":{"702":"alpha","beta":"gamma"}}', json_encode((new $shape(f: [702 => 'alpha', 'beta' => 'gamma']))->toArray()));
+        $this->assertSame('{"f":["alpha"]}', json_encode((new $shape(f: ['alpha']))->toArray()));
+    }
 }

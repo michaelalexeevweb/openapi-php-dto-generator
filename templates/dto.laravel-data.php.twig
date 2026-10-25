@@ -285,7 +285,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                if (is_array($node)) {
+                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
+                if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
