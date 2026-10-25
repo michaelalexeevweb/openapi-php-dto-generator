@@ -1342,4 +1342,54 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame([], $errors('ScoresPutRequest', ['score' => '5'], 'score=5'), 'a form body has no JSON types');
         $this->assertSame([], $errors('ScoresPutQueryParams', ['id' => '7'], '{"id":"7"}'), 'the body is not the parameters');
     }
+
+    /**
+     * An optional property with a schema default is that default when the key is absent — not null —
+     * and is typed without `?` unless the schema itself allows null. Before 2.15.82 `fromValidated()`
+     * handed the constructor null, so the getter answered null for a value the document defaults.
+     */
+    public function testAnAbsentOptionalPropertyTakesItsSchemaDefault(): void
+    {
+        $fqcn = $this->generateProbeClass('LvDefaults', [
+            'type' => 'object',
+            'properties' => [
+                'kind' => ['type' => 'string', 'enum' => ['all', 'some'], 'default' => 'all'],
+                'limit' => ['type' => 'integer', 'default' => 50],
+                'label' => ['type' => ['string', 'null'], 'default' => 'none'],
+                'origin' => ['type' => 'string', 'readOnly' => true, 'default' => 'server'],
+            ],
+        ]);
+        require_once $this->outputDirectory . '/LvDefaults/ProbeKind.php';
+        $hydrate = function (string $json) use ($fqcn): object {
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$fqcn, 'rules']);
+            $validator = $this->validatorFactory()->make(json_decode($json, true), $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+            $this->assertSame([], $validator->errors()->toArray(), $json);
+
+            return call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        };
+
+        $absent = $hydrate('{}');
+        $this->assertSame('all', $absent->getKind()->value);
+        $this->assertSame(50, $absent->getLimit());
+        $this->assertSame('none', $absent->getLabel());
+        $this->assertSame('server', $absent->getOrigin());
+        $this->assertFalse($absent->isKindProvided());
+        $this->assertSame(['origin' => 'server'], $absent->toArray(), 'a default the client did not send is not echoed');
+
+        $sent = $hydrate('{"kind":"some","limit":5,"label":null}');
+        $this->assertSame('some', $sent->getKind()->value);
+        $this->assertSame(5, $sent->getLimit());
+        $this->assertNull($sent->getLabel(), 'a null the schema allows is still a null');
+
+        $constructor = (new ReflectionClass($fqcn))->getConstructor();
+        $types = [];
+        foreach ($constructor?->getParameters() ?? [] as $parameter) {
+            $types[$parameter->getName()] = (string)$parameter->getType();
+        }
+        $this->assertSame('int', $types['limit']);
+        $this->assertStringStartsNotWith('?', $types['kind']);
+        $this->assertSame('?string', $types['label']);
+    }
 }

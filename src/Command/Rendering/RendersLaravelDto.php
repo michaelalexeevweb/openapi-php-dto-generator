@@ -326,7 +326,11 @@ trait RendersLaravelDto
         // hands the constructor `null` for it, and a required parameter has nowhere to put that.
         $required = $this->propertyIsRequiredOnInput($property);
         $default = $property['default'] ?? null;
-        $declaredNullable = $property['nullable'] || (!$required && $default === null);
+        // `nullable` on the property also covers "optional"; only the schema's own word counts here, as in
+        // Symfony mode. An optional property WITH a default never holds null unless the schema allows it
+        // — `?Kind $kind = Kind::A` invited a null the document rejects.
+        $schemaNullable = $property['schemaNullable'] ?? $property['nullable'];
+        $declaredNullable = $schemaNullable || (!$required && $default === null);
         $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
 
         if ($required) {
@@ -1087,13 +1091,25 @@ trait RendersLaravelDto
         // A readOnly property is server-owned: runtime mode ignores whatever the client sent, so the
         // field stays unset and is omitted from the response. Hydration mirrors that by treating the key
         // as absent.
+        // An absent key with a schema default is that default; the type no longer admits null there.
         if (($property['readOnly'] ?? null) === true) {
-            return ['name' => $property['name'], 'expression' => 'null'];
+            return ['name' => $property['name'], 'expression' => $param['defaultExpression'] ?? 'null'];
         }
 
-        // An optional key is absent from `validated()` when it was not sent, and may be an explicit
-        // null when it was — both have to reach the constructor as null without touching the cast.
-        if ($property['required'] !== true || $property['nullable'] === true) {
+        // An optional key with a schema default: absent means that default, as the constructor's own
+        // default says. Handing over null instead lost it — `getType()` answered null for a query
+        // parameter the document defaults to `all_vendors`. A null is still handed over only where the
+        // schema allows one; elsewhere the rules have refused it before this runs.
+        $default = $param['defaultExpression'];
+        if ($param['required'] !== true && $default !== null && $default !== 'null') {
+            $admitsNull = str_starts_with($param['declaredType'], '?')
+                || array_intersect(['null', 'mixed'], explode('|', $param['declaredType'])) !== [];
+            $value = $admitsNull
+                ? sprintf('!array_key_exists(%1$s, $data) ? %2$s : ($data[%1$s] === null ? null : %3$s)', $key, $default, $value)
+                : sprintf('($data[%s] ?? null) === null ? %s : %s', $key, $default, $value);
+        } elseif ($property['required'] !== true || $property['nullable'] === true) {
+            // An optional key is absent from `validated()` when it was not sent, and may be an explicit
+            // null when it was — both have to reach the constructor as null without touching the cast.
             $value = sprintf('($data[%s] ?? null) === null ? null : %s', $key, $value);
         }
 
@@ -1381,7 +1397,10 @@ trait RendersLaravelDto
 
         $name = $property['name'];
         $propertyAccess = '$this->' . $name;
-        $nullable = $property['nullable'] === true || !$this->propertyIsRequiredOnInput($property);
+        // The same answer `resolveLaravelParam()` gives: an optional property with a schema default is
+        // not nullable, and `?->` on it read as if it were.
+        $nullable = ($property['schemaNullable'] ?? $property['nullable']) === true
+            || (!$this->propertyIsRequiredOnInput($property) && ($property['default'] ?? null) === null);
         $arrow = $nullable ? '?->' : '->';
 
         if ($this->symfonyTemporalGetterBody($property) !== null) {

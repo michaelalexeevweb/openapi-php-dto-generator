@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.82 — 2026-10-25
+
+- Laravel optional defaults kept
+
+Laravel mode:
+
+- an optional property with a schema `default` lost it: `fromValidated()` handed the constructor `null`
+  for an absent key, so `getType()` answered `null` for a query parameter the document defaults to
+  `all_vendors`. An absent key is now that default; a `null` is handed over only where the schema
+  allows one.
+- such a property was typed `?Kind $kind = Kind::All`, inviting a `null` the schema refuses. It is
+  `Kind $kind = Kind::All` now, as in Symfony mode since 2.15.66, and `toArray()` writes `->value`
+  rather than `?->value`. A `readOnly` property with a default gets the default instead of `null`.
+- a REQUIRED property with a default stays required, as in Symfony mode; README.laravel.md says so.
+
 ## 2.15.81 — 2026-10-25
 
 - Laravel JSON scalars strict

@@ -222,6 +222,11 @@ No sentinel value and no setter is involved, which makes this the simplest of th
 implementations. `toArray()` omits a property that was never provided, so a PATCH response mirrors the
 request.
 
+An optional property with a schema `default` is that default when the key is absent —
+`getKind()` returns `Kind::All`, not `null` — and its type admits `null` only if the schema does.
+`isKindProvided()` still says the key was not sent, and `toArray()` still leaves it out. A REQUIRED
+property with a default stays required: the default does not make the key optional, as in Symfony mode.
+
 ## The response direction
 
 `toArray()` is emitted, not delegated, so it follows the schema rather than a serializer's defaults:
