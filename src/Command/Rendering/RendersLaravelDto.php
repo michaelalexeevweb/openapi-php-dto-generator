@@ -235,6 +235,7 @@ trait RendersLaravelDto
             'sourceSpecLink' => $this->resolveSpecLink($className),
             'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'params' => $params,
+            'toArrayParams' => $this->laravelInSchemaOrder($className, $params),
             'rules' => $rules,
             'hydrators' => $hydrators,
             'ignoredKeys' => $ignoredKeys,
@@ -277,6 +278,7 @@ trait RendersLaravelDto
             'sourceSpecLink' => $this->resolveSpecLink($className),
             'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'params' => [],
+            'toArrayParams' => [],
             'rules' => [],
             'hydrators' => [],
             'implementedInterfaces' => [],
@@ -1365,6 +1367,33 @@ trait RendersLaravelDto
     private function laravelPathSegment(string $openApiName): string
     {
         return str_replace('.', '\.', $openApiName);
+    }
+
+    /**
+     * The params in the order the schema declares the properties, which is the order `toArray()` writes
+     * the keys in. The constructor needs required parameters first, so `$params` is in that order
+     * instead — and `toArray()` followed it, writing `{success, payload, message}` for a schema that
+     * declares `success, message, payload`, where runtime and Symfony mode keep the schema's order.
+     *
+     * @param array<int, array<string, mixed>> $params
+     * @return array<int, array<string, mixed>>
+     */
+    private function laravelInSchemaOrder(string $className, array $params): array
+    {
+        if (!array_key_exists($className, $this->dtoSchemas)) {
+            return $params;
+        }
+
+        $position = [];
+        foreach ($this->getSchemaProperties($className) as $index => $property) {
+            $position[$property['name']] ??= $index;
+        }
+        usort(
+            $params,
+            static fn(array $a, array $b): int => ($position[$a['name']] ?? PHP_INT_MAX) <=> ($position[$b['name']] ?? PHP_INT_MAX),
+        );
+
+        return $params;
     }
 
     private function laravelIsEnumClass(string $className): bool

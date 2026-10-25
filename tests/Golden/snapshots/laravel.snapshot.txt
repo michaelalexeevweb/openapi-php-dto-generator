@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 25243 lines
+# laravel mode — 106 files, 25247 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -14737,7 +14737,6 @@ final class Containers
     {
         $result = [];
         $result['dates'] = $this->getDates();
-        $result['shapes'] = array_map(static fn(Shape $item): array|object => $item->toArray() ?: (object)[], array_values($this->shapes));
 
         if ($this->isDatesByDayProvided()) {
             $result['datesByDay'] = $this->datesByDay === null ? null : self::toJsonObjects($this->getDatesByDay());
@@ -14746,6 +14745,8 @@ final class Containers
         if ($this->isTimestampsProvided()) {
             $result['timestamps'] = $this->getTimestamps();
         }
+
+        $result['shapes'] = array_map(static fn(Shape $item): array|object => $item->toArray() ?: (object)[], array_values($this->shapes));
 
         if ($this->isTagsByKeyProvided()) {
             $result['tagsByKey'] = $this->tagsByKey === null ? null : self::toJsonObjects(array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], $this->tagsByKey));
@@ -19043,6 +19044,7 @@ final class ReadOnlyFields
         if ($this->serverId !== null) {
             $result['serverId'] = $this->serverId;
         }
+
         $result['title'] = $this->title;
 
         if ($this->writtenAt !== null) {
@@ -20831,7 +20833,6 @@ final class Test2
         $result['id'] = $this->id;
         $result['name'] = $this->name;
         $result['tags'] = array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], array_values($this->tags));
-        $result['types'] = $this->types->value;
 
         if ($this->isUserProvided()) {
             $result['user'] = $this->user === null ? null : ($this->user->toArray() ?: (object)[]);
@@ -20840,6 +20841,8 @@ final class Test2
         if ($this->isUserTypeProvided()) {
             $result['userType'] = $this->userType === null ? null : ($this->userType->toArray() ?: (object)[]);
         }
+
+        $result['types'] = $this->types->value;
 
         return $result;
     }
@@ -23894,7 +23897,6 @@ final class UnionUnderContainer
     public function toArray(): array
     {
         $result = [];
-        $result['tree'] = $this->tree->toArray() ?: (object)[];
 
         if ($this->isChainProvided()) {
             $result['chain'] = $this->chain === null ? null : array_values($this->chain);
@@ -23903,6 +23905,8 @@ final class UnionUnderContainer
         if ($this->isChainAllOfProvided()) {
             $result['chainAllOf'] = $this->chainAllOf === null ? null : array_values($this->chainAllOf);
         }
+
+        $result['tree'] = $this->tree->toArray() ?: (object)[];
 
         if ($this->isListOfUnionsProvided()) {
             $result['listOfUnions'] = $this->listOfUnions === null ? null : array_values($this->listOfUnions);

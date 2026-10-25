@@ -245,6 +245,8 @@ property with a default stays required: the default does not make the key option
   `fromValidated()` casts each element, so the property really holds the objects its docblock names —
   it used to name them and hold the strings `validated()` handed over. Two modes hold strings there and
   say so; see [Temporal container items](README.support-matrix.md#temporal-container-items);
+- keys come out in the order the schema declares the properties, optional ones in their place — not
+  required-first, the order the constructor needs;
 - a map encodes as a JSON object at every level, empty ones included (`{}`, never `[]`);
 - an enum comes out as its backing value, a nested DTO as its own array;
 - `writeOnly` properties are dropped, and a `readOnly` key sent by the client is ignored on the way in

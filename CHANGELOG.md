@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.84 — 2026-10-25
+
+- Laravel toArray keys in schema order
+
+Laravel mode:
+
+- `toArray()` wrote the keys in constructor order — every required property first, then the optional
+  ones — so a schema declaring `success, message, payload` came out as `{success, payload, message}`.
+  Runtime and Symfony mode keep the schema's order, and a response compared with `assertSame` against
+  either failed. The keys now follow the schema; the constructor keeps required parameters first, as PHP
+  needs.
+
 ## 2.15.83 — 2026-10-25
 
 - Laravel external enum items checked

@@ -320,7 +320,8 @@ final class GenerateLaravelDtoTest extends TestCase
         $explicitNull = call_user_func(['LvPresence\Article', 'fromValidated'], $base + ['slug' => null]);
         $this->assertTrue($explicitNull->isSlugProvided());
         $this->assertNull($explicitNull->getSlug());
-        $this->assertSame($base + ['slug' => null], $explicitNull->toArray());
+        // Keys in schema order — `slug` is declared before `status` — not required-first.
+        $this->assertSame(['id' => 1, 'title' => 'Hello', 'slug' => null, 'status' => 'draft'], $explicitNull->toArray());
 
         $sent = call_user_func(['LvPresence\Article', 'fromValidated'], $base + ['slug' => 'hello']);
         $this->assertTrue($sent->isSlugProvided());
