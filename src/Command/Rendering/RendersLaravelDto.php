@@ -588,7 +588,10 @@ trait RendersLaravelDto
         if ($enumClass !== null && (!$nullable || !array_key_exists('enum', $constraints))) {
             // `Rule::enum()` pins the backing type AND the members in one first-party rule; the
             // generated enum is the single source of the allowed values.
-            $rules[] = sprintf('Rule::enum(%s::class)', $this->shortClassName($enumClass));
+            // Fully qualified: a nested or inlined rule names an enum of ANOTHER namespace (a shared
+            // file's), which a short name resolved into the wrong one — "class not found", a 500 on
+            // the first `rules()` call. The emitted file turns it into an import.
+            $rules[] = sprintf('Rule::enum(\%s::class)', $this->laravelEnumFqcn($enumClass));
 
             return ['rules' => $rules, 'consumed' => [...$consumed, 'type', 'enum']];
         }
@@ -1443,6 +1446,14 @@ trait RendersLaravelDto
     private function laravelIsEnumClass(string $className): bool
     {
         return array_key_exists($className, $this->enumSchemas);
+    }
+
+    private function laravelEnumFqcn(string $enumClass): string
+    {
+        $short = $this->shortClassName($enumClass);
+        $namespace = $this->enumNamespaces[$short] ?? $this->baseNamespace;
+
+        return ltrim($namespace . '\\' . $short, '\\');
     }
 
     private function laravelIsIntBackedEnum(?string $className): bool

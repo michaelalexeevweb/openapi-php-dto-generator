@@ -3,6 +3,24 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.89 — 2026-10-25
+
+- Laravel enum rules import their class
+- Laravel map values written as arrays
+- Laravel hand-built defaults are written
+
+Laravel mode:
+
+- a nested or inlined rule named an enum of another namespace — a shared file's — by its short name,
+  which resolved into the class's own namespace: "class not found", a 500 on the first `rules()`
+  call, request and response alike. `Rule::enum()` now names the enum in full and the file imports it.
+  A class of the file's own namespace is written by its short name, never imported.
+- a map whose values are a union of classes wrote each DTO value as `{}`: `toJsonObjects()` walked
+  arrays only. A DTO value is written as its `toArray()`, an enum as its value.
+- a hand-built instance left out an optional property with a schema default whenever the argument
+  equalled that default — `urgent: false` disappeared from the response. The value is known either
+  way, so it is written; `fromValidated()` keeps the payload's exact presence.
+
 ## 2.15.88 — 2026-10-25
 
 - Laravel create() omits unset nullables

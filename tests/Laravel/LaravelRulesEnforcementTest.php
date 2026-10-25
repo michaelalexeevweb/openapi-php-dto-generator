@@ -419,13 +419,14 @@ final class LaravelRulesEnforcementTest extends TestCase
         ]);
 
         $dto = new $fqcn(id: 1, url: 'https://example.test', tag: 'x');
-        $this->assertSame(['id' => 1, 'url' => 'https://example.test', 'note' => null, 'tag' => 'x'], $dto->toArray());
-        $this->assertSame(['id' => 1, 'url' => null, 'note' => null], (new $fqcn(id: 1, url: null))->toArray());
+        $this->assertSame(['id' => 1, 'url' => 'https://example.test', 'note' => null, 'tag' => 'x', 'rank' => 1], $dto->toArray());
+        $this->assertSame(['id' => 1, 'url' => null, 'note' => null, 'rank' => 1], (new $fqcn(id: 1, url: null))->toArray());
         $this->assertSame(
             ['id' => 1, 'url' => null, 'note' => null, 'rank' => 1],
-            (new $fqcn(id: 1, rank: 1))->withProvided('rank')->toArray(),
-            'an argument equal to its default is named by withProvided()',
+            (new $fqcn(id: 1, rank: 1))->toArray(),
+            'an argument equal to its default is written: the value is known either way',
         );
+        // A request keeps its exact presence: the default was not sent.
         $this->assertSame(['id' => 1, 'url' => null, 'note' => null], call_user_func([$fqcn, 'fromValidated'], ['id' => 1])->toArray());
     }
 
@@ -1801,5 +1802,101 @@ final class LaravelRulesEnforcementTest extends TestCase
         ]]);
         $this->assertSame('{"f":{"702":"alpha","beta":"gamma"}}', json_encode((new $shape(f: [702 => 'alpha', 'beta' => 'gamma']))->toArray()));
         $this->assertSame('{"f":["alpha"]}', json_encode((new $shape(f: ['alpha']))->toArray()));
+    }
+
+    /**
+     * A nested rule names an enum of a shared file, which lives in that file's namespace. Written by its
+     * short name it resolved into the class's own namespace — "class not found", a 500 on the first
+     * `rules()` call — so it is written in full and the file imports it.
+     */
+    public function testANestedEnumRuleOfAnotherNamespaceResolves(): void
+    {
+        $root = sys_get_temp_dir() . '/lv-enum-ns-' . bin2hex(random_bytes(4));
+        mkdir($root . '/common', 0o755, true);
+        $document = static fn(array $schemas): string => (string)json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => $schemas],
+        ]);
+        file_put_contents($root . '/common/shared.json', $document([
+            'Colour' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+            'Swatch' => ['type' => 'object', 'required' => ['colour'], 'properties' => ['colour' => ['$ref' => '#/components/schemas/Colour']]],
+        ]));
+        file_put_contents($root . '/main.json', $document(['Palette' => [
+            'type' => 'object',
+            'required' => ['swatches'],
+            'properties' => ['swatches' => ['type' => 'array', 'items' => ['$ref' => 'common/shared.json#/components/schemas/Swatch']]],
+        ]]));
+
+        try {
+            (new GenerateDtoCommand())->generateFromFile($root . '/main.json', $root . '/out', 'LvEnumNs', 'laravel');
+            $classes = [];
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+                $code = str_ends_with((string)$file, '.php') ? (string)file_get_contents((string)$file) : '';
+                if (preg_match('/^namespace (\S+);/m', $code, $namespace) === 1
+                    && preg_match('/^(?:final class|enum|interface) (\w+)/m', $code, $name) === 1) {
+                    $classes[$namespace[1] . '\\' . $name[1]] = (string)$file;
+                }
+            }
+            spl_autoload_register(static function (string $class) use ($classes): void {
+                if (array_key_exists($class, $classes)) {
+                    require_once $classes[$class];
+                }
+            });
+            $palette = (string)current(array_filter(array_keys($classes), static fn(string $class): bool => str_ends_with($class, '\Palette')));
+            $colour = (string)current(array_filter(array_keys($classes), static fn(string $class): bool => str_ends_with($class, '\Colour')));
+            $this->assertNotSame(substr($palette, 0, (int)strrpos($palette, '\\')), substr($colour, 0, (int)strrpos($colour, '\\')));
+
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$palette, 'rules']);
+            $this->assertTrue($this->validatorFactory()->make(['swatches' => [['colour' => 'azure']]], $rules)->passes());
+            $this->assertFalse($this->validatorFactory()->make(['swatches' => [['colour' => 'olive']]], $rules)->passes());
+        } finally {
+            foreach (new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            ) as $entry) {
+                $entry->isDir() ? rmdir((string)$entry) : unlink((string)$entry);
+            }
+            rmdir($root);
+        }
+    }
+
+    /**
+     * The values of a map whose value schema is a union — no class to type them with — were written by
+     * `toJsonObjects()`, which only walked arrays: a DTO value reached `json_encode()` as `{}`.
+     */
+    public function testAMapOfUnionValuesWritesItsDtoValues(): void
+    {
+        $leaf = ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string']]];
+        $fqcn = $this->generateProbe('mapOfUnion', [
+            'type' => 'object',
+            'additionalProperties' => ['oneOf' => [['$ref' => '#/components/schemas/Leaf'], ['type' => 'integer']]],
+        ], ['Leaf' => $leaf]);
+        $leafClass = substr($fqcn, 0, (int)strrpos($fqcn, '\\')) . '\Leaf';
+
+        $this->assertSame(
+            '{"f":{"alpha":{"label":"a"},"beta":7}}',
+            json_encode((new $fqcn(f: ['alpha' => new $leafClass(label: 'a'), 'beta' => 7]))->toArray()),
+        );
+    }
+
+    /**
+     * A property with a schema default is known either way — absent IS the default — so `toArray()`
+     * writes it always, as runtime and Symfony mode do. Gated on presence, an explicit `false` equal to
+     * the default `false` left the response.
+     */
+    public function testAPropertyWithADefaultIsAlwaysWritten(): void
+    {
+        $fqcn = $this->generateProbeClass('LvRuleDefaultWritten', [
+            'type' => 'object',
+            'required' => ['code'],
+            'properties' => ['code' => ['type' => 'string'], 'urgent' => ['type' => 'boolean', 'default' => false]],
+        ]);
+
+        $this->assertSame(['code' => 'x', 'urgent' => false], (new $fqcn(code: 'x', urgent: false))->toArray());
+        $this->assertSame(['code' => 'x', 'urgent' => false], (new $fqcn(code: 'x'))->toArray());
+        $this->assertSame(['code' => 'x', 'urgent' => true], (new $fqcn(code: 'x', urgent: true))->toArray());
     }
 }

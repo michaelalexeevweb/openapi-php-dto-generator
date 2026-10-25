@@ -302,13 +302,14 @@ A response built with the constructor writes every optional field it was given: 
 from its default counts as provided (before 2.15.55 a hand-built instance wrote no optional field at all).
 A property the schema lets be null is written whether it was given or not — its default is that same
 `null`, and the constructor cannot tell `photo: null` from no argument, so before 2.15.83 the key left
-the response. One EQUAL to any other default cannot be told apart from an omitted one either; name it
-when the output must carry it:
+the response. A property with a schema default is written always too: absent IS the default, so the
+value is known either way, and before 2.15.89 `rank: 1` passed explicitly left the response because it
+equalled the default:
 
 ```php
 // `url` and `notes` nullable, `rank` an integer with default 1
-(new JobResponse(id: 1, title: 'A', url: 'https://example.test'))->toArray(); // id, title, url, notes: null
-(new JobResponse(id: 1, title: 'A', rank: 1))->withProvided('rank')->toArray(); // ..., rank: 1
+(new JobResponse(id: 1, title: 'A', url: 'https://example.test'))->toArray(); // id, title, url, notes: null, rank: 1
+(new JobResponse(id: 1, title: 'A', rank: 1))->toArray();                     // ..., rank: 1
 ```
 
 Where a nullable optional field must stay OUT unless it was given — a client that treats any key as
@@ -316,8 +317,8 @@ set — build it with `create()`. It takes the same arguments, and a nullable op
 means "not given": its key is omitted. A class gets `create()` when it has such a field.
 
 ```php
-JobResponse::create(id: 1, title: 'A', url: 'https://example.test')->toArray(); // id, title, url
-JobResponse::create(id: 1, title: 'A')->withProvided('notes')->toArray();       // id, title, notes: null
+JobResponse::create(id: 1, title: 'A', url: 'https://example.test')->toArray(); // id, title, url, rank: 1
+JobResponse::create(id: 1, title: 'A')->withProvided('notes')->toArray();       // id, title, notes: null, rank: 1
 ```
 
 A container the generator cannot type — a list whose items are a union of classes, or a union of a list

@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 25714 lines
+# laravel mode — 106 files, 25764 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1643,9 +1643,9 @@ final class ApiTestCatsActionsGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -2016,9 +2016,9 @@ final class ApiTestCatsActionsPostQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -2389,9 +2389,9 @@ final class ApiTestDogsTagsGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -2762,9 +2762,9 @@ final class ApiTestDogsTagsPatchQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -5002,9 +5002,9 @@ final class ApiTestLegacyPostQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -6926,6 +6926,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -6947,8 +6948,10 @@ use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function trim;
@@ -6981,9 +6984,9 @@ final class ApiTestSerializationGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -7439,7 +7442,8 @@ final class ApiTestSerializationGetQueryParams
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -7448,9 +7452,12 @@ final class ApiTestSerializationGetQueryParams
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -7561,9 +7568,9 @@ final class ApiTestSerializationGetQueryParamsFilter
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -7868,9 +7875,9 @@ final class ApiTestSharedPathGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -8148,9 +8155,9 @@ final class ApiTestTenantsDeleteQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -8505,9 +8512,9 @@ final class ApiTestTenantsGetQueryParams
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -9033,9 +9040,9 @@ final class ApplicatorRefs
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -9814,7 +9821,8 @@ final class ApplicatorRefs
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -9823,9 +9831,12 @@ final class ApplicatorRefs
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -10003,9 +10014,9 @@ final class ApplicatorRefsConditional
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -10446,9 +10457,9 @@ final class ApplicatorRefsKeyed
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -10867,9 +10878,9 @@ final class ApplicatorRefsPoisonedKey
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -11217,9 +11228,9 @@ final class AwkwardNames
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -12259,9 +12270,9 @@ final class ChainLink
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -13518,6 +13529,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -13535,8 +13547,10 @@ use function explode;
 use function get_object_vars;
 use function in_array;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function trim;
@@ -13567,9 +13581,9 @@ final class ContainerAliases
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -13895,7 +13909,8 @@ final class ContainerAliases
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -13904,9 +13919,12 @@ final class ContainerAliases
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -13943,6 +13961,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use DateTimeImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -13976,6 +13995,7 @@ use function is_scalar;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -14065,9 +14085,9 @@ final class Containers
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -14751,7 +14771,8 @@ final class Containers
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -14760,9 +14781,12 @@ final class Containers
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -16182,6 +16206,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -16203,8 +16228,10 @@ use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function trim;
@@ -16235,9 +16262,9 @@ final class ItemBounds
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -16557,7 +16584,8 @@ final class ItemBounds
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -16566,9 +16594,12 @@ final class ItemBounds
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -16601,6 +16632,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -16630,6 +16662,7 @@ use function is_string;
 use function json_decode;
 use function json_encode;
 use function ksort;
+use function method_exists;
 use function pack;
 use function property_exists;
 use function serialize;
@@ -16692,9 +16725,9 @@ final class NestedContainers
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -17270,7 +17303,8 @@ final class NestedContainers
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -17279,9 +17313,12 @@ final class NestedContainers
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -17331,6 +17368,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -17352,8 +17390,10 @@ use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function trim;
@@ -17384,9 +17424,9 @@ final class NullableContainerValues
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -17728,7 +17768,8 @@ final class NullableContainerValues
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -17737,9 +17778,12 @@ final class NullableContainerValues
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -17860,9 +17904,9 @@ final class ObjectWideRules
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -18556,9 +18600,9 @@ final class ReadOnlyFields
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -20331,9 +20375,9 @@ final class Test2
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -20993,9 +21037,9 @@ final class Test2UserType
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -21633,9 +21677,9 @@ final class TestPostRequest
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -22329,6 +22373,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -22360,6 +22405,7 @@ use function is_string;
 use function json_decode;
 use function ltrim;
 use function mb_strlen;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
@@ -23042,7 +23088,8 @@ final class TreeNode
 
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -23051,9 +23098,12 @@ final class TreeNode
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
@@ -23406,9 +23456,9 @@ final class UnionUnderContainer
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */

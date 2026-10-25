@@ -28,6 +28,7 @@ final class QualifiedNameImports
         $tokens = token_get_all($php);
         $imports = self::existingClassImports($php);
         $mentioned = self::mentionedNames($tokens, $imports);
+        $fileNamespace = preg_match('/^namespace ([\w\\\]+);$/m', $php, $declared) === 1 ? $declared[1] : '';
 
         /** @var array<string, string> $classAliases fully-qualified name (no leading `\`) => alias */
         $classAliases = [];
@@ -50,6 +51,9 @@ final class QualifiedNameImports
             if ($kind === 'constant') {
                 $short = $name;
                 $constants[$name] = true;
+            } elseif ($kind === 'class' && self::isOwnNamespaceName($name, $fileNamespace, $imports)) {
+                // A class of the file's own namespace needs no import: its short name already means it.
+                $short = substr($name, strlen($fileNamespace) + 1);
             } elseif ($kind === 'class') {
                 $short = self::aliasFor($name, $imports, $mentioned);
                 if ($short !== null) {
@@ -73,6 +77,29 @@ final class QualifiedNameImports
         }
 
         return self::withImports($rewritten, $classAliases, array_keys($constants));
+    }
+
+    /**
+     * Whether `$name` lives directly in the file's namespace and no import claims its short name.
+     *
+     * @param array<string, string> $imports alias => fully-qualified name
+     */
+    private static function isOwnNamespaceName(string $name, string $fileNamespace, array $imports): bool
+    {
+        if ($fileNamespace === '' || !str_starts_with($name, $fileNamespace . '\\')) {
+            return false;
+        }
+        $short = substr($name, strlen($fileNamespace) + 1);
+        if (str_contains($short, '\\')) {
+            return false;
+        }
+        foreach (array_keys($imports) as $alias) {
+            if (strcasecmp($alias, $short) === 0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

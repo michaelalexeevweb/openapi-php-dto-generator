@@ -106,4 +106,55 @@ final class QualifiedNameImportsTest extends TestCase
 
         $this->assertStringContainsString("namespace App;\n\nuse LogicException;\n\nfinal class Probe", QualifiedNameImports::apply($source));
     }
+
+    /**
+     * A class of the file's own namespace is written by its short name and never imported; one of
+     * another namespace is imported, even when the reference sits deep inside an expression.
+     */
+    public function testAnOwnNamespaceClassIsShortenedWithoutAnImport(): void
+    {
+        $source = <<<'PHP'
+            <?php
+
+            namespace App\Paint;
+
+            use Illuminate\Validation\Rule;
+
+            final class Probe
+            {
+                public static function rules(): array
+                {
+                    return [
+                        'tone' => [Rule::enum(\App\Paint\Tone::class)],
+                        'swatch.colour' => [Rule::enum(\App\Shared\Colour::class)],
+                    ];
+                }
+            }
+
+            PHP;
+
+        $this->assertSame(
+            <<<'PHP'
+                <?php
+
+                namespace App\Paint;
+
+                use App\Shared\Colour;
+                use Illuminate\Validation\Rule;
+
+                final class Probe
+                {
+                    public static function rules(): array
+                    {
+                        return [
+                            'tone' => [Rule::enum(Tone::class)],
+                            'swatch.colour' => [Rule::enum(Colour::class)],
+                        ];
+                    }
+                }
+
+                PHP,
+            QualifiedNameImports::apply($source),
+        );
+    }
 }

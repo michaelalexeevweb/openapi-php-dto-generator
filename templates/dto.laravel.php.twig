@@ -120,9 +120,9 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
      * optional argument that differs from its default: a response built in code must not lose a field
-     * it was given. An argument EQUAL to its default cannot be told apart from an omitted one by the
-     * constructor; `withProvided()` names such a key when the output needs it. A property the schema
-     * lets be null is written by `toArray()` either way.
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
      *
      * @var array<int, string>
      */
@@ -160,7 +160,12 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% endfor %}
     ) {
 {% for param in optionalParams %}
-{% if param.defaultExpression is not null %}
+{% if param.defaultExpression is not null and param.defaultExpression != 'null' and not param.readOnly %}
+{# A schema default makes the value known either way, and the constructor cannot tell an explicit
+   default from an omitted one — so a hand-built instance writes it. `fromValidated()` replaces the
+   list with the payload's own keys, so a request keeps its exact presence. #}
+        $this->providedOpenApiKeys[] = '{{ param.openApiName|php_string }}';
+{% elseif param.defaultExpression is not null %}
         if (${{ param.name }} !== {{ param.defaultExpression|raw }}) {
             $this->providedOpenApiKeys[] = '{{ param.openApiName|php_string }}';
         }
@@ -590,7 +595,8 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% if needsJsonObjectHelper %}
     /**
      * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
-     * `{}` rather than `[]`. A list stays a list.
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
      */
     private static function toJsonObjects(array $value, bool $asObject = true): array|object
     {
@@ -599,9 +605,12 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
             // The caller decides for the value it owns, because an EMPTY map is a list by
             // `array_is_list()` and must still encode as `{}`.
-            $converted[$key] = is_array($item)
-                ? self::toJsonObjects($item, !array_is_list($item))
-                : $item;
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof \BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new \stdClass(),
+                default => $item,
+            };
         }
 
         return $asObject ? (object)$converted : $converted;
