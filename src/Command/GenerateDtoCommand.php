@@ -361,6 +361,12 @@ final class GenerateDtoCommand extends Command
      */
     private array $laravelSpelledOutRefs = [];
 
+    /**
+     * The file whose property constraints are being extracted, so a `$ref` in them resolves against
+     * the document that wrote it. Null outside that extraction — the root document.
+     */
+    private ?string $constraintSourceFile = null;
+
     /** Set once the registered schemas went through `inlineNullSchemaReferences()`. */
     private bool $referencesNormalized = false;
 
@@ -1400,15 +1406,22 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            $schemaMetadata = $this->analyzeSchema(className: $className, schemaDefinition: $schemaDefinition);
-            $this->warnAboutUnhydratableUnionProperties($className, $schemaMetadata['properties']);
-            $namespace = $this->schemaNamespaces[$className] ?? $this->baseNamespace;
-            $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
-            $classCode = $this->renderDtoClass(
-                namespace: $namespace,
-                className: $className,
-                schemaMetadata: $schemaMetadata,
-            );
+            // Everything extracted while this class is analysed and rendered resolves its references
+            // against the document that declares it.
+            $this->constraintSourceFile = $this->getSchemaSourceFile($className);
+            try {
+                $schemaMetadata = $this->analyzeSchema(className: $className, schemaDefinition: $schemaDefinition);
+                $this->warnAboutUnhydratableUnionProperties($className, $schemaMetadata['properties']);
+                $namespace = $this->schemaNamespaces[$className] ?? $this->baseNamespace;
+                $outputDirectory = $this->schemaOutputDirectories[$className] ?? $this->baseOutputDirectory;
+                $classCode = $this->renderDtoClass(
+                    namespace: $namespace,
+                    className: $className,
+                    schemaMetadata: $schemaMetadata,
+                );
+            } finally {
+                $this->constraintSourceFile = null;
+            }
             $filePath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . '.php';
             $this->queueGeneratedClass(
                 namespace: $namespace,
@@ -3075,7 +3088,15 @@ final class GenerateDtoCommand extends Command
             $example = $this->extractExample($propertySchema);
             $temporalFormat = $this->resolveTemporalPhpDocFormat($propertySchema);
             $itemsTemporalFormat = $this->resolveItemsTemporalPhpDocFormat($propertySchema);
-            $constraints = $this->extractValidationConstraints($propertySchema);
+            // A `$ref` the extraction resolves is relative to the file that declares this property; an
+            // inline object has no file of its own and keeps the one it was found in.
+            $sourceFileBefore = $this->constraintSourceFile;
+            $this->constraintSourceFile = $this->getSchemaSourceFile($ownerClassName) ?? $sourceFileBefore;
+            try {
+                $constraints = $this->extractValidationConstraints($propertySchema);
+            } finally {
+                $this->constraintSourceFile = $sourceFileBefore;
+            }
 
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
             $isInPath = $paramIn === 'path';
@@ -3591,9 +3612,7 @@ final class GenerateDtoCommand extends Command
                     $spelledOutBefore = $this->laravelSpelledOutRefs;
                     $this->laravelSpelledOutRefs[$variant['$ref']] = true;
                     try {
-                        $extracted = $this->extractValidationConstraints(
-                            $this->inlineNestedContainerValidation(schema: $variant, belowMaterialization: true),
-                        );
+                        $extracted = $this->laravelSpelledOutRefBranch($variant['$ref']);
                     } finally {
                         $this->laravelSpelledOutRefs = $spelledOutBefore;
                     }

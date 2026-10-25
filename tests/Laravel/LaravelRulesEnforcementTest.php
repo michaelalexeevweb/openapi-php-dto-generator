@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Laravel;
 
+use FilesystemIterator;
 use Illuminate\Routing\Route;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
@@ -11,6 +12,8 @@ use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use Stringable;
 
@@ -1650,5 +1653,72 @@ final class LaravelRulesEnforcementTest extends TestCase
                 'Square' => $variant('ids', ['type' => 'array', 'items' => ['type' => 'integer']]),
             ]],
         ];
+    }
+
+    /**
+     * A schema in another file names its neighbours relative to THAT file. A `$ref` union branch and an
+     * allOf variant spelled out for the schema checks resolved them against the root document instead,
+     * and a file of the same name beside the root one — which does not declare the schema — failed the
+     * whole generation: "Referenced schema not found".
+     */
+    public function testAReferenceInsideAnotherFileResolvesAgainstThatFile(): void
+    {
+        $root = sys_get_temp_dir() . '/lv-ref-scope-' . bin2hex(random_bytes(4));
+        mkdir($root . '/common', 0o755, true);
+        $document = static fn(array $schemas): string => (string)json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => $schemas],
+        ]);
+        // The decoy: same file name as the real neighbour, one directory up, without its schemas.
+        file_put_contents($root . '/colours.json', $document(['Unrelated' => ['type' => 'string']]));
+        file_put_contents($root . '/common/colours.json', $document([
+            'Palette' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+            'Painter' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']]],
+        ]));
+        file_put_contents($root . '/common/canvas.json', $document([
+            'Tint' => ['type' => 'object', 'properties' => ['shade' => ['oneOf' => [
+                ['$ref' => 'colours.json#/components/schemas/Palette'],
+                ['type' => 'integer'],
+            ]]]],
+            'Stroke' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string']],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => ['signed' => '#/components/schemas/SignedStroke']],
+            ],
+            'SignedStroke' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Stroke'],
+                ['type' => 'object', 'properties' => ['painter' => ['$ref' => 'colours.json#/components/schemas/Painter']]],
+            ]],
+        ]));
+        file_put_contents($root . '/main.json', $document(['Probe' => ['type' => 'object', 'properties' => [
+            'tint' => ['$ref' => 'common/canvas.json#/components/schemas/Tint'],
+            'stroke' => ['$ref' => 'common/canvas.json#/components/schemas/Stroke'],
+        ]]]));
+
+        try {
+            (new GenerateDtoCommand())->generateFromFile($root . '/main.json', $root . '/out', 'LvRefScope', 'laravel');
+            $generated = [];
+            // A referenced file's classes are placed beside the output, by the file they come from.
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+                if (str_ends_with((string)$file, '.php')) {
+                    $generated[] = (string)file_get_contents((string)$file);
+                }
+            }
+            $tint = current(array_filter($generated, static fn(string $code): bool => str_contains($code, 'final class Tint')));
+            $this->assertIsString($tint);
+            // The enum branch is checked with its own members, read from the right file.
+            $this->assertStringContainsString("'crimson'", $tint);
+        } finally {
+            foreach (new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            ) as $entry) {
+                $entry->isDir() ? rmdir((string)$entry) : unlink((string)$entry);
+            }
+            rmdir($root);
+        }
     }
 }

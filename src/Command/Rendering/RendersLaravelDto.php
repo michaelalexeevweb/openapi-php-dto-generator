@@ -2282,6 +2282,34 @@ trait RendersLaravelDto
     }
 
     /**
+     * The schema a `$ref` union branch names, for the interpreter: an enum as its members, an object
+     * as its class's checks. Resolved by class name — the branch may sit in another file, whose
+     * relative references mean nothing against the root document. Anything else stays unspelled,
+     * and the union is left to the rules as before.
+     *
+     * @return array<string, mixed>
+     */
+    private function laravelSpelledOutRefBranch(string $ref): array
+    {
+        $className = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+        if (array_key_exists($className, $this->enumSchemas)) {
+            return [
+                'type' => $this->enumSchemas[$className]['type'] === 'int' ? 'integer' : 'string',
+                'enum' => array_values($this->enumSchemas[$className]['values']),
+            ];
+        }
+        if (!array_key_exists($className, $this->dtoSchemas) || $this->laravelDiscriminatorBaseIsInterface($className)) {
+            return [];
+        }
+
+        return ['type' => 'object', ...$this->laravelInterpreterSchemaForClass(
+            className: $className,
+            visitedClasses: [$className],
+            insideRecursiveFold: true,
+        )];
+    }
+
+    /**
      * A union with an enum member — `oneOf: [$ref Palette, string, integer]` is `Palette|string|int` — takes
      * the enum case when the value is one of its members, and the scalar otherwise. Handed over as it
      * came, `"crimson"` stayed a string where the type promised `Palette`.
@@ -2653,7 +2681,7 @@ trait RendersLaravelDto
         bool $insideRecursiveFold = false,
     ): array {
         if ($this->laravelIsAllOfDiscriminatorBase($className)) {
-            return $this->laravelAllOfDiscriminatorConstraints($className);
+            return $this->laravelAllOfDiscriminatorConstraints($className, $visitedClasses);
         }
 
         $definition = $this->dtoSchemas[$className] ?? [];
@@ -2715,19 +2743,26 @@ trait RendersLaravelDto
      * its members itself, in which case the rules already say so; past this point it reached the
      * hydrator's `match` and came out as a 500.
      *
+     * @param array<int, string> $visitedClasses
      * @return array<string, mixed>
      */
-    private function laravelAllOfDiscriminatorConstraints(string $className): array
+    private function laravelAllOfDiscriminatorConstraints(string $className, array $visitedClasses): array
     {
         $discriminator = $this->discriminatorSchemas[$className];
         $propertyName = $discriminator['propertyName'];
 
         $branches = [];
         foreach ($discriminator['mapping'] as $value => $variant) {
-            $variantSchema = $this->extractValidationConstraints($this->inlineNestedContainerValidation(
-                schema: $this->dtoSchemas[$variant] ?? [],
-                belowMaterialization: true,
-            ));
+            // Built from the variant's CLASS, not by inlining its definition: a variant declared in
+            // another file names its own neighbours relative to that file, and inlining resolved them
+            // against the root document — `'other.yml#/…'` landed on a different file of the same name.
+            $variantSchema = in_array($variant, $visitedClasses, true)
+                ? []
+                : $this->laravelInterpreterSchemaForClass(
+                    className: $variant,
+                    visitedClasses: [...$visitedClasses, $variant],
+                    insideRecursiveFold: true,
+                );
             if ($variantSchema === []) {
                 continue;
             }

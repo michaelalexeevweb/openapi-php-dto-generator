@@ -3,6 +3,19 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.87 — 2026-10-25
+
+- Laravel external refs resolve per file
+
+Laravel and laravel-data mode:
+
+- 2.15.86 spelled out `$ref` union branches and allOf variants for the schema checks by inlining
+  their definitions, and resolved every reference in them against the root document. A schema in
+  another directory names its neighbours relative to ITS file, so `'colours.json#/…'` landed on a
+  different file of the same name beside the root one, and generation stopped with "Referenced
+  schema not found". Both are now resolved by class, against the file that declares them.
+- an object `$ref` branch of a union is checked with its class's properties and `required`.
+
 ## 2.15.86 — 2026-10-25
 
 - Laravel allOf discriminator becomes interface

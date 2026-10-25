@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15418 lines
+# laravel-data mode — 80 files, 15810 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -11622,10 +11622,18 @@ use stdClass;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_pop;
 use function array_shift;
+use function array_unique;
+use function array_values;
 use function explode;
 use function get_object_vars;
+use function implode;
+use function in_array;
 use function is_array;
+use function is_bool;
+use function is_float;
+use function is_int;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -11665,6 +11673,69 @@ final class Test2 extends Data
                 ],
             ],
             'user' => [
+                'properties' => [
+                    'pet' => [
+                        'anyOf' => [
+                            [
+                                'type' => 'object',
+                                'properties' => [
+                                    'name' => [
+                                        'type' => 'string',
+                                    ],
+                                    'meow' => [
+                                        'type' => 'string',
+                                    ],
+                                ],
+                                'required' => [
+                                    'name',
+                                    'meow',
+                                ],
+                            ],
+                            [
+                                'type' => 'object',
+                                'properties' => [
+                                    'name' => [
+                                        'type' => 'string',
+                                    ],
+                                    'bark' => [
+                                        'type' => 'string',
+                                    ],
+                                ],
+                                'required' => [
+                                    'name',
+                                    'bark',
+                                ],
+                            ],
+                            [
+                                'type' => 'object',
+                                'properties' => [
+                                    'name' => [
+                                        'type' => 'string',
+                                    ],
+                                    'bark' => [
+                                        'type' => 'string',
+                                    ],
+                                ],
+                                'required' => [
+                                    'name',
+                                    'bark',
+                                ],
+                            ],
+                            [
+                                'type' => 'object',
+                                'required' => [
+                                    'test2',
+                                ],
+                                'properties' => [
+                                    'test2' => [
+                                        'type' => 'string',
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'nullable' => true,
+                    ],
+                ],
                 'required' => [
                     'id',
                     'name',
@@ -11948,13 +12019,38 @@ final class Test2 extends Data
         }
 
         $errors = [];
+        $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
 
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
                     $errors[] = sprintf('%s is required', self::openApiChildPath($path, $requiredProp));
                 }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                ];
             }
         }
 
@@ -11975,7 +12071,102 @@ final class Test2 extends Data
             }
         }
 
+        if (is_array($schema['anyOf'] ?? null)) {
+            $anyOfMatched = false;
+            $anyOfErrors = [];
+            foreach ($schema['anyOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                    continue;
+                }
+                $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
+                if ($errorsForBranch === []) {
+                    $anyOfMatched = true;
+                    break;
+                }
+
+                $anyOfErrors = [...$anyOfErrors, ...$errorsForBranch];
+            }
+
+            if (!$anyOfMatched) {
+                $errors = $anyOfErrors === []
+                    ? [...$errors, self::describeOpenApiUnionMismatch($path, 'anyOf', $schema['anyOf'], $value)]
+                    : [...$errors, ...array_values(array_unique($anyOfErrors))];
+            }
+        }
+
         return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+    }
+
+    /**
+     * Every branch was gated out by its declared type, so no branch has a reason to report. Naming the
+     * types the union does accept turns an unactionable sentence into one the caller can act on. Same
+     * wording as the runtime validator, so a payload reads the same whichever mode answered it.
+     *
+     * @param array<int, mixed> $branches
+     */
+    private static function describeOpenApiUnionMismatch(string $path, string $kind, array $branches, mixed $value): string
+    {
+        $types = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $declared = is_array($branch['type'] ?? null) ? $branch['type'] : [$branch['type'] ?? null];
+            foreach ($declared as $type) {
+                if (is_string($type) && $type !== '' && !in_array($type, $types, true)) {
+                    $types[] = $type;
+                }
+            }
+        }
+
+        if ($types === []) {
+            return sprintf('%s does not match any %s branch', $path, $kind);
+        }
+
+        $last = array_pop($types);
+        $expected = $types === [] ? $last : implode(', ', $types) . ' or ' . $last;
+
+        return sprintf(
+            '%s does not match any %s branch (expected %s, got %s)',
+            $path,
+            $kind,
+            $expected,
+            match (true) {
+                $value === null => 'null',
+                is_bool($value) => 'boolean',
+                is_int($value) => 'integer',
+                is_float($value) => 'number',
+                is_string($value) => 'string',
+                is_array($value) => array_is_list($value) ? 'array' : 'object',
+                default => 'object',
+            },
+        );
+    }
+
+    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -12866,10 +13057,6 @@ final class TreeNode extends Data
                                                             'oneOf' => [
                                                                 [
                                                                     'type' => 'object',
-                                                                    'required' => [
-                                                                        'label',
-                                                                        'children',
-                                                                    ],
                                                                     'properties' => [
                                                                         'label' => [
                                                                             'type' => 'string',
@@ -12877,45 +13064,11 @@ final class TreeNode extends Data
                                                                         ],
                                                                         'children' => [
                                                                             'type' => 'object',
-                                                                            'additionalProperties' => [
-                                                                                'oneOf' => [
-                                                                                    [
-                                                                                        'type' => 'object',
-                                                                                        'required' => [
-                                                                                            'label',
-                                                                                            'children',
-                                                                                        ],
-                                                                                        'properties' => [
-                                                                                            'label' => [
-                                                                                                'type' => 'string',
-                                                                                                'minLength' => 1,
-                                                                                            ],
-                                                                                            'children' => [
-                                                                                                'type' => 'object',
-                                                                                            ],
-                                                                                        ],
-                                                                                    ],
-                                                                                    [
-                                                                                        'type' => 'object',
-                                                                                        'additionalProperties' => [
-                                                                                            'type' => 'object',
-                                                                                            'required' => [
-                                                                                                'id',
-                                                                                                'name',
-                                                                                            ],
-                                                                                            'properties' => [
-                                                                                                'id' => [
-                                                                                                    'type' => 'integer',
-                                                                                                ],
-                                                                                                'name' => [
-                                                                                                    'type' => 'string',
-                                                                                                ],
-                                                                                            ],
-                                                                                        ],
-                                                                                    ],
-                                                                                ],
-                                                                            ],
                                                                         ],
+                                                                    ],
+                                                                    'required' => [
+                                                                        'label',
+                                                                        'children',
                                                                     ],
                                                                 ],
                                                                 [
@@ -13627,10 +13780,6 @@ final class UnionUnderContainer extends Data
                                                                     'oneOf' => [
                                                                         [
                                                                             'type' => 'object',
-                                                                            'required' => [
-                                                                                'label',
-                                                                                'children',
-                                                                            ],
                                                                             'properties' => [
                                                                                 'label' => [
                                                                                     'type' => 'string',
@@ -13638,45 +13787,11 @@ final class UnionUnderContainer extends Data
                                                                                 ],
                                                                                 'children' => [
                                                                                     'type' => 'object',
-                                                                                    'additionalProperties' => [
-                                                                                        'oneOf' => [
-                                                                                            [
-                                                                                                'type' => 'object',
-                                                                                                'required' => [
-                                                                                                    'label',
-                                                                                                    'children',
-                                                                                                ],
-                                                                                                'properties' => [
-                                                                                                    'label' => [
-                                                                                                        'type' => 'string',
-                                                                                                        'minLength' => 1,
-                                                                                                    ],
-                                                                                                    'children' => [
-                                                                                                        'type' => 'object',
-                                                                                                    ],
-                                                                                                ],
-                                                                                            ],
-                                                                                            [
-                                                                                                'type' => 'object',
-                                                                                                'additionalProperties' => [
-                                                                                                    'type' => 'object',
-                                                                                                    'required' => [
-                                                                                                        'id',
-                                                                                                        'name',
-                                                                                                    ],
-                                                                                                    'properties' => [
-                                                                                                        'id' => [
-                                                                                                            'type' => 'integer',
-                                                                                                        ],
-                                                                                                        'name' => [
-                                                                                                            'type' => 'string',
-                                                                                                        ],
-                                                                                                    ],
-                                                                                                ],
-                                                                                            ],
-                                                                                        ],
-                                                                                    ],
                                                                                 ],
+                                                                            ],
+                                                                            'required' => [
+                                                                                'label',
+                                                                                'children',
                                                                             ],
                                                                         ],
                                                                         [
@@ -14795,20 +14910,33 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
+use OverflowException;
 use Spatie\LaravelData\Attributes\WithCast;
 use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Casts\DateTimeInterfaceCast;
 use Spatie\LaravelData\Data;
 use stdClass;
 
+use function array_is_list;
+use function array_key_exists;
+use function array_pop;
 use function array_shift;
+use function array_unique;
+use function array_values;
 use function explode;
 use function get_object_vars;
+use function implode;
+use function in_array;
 use function is_array;
+use function is_bool;
+use function is_float;
+use function is_int;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function property_exists;
 use function sprintf;
+use function str_ends_with;
 use function trim;
 
 /**
@@ -14825,6 +14953,75 @@ use function trim;
  */
 final class User extends Data
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'fields' => [
+            'pet' => [
+                'anyOf' => [
+                    [
+                        'type' => 'object',
+                        'properties' => [
+                            'name' => [
+                                'type' => 'string',
+                            ],
+                            'meow' => [
+                                'type' => 'string',
+                            ],
+                        ],
+                        'required' => [
+                            'name',
+                            'meow',
+                        ],
+                    ],
+                    [
+                        'type' => 'object',
+                        'properties' => [
+                            'name' => [
+                                'type' => 'string',
+                            ],
+                            'bark' => [
+                                'type' => 'string',
+                            ],
+                        ],
+                        'required' => [
+                            'name',
+                            'bark',
+                        ],
+                    ],
+                    [
+                        'type' => 'object',
+                        'properties' => [
+                            'name' => [
+                                'type' => 'string',
+                            ],
+                            'bark' => [
+                                'type' => 'string',
+                            ],
+                        ],
+                        'required' => [
+                            'name',
+                            'bark',
+                        ],
+                    ],
+                    [
+                        'type' => 'object',
+                        'required' => [
+                            'test2',
+                        ],
+                        'properties' => [
+                            'test2' => [
+                                'type' => 'string',
+                            ],
+                        ],
+                    ],
+                ],
+                'nullable' => true,
+            ],
+        ],
+        'object' => [],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
     public function __construct(
         public readonly int $id,
         public readonly string $name,
@@ -14933,7 +15130,9 @@ final class User extends Data
     ];
 
     /**
-     * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
      * own `withValidator()` run, which is why every check above is flattened to a path from the root.
@@ -14946,6 +15145,19 @@ final class User extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            /** @var array<string, mixed> $payload */
+            $payload = $validator->getData();
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
+                if (!array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+                }
+            }
+
             $rawJson = self::rawRequestBody();
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -15027,6 +15239,186 @@ final class User extends Data
         }
 
         return self::rawNodesAt($node->{$segment}, $segments, $path === '' ? $segment : $path . '.' . $segment);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth > 0) {
+            return self::validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return self::validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', self::openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($schema['anyOf'] ?? null)) {
+            $anyOfMatched = false;
+            $anyOfErrors = [];
+            foreach ($schema['anyOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                    continue;
+                }
+                $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
+                if ($errorsForBranch === []) {
+                    $anyOfMatched = true;
+                    break;
+                }
+
+                $anyOfErrors = [...$anyOfErrors, ...$errorsForBranch];
+            }
+
+            if (!$anyOfMatched) {
+                $errors = $anyOfErrors === []
+                    ? [...$errors, self::describeOpenApiUnionMismatch($path, 'anyOf', $schema['anyOf'], $value)]
+                    : [...$errors, ...array_values(array_unique($anyOfErrors))];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    {
+        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+    }
+
+    /**
+     * Every branch was gated out by its declared type, so no branch has a reason to report. Naming the
+     * types the union does accept turns an unactionable sentence into one the caller can act on. Same
+     * wording as the runtime validator, so a payload reads the same whichever mode answered it.
+     *
+     * @param array<int, mixed> $branches
+     */
+    private static function describeOpenApiUnionMismatch(string $path, string $kind, array $branches, mixed $value): string
+    {
+        $types = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $declared = is_array($branch['type'] ?? null) ? $branch['type'] : [$branch['type'] ?? null];
+            foreach ($declared as $type) {
+                if (is_string($type) && $type !== '' && !in_array($type, $types, true)) {
+                    $types[] = $type;
+                }
+            }
+        }
+
+        if ($types === []) {
+            return sprintf('%s does not match any %s branch', $path, $kind);
+        }
+
+        $last = array_pop($types);
+        $expected = $types === [] ? $last : implode(', ', $types) . ' or ' . $last;
+
+        return sprintf(
+            '%s does not match any %s branch (expected %s, got %s)',
+            $path,
+            $kind,
+            $expected,
+            match (true) {
+                $value === null => 'null',
+                is_bool($value) => 'boolean',
+                is_int($value) => 'integer',
+                is_float($value) => 'number',
+                is_string($value) => 'string',
+                is_array($value) => array_is_list($value) ? 'array' : 'object',
+                default => 'object',
+            },
+        );
+    }
+
+    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            default => true,
+        };
+    }
+
+    private static function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Any other object: only its public state is visible, under PHP property names.
+        return get_object_vars($value);
+    }
+
+    private static function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
     }
 }
 
