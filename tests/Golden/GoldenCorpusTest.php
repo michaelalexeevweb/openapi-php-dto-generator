@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests\Golden;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
+use OpenapiPhpDtoGenerator\Command\Rendering\QualifiedNameImports;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -274,6 +275,29 @@ final class GoldenCorpusTest extends TestCase
         }
 
         self::assertSame([], $problems, sprintf('%s-mode corpus names global functions inconsistently.', $mode));
+    }
+
+    /**
+     * No class or global constant is spelled fully qualified in code: each is imported, as
+     * {@see QualifiedNameImports} does on every render path. A file used to import
+     * `Illuminate\Validation\Validator` and still write `\Illuminate\Validation\Validator` three times
+     * below it. Strings and docblocks are not code and are not read.
+     */
+    #[DataProvider('modeProvider')]
+    public function testNoClassOrConstantIsWrittenFullyQualified(string $mode): void
+    {
+        $this->generateCorpus($mode);
+
+        $problems = [];
+        foreach ($this->corpusFiles() as $relativePath => $absolutePath) {
+            foreach (token_get_all((string)file_get_contents($absolutePath)) as $token) {
+                if (is_array($token) && $token[0] === T_NAME_FULLY_QUALIFIED) {
+                    $problems[] = sprintf('%s:%d writes %s; import it instead', $relativePath, $token[2], $token[1]);
+                }
+            }
+        }
+
+        self::assertSame([], $problems, sprintf('%s-mode corpus spells a name fully qualified.', $mode));
     }
 
     /**

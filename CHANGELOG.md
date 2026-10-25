@@ -3,6 +3,27 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.80 — 2026-10-25
+
+- Qualified names become imports
+- Laravel blank-string rule undeprecated
+
+Every mode:
+
+- a class or global constant written fully qualified in the emitted code is imported instead:
+  `\LogicException`, `\OverflowException`, `\FILTER_VALIDATE_INT` and the rest become `use LogicException;`,
+  `use const FILTER_VALIDATE_INT;`. A Laravel DTO imported `Illuminate\Validation\Validator` and still
+  wrote `\Illuminate\Validation\Validator` three times below it. A short name the file already uses for
+  something else — a schema called `Validator`, say — is imported under an alias
+  (`use Illuminate\Validation\Validator as ValidationValidator;`), so a same-namespace class keeps its
+  meaning. Generated code only changes its spelling; what it does is the same.
+
+Laravel and laravel-data modes:
+
+- the blank-string rule implemented `Illuminate\Contracts\Validation\ImplicitRule`, deprecated in favour
+  of `ValidationRule`. It is now a `ValidationRule` with `$implicit = true`, which Laravel 11.1+ — this
+  mode's floor — runs for a blank string the same way. Same verdicts, same messages.
+
 ## 2.15.79 — 2026-10-25
 
 - Laravel dotted property names

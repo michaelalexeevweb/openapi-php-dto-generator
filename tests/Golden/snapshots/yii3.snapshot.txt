@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 31212 lines
+# yii3 mode — 80 files, 31431 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -125,6 +125,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -151,6 +152,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInterface, RulesProviderInterface
@@ -292,7 +295,7 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -329,7 +332,7 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -342,7 +345,7 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -479,6 +482,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -505,6 +509,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterface, RulesProviderInterface
@@ -646,7 +652,7 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -683,7 +689,7 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -696,7 +702,7 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -833,6 +839,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -859,6 +866,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTest2403 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -1000,7 +1009,7 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -1037,7 +1046,7 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -1050,7 +1059,7 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1187,6 +1196,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -1215,6 +1225,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -1368,7 +1380,7 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -1408,7 +1420,7 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -1421,7 +1433,7 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1558,6 +1570,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -1586,6 +1599,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -1750,7 +1765,7 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -1793,7 +1808,7 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -1806,7 +1821,7 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -1943,6 +1958,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -1969,6 +1985,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -2110,7 +2128,7 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -2147,7 +2165,7 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -2160,7 +2178,7 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2297,6 +2315,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -2334,6 +2353,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -2531,7 +2552,7 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -2577,7 +2598,7 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -2590,7 +2611,7 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2728,6 +2749,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -2765,6 +2787,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -2962,7 +2986,7 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -3008,7 +3032,7 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -3021,7 +3045,7 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3159,6 +3183,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -3196,6 +3221,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -3393,7 +3420,7 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -3439,7 +3466,7 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -3452,7 +3479,7 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3590,6 +3617,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -3627,6 +3655,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -3824,7 +3854,7 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -3870,7 +3900,7 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -3883,7 +3913,7 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4021,6 +4051,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -4050,6 +4081,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -4194,7 +4227,7 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -4231,7 +4264,7 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -4244,7 +4277,7 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4381,6 +4414,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -4410,6 +4444,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -4554,7 +4590,7 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -4591,7 +4627,7 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -4604,7 +4640,7 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4741,6 +4777,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use Psr\Http\Message\UploadedFileInterface;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
@@ -4768,6 +4805,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -4907,7 +4946,7 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -4944,7 +4983,7 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -4957,7 +4996,7 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5067,6 +5106,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -5093,6 +5133,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -5234,7 +5276,7 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -5271,7 +5313,7 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -5284,7 +5326,7 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5421,6 +5463,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -5447,6 +5490,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -5588,7 +5633,7 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -5625,7 +5670,7 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -5638,7 +5683,7 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5775,6 +5820,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -5801,6 +5847,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -5942,7 +5990,7 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -5979,7 +6027,7 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -5992,7 +6040,7 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6129,6 +6177,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -6156,6 +6205,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -6298,7 +6349,7 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -6335,7 +6386,7 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -6348,7 +6399,7 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6485,6 +6536,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -6511,6 +6563,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -6652,7 +6706,7 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -6689,7 +6743,7 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -6702,7 +6756,7 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6839,6 +6893,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromQuery;
@@ -6868,6 +6923,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromQuery]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -7017,7 +7074,7 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -7054,7 +7111,7 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -7067,7 +7124,7 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7205,6 +7262,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -7232,6 +7290,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -7374,7 +7434,7 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -7411,7 +7471,7 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -7424,7 +7484,7 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7561,6 +7621,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -7587,6 +7648,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestRepresentations200 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -7728,7 +7791,7 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -7765,7 +7828,7 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -7778,7 +7841,7 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7915,6 +7978,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -7941,6 +8005,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestRepresentations200Csv extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -8082,7 +8148,7 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -8119,7 +8185,7 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -8132,7 +8198,7 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8269,6 +8335,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -8296,6 +8363,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -8438,7 +8507,7 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -8475,7 +8544,7 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -8488,7 +8557,7 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8625,6 +8694,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -8652,6 +8722,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -8794,7 +8866,7 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -8831,7 +8903,7 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -8844,7 +8916,7 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8981,6 +9053,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -9008,6 +9081,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -9150,7 +9225,7 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -9187,7 +9262,7 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -9200,7 +9275,7 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -9337,6 +9412,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -9369,6 +9445,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -9536,7 +9614,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -9576,7 +9654,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -9589,7 +9667,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -9752,6 +9830,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Input\Http\AbstractInput;
@@ -9791,6 +9870,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -10159,7 +10240,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -10226,7 +10307,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -10239,7 +10320,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10488,6 +10569,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Input\Http\AbstractInput;
@@ -10515,6 +10597,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -10672,7 +10756,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -10709,7 +10793,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -10722,7 +10806,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10869,6 +10953,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromQuery;
@@ -10897,6 +10982,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromQuery]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -11046,7 +11133,7 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -11083,7 +11170,7 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -11096,7 +11183,7 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -11234,6 +11321,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -11264,6 +11352,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -11445,7 +11535,7 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -11488,7 +11578,7 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -11501,7 +11591,7 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -11639,6 +11729,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -11675,6 +11766,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -11875,7 +11968,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -11921,7 +12014,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -11934,7 +12027,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -12074,6 +12167,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -12109,6 +12203,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApplicatorRefs extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -12592,7 +12688,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -12668,7 +12764,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -12681,7 +12777,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -13047,6 +13143,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -13077,6 +13174,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApplicatorRefsConditional extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -13240,7 +13339,7 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -13277,7 +13376,7 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -13290,7 +13389,7 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -13480,6 +13579,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -13510,6 +13610,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -13670,7 +13772,7 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -13707,7 +13809,7 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -13720,7 +13822,7 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -13901,6 +14003,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -13927,6 +14030,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -14078,7 +14183,7 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -14115,7 +14220,7 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -14128,7 +14233,7 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -14296,6 +14401,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Input\Http\AbstractInput;
@@ -14330,6 +14436,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class AwkwardNames extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -14523,7 +14631,7 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -14569,7 +14677,7 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -14582,7 +14690,7 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -14721,6 +14829,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -14748,6 +14857,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -14890,7 +15001,7 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -14927,7 +15038,7 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -14940,7 +15051,7 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -15077,6 +15188,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -15104,6 +15216,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -15246,7 +15360,7 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -15283,7 +15397,7 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -15296,7 +15410,7 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -15433,6 +15547,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -15459,6 +15574,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface
@@ -15611,7 +15728,7 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -15651,7 +15768,7 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -15664,7 +15781,7 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -15801,6 +15918,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
 use Yiisoft\Input\Http\AbstractInput;
@@ -15832,6 +15950,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ChainLink extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -15995,7 +16115,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -16035,7 +16155,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -16048,7 +16168,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -16188,6 +16308,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
 use Yiisoft\Input\Http\AbstractInput;
@@ -16217,6 +16338,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ChainMiddle extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -16363,7 +16486,7 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -16400,7 +16523,7 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -16413,7 +16536,7 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -16553,6 +16676,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -16580,6 +16704,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ChainTag extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -16722,7 +16848,7 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -16759,7 +16885,7 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -16772,7 +16898,7 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -16909,6 +17035,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -16936,6 +17063,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Circle extends AbstractInput implements Shape, DataSetInterface, RulesProviderInterface
@@ -17088,7 +17217,7 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -17128,7 +17257,7 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -17141,7 +17270,7 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -17278,6 +17407,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -17310,6 +17440,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ContainerAliases extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -17536,7 +17668,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -17582,7 +17714,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -17595,7 +17727,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -17841,6 +17973,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
 use Yiisoft\Input\Http\AbstractInput;
@@ -17872,6 +18005,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Containers extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -18113,7 +18248,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -18162,7 +18297,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -18175,7 +18310,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -18427,6 +18562,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -18456,6 +18592,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class CountMap extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -18586,7 +18724,7 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -18620,7 +18758,7 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -18633,7 +18771,7 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -18807,6 +18945,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -18835,6 +18974,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Discriminator extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -18990,7 +19131,7 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -19030,7 +19171,7 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -19043,7 +19184,7 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -19215,6 +19356,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -19244,6 +19386,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Discriminator1 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -19410,7 +19554,7 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -19453,7 +19597,7 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -19466,7 +19610,7 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -19638,6 +19782,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Input\Http\AbstractInput;
@@ -19668,6 +19813,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Discriminator2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -19846,7 +19993,7 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -19892,7 +20039,7 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -19905,7 +20052,7 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -20096,6 +20243,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -20122,6 +20270,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface
@@ -20274,7 +20424,7 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -20314,7 +20464,7 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -20327,7 +20477,7 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -20464,6 +20614,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -20490,6 +20641,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, RulesProviderInterface
@@ -20642,7 +20795,7 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -20682,7 +20835,7 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -20695,7 +20848,7 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -20832,6 +20985,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use Psr\Http\Message\UploadedFileInterface;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
@@ -20861,6 +21015,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -21024,7 +21180,7 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -21067,7 +21223,7 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -21080,7 +21236,7 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -21217,6 +21373,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -21254,6 +21411,8 @@ use function str_starts_with;
 use function strlen;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ItemBounds extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -21449,7 +21608,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -21492,7 +21651,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -21505,7 +21664,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -21834,6 +21993,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -21872,6 +22032,8 @@ use function str_starts_with;
 use function strpos;
 use function substr;
 use function var_export;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class NestedContainers extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -22210,7 +22372,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -22268,7 +22430,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -22281,7 +22443,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -22599,6 +22761,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -22631,6 +22794,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class NullableContainerValues extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -22850,7 +23015,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -22896,7 +23061,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -22909,7 +23074,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -23154,6 +23319,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -23185,6 +23351,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ObjectWideRules extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -23386,7 +23554,7 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -23429,7 +23597,7 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -23442,7 +23610,7 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -23691,6 +23859,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -23717,6 +23886,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Pet extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -23858,7 +24029,7 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -23895,7 +24066,7 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -23908,7 +24079,7 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -24046,6 +24217,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Input\Http\AbstractInput;
@@ -24079,6 +24251,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class ReadOnlyFields extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -24291,7 +24465,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -24337,7 +24511,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -24350,7 +24524,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -24506,6 +24680,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -24532,6 +24707,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class RetiredShape extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -24673,7 +24850,7 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -24710,7 +24887,7 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -24723,7 +24900,7 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -24880,6 +25057,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -24907,6 +25085,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Square extends AbstractInput implements Shape, DataSetInterface, RulesProviderInterface
@@ -25059,7 +25239,7 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -25099,7 +25279,7 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -25112,7 +25292,7 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -25249,6 +25429,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -25276,6 +25457,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Tag extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -25428,7 +25611,7 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -25468,7 +25651,7 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -25481,7 +25664,7 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -25618,6 +25801,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -25644,6 +25828,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Test extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -25785,7 +25971,7 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -25822,7 +26008,7 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -25835,7 +26021,7 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -25972,6 +26158,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
 use Yiisoft\Input\Http\AbstractInput;
@@ -26003,6 +26190,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Test2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -26221,7 +26410,7 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -26273,7 +26462,7 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -26286,7 +26475,7 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -26469,6 +26658,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -26495,6 +26685,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Test2UserType extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -26641,7 +26833,7 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -26678,7 +26870,7 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -26691,7 +26883,7 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -26821,6 +27013,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -26849,6 +27042,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -27013,7 +27208,7 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -27056,7 +27251,7 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -27069,7 +27264,7 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -27206,6 +27401,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -27253,6 +27449,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -27466,7 +27664,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -27515,7 +27713,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -27528,7 +27726,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -27884,6 +28082,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -27926,6 +28125,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class TreeNode extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -28158,7 +28359,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -28198,7 +28399,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -28211,7 +28412,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -28567,6 +28768,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -28608,6 +28810,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class UnionUnderContainer extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -28906,7 +29110,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -28952,7 +29156,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -28965,7 +29169,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -29333,6 +29537,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -29368,6 +29573,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class UniqueScalars extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -29516,7 +29723,7 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -29553,7 +29760,7 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -29566,7 +29773,7 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -29840,6 +30047,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Input\Http\AbstractInput;
@@ -29870,6 +30078,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class User extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -30062,7 +30272,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -30108,7 +30318,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -30121,7 +30331,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -30277,6 +30487,7 @@ namespace GoldenCorpus;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Input\Http\AbstractInput;
@@ -30307,6 +30518,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class User2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -30496,7 +30709,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -30542,7 +30755,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -30555,7 +30768,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -30710,6 +30923,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
@@ -30736,6 +30950,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
 final class User2Pet extends AbstractInput implements DataSetInterface, RulesProviderInterface
@@ -30911,7 +31127,7 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -30957,7 +31173,7 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -30970,7 +31186,7 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -31107,6 +31323,7 @@ namespace GoldenCorpus;
 
 use BackedEnum;
 use DateTimeInterface;
+use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
@@ -31134,6 +31351,8 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const PREG_SPLIT_NO_EMPTY;
 
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
@@ -31276,7 +31495,7 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
                 str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
                     static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, \PREG_SPLIT_NO_EMPTY) ?: [],
+                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -31313,7 +31532,7 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -31326,7 +31545,7 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];

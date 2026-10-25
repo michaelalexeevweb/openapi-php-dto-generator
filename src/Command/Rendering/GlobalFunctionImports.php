@@ -152,9 +152,10 @@ final class GlobalFunctionImports
         // template had written under its class imports. Without it the group ran straight into the
         // class docblock — `Header blocks must be separated by a single blank line`, on every Laravel
         // file that imported a function. Measured with PSR-12 over the emitted corpus; nothing else
-        // reads the style of the code this generator writes.
+        // reads the style of the code this generator writes. A `use const` group stays below it, which is
+        // the order php-cs-fixer keeps: classes, functions, constants.
         return (string)preg_replace_callback(
-            '/^(namespace [^;]+;\n\n)((?:use [^;]+;\n)*)\n*/m',
+            '/^(namespace [^;]+;\n\n)((?:use (?!const )[^;]+;\n)*)\n*/m',
             static fn(array $match): string => $match[1]
                 . ($match[2] === '' ? '' : $match[2] . "\n")
                 . $group

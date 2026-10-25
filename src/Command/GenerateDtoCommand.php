@@ -9,6 +9,7 @@ use Exception;
 use JsonException;
 use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
 use OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses;
+use OpenapiPhpDtoGenerator\Command\Rendering\QualifiedNameImports;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDataDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
@@ -6171,7 +6172,9 @@ final class GenerateDtoCommand extends Command
     {
         $content = $this->renderTwig($templateName, $context);
 
-        return GlobalFunctionImports::apply(self::normalizeEmittedBlankLines(rtrim($content) . "\n"));
+        return GlobalFunctionImports::apply(
+            QualifiedNameImports::apply(self::normalizeEmittedBlankLines(rtrim($content) . "\n")),
+        );
     }
 
     /**

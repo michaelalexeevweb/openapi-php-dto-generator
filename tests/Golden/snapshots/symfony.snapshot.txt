@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12673 lines
+# symfony mode — 77 files, 12692 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1388,6 +1388,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeInterface;
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -1415,6 +1416,9 @@ use function str_ends_with;
 use function str_starts_with;
 use function strpos;
 use function substr;
+
+use const FILTER_NULL_ON_FAILURE;
+use const FILTER_VALIDATE_INT;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -1884,7 +1888,7 @@ final class ApiTestSerializationGetQueryParams
     {
         return array_map(
             static fn (mixed $item): mixed => is_string($item)
-                ? filter_var($item, \FILTER_VALIDATE_INT, \FILTER_NULL_ON_FAILURE) ?? $item
+                ? filter_var($item, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $item
                 : $item,
             $items,
         );
@@ -1962,7 +1966,7 @@ final class ApiTestSerializationGetQueryParams
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -1975,7 +1979,7 @@ final class ApiTestSerializationGetQueryParams
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -2606,6 +2610,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -3318,7 +3323,7 @@ final class ApplicatorRefs
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -3331,7 +3336,7 @@ final class ApplicatorRefs
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -3692,6 +3697,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -3857,7 +3863,7 @@ final class ApplicatorRefsConditional
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -3870,7 +3876,7 @@ final class ApplicatorRefsConditional
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4058,6 +4064,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -4220,7 +4227,7 @@ final class ApplicatorRefsKeyed
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -4233,7 +4240,7 @@ final class ApplicatorRefsKeyed
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -4412,6 +4419,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -4561,7 +4569,7 @@ final class ApplicatorRefsPoisonedKey
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -4574,7 +4582,7 @@ final class ApplicatorRefsPoisonedKey
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5183,6 +5191,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -5489,7 +5498,7 @@ final class ContainerAliases
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -5502,7 +5511,7 @@ final class ContainerAliases
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -5739,6 +5748,7 @@ namespace GoldenCorpus;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -6093,7 +6103,7 @@ final class Containers
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -6106,7 +6116,7 @@ final class Containers
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -6361,6 +6371,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -6455,7 +6466,7 @@ final class CountMap
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -6468,7 +6479,7 @@ final class CountMap
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7004,6 +7015,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -7257,7 +7269,7 @@ final class ItemBounds
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -7270,7 +7282,7 @@ final class ItemBounds
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -7585,6 +7597,7 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use DateTimeImmutable;
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -8100,7 +8113,7 @@ final class NestedContainers
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -8113,7 +8126,7 @@ final class NestedContainers
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8429,6 +8442,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -8728,7 +8742,7 @@ final class NullableContainerValues
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -8741,7 +8755,7 @@ final class NullableContainerValues
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -8972,6 +8986,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -9189,7 +9204,7 @@ final class ObjectWideRules
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -9202,7 +9217,7 @@ final class ObjectWideRules
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10201,6 +10216,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -10456,7 +10472,7 @@ final class TestPostRequest
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -10469,7 +10485,7 @@ final class TestPostRequest
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -10815,6 +10831,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -11062,7 +11079,7 @@ final class TreeNode
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -11075,7 +11092,7 @@ final class TreeNode
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -11429,6 +11446,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
@@ -11783,7 +11801,7 @@ final class UnionUnderContainer
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -11796,7 +11814,7 @@ final class UnionUnderContainer
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];
@@ -12162,6 +12180,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -12295,7 +12314,7 @@ final class UniqueScalars
         }
         try {
             return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (\OverflowException $error) {
+        } catch (OverflowException $error) {
             return [$error->getMessage()];
         }
     }
@@ -12308,7 +12327,7 @@ final class UniqueScalars
     {
         // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
         if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new \OverflowException($path . ' exceeds maximum validation depth.');
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
         $errors = [];

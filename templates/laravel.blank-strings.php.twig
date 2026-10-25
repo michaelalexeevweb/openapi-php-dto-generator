@@ -7,10 +7,11 @@
      */
     private static function withBlankStringValidation(array $rules): array
     {
-        $rules[] = new class($rules) implements \Illuminate\Contracts\Validation\ImplicitRule, \Illuminate\Contracts\Validation\ValidatorAwareRule {
+        $rules[] = new class($rules) implements \Illuminate\Contracts\Validation\ValidationRule, \Illuminate\Contracts\Validation\ValidatorAwareRule {
+            /** Runs for a blank string too, which Laravel skips for an ordinary rule. */
+            public bool $implicit = true;
+
             private ?\Illuminate\Validation\Validator $validator = null;
-            /** @var array<int, string> */
-            private array $messages = [];
 
             /** @param array<int, mixed> $rules */
             public function __construct(private readonly array $rules)
@@ -24,14 +25,10 @@
                 return $this;
             }
 
-            /**
-             * @param string $attribute
-             * @param mixed $value
-             */
-            public function passes($attribute, $value): bool
+            public function validate(string $attribute, mixed $value, \Closure $fail): void
             {
                 if (!is_string($value) || trim($value) !== '') {
-                    return true;
+                    return;
                 }
                 if ($this->validator === null) {
                     throw new \LogicException('The blank-string rule requires a validator.');
@@ -53,16 +50,12 @@
                         return $this->validatePresent($attribute, $value) || $this->isImplicit($rule);
                     }
                 };
-                $valid = $validator->passes();
-                $this->messages = $validator->errors()->all();
-
-                return $valid;
-            }
-
-            /** @return array<int, string> */
-            public function message(): array
-            {
-                return $this->messages;
+                if ($validator->passes()) {
+                    return;
+                }
+                foreach ($validator->errors()->all() as $message) {
+                    $fail($message);
+                }
             }
 
             public function __toString(): string
