@@ -395,10 +395,10 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
-            // A `default` is what the SERVER may assume, not something the wire said. The three modes
-            // that track presence report the key as absent and leave the default to the application;
-            // Symfony fills the property from the constructor default and cannot tell the two apart —
-            // the same limitation as every other optional property there, reached from a new direction.
+            // A `default` is what the SERVER may assume, not something the wire said. Runtime, Laravel
+            // and yii3 report the key as absent while the getter answers the default; Symfony and
+            // laravel-data fill the property from the constructor default and write it — Symfony for want
+            // of presence tracking, laravel-data because the default replaces its `Optional`.
             'optional property with a default, absent' => [
                 'schema' => self::object(
                     ['id' => ['type' => 'integer'], 'limit' => ['type' => 'integer', 'default' => 25]],
@@ -410,6 +410,15 @@ final class NormalizationParityTest extends TestCase
                 'reason' => 'the constructor default IS the Symfony DTO\'s value for an absent key, so a '
                     . 'schema default is indistinguishable from one the client sent — the response '
                     . 'direction of the same missing presence tracking',
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['id' => 1, 'limit' => 25],
+                        'reason' => 'the schema default is the constructor default, which laravel-data takes for '
+                            . 'an absent key, so the property holds 25 rather than `Optional` — what the '
+                            . 'application reads is the default, as in the other modes, and `toArray()` '
+                            . 'writes the value it holds, as Symfony mode does.',
+                    ],
+                ],
             ],
             // A `format: date` default is the one default that cannot be written as a constant
             // expression: the property is a DateTimeImmutable, and naming an enum case on it emitted
@@ -427,6 +436,13 @@ final class NormalizationParityTest extends TestCase
                 'reason' => 'the same absent-with-a-default difference as the integer case above: the '
                     . 'default IS the Symfony DTO\'s value, and it has no presence tracking to tell '
                     . 'that apart from a date the client sent',
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['id' => 1, 'on' => '2020-01-01'],
+                        'reason' => 'the same as the integer case above: the default is the value laravel-data '
+                            . 'holds for an absent key.',
+                    ],
+                ],
             ],
             'free-form object' => [
                 'schema' => self::object(['any' => ['type' => 'object']], ['any']),

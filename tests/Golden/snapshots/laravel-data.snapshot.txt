@@ -390,7 +390,7 @@ use function trim;
 final class ApiTest2403 extends Data
 {
     public function __construct(
-        public readonly string $message,
+        public readonly string $message = 'Access Denied.',
     ) {
     }
 
@@ -406,7 +406,7 @@ final class ApiTest2403 extends Data
     public static function rules(): array
     {
         return [
-            'message' => self::withBlankStringValidation(['present', 'string']),
+            'message' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
 
@@ -768,7 +768,7 @@ use function trim;
 final class ApiTest403 extends Data
 {
     public function __construct(
-        public readonly string $message,
+        public readonly string $message = 'Access Denied.',
     ) {
     }
 
@@ -784,7 +784,7 @@ final class ApiTest403 extends Data
     public static function rules(): array
     {
         return [
-            'message' => self::withBlankStringValidation(['present', 'string']),
+            'message' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
 
@@ -11713,12 +11713,12 @@ final class Test2 extends Data
      * @param array<Tag> $tags
      */
     public function __construct(
-        public readonly int $id,
         public readonly string $name,
         #[WithoutValidation]
         #[DataCollectionOf(Tag::class)]
         public readonly array $tags,
         public readonly Test2Types $types,
+        public readonly int $id = 1,
         #[WithoutValidation]
         public readonly User|Optional $user = new Optional(),
         #[WithoutValidation]
@@ -11738,7 +11738,7 @@ final class Test2 extends Data
     public static function rules(): array
     {
         return [
-            'id' => self::withBlankStringValidation(['present', 'integer']),
+            'id' => self::withBlankStringValidation(['sometimes', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'tags' => self::withBlankStringValidation(['present', 'list']),
             'tags.*' => self::withBlankStringValidation(['array']),

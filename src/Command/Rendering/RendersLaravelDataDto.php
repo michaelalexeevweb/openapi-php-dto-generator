@@ -505,15 +505,27 @@ trait RendersLaravelDataDto
         // mode spells `UnsetValue`.
         $requiredOnInput = $this->propertyIsRequiredOnInput($property);
 
+        // A schema default is the constructor's default, and laravel-data takes that for an absent key —
+        // as runtime, Symfony and Laravel mode do. The property then always holds a value, so it is not
+        // `Optional`: absent was reported as `Optional` and the default had to be applied by hand.
+        $schemaDefault = null;
+        $default = $property['default'] ?? null;
+        if (!$requiredOnInput && $default !== null && $phpType !== self::LARAVEL_DATA_UNTYPED) {
+            $plainType = $this->laravelDataDeclaredType($phpType, required: true, nullable: $nullable)[0];
+            $literal = $this->renderDefaultValue($default, ltrim($phpType, '?'), $plainType);
+            $schemaDefault = $literal === '' ? null : substr($literal, strlen(' = '));
+        }
+        $typedAsRequired = $requiredOnInput || $schemaDefault !== null;
+
         // Resolved before the type is composed: `Optional` is spelled INTO the union, so a document with
         // a schema of that name has to get the fully qualified spelling in the type itself.
-        $optionalRef = $requiredOnInput
+        $optionalRef = $typedAsRequired
             ? 'Optional'
             : $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $attributeImports);
 
         [$declaredType, $tracksPresence] = $this->laravelDataDeclaredType(
             phpType: $phpType,
-            required: $requiredOnInput,
+            required: $typedAsRequired,
             nullable: $nullable,
             optionalRef: $optionalRef,
         );
@@ -522,7 +534,7 @@ trait RendersLaravelDataDto
             'declaredType' => $declaredType,
             'docType' => $docType === null
                 ? null
-                : $this->laravelDataDeclaredType($docType, $requiredOnInput, $nullable, $optionalRef)[0],
+                : $this->laravelDataDeclaredType($docType, $typedAsRequired, $nullable, $optionalRef)[0],
             'name' => $property['name'],
             'required' => $requiredOnInput,
             'openApiName' => $property['openApiName'],
@@ -536,6 +548,7 @@ trait RendersLaravelDataDto
             // An untyped one has no `Optional` member; laravel-data hands it `null` when absent, so that is
             // its default — and it keeps a defaulted argument from preceding one without a default.
             'defaultExpression' => match (true) {
+                $schemaDefault !== null => $schemaDefault,
                 $tracksPresence => sprintf('new %s()', $optionalRef),
                 !$requiredOnInput => 'null',
                 default => null,

@@ -3,6 +3,27 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.94 — 2026-10-26
+
+- laravel-data schema defaults applied
+- laravel-data required default takes default
+- docs on dotted property names
+
+laravel-data mode:
+
+- a property with a schema `default` was `Optional` when absent, and the default had to be applied by
+  hand. Its argument defaults to the value (`int $limit = 25`), which laravel-data takes for an absent
+  key, so the property holds it, as the other modes' getters answer it; `toArray()` writes it.
+- a `required` property with a `default` demanded the key (`present`). The default wins, as in runtime,
+  Symfony and Laravel mode: `sometimes`, and the default when absent. The generation warning now names
+  yii3 alone as requiring it.
+
+Docs:
+
+- README.md said Laravel mode rejects a property name with `.`; it escapes the dot and rejects only `*`.
+  laravel-data, which rejects both, says so under its divergences with the error and the two ways out,
+  and the support matrix has the row.
+
 ## 2.15.93 — 2026-10-26
 
 - laravel-data allOf base is morph base

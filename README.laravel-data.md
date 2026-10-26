@@ -92,6 +92,13 @@ An optional argument defaults to `new Optional()`, so code that builds a DTO —
 what it has: `new UserResponse(firstName: 'Ada')` leaves the rest absent, exactly as a payload without
 those keys does. Before 2.15.93 every optional argument had to be spelled out.
 
+A property with a schema `default` is the exception: its argument defaults to that value
+(`int $limit = 25`), and laravel-data takes it for an absent key, so the property holds the default
+rather than `Optional` — what the other modes' getters answer. Its type has no `Optional`, and
+`toArray()` writes it. A property both `required` and with a `default` is the same: the key may be left
+out (`sometimes`), as in runtime, Symfony and Laravel mode. Before 2.15.94 the default was ignored, and
+a `required` one demanded the key.
+
 A `readOnly` property listed under `required` is `Optional` too, for the same reason: OpenAPI puts that
 requirement on the response alone, so a request may omit it. Until 2.15.36 it was emitted as plainly
 required, and the generated `rules()` said `['present', 'integer']` — a rule asking the client to send
@@ -230,6 +237,21 @@ $params = WidgetHeaderParams::from($request);
 
 ## Divergences from the other modes
 
+### A property name with a dot does not generate
+
+```
+"priority.comment": { "type": "string" }
+→ [ERROR] Laravel validation cannot safely represent property name "priority.comment"
+```
+
+The whole document fails, before any output is replaced. Laravel's validator reads `.` in a rule key
+as a step into a nested array, and laravel-data's `#[MapName('priority.comment')]` reads it the same way
+— there is no attribute that makes it a literal key. Laravel mode can: it escapes the dot in its own
+rules (`priority\.comment`). So either rename the property in the document (`priorityComment`), or
+generate that document in Laravel mode. `*` is refused the same way, in both Laravel modes.
+
+### The rest
+
 All measured and pinned; the full table with reasons is in
 [README.support-matrix.md](README.support-matrix.md#divergences). In short, laravel-data:
 
@@ -271,10 +293,8 @@ Generated rules validate present blank strings against the same native rules as 
 unconstrained string can still be empty; a positive minLength, pattern, format or incompatible type
 rejects it. Optional absence and schema-declared nullability remain separate from an empty string.
 
-Property names containing `.` or `*` are rejected during generation because Laravel treats them
-as path/wildcard syntax — laravel-data reads `#[MapName('a.b')]` as a nested path too, so there is no
-attribute to say otherwise. Rename such wire properties or generate that document in Laravel mode, which
-escapes the dot in its rules. Generation fails before replacing existing output.
+Property names containing `.` or `*` are rejected during generation — see
+[A property name with a dot does not generate](#a-property-name-with-a-dot-does-not-generate).
 
 ### Coming from Laravel mode
 

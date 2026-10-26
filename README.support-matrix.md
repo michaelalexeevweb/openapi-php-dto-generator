@@ -277,7 +277,8 @@ validator: it is already the value it claims to be, and casting it would only re
 | Uploaded files (`format: binary`) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Validated before the controller body runs | you call the deserializer | ✅ `#[MapRequestPayload]` | ✅ the FormRequest is resolved first | ✅ the container resolves `Data::from($request)` | ✅ hydrated and validated; the action reads the verdict |
 | Framework-native error envelope | aggregated exception | `ConstraintViolationList` → 422 | the framework's own 422 + error bag | the framework's own 422 + error bag | a `Result` you turn into a response |
-| Request binding: parameter sources (`path`/`query`/`header`/`cookie`) | ✅ | ➖ query through `#[MapQueryString]`; path through `--symfony-path-params` and a resolver of yours | ❌ | ❌ | ➖ body/query/path only |
+| Request binding: parameter sources (`path`/`query`/`header`/`cookie`) | ✅ | ➖ query through `#[MapQueryString]`; path through `--symfony-path-params` and a resolver of yours | ❌ | ➖ query; path through `#[FromRouteParameter]` | ➖ body/query/path only |
+| A property name containing `.` (`"invoice.note"`) | ✅ | ✅ | ✅ escaped as `invoice\.note` in the rules | ❌ generation fails — `#[MapName]` reads the dot as a path | ✅ |
 | Request binding: `style` / `explode` / `allowReserved` / `allowEmptyValue` | ✅ | ➖ a query list's `style` and `explode`; not a repeated key | ❌ | ❌ | ❌ |
 | Request binding: multipart `encoding` | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Runtime dependency of the generated code | this package (or a vendored copy) | `symfony/validator` + `symfony/serializer` | none — ships with the framework | `spatie/laravel-data` | `yiisoft/input-http` + `yiisoft/validator` |

@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.93
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.94
 ```
 
 ---
@@ -259,9 +259,10 @@ holds one of them:
 Punctuation and casing ARE handled — `kebab-case`, `dot.name`, `UPPER`, `123numeric`, `with space`,
 `$dollar` and PHP's own reserved words all become clean identifiers with an alias back to the original.
 
-Laravel and laravel-data currently reject property names containing `.` or `*` at generation
-time: Laravel interprets these as validation-path syntax. Other modes retain their existing naming
-support. This prevents a literal property from being validated through a different nested key.
+Laravel's validator reads `.` and `*` in a key as path syntax. Laravel mode escapes a dot (`invoice\.note`)
+and validates the literal key, and rejects only `*`. laravel-data rejects both at generation time — its
+`#[MapName('a.b')]` is a nested path too — so a document with `"invoice.note"` does not generate there:
+rename the property or use Laravel mode for that document. Other modes keep such names as they are.
 
 ## Upgrading
 

@@ -161,6 +161,37 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * A schema default is the constructor's default, which laravel-data takes for an absent key: the
+     * property holds it, as the other modes' getters answer it — it was `Optional`, and a `required` one
+     * with a default demanded the key, where runtime, Symfony and Laravel mode take the default.
+     */
+    public function testAnAbsentKeyTakesItsSchemaDefault(): void
+    {
+        $namespace = $this->generate(['Page' => [
+            'type' => 'object',
+            'required' => ['perPage'],
+            'properties' => [
+                'perPage' => ['type' => 'integer', 'default' => 50],
+                'sort' => ['type' => 'string', 'enum' => ['asc', 'desc'], 'default' => 'desc'],
+                'cursor' => ['type' => 'string'],
+            ],
+        ]]);
+        /** @var class-string $page */
+        $page = $namespace . '\Page';
+
+        $built = LaravelDataContainer::withRequest('{}', static fn(Request $request): object => $page::from($request));
+
+        $this->assertSame(50, $built->perPage);
+        $this->assertSame('desc', $built->sort->value);
+        $this->assertInstanceOf(Optional::class, $built->cursor);
+        $this->assertSame(['perPage' => 50, 'sort' => 'desc'], $built->toArray());
+        $this->assertSame(7, LaravelDataContainer::withRequest(
+            '{"perPage":7}',
+            static fn(Request $request): object => $page::from($request),
+        )->perPage);
+    }
+
+    /**
      * @param array<string, mixed> $schemas
      * @param array<string, mixed> $paths
      */
