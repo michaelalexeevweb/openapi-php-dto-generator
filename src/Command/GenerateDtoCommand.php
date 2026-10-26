@@ -1736,6 +1736,7 @@ final class GenerateDtoCommand extends Command
         }
         $this->warnAboutPcreOnlyEscapes($schemaDefinition, $className);
         $this->warnAboutRequiredNamesWithoutProperty($schemaDefinition, $className);
+        $this->warnAboutRequiredPropertiesWithDefault($schemaDefinition, $className);
 
         // Registries are keyed by generated class name. A different document is not the same
         // schema, even when its definition happens to look identical or its namespace is mapped.
@@ -3189,6 +3190,13 @@ final class GenerateDtoCommand extends Command
      */
     private function propertyIsRequiredOnInput(array $property): bool
     {
+        // Laravel mode: a required property with a schema default takes the default when the key is
+        // absent, as runtime and Symfony mode do — `present` refused a body without `perPage` there and
+        // nowhere else. The generation warning names the schema.
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && ($property['default'] ?? null) !== null) {
+            return false;
+        }
+
         return $property['required'] === true && ($property['readOnly'] ?? false) !== true;
     }
 
@@ -9069,6 +9077,35 @@ final class GenerateDtoCommand extends Command
      * pattern would be refused or read differently by a JavaScript validator.
      */
     private const string PCRE_ONLY_ESCAPES = 'hHVRNKAzZGXCQEeago';
+
+    /**
+     * A `required` property that also declares a `default`. OpenAPI applies a default only to an
+     * ABSENT key, which `required` forbids, so the two contradict each other — and the modes settle it
+     * differently. Said here, so the document can be fixed.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function warnAboutRequiredPropertiesWithDefault(array $schema, string $className): void
+    {
+        $properties = $schema['properties'] ?? null;
+        $required = $schema['required'] ?? null;
+        if (!is_array($properties) || !is_array($required)) {
+            return;
+        }
+        foreach ($required as $name) {
+            $property = is_string($name) ? ($properties[$name] ?? null) : null;
+            if (is_array($property) && array_key_exists('default', $property) && $property['default'] !== null) {
+                $this->addGenerationWarning(sprintf(
+                    'Schema "%s" lists "%s" in `required` and gives it a `default`. A default applies only '
+                    . 'to an absent key, which `required` forbids. Runtime, Symfony and Laravel mode let the '
+                    . 'default win and accept the key left out; laravel-data and yii3 require it — remove one '
+                    . 'of the two.',
+                    $className,
+                    $name,
+                ));
+            }
+        }
+    }
 
     /**
      * A `required` name the schema declares no property for. The class is generated without it, so

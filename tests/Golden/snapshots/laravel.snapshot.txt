@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 25764 lines
+# laravel mode — 106 files, 25882 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -509,6 +509,10 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 
+use function array_keys;
+use function array_unique;
+use function array_values;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -530,12 +534,28 @@ use function trim;
  *     }
  *
  *     $dto = ApiTest2403::fromValidated($request->validated());
+ *
+ * `validated()` returns only the keys the payload carried, which is what `isXxxProvided()` reads —
+ * so an absent optional field and one sent as `null` stay distinguishable (PATCH semantics).
  */
 final class ApiTest2403
 {
+    /**
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
+     *
+     * @var array<int, string>
+     */
+    private array $providedOpenApiKeys = [];
+
     public function __construct(
-        private readonly string $message,
+        private readonly string $message = 'Access Denied.',
     ) {
+        $this->providedOpenApiKeys[] = 'message';
     }
 
     /**
@@ -547,7 +567,7 @@ final class ApiTest2403
     public static function rules(): array
     {
         return [
-            'message' => self::withBlankStringValidation(['present', 'string']),
+            'message' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
 
@@ -646,8 +666,9 @@ final class ApiTest2403
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            message: $data['message'],
+            message: ($data['message'] ?? null) === null ? 'Access Denied.' : $data['message'],
         );
+        $dto->providedOpenApiKeys = array_keys($data);
 
         return $dto;
     }
@@ -657,13 +678,33 @@ final class ApiTest2403
         return $this->message;
     }
 
+    public function isMessageProvided(): bool
+    {
+        return in_array('message', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
         $result = [];
-        $result['message'] = $this->message;
+
+        if ($this->isMessageProvided()) {
+            $result['message'] = $this->message;
+        }
 
         return $result;
     }
@@ -1431,6 +1472,10 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 
+use function array_keys;
+use function array_unique;
+use function array_values;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -1452,12 +1497,28 @@ use function trim;
  *     }
  *
  *     $dto = ApiTest403::fromValidated($request->validated());
+ *
+ * `validated()` returns only the keys the payload carried, which is what `isXxxProvided()` reads —
+ * so an absent optional field and one sent as `null` stay distinguishable (PATCH semantics).
  */
 final class ApiTest403
 {
+    /**
+     * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
+     * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
+     * optional argument that differs from its default: a response built in code must not lose a field
+     * it was given, and every one with a schema default — the value is known either way. A property
+     * the schema lets be null is written by `toArray()` either way; `withProvided()` names any other
+     * key the output needs.
+     *
+     * @var array<int, string>
+     */
+    private array $providedOpenApiKeys = [];
+
     public function __construct(
-        private readonly string $message,
+        private readonly string $message = 'Access Denied.',
     ) {
+        $this->providedOpenApiKeys[] = 'message';
     }
 
     /**
@@ -1469,7 +1530,7 @@ final class ApiTest403
     public static function rules(): array
     {
         return [
-            'message' => self::withBlankStringValidation(['present', 'string']),
+            'message' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
 
@@ -1568,8 +1629,9 @@ final class ApiTest403
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            message: $data['message'],
+            message: ($data['message'] ?? null) === null ? 'Access Denied.' : $data['message'],
         );
+        $dto->providedOpenApiKeys = array_keys($data);
 
         return $dto;
     }
@@ -1579,13 +1641,33 @@ final class ApiTest403
         return $this->message;
     }
 
+    public function isMessageProvided(): bool
+    {
+        return in_array('message', $this->providedOpenApiKeys, true);
+    }
+
+    /**
+     * A copy that reports these OpenAPI keys as provided — for an optional argument the constructor
+     * could not tell from an omitted one, such as an explicit `null` where the default is `null`.
+     */
+    public function withProvided(string ...$openApiNames): static
+    {
+        $copy = clone $this;
+        $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
+
+        return $copy;
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
         $result = [];
-        $result['message'] = $this->message;
+
+        if ($this->isMessageProvided()) {
+            $result['message'] = $this->message;
+        }
 
         return $result;
     }
@@ -14917,6 +14999,19 @@ namespace GoldenCorpus;
  */
 interface Discriminator
 {
+    public const string DISCRIMINATOR_PROPERTY = 'type';
+
+    /**
+     * The variant each discriminator value names — for validating one variant on its own with its
+     * `rules()`, `withValidator()` and `fromValidated()`.
+     *
+     * @var array<string, class-string<Discriminator>>
+     */
+    public const array VARIANTS = [
+        'discriminator1' => Discriminator1::class,
+        'discriminator2' => Discriminator2::class,
+    ];
+
     public function getType(): DiscriminatorType;
 
     public function getName(): ?string;
@@ -19299,6 +19394,19 @@ namespace GoldenCorpus;
  */
 interface Shape
 {
+    public const string DISCRIMINATOR_PROPERTY = 'kind';
+
+    /**
+     * The variant each discriminator value names — for validating one variant on its own with its
+     * `rules()`, `withValidator()` and `fromValidated()`.
+     *
+     * @var array<string, class-string<Shape>>
+     */
+    public const array VARIANTS = [
+        'circle' => Circle::class,
+        'square' => Square::class,
+    ];
+
     /**
      * Declared here because a property TYPED as this union is serialized through it: the emitted
      * `toArray()` of an owning DTO calls `$this->prop?->toArray()`, which without this line is a call
@@ -20389,13 +20497,14 @@ final class Test2
      * @param array<Tag> $tags
      */
     public function __construct(
-        private readonly int $id,
         private readonly string $name,
         private readonly array $tags,
         private readonly Test2Types $types,
+        private readonly int $id = 1,
         private readonly ?User $user = null,
         private readonly ?Test2UserType $userType = null,
     ) {
+        $this->providedOpenApiKeys[] = 'id';
         if ($user !== null) {
             $this->providedOpenApiKeys[] = 'user';
         }
@@ -20413,7 +20522,7 @@ final class Test2
     public static function rules(): array
     {
         return [
-            'id' => self::withBlankStringValidation(['present', 'integer']),
+            'id' => self::withBlankStringValidation(['sometimes', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'tags' => self::withBlankStringValidation(['present', 'list']),
             'tags.*' => self::withBlankStringValidation(['array']),
@@ -20653,7 +20762,7 @@ final class Test2
     public static function fromValidated(array $data): self
     {
         $dto = new self(
-            id: self::toIntValue($data['id']),
+            id: ($data['id'] ?? null) === null ? 1 : self::toIntValue($data['id']),
             name: $data['name'],
             tags: array_map(static fn(array $item): Tag => Tag::fromValidated($item), ($data['tags'] ?? [])),
             types: Test2Types::from($data['types']),
@@ -20668,6 +20777,11 @@ final class Test2
     public function getId(): int
     {
         return $this->id;
+    }
+
+    public function isIdProvided(): bool
+    {
+        return in_array('id', $this->providedOpenApiKeys, true);
     }
 
     public function getName(): string
@@ -20953,7 +21067,11 @@ final class Test2
     public function toArray(): array
     {
         $result = [];
-        $result['id'] = $this->id;
+
+        if ($this->isIdProvided()) {
+            $result['id'] = $this->id;
+        }
+
         $result['name'] = $this->name;
         $result['tags'] = array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], array_values($this->tags));
 

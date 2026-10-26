@@ -1579,6 +1579,12 @@ final class LaravelRulesEnforcementTest extends TestCase
         });
         $this->assertTrue(interface_exists($namespace . '\Shape'));
         $this->assertContains($namespace . '\Shape', class_implements($namespace . '\Circle') ?: []);
+        // The map is public, so one variant can be validated on its own.
+        $this->assertSame('kind', constant($namespace . '\Shape::DISCRIMINATOR_PROPERTY'));
+        $this->assertSame(
+            ['circle' => $namespace . '\Circle', 'square' => $namespace . '\Square'],
+            constant($namespace . '\Shape::VARIANTS'),
+        );
 
         $factory = $this->validatorFactory();
         $formRequestClass = $namespace . '\ShapeFormRequest';
@@ -1898,5 +1904,39 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame(['code' => 'x', 'urgent' => false], (new $fqcn(code: 'x', urgent: false))->toArray());
         $this->assertSame(['code' => 'x', 'urgent' => false], (new $fqcn(code: 'x'))->toArray());
         $this->assertSame(['code' => 'x', 'urgent' => true], (new $fqcn(code: 'x', urgent: true))->toArray());
+    }
+
+    /**
+     * `required` and a `default` contradict each other; runtime and Symfony mode let the default win,
+     * and so does this one now — `present` refused a payload without the key here and nowhere else. The
+     * generator names the schema.
+     */
+    public function testARequiredPropertyWithADefaultTakesTheDefaultWhenAbsent(): void
+    {
+        $target = $this->outputDirectory . '/LvRuleRequiredDefault';
+        mkdir($target, 0o755, true);
+        $command = new GenerateDtoCommand();
+        $command->generateFromArray(
+            openApi: ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => ['Probe' => [
+                'type' => 'object',
+                'required' => ['page', 'size'],
+                'properties' => ['page' => ['type' => 'integer'], 'size' => ['type' => 'integer', 'default' => 50]],
+            ]]]],
+            outputDirectory: $target,
+            namespace: 'LvRuleRequiredDefault',
+            mode: 'laravel',
+        );
+        require_once $target . '/Probe.php';
+
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func(['LvRuleRequiredDefault\Probe', 'rules']);
+        $validator = $this->validatorFactory()->make(['page' => 2], $rules);
+        $this->assertTrue($validator->passes());
+        $this->assertSame(50, call_user_func(['LvRuleRequiredDefault\Probe', 'fromValidated'], $validator->validated())->getSize());
+        $this->assertFalse($this->validatorFactory()->make(['size' => 5], $rules)->passes(), 'a required key without a default is still required');
+        $this->assertCount(1, array_filter(
+            $command->getGenerationWarnings(),
+            static fn(string $warning): bool => str_contains($warning, '"size" in `required` and gives it a `default`'),
+        ));
     }
 }

@@ -3,6 +3,26 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.90 — 2026-10-26
+
+- Laravel union interface publishes variants
+- Laravel required default takes the default
+- warning for required with default
+
+Laravel mode:
+
+- a discriminated union's interface now carries `DISCRIMINATOR_PROPERTY` and `VARIANTS` (value =>
+  class), so one variant — an item of a batch — can be validated on its own with its own `rules()`,
+  `withValidator()` and `fromValidated()`.
+- a `required` property with a `default` refused a payload without the key (`present`), where runtime
+  and Symfony mode take the default. Laravel mode takes it too: `sometimes`, and the default when
+  absent.
+
+All modes:
+
+- a `required` property that also declares a `default` is reported: the two contradict each other, and
+  laravel-data and yii3 still require the key.
+
 ## 2.15.89 — 2026-10-25
 
 - Laravel enum rules import their class

@@ -300,6 +300,18 @@ trait RendersLaravelDto
                 }
             }
         }
+        // The discriminator's map, public: a caller validating one variant on its own — an item of a
+        // batch, say — picks the class by the value and calls that class's `rules()` directly.
+        $variants = [];
+        $mapping = is_array($discriminator) && is_array($discriminator['mapping'] ?? null) ? $discriminator['mapping'] : [];
+        foreach ($mapping as $value => $variant) {
+            if (!is_string($variant) || !array_key_exists($variant, $this->dtoSchemas)) {
+                continue;
+            }
+            $this->appendImportForClass($imports, $variant, $namespace, $className);
+            $variants[] = ['value' => (string)$value, 'className' => $this->shortClassName($variant)];
+        }
+
         $imports = array_values(array_unique($imports));
         sort($imports);
 
@@ -307,6 +319,7 @@ trait RendersLaravelDto
             'namespace' => $namespace,
             'imports' => $imports,
             'interfaceGetters' => $interfaceGetters,
+            'discriminatorVariants' => $variants,
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,

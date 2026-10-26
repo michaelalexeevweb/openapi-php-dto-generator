@@ -123,6 +123,13 @@ public function store(ShapeFormRequest $request)
 }
 ```
 
+The interface also publishes its discriminator, so one variant can be validated on its own — an item
+of a batch, say — with that class's own `rules()`, `withValidator()` and `fromValidated()`:
+
+```php
+$class = Shape::VARIANTS[$item[Shape::DISCRIMINATOR_PROPERTY]] ?? null; // Circle::class, …
+```
+
 A union member that is an enum (`oneOf: [$ref Palette, string, integer]`) is checked against its
 members and built as the case, so `getFilter()` answers `Palette::CRIMSON` for `"crimson"` and the
 string or integer otherwise.
@@ -345,6 +352,12 @@ accepted and hydrated as the declared type.
 A keyword about the whole payload — `additionalProperties: false`, `minProperties`, `dependentRequired`,
 a root `not` or conditional — reports under the property it names (`"bad"`, `"region"`) or under
 `payload`, with the sentence starting `payload …` as in Symfony mode.
+
+### `required` with a `default`
+
+The two contradict each other — a default applies only to an absent key, which `required` forbids. As
+in runtime and Symfony mode the default wins: the rule is `sometimes`, and an absent key hydrates to the
+default. The generator warns about every such property, so the document can be fixed.
 
 ## What this mode does not do
 

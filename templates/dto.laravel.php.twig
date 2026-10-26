@@ -67,6 +67,22 @@ interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 interface {{ className }}
 {% endif %}
 {
+{% if discriminatorVariants|default([]) is not empty %}
+    public const string DISCRIMINATOR_PROPERTY = '{{ discriminatorProperty|php_string }}';
+
+    /**
+     * The variant each discriminator value names — for validating one variant on its own with its
+     * `rules()`, `withValidator()` and `fromValidated()`.
+     *
+     * @var array<string, class-string<{{ className }}>>
+     */
+    public const array VARIANTS = [
+{% for variant in discriminatorVariants %}
+        '{{ variant.value|php_string }}' => {{ variant.className }}::class,
+{% endfor %}
+    ];
+
+{% endif %}
 {% for param in interfaceGetters|default([]) %}
 {% if param.temporalGetterBody is not null %}
 {% if param.temporalGetterDocType is not null %}
