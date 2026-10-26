@@ -192,6 +192,43 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * `toArray()` writes the keys in the schema's order, as the other modes do. laravel-data follows the
+     * order the properties are declared, and a promoted property is declared where its parameter is —
+     * required first — so a schema declaring `success, message, payload` came out `success, payload,
+     * message`.
+     */
+    public function testKeysComeOutInTheSchemasOrder(): void
+    {
+        $namespace = $this->generate([
+            'Envelope' => [
+                'type' => 'object',
+                'required' => ['success', 'payload'],
+                'properties' => [
+                    'success' => ['type' => 'boolean'],
+                    'message' => ['type' => 'string'],
+                    'payload' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Entry']],
+                    'limit' => ['type' => 'integer', 'default' => 25],
+                ],
+            ],
+            'Entry' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]],
+        ]);
+        /** @var class-string $envelope */
+        $envelope = $namespace . '\Envelope';
+
+        $built = LaravelDataContainer::withRequest(
+            '{"payload":[{"id":1}],"message":"m","success":true}',
+            static fn(Request $request): object => $envelope::from($request),
+        );
+
+        $this->assertInstanceOf($namespace . '\Entry', $built->payload[0]);
+        $this->assertSame(['success', 'message', 'payload', 'limit'], array_keys($built->toArray()));
+        $this->assertSame(
+            ['success' => true, 'payload' => [], 'limit' => 25],
+            (new $envelope(success: true, payload: []))->toArray(),
+        );
+    }
+
+    /**
      * @param array<string, mixed> $schemas
      * @param array<string, mixed> $paths
      */

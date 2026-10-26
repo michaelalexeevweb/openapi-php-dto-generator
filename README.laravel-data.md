@@ -268,6 +268,11 @@ All measured and pinned; the full table with reasons is in
   [Temporal container items](README.support-matrix.md#temporal-container-items);
 - echoes a `readOnly` property the client sent — `#[Hidden]` is an exact counterpart to `writeOnly` and
   there is none for `readOnly`;
+- writes `toArray()` in the schema's order, as the other modes do, by declaring the properties above
+  the constructor in that order where it differs from the constructor's (required arguments first, as
+  PHP needs) — laravel-data writes keys in declaration order. One shape keeps the constructor's order: a
+  class with a nullable property that has a schema default, since a declared readonly property cannot
+  carry the default laravel-data would then read;
 - normalizes a discriminated union member with the discriminator LAST, because it is inherited from the
   abstract base and PHP lists a class's own properties first. Same keys, same values.
 

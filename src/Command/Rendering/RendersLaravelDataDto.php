@@ -131,6 +131,19 @@ trait RendersLaravelDataDto
 
         $objectShapePaths = array_values(array_unique($objectShapePaths));
 
+        // laravel-data writes `toArray()` in the order the PROPERTIES are declared, and a promoted property
+        // is declared where its parameter is — required ones first, as PHP needs. Where that differs from
+        // the schema's order, the properties are declared above the constructor in the schema's order
+        // instead: `{success, payload, message}` came out for a schema declaring `success, message,
+        // payload`, where the other modes keep the schema's order.
+        $schemaOrder = array_column($this->laravelInSchemaOrder($className, $params), 'name');
+        $constructorOrder = [
+            ...array_column(array_filter($params, static fn(array $param): bool => $param['required']), 'name'),
+            ...array_column(array_filter($params, static fn(array $param): bool => !$param['required']), 'name'),
+        ];
+        $declaresProperties = $schemaOrder !== $constructorOrder
+            && array_filter($params, static fn(array $param): bool => $param['nullableWithDefault']) === [];
+
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $interpreter = $this->renderLaravelInterpreterBlock(
             $interpreterConstraints,
@@ -183,6 +196,8 @@ trait RendersLaravelDataDto
             'requestRef' => $requestRef,
             'stdClassRef' => $stdClassRef,
             'parentArguments' => $parentArguments,
+            'declaresProperties' => $declaresProperties,
+            'declaredParams' => $this->laravelInSchemaOrder($className, $params),
             'morphBase' => null,
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],
@@ -394,7 +409,8 @@ trait RendersLaravelDataDto
      * @param SchemaProperty $property
      * @return array{declaredType: string, docType: ?string, name: string, required: bool,
      *     openApiName: string, docDescription: ?string, attributes: array<int, string>,
-     *     attributeImports: array<int, string>, tracksPresence: bool, promoted: bool}
+     *     attributeImports: array<int, string>, tracksPresence: bool, nullableWithDefault: bool,
+     *     defaultExpression: ?string, promoted: bool}
      */
     private function resolveLaravelDataParam(array $property, string $namespace): array
     {
@@ -547,6 +563,10 @@ trait RendersLaravelDataDto
             // laravel-data hydrates a payload without the key.
             // An untyped one has no `Optional` member; laravel-data hands it `null` when absent, so that is
             // its default — and it keeps a defaulted argument from preceding one without a default.
+            // A nullable property with a schema default cannot be declared apart from the constructor:
+            // laravel-data reads a declared property's default from the declaration, which a readonly
+            // property cannot have, and fills an absent nullable one with null instead.
+            'nullableWithDefault' => $schemaDefault !== null && $nullable,
             'defaultExpression' => match (true) {
                 $schemaDefault !== null => $schemaDefault,
                 $tracksPresence => sprintf('new %s()', $optionalRef),

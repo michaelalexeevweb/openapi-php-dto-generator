@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15772 lines
+# laravel-data mode — 80 files, 15835 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7956,6 +7956,24 @@ final class Containers extends Data
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    /** @var array<string> */
+    public readonly array $dates;
+
+    /** @var array<string, string>|Optional */
+    public readonly array|Optional $datesByDay;
+
+    /** @var array<string>|Optional */
+    public readonly array|Optional $timestamps;
+
+    /** @var array<Shape> */
+    #[DataCollectionOf(Shape::class)]
+    public readonly array $shapes;
+
+    /** @var array<string, Tag>|Optional */
+    #[WithoutValidation]
+    #[DataCollectionOf(Tag::class)]
+    public readonly array|Optional $tagsByKey;
+
     /**
      * @param array<string> $dates
      * @param array<Shape> $shapes
@@ -7964,15 +7982,17 @@ final class Containers extends Data
      * @param array<string, Tag>|Optional $tagsByKey
      */
     public function __construct(
-        public readonly array $dates,
-        #[DataCollectionOf(Shape::class)]
-        public readonly array $shapes,
-        public readonly array|Optional $datesByDay = new Optional(),
-        public readonly array|Optional $timestamps = new Optional(),
-        #[WithoutValidation]
-        #[DataCollectionOf(Tag::class)]
-        public readonly array|Optional $tagsByKey = new Optional(),
+        array $dates,
+        array $shapes,
+        array|Optional $datesByDay = new Optional(),
+        array|Optional $timestamps = new Optional(),
+        array|Optional $tagsByKey = new Optional(),
     ) {
+        $this->dates = $dates;
+        $this->shapes = $shapes;
+        $this->datesByDay = $datesByDay;
+        $this->timestamps = $timestamps;
+        $this->tagsByKey = $tagsByKey;
     }
 
     /**
@@ -10857,14 +10877,26 @@ final class ReadOnlyFields extends Data
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    public readonly int|Optional $serverId;
+
+    public readonly string $title;
+
+    #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
+    public readonly DateTimeImmutable|Optional $writtenAt;
+
+    #[Hidden]
+    public readonly string|Optional $secret;
+
     public function __construct(
-        public readonly string $title,
-        public readonly int|Optional $serverId = new Optional(),
-        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
-        public readonly DateTimeImmutable|Optional $writtenAt = new Optional(),
-        #[Hidden]
-        public readonly string|Optional $secret = new Optional(),
+        string $title,
+        int|Optional $serverId = new Optional(),
+        DateTimeImmutable|Optional $writtenAt = new Optional(),
+        string|Optional $secret = new Optional(),
     ) {
+        $this->serverId = $serverId;
+        $this->title = $title;
+        $this->writtenAt = $writtenAt;
+        $this->secret = $secret;
     }
 
     /**
@@ -11707,23 +11739,42 @@ final class Test2 extends Data
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    public readonly int $id;
+
+    public readonly string $name;
+
+    /** @var array<Tag> */
+    #[WithoutValidation]
+    #[DataCollectionOf(Tag::class)]
+    public readonly array $tags;
+
+    #[WithoutValidation]
+    public readonly User|Optional $user;
+
+    #[WithoutValidation]
+    public readonly Test2UserType|Optional $userType;
+
+    public readonly Test2Types $types;
+
     /**
      * @param int $id this is id
      * @param string $name this is name
      * @param array<Tag> $tags
      */
     public function __construct(
-        public readonly string $name,
-        #[WithoutValidation]
-        #[DataCollectionOf(Tag::class)]
-        public readonly array $tags,
-        public readonly Test2Types $types,
-        public readonly int $id = 1,
-        #[WithoutValidation]
-        public readonly User|Optional $user = new Optional(),
-        #[WithoutValidation]
-        public readonly Test2UserType|Optional $userType = new Optional(),
+        string $name,
+        array $tags,
+        Test2Types $types,
+        int $id = 1,
+        User|Optional $user = new Optional(),
+        Test2UserType|Optional $userType = new Optional(),
     ) {
+        $this->id = $id;
+        $this->name = $name;
+        $this->tags = $tags;
+        $this->types = $types;
+        $this->user = $user;
+        $this->userType = $userType;
     }
 
     /**
@@ -13945,13 +13996,25 @@ final class UnionUnderContainer extends Data
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    public readonly array|Optional $chain;
+
+    public readonly array|Optional $chainAllOf;
+
+    #[WithoutValidation]
+    public readonly TreeNode $tree;
+
+    public readonly array|Optional $listOfUnions;
+
     public function __construct(
-        #[WithoutValidation]
-        public readonly TreeNode $tree,
-        public readonly array|Optional $chain = new Optional(),
-        public readonly array|Optional $chainAllOf = new Optional(),
-        public readonly array|Optional $listOfUnions = new Optional(),
+        TreeNode $tree,
+        array|Optional $chain = new Optional(),
+        array|Optional $chainAllOf = new Optional(),
+        array|Optional $listOfUnions = new Optional(),
     ) {
+        $this->tree = $tree;
+        $this->chain = $chain;
+        $this->chainAllOf = $chainAllOf;
+        $this->listOfUnions = $listOfUnions;
     }
 
     /**

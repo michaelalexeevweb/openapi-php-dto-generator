@@ -955,7 +955,7 @@ final class NormalizationParityTest extends TestCase
                     . '[\'groups\' => \'write\'], which this case deliberately does not',
                 'diverges' => [
                     'laravel-data' => [
-                        'expected' => ['name' => 'n', 'id' => 1],
+                        'expected' => ['id' => 1, 'name' => 'n'],
                         'reason' => 'writeOnly has an exact counterpart in laravel-data (#[Hidden], which '
                             . 'the emitter uses) and readOnly has none: nothing says "hydrate everything '
                             . 'except this key". The value therefore arrives and is echoed back, as in '

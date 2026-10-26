@@ -3,6 +3,19 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.95 — 2026-10-26
+
+- laravel-data keys in schema order
+
+laravel-data mode:
+
+- `toArray()` wrote the keys in the constructor's order — required arguments first, as PHP needs —
+  because laravel-data follows the order properties are declared, and a promoted property is declared at
+  its parameter. A schema declaring `success, message, payload` came out `success, payload, message`.
+  Where the two orders differ, the properties are declared above the constructor in the schema's order
+  and assigned in it. A class with a nullable property that has a schema default keeps the promoted
+  form: a declared readonly property cannot carry that default.
+
 ## 2.15.94 — 2026-10-26
 
 - laravel-data schema defaults applied

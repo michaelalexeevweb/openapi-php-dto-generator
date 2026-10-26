@@ -108,6 +108,42 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {{ interpreterConstsBlock|raw }}
 
 {% endif %}
+{% if declaresProperties|default(false) %}
+{# Declared here, in the schema's order, because laravel-data writes `toArray()` in declaration order. #}
+{% for param in declaredParams|filter(param => param.promoted) %}
+{% if param.docType is not null %}
+    /** @var {{ param.docType }} */
+{% endif %}
+{% for attribute in param.attributes %}
+    {{ attribute|raw }}
+{% endfor %}
+    public readonly {{ param.declaredType }} ${{ param.name }};
+
+{% endfor %}
+{% set docParams = params|filter(param => param.docType is not null or param.docDescription is not null) %}
+{% if docParams is not empty %}
+    /**
+{% for param in docParams %}
+     * @param {{ param.docType ?? param.declaredType }} ${{ param.name }}{{ param.docDescription is not null ? ' ' ~ (param.docDescription|php_doc) : '' }}
+{% endfor %}
+     */
+{% endif %}
+    public function __construct(
+{% for param in requiredParams %}
+        {{ param.declaredType }} ${{ param.name }},
+{% endfor %}
+{% for param in optionalParams %}
+        {{ param.declaredType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
+{% endfor %}
+    ) {
+{% if parentArguments is not empty %}
+        parent::__construct({% for argument in parentArguments %}${{ argument }}{{ loop.last ? '' : ', ' }}{% endfor %});
+{% endif %}
+{% for param in params|filter(param => param.promoted) %}
+        $this->{{ param.name }} = ${{ param.name }};
+{% endfor %}
+    }
+{% else %}
 {% set docParams = params|filter(param => param.docType is not null or param.docDescription is not null) %}
 {% if docParams is not empty %}
     /**
@@ -150,6 +186,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% else %}
     ) {
     }
+{% endif %}
 {% endif %}
 {% endif %}
 
