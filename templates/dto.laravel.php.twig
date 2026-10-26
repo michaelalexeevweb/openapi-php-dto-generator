@@ -765,5 +765,16 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
         return $result;
     }
+
+    /**
+     * What `json_encode()` and `response()->json()` write: `toArray()`, with an object that has nothing
+     * to write as `{}` — the empty array `toArray()` returns would encode as `[]`.
+     *
+     * @return array<string, mixed>|object
+     */
+    public function jsonSerialize(): array|object
+    {
+        return $this->toArray() ?: (object)[];
+    }
 }
 {% endif %}

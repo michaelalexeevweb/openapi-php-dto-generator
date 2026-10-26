@@ -10,6 +10,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
+use JsonSerializable;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -2059,5 +2060,22 @@ final class LaravelRulesEnforcementTest extends TestCase
         $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
         $this->assertStringEndsWith('\Square', get_class($dto->getF()));
         $this->assertSame(['f' => ['kind' => 'square', 'side' => 2]], $dto->toArray());
+    }
+
+    /**
+     * `json_encode()` — and so `response()->json()` — writes a DTO as its `toArray()`: before, a DTO
+     * handed to it whole came out `{}`, its properties being private. An object with nothing to write
+     * is `{}`, never `[]`.
+     */
+    public function testADtoEncodesAsItsArray(): void
+    {
+        $fqcn = $this->generateProbe('json serializable', ['type' => 'object', 'properties' => [
+            'code' => ['type' => 'string'],
+        ]]);
+        $dto = call_user_func([$fqcn, 'fromValidated'], ['f' => ['code' => 'x']]);
+
+        $this->assertInstanceOf(JsonSerializable::class, $dto);
+        $this->assertSame('{"f":{"code":"x"}}', json_encode($dto));
+        $this->assertSame('{"f":{}}', json_encode(call_user_func([$fqcn, 'fromValidated'], ['f' => []])));
     }
 }

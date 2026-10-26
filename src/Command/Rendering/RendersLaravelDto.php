@@ -228,6 +228,10 @@ trait RendersLaravelDto
             $this->appendImportForClass($useStatements, $unionInterface, $namespace, $className);
             $implementedInterfaces[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
+        // `json_encode()` and `response()->json()` write the DTO as `toArray()` does. PHP's own interface,
+        // nothing of a framework's.
+        $useStatements[] = 'JsonSerializable';
+        $implementedInterfaces[] = 'JsonSerializable';
 
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
@@ -284,6 +288,11 @@ trait RendersLaravelDto
         }
 
         $imports = [];
+        // Every member is JsonSerializable, so a value typed as the union can be encoded as one.
+        if ($interfaceExtends === []) {
+            $interfaceExtends[] = 'JsonSerializable';
+            $imports[] = 'JsonSerializable';
+        }
         $interfaceGetters = [];
         foreach ($sharedProperties as $property) {
             $interfaceGetters[] = $this->resolveLaravelParam($property, $namespace);

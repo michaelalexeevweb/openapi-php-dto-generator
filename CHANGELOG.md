@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.92 — 2026-10-26
+
+- Laravel DTOs are JsonSerializable
+- Laravel recipes for surrounding layers
+
+Laravel mode:
+
+- every DTO implements `JsonSerializable`: `json_encode()` and `response()->json()` write `toArray()`,
+  an object with nothing to write as `{}`. Handed over whole, a DTO came out `{}` — its properties are
+  private. A discriminated union's interface extends it.
+- README.laravel.md: recipes for what the application builds around the DTOs — a variant body
+  without a discriminator, a list body, one FormRequest per operation, a `Responsable` response,
+  `null` versus not sent, copying a date, permissions before validation.
+
 ## 2.15.91 — 2026-10-26
 
 - Laravel schema errors keyed by field

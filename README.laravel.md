@@ -296,7 +296,10 @@ property with a default stays required: the default does not make the key option
 - a map encodes as a JSON object at every level, empty ones included (`{}`, never `[]`);
 - an enum comes out as its backing value, a nested DTO as its own array;
 - `writeOnly` properties are dropped, and a `readOnly` key sent by the client is ignored on the way in
-  and absent on the way out.
+  and absent on the way out;
+- every DTO is `JsonSerializable` — PHP's own interface — so `json_encode($dto)` and
+  `response()->json($dto)` write `toArray()`, an object with nothing to write as `{}`. A discriminated
+  union's interface extends it, so a value typed as the union encodes the same way.
 
 A `readOnly` property listed under `required` is typed nullable with a `null` default, and its rule is
 `sometimes` rather than `present`. OpenAPI puts that requirement on the RESPONSE alone, so demanding it
@@ -363,6 +366,113 @@ a root `not` or conditional — reports under the property it names (`"bad"`, `"
 The two contradict each other — a default applies only to an absent key, which `required` forbids. As
 in runtime and Symfony mode the default wins: the rule is `sometimes`, and an absent key hydrates to the
 default. The generator warns about every such property, so the document can be fixed.
+
+## Layers your application builds
+
+The generator writes DTOs and the FormRequests that delegate to them, and stops there. What sits
+around them is a few lines of your own code; these are the shapes that work.
+
+### One request that is one of several variants, without a discriminator
+
+With a `discriminator` the generated FormRequest picks the variant (see
+[A body that is one of several variants](#a-body-that-is-one-of-several-variants)). Without one there
+is no rule for which variant is meant, so the choice is yours — typically the first whose rules pass:
+
+```php
+foreach ([AddNote::class, AddTag::class] as $variant) {
+    $validator = Validator::make($request->all(), $variant::rules());
+    $variant::withValidator($validator, $request->getContent());
+    if ($validator->passes()) {
+        return $variant::fromValidated($validator->validated());
+    }
+}
+throw ValidationException::withMessages(['payload' => 'matches no variant']);
+```
+
+### A body that is a list
+
+`requestBody: {type: array, items: $ref Item}` validates and builds each item through `Item`. Prefix the
+item's rules with `*.` and the errors come out as `0.name`, `1.name`:
+
+```php
+$rules = ['*' => ['array']];
+foreach (Item::rules() as $path => $rule) {
+    $rules['*.' . $path] = $rule;
+}
+$items = array_map(Item::fromValidated(...), Validator::make($request->json()->all(), $rules)->validate());
+```
+
+### One FormRequest for path, query and body
+
+Each DTO validates its own part, so an operation needs the two or three FormRequests it has — or one
+of your own that merges them. Path parameters are brought in the way the generated one does it:
+
+```php
+final class UpdateWidget extends FormRequest
+{
+    protected function prepareForValidation(): void
+    {
+        $this->merge(['widgetId' => $this->route('widgetId')]);
+    }
+
+    public function rules(): array
+    {
+        return [...WidgetPathParams::rules(), ...UpdateWidgetRequest::rules()];
+    }
+}
+
+$path = WidgetPathParams::fromValidated($request->validated());
+$body = UpdateWidgetRequest::fromValidated($request->validated());
+```
+
+A key that both parts declare collides in the merged rules; keep those operations on separate requests.
+
+### A response with its status code
+
+`toArray()` is the payload; the status code belongs to the controller. To return a DTO directly, wrap
+it in a `Responsable` of your own:
+
+```php
+final readonly class JsonDto implements Responsable
+{
+    public function __construct(private JsonSerializable $dto, private int $status = 200) {}
+
+    public function toResponse($request): JsonResponse
+    {
+        return new JsonResponse($this->dto, $this->status);
+    }
+}
+```
+
+### `null` or not sent
+
+Three ways to build a DTO, one per intent:
+
+| you want | build with |
+|---|---|
+| every field you pass written, a nullable one you left out written as `null` | `new X(...)` |
+| a nullable optional field you left `null` absent from the output | `X::create(...)` |
+| one more key written although it was not given | `->withProvided('key')` on either |
+
+A single constructor cannot tell `null` from "not passed" without a marker type of its own, which the
+generated code does not add — so pick by intent, per builder.
+
+### Copying a date from one DTO to another
+
+The getter returns the string the schema declares; the constructor takes the object. Copy through the
+object getter:
+
+```php
+new WidgetView(createdAt: $source->getCreatedAtAsDateTime());
+```
+
+### Checking permissions before validation
+
+Laravel runs a FormRequest's `authorize()` before its rules. The generated FormRequests define none, so
+a request without permission that is also invalid answers 422, not 403, when the check lives in the
+controller. Put the check where it runs first — a route middleware (`->can('update', 'widget')`) — or
+use a FormRequest of your own with `authorize()` that delegates to the DTO's `rules()`,
+`withValidator()` and `fromValidated()`.
 
 ## What this mode does not do
 
