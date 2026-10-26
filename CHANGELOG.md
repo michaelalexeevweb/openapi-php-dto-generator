@@ -3,6 +3,25 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.93 — 2026-10-26
+
+- laravel-data allOf base is morph base
+- laravel-data path params from route
+- laravel-data optional arguments default
+
+laravel-data mode:
+
+- the allOf pattern — a base with a discriminator whose variants `allOf` it — made the base a plain
+  class its variants did not extend, so a property or list typed with it lost every field a variant
+  adds. The base is the abstract `PropertyMorphableData` base, as for a `oneOf`, and the variants extend
+  it. An enum-typed discriminator is that enum on the base, and `morph()` reads its value.
+- a path parameter carries `#[FromRouteParameter]`: `Data::from($request)` reads only the query and the
+  body, so a required path parameter failed `present` on every request.
+- an optional argument defaults to `new Optional()` (an untyped one to `null`): building a DTO in code
+  was an ArgumentCountError for every optional field left out.
+- README.laravel-data.md: header and cookie parameters, property names with a dot, and the mapping from
+  Laravel mode's getters to the properties.
+
 ## 2.15.92 — 2026-10-26
 
 - Laravel DTOs are JsonSerializable

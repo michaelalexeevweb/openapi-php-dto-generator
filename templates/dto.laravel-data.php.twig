@@ -59,7 +59,7 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
 {% for attribute in morphBase.attributes %}
         {{ attribute|raw }}
 {% endfor %}
-        public readonly string ${{ morphBase.property }},
+        public readonly {{ morphBase.propertyType }} ${{ morphBase.property }},
     ) {
     }
 
@@ -71,7 +71,14 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
      */
     public static function morph(array $properties): ?string
     {
+{% if morphBase.enumRef is not null %}
+        // laravel-data hands an enum-typed discriminator over as its case.
+        $value = $properties['{{ morphBase.property|php_string }}'] ?? null;
+
+        return match ($value instanceof {{ morphBase.enumRef }} ? $value->value : $value) {
+{% else %}
         return match ($properties['{{ morphBase.property|php_string }}'] ?? null) {
+{% endif %}
 {% for member in morphBase.members %}
             {{ member.value|raw }} => {{ member.class }}::class,
 {% endfor %}
@@ -131,9 +138,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         {{ attribute|raw }}
 {% endfor %}
 {% if param.promoted %}
-        public readonly {{ param.declaredType }} ${{ param.name }},
+        public readonly {{ param.declaredType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
 {% else %}
-        {{ param.declaredType }} ${{ param.name }},
+        {{ param.declaredType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
 {% endif %}
 {% endfor %}
 {% if parentArguments is not empty %}

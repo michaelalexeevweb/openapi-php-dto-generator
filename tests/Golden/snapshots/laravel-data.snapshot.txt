@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15824 lines
+# laravel-data mode — 80 files, 15772 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -870,6 +870,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
@@ -902,10 +903,12 @@ final class ApiTestCatsActionsGetQueryParams extends Data
      * @param string $id Example: 00000000-1111-4222-8333-444455556666
      */
     public function __construct(
+        #[FromRouteParameter('id')]
         public readonly string $id,
+        #[FromRouteParameter('actionId')]
         public readonly int $actionId,
-        public readonly int|Optional $page,
-        public readonly int|Optional $limit,
+        public readonly int|Optional $page = new Optional(),
+        public readonly int|Optional $limit = new Optional(),
     ) {
     }
 
@@ -1010,6 +1013,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
@@ -1042,10 +1046,12 @@ final class ApiTestCatsActionsPostQueryParams extends Data
      * @param string $id Example: 00000000-1111-4222-8333-444455556666
      */
     public function __construct(
+        #[FromRouteParameter('id')]
         public readonly string $id,
+        #[FromRouteParameter('actionId')]
         public readonly int $actionId,
-        public readonly int|Optional $page,
-        public readonly int|Optional $limit,
+        public readonly int|Optional $page = new Optional(),
+        public readonly int|Optional $limit = new Optional(),
     ) {
     }
 
@@ -1150,6 +1156,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
@@ -1182,10 +1189,12 @@ final class ApiTestDogsTagsGetQueryParams extends Data
      * @param string $id Example: 00000000-1111-4222-8333-444455556666
      */
     public function __construct(
+        #[FromRouteParameter('id')]
         public readonly string $id,
+        #[FromRouteParameter('tagId')]
         public readonly int $tagId,
-        public readonly int|Optional $page,
-        public readonly int|Optional $limit,
+        public readonly int|Optional $page = new Optional(),
+        public readonly int|Optional $limit = new Optional(),
     ) {
     }
 
@@ -1290,6 +1299,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
@@ -1322,10 +1332,12 @@ final class ApiTestDogsTagsPatchQueryParams extends Data
      * @param string $id Example: 00000000-1111-4222-8333-444455556666
      */
     public function __construct(
+        #[FromRouteParameter('id')]
         public readonly string $id,
+        #[FromRouteParameter('tagId')]
         public readonly int $tagId,
-        public readonly int|Optional $page,
-        public readonly int|Optional $limit,
+        public readonly int|Optional $page = new Optional(),
+        public readonly int|Optional $limit = new Optional(),
     ) {
     }
 
@@ -1430,6 +1442,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 
 use function is_string;
@@ -1455,6 +1468,7 @@ final class ApiTestFileDeleteQueryParams extends Data
      * @param string $id Example: 00000000-1111-4222-8333-444455556666
      */
     public function __construct(
+        #[FromRouteParameter('id')]
         public readonly string $id,
     ) {
     }
@@ -1557,6 +1571,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 
 use function is_string;
@@ -1582,6 +1597,7 @@ final class ApiTestFilePatchQueryParams extends Data
      * @param string $id Example: 00000000-1111-4222-8333-444455556666
      */
     public function __construct(
+        #[FromRouteParameter('id')]
         public readonly string $id,
     ) {
     }
@@ -2462,7 +2478,7 @@ use function trim;
 final class ApiTestLegacyPostQueryParams extends Data
 {
     public function __construct(
-        public readonly bool|Optional $legacyFlag,
+        public readonly bool|Optional $legacyFlag = new Optional(),
     ) {
     }
 
@@ -3310,6 +3326,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Data;
 
 use function is_string;
@@ -3336,7 +3353,9 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Data
      * @param array<string> $labelIds
      */
     public function __construct(
+        #[FromRouteParameter('matrixIds')]
         public readonly array $matrixIds,
+        #[FromRouteParameter('labelIds')]
         public readonly array $labelIds,
     ) {
     }
@@ -3491,19 +3510,19 @@ final class ApiTestSerializationGetQueryParams extends Data
      * @param array<string>|Optional $xCodes
      */
     public function __construct(
-        public readonly array|Optional $exploded,
-        public readonly array|Optional $joined,
-        public readonly array|Optional $spaced,
-        public readonly array|Optional $piped,
-        public readonly array|Optional $nested,
-        public readonly bool|Optional $flag,
-        public readonly string|Optional $strict,
-        public readonly string|Optional $raw,
+        public readonly array|Optional $exploded = new Optional(),
+        public readonly array|Optional $joined = new Optional(),
+        public readonly array|Optional $spaced = new Optional(),
+        public readonly array|Optional $piped = new Optional(),
+        public readonly array|Optional $nested = new Optional(),
+        public readonly bool|Optional $flag = new Optional(),
+        public readonly string|Optional $strict = new Optional(),
+        public readonly string|Optional $raw = new Optional(),
         #[MapName('X-Codes')]
-        public readonly array|Optional $xCodes,
-        public readonly string|Optional $session,
+        public readonly array|Optional $xCodes = new Optional(),
+        public readonly string|Optional $session = new Optional(),
         #[WithoutValidation]
-        public readonly ApiTestSerializationGetQueryParamsFilter|Optional $filter,
+        public readonly ApiTestSerializationGetQueryParamsFilter|Optional $filter = new Optional(),
     ) {
     }
 
@@ -3767,7 +3786,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends Data
     public function __construct(
         #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
-        public readonly DateTimeImmutable|Optional $since,
+        public readonly DateTimeImmutable|Optional $since = new Optional(),
     ) {
     }
 
@@ -3898,7 +3917,7 @@ use function trim;
 final class ApiTestSharedPathGetQueryParams extends Data
 {
     public function __construct(
-        public readonly string|Optional $cursor,
+        public readonly string|Optional $cursor = new Optional(),
     ) {
     }
 
@@ -4000,6 +4019,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
@@ -4030,10 +4050,11 @@ use function trim;
 final class ApiTestTenantsDeleteQueryParams extends Data
 {
     public function __construct(
+        #[FromRouteParameter('tenant')]
         public readonly int $tenant,
-        public readonly string|Optional $region,
+        public readonly string|Optional $region = new Optional(),
         #[MapName('tenant')]
-        public readonly string|Optional $tenantQuery,
+        public readonly string|Optional $tenantQuery = new Optional(),
     ) {
     }
 
@@ -4137,6 +4158,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
+use Spatie\LaravelData\Attributes\FromRouteParameter;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
@@ -4167,11 +4189,12 @@ use function trim;
 final class ApiTestTenantsGetQueryParams extends Data
 {
     public function __construct(
+        #[FromRouteParameter('tenant')]
         public readonly int $tenant,
-        public readonly int|Optional $region,
+        public readonly int|Optional $region = new Optional(),
         #[MapName('tenant')]
-        public readonly string|Optional $tenantQuery,
-        public readonly bool|Optional $verbose,
+        public readonly string|Optional $tenantQuery = new Optional(),
+        public readonly bool|Optional $verbose = new Optional(),
     ) {
     }
 
@@ -4456,22 +4479,22 @@ final class ApplicatorRefs extends Data
      */
     public function __construct(
         public readonly array $mustContain,
-        public readonly array|Optional $positions,
-        public readonly array|Optional $rest,
-        public readonly array|Optional $closedPair,
-        public readonly mixed $impossible,
-        public readonly string|Optional $vacuous,
-        public readonly string|Optional $имя,
-        public readonly string|Optional $名前,
-        public readonly mixed $forbiddenKey,
-        public readonly mixed $neverMatches,
-        public readonly array|Optional $closedFirstSlot,
+        public readonly array|Optional $positions = new Optional(),
+        public readonly array|Optional $rest = new Optional(),
+        public readonly array|Optional $closedPair = new Optional(),
+        public readonly mixed $impossible = null,
+        public readonly string|Optional $vacuous = new Optional(),
+        public readonly string|Optional $имя = new Optional(),
+        public readonly string|Optional $名前 = new Optional(),
+        public readonly mixed $forbiddenKey = null,
+        public readonly mixed $neverMatches = null,
+        public readonly array|Optional $closedFirstSlot = new Optional(),
         #[WithoutValidation]
-        public readonly ApplicatorRefsPoisonedKey|Optional $poisonedKey,
+        public readonly ApplicatorRefsPoisonedKey|Optional $poisonedKey = new Optional(),
         #[WithoutValidation]
-        public readonly ApplicatorRefsConditional|Optional $conditional,
+        public readonly ApplicatorRefsConditional|Optional $conditional = new Optional(),
         #[WithoutValidation]
-        public readonly ApplicatorRefsKeyed|Optional $keyed,
+        public readonly ApplicatorRefsKeyed|Optional $keyed = new Optional(),
     ) {
     }
 
@@ -5094,7 +5117,7 @@ final class ApplicatorRefsConditional extends Data
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public function __construct(
-        public readonly string|Optional $label,
+        public readonly string|Optional $label = new Optional(),
     ) {
     }
 
@@ -5459,7 +5482,7 @@ final class ApplicatorRefsKeyed extends Data
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public function __construct(
-        public readonly string|Optional $trigger,
+        public readonly string|Optional $trigger = new Optional(),
     ) {
     }
 
@@ -5802,7 +5825,7 @@ final class ApplicatorRefsPoisonedKey extends Data
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public function __construct(
-        public readonly string|Optional $trigger,
+        public readonly string|Optional $trigger = new Optional(),
     ) {
     }
 
@@ -6068,9 +6091,9 @@ final class AwkwardNames extends Data
         #[MapName('it\'s')]
         public readonly string $itS,
         #[MapName('back\slash')]
-        public readonly string|Optional $backSlash,
+        public readonly string|Optional $backSlash = new Optional(),
         #[MapName('both\\\'s')]
-        public readonly int|Optional $bothS,
+        public readonly int|Optional $bothS = new Optional(),
     ) {
     }
 
@@ -6613,7 +6636,7 @@ final class ChainLink extends Data
         public readonly string $code,
         #[WithoutValidation]
         #[DataCollectionOf(ChainTag::class)]
-        public readonly array|Optional $tags,
+        public readonly array|Optional $tags = new Optional(),
     ) {
     }
 
@@ -7596,9 +7619,9 @@ final class ContainerAliases extends Data
      */
     public function __construct(
         public readonly array $listOfLists,
-        public readonly array|Optional $listOfMaps,
-        public readonly array|Optional $mapOfLists,
-        public readonly array|Optional $plain,
+        public readonly array|Optional $listOfMaps = new Optional(),
+        public readonly array|Optional $mapOfLists = new Optional(),
+        public readonly array|Optional $plain = new Optional(),
     ) {
     }
 
@@ -7944,11 +7967,11 @@ final class Containers extends Data
         public readonly array $dates,
         #[DataCollectionOf(Shape::class)]
         public readonly array $shapes,
-        public readonly array|Optional $datesByDay,
-        public readonly array|Optional $timestamps,
+        public readonly array|Optional $datesByDay = new Optional(),
+        public readonly array|Optional $timestamps = new Optional(),
         #[WithoutValidation]
         #[DataCollectionOf(Tag::class)]
-        public readonly array|Optional $tagsByKey,
+        public readonly array|Optional $tagsByKey = new Optional(),
     ) {
     }
 
@@ -8502,121 +8525,46 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
-use Closure;
-use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Contracts\Validation\ValidatorAwareRule;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\Validator;
-use LogicException;
+use BackedEnum;
+use Spatie\LaravelData\Attributes\PropertyForMorph;
+use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
-
-use function is_string;
-use function trim;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
  * Do not edit this file manually.
  *
- * laravel-data mode: one class, hydrated and validated by `spatie/laravel-data`.
- *
- *     $dto = Discriminator::from($request);
- *
- * Validation runs on that call because `validation_strategy` defaults to `OnlyRequests`. Given a plain
- * array instead, use `Discriminator::validateAndCreate($payload)` — `from($array)` hydrates WITHOUT
- * validating.
+ * laravel-data mode: the abstract base of a discriminated union. It is never built directly — a payload
+ * naming one of the members is hydrated into that member, chosen by `morph()` from
+ * `type`. The other modes emit an interface here; laravel-data cannot hydrate one,
+ * and `PropertyMorphableData` is its own answer to the same question.
  */
-final class Discriminator extends Data
+abstract class Discriminator extends Data implements PropertyMorphableData
 {
     public function __construct(
+        #[PropertyForMorph]
         public readonly DiscriminatorType $type,
-        public readonly string|null $name,
     ) {
     }
 
     /**
-     * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
-     * what the request payload carries, not the PHP property names.
+     * Which member class a payload describes, read from the discriminator BEFORE anything is hydrated —
+     * which is why laravel-data needs a method rather than the type system: the value decides the class.
      *
-     * Mentioning a property here takes it away from laravel-data's rule inferrers, which is the point:
-     * these rules are the schema, theirs are a guess from the PHP type.
-     *
-     * @return array<string, array<int, mixed>>
+     * @param array<string, mixed> $properties
      */
-    public static function rules(): array
+    public static function morph(array $properties): ?string
     {
-        return [
-            'type' => self::withBlankStringValidation(['present', Rule::enum(DiscriminatorType::class)]),
-            'name' => self::withBlankStringValidation(['present', 'nullable', 'string']),
-        ];
-    }
+        // laravel-data hands an enum-typed discriminator over as its case.
+        $value = $properties['type'] ?? null;
 
-    /**
-     * Laravel skips ordinary rules for blank strings. OpenAPI treats them as present values, so an
-     * implicit rule checks only that skipped case, using the same native rules and translator.
-     *
-     * @param array<int, mixed> $rules
-     * @return array<int, mixed>
-     */
-    private static function withBlankStringValidation(array $rules): array
-    {
-        $rules[] = new class($rules) implements ValidationRule, ValidatorAwareRule {
-            /** Runs for a blank string too, which Laravel skips for an ordinary rule. */
-            public bool $implicit = true;
-
-            private ?Validator $validator = null;
-
-            /** @param array<int, mixed> $rules */
-            public function __construct(private readonly array $rules)
-            {
-            }
-
-            public function setValidator(Validator $validator): static
-            {
-                $this->validator = $validator;
-
-                return $this;
-            }
-
-            public function validate(string $attribute, mixed $value, Closure $fail): void
-            {
-                if (!is_string($value) || trim($value) !== '') {
-                    return;
-                }
-                if ($this->validator === null) {
-                    throw new LogicException('The blank-string rule requires a validator.');
-                }
-
-                $validator = new class(
-                    translator: $this->validator->getTranslator(),
-                    data: ['value' => $value],
-                    rules: ['value' => $this->rules],
-                    attributes: ['value' => $this->validator->getDisplayableAttribute($attribute)],
-                ) extends Validator {
-                    /**
-                     * @param object|string $rule
-                     * @param string $attribute
-                     * @param mixed $value
-                     */
-                    protected function presentOrRuleIsImplicit($rule, $attribute, $value): bool
-                    {
-                        return $this->validatePresent($attribute, $value) || $this->isImplicit($rule);
-                    }
-                };
-                if ($validator->passes()) {
-                    return;
-                }
-                foreach ($validator->errors()->all() as $message) {
-                    $fail($message);
-                }
-            }
-
-            public function __toString(): string
-            {
-                return 'openapi_blank_string';
-            }
+        return match ($value instanceof BackedEnum ? $value->value : $value) {
+            'discriminator1' => Discriminator1::class,
+            'discriminator2' => Discriminator2::class,
+            // An unmapped value leaves the class unresolved, and laravel-data refuses to build the
+            // abstract base — the discriminator is enforced by the schema's own rules besides.
+            default => null,
         };
-
-        return $rules;
     }
 }
 
@@ -8633,7 +8581,6 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use LogicException;
-use Spatie\LaravelData\Data;
 
 use function is_string;
 use function trim;
@@ -8650,13 +8597,14 @@ use function trim;
  * array instead, use `Discriminator1::validateAndCreate($payload)` — `from($array)` hydrates WITHOUT
  * validating.
  */
-final class Discriminator1 extends Data
+final class Discriminator1 extends Discriminator
 {
     public function __construct(
-        public readonly DiscriminatorType $type,
+        DiscriminatorType $type,
         public readonly string|null $name,
         public readonly int $id,
     ) {
+        parent::__construct($type);
     }
 
     /**
@@ -8761,7 +8709,6 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Attributes\MapName;
-use Spatie\LaravelData\Data;
 
 use function is_string;
 use function trim;
@@ -8778,15 +8725,16 @@ use function trim;
  * array instead, use `Discriminator2::validateAndCreate($payload)` — `from($array)` hydrates WITHOUT
  * validating.
  */
-final class Discriminator2 extends Data
+final class Discriminator2 extends Discriminator
 {
     public function __construct(
-        public readonly DiscriminatorType $type,
+        DiscriminatorType $type,
         public readonly string|null $name,
         public readonly int $id,
         #[MapName('NAme')]
         public readonly string $nAme2,
     ) {
+        parent::__construct($type);
     }
 
     /**
@@ -9327,8 +9275,8 @@ final class ItemBounds extends Data
      */
     public function __construct(
         public readonly array $scores,
-        public readonly array|Optional $scoresByKey,
-        public readonly array|Optional $codes,
+        public readonly array|Optional $scoresByKey = new Optional(),
+        public readonly array|Optional $codes = new Optional(),
     ) {
     }
 
@@ -9636,12 +9584,12 @@ final class NestedContainers extends Data
     public function __construct(
         public readonly array $matrix,
         public readonly array $rowsOfMaps,
-        public readonly array|Optional $listsByKey,
-        public readonly array|Optional $mapsByKey,
-        public readonly array|Optional $dateRows,
-        public readonly array|Optional $numRows,
-        public readonly array|Optional $enumRows,
-        public readonly array|Optional $tagRows,
+        public readonly array|Optional $listsByKey = new Optional(),
+        public readonly array|Optional $mapsByKey = new Optional(),
+        public readonly array|Optional $dateRows = new Optional(),
+        public readonly array|Optional $numRows = new Optional(),
+        public readonly array|Optional $enumRows = new Optional(),
+        public readonly array|Optional $tagRows = new Optional(),
     ) {
     }
 
@@ -10084,9 +10032,9 @@ final class NullableContainerValues extends Data
      */
     public function __construct(
         public readonly array $listOfNullable,
-        public readonly array|Optional $mapOfNullable,
-        public readonly array|Optional $listOfNullable31,
-        public readonly array|Optional $mapOfNullable31,
+        public readonly array|Optional $mapOfNullable = new Optional(),
+        public readonly array|Optional $listOfNullable31 = new Optional(),
+        public readonly array|Optional $mapOfNullable31 = new Optional(),
     ) {
     }
 
@@ -10376,8 +10324,8 @@ final class ObjectWideRules extends Data
 
     public function __construct(
         public readonly string $kind,
-        public readonly string|Optional $code,
-        public readonly string|Optional $extra,
+        public readonly string|Optional $code = new Optional(),
+        public readonly string|Optional $extra = new Optional(),
     ) {
     }
 
@@ -10911,11 +10859,11 @@ final class ReadOnlyFields extends Data
 
     public function __construct(
         public readonly string $title,
-        public readonly int|Optional $serverId,
+        public readonly int|Optional $serverId = new Optional(),
         #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
-        public readonly DateTimeImmutable|Optional $writtenAt,
+        public readonly DateTimeImmutable|Optional $writtenAt = new Optional(),
         #[Hidden]
-        public readonly string|Optional $secret,
+        public readonly string|Optional $secret = new Optional(),
     ) {
     }
 
@@ -11772,9 +11720,9 @@ final class Test2 extends Data
         public readonly array $tags,
         public readonly Test2Types $types,
         #[WithoutValidation]
-        public readonly User|Optional $user,
+        public readonly User|Optional $user = new Optional(),
         #[WithoutValidation]
-        public readonly Test2UserType|Optional $userType,
+        public readonly Test2UserType|Optional $userType = new Optional(),
     ) {
     }
 
@@ -12258,7 +12206,7 @@ use function trim;
 final class Test2UserType extends Data
 {
     public function __construct(
-        public readonly string|Optional $region,
+        public readonly string|Optional $region = new Optional(),
     ) {
     }
 
@@ -12566,8 +12514,8 @@ final class TestPostRequest extends Data
         public readonly int $id,
         public readonly string $name,
         public readonly int|string $code,
-        public readonly string|Optional $homepage,
-        public readonly string|Optional $endpoint,
+        public readonly string|Optional $homepage = new Optional(),
+        public readonly string|Optional $endpoint = new Optional(),
     ) {
     }
 
@@ -14000,9 +13948,9 @@ final class UnionUnderContainer extends Data
     public function __construct(
         #[WithoutValidation]
         public readonly TreeNode $tree,
-        public readonly array|Optional $chain,
-        public readonly array|Optional $chainAllOf,
-        public readonly array|Optional $listOfUnions,
+        public readonly array|Optional $chain = new Optional(),
+        public readonly array|Optional $chainAllOf = new Optional(),
+        public readonly array|Optional $listOfUnions = new Optional(),
     ) {
     }
 

@@ -2644,11 +2644,14 @@ trait RendersLaravelDto
      * class of its own it was a type no variant belonged to — a property typed with it could not hold
      * a variant, and a body bound to it lost every field a variant adds. It is the interface the
      * variants implement instead, as in Symfony mode, and hydration picks the variant by the
-     * discriminator. laravel-data keeps the class: its variants extend nothing either way.
+     * discriminator. laravel-data makes it the abstract morph base its variants extend, as it does for a
+     * `oneOf` — kept a plain class there, a property typed with it hydrated the base and dropped every
+     * field a variant adds.
      */
     private function laravelIsAllOfDiscriminatorBase(string $className): bool
     {
-        return $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && $this->isAllOfDiscriminatorBase($className);
+        return in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)
+            && $this->isAllOfDiscriminatorBase($className);
     }
 
     /**

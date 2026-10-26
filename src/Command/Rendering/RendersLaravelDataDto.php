@@ -61,7 +61,7 @@ trait RendersLaravelDataDto
         // abstract `Data` base implementing `PropertyMorphableData`, whose `morph()` picks the member
         // class from the discriminator value. So the base is an abstract class here and the members
         // `extends` it.
-        if ($isAbstract && is_array($discriminator)) {
+        if (($isAbstract && is_array($discriminator)) || $this->laravelIsAllOfDiscriminatorBase($className)) {
             return $this->renderLaravelDataMorphBase($namespace, $className);
         }
 
@@ -249,6 +249,26 @@ trait RendersLaravelDataDto
             );
         }
 
+        // Typed as the members type it: a discriminator the base declares as an enum is that enum in
+        // every member, and `parent::__construct()` handing it to a `string` was a TypeError.
+        $propertyType = 'string';
+        $enumTyped = false;
+        foreach ($this->getSchemaProperties($className) as $baseProperty) {
+            if ($baseProperty['openApiName'] !== $propertyName) {
+                continue;
+            }
+            $propertyType = $this->resolveLaravelDataParam($baseProperty, $namespace)['declaredType'];
+            $enumClass = $this->laravelEnumClass($baseProperty);
+            if ($enumClass !== null) {
+                $this->appendImportForClass($useStatements, $enumClass, $namespace, $className);
+                $enumTyped = true;
+            }
+        }
+
+        // `DataMorphClassResolver` casts an enum-typed discriminator to its case before `morph()` sees
+        // it, so the match has to read the value back out.
+        $enumRef = $enumTyped ? $this->libraryClassRef('BackedEnum', $namespace, $useStatements) : null;
+
         $members = [];
         foreach ($mapping as $discriminatorValue => $memberClass) {
             $this->appendImportForClass($useStatements, $memberClass, $namespace, $className);
@@ -275,6 +295,8 @@ trait RendersLaravelDataDto
             'morphBase' => [
                 'propertyName' => $propertyName,
                 'property' => $property,
+                'propertyType' => $propertyType,
+                'enumRef' => $enumRef,
                 'attributes' => $attributes,
                 'members' => $members,
                 'dataBase' => $dataBase,
@@ -451,6 +473,21 @@ trait RendersLaravelDataDto
             );
         }
 
+        // A path parameter is not in `$request->all()`, which is all `Data::from($request)` reads: the
+        // `present` rule failed on every request. laravel-data's own attribute brings it in from the
+        // route before the rules run.
+        if (($property['inPath'] ?? null) === true) {
+            $attributes[] = sprintf(
+                '#[%s(%s)]',
+                $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\Attributes\FromRouteParameter',
+                    namespace: $namespace,
+                    useStatements: $attributeImports,
+                ),
+                $this->phpStringLiteral($property['openApiName']),
+            );
+        }
+
         foreach ($this->laravelDataTemporalAttributes($property, $namespace) as $temporal) {
             $attributes[] = $temporal['source'];
             foreach ($temporal['imports'] as $temporalImport) {
@@ -493,6 +530,16 @@ trait RendersLaravelDataDto
             'attributes' => $attributes,
             'attributeImports' => $attributeImports,
             'tracksPresence' => $tracksPresence,
+            // An optional argument is optional in PHP too: without a default, `new X(success: true)` was an
+            // ArgumentCountError for every optional field left out. Absent is `Optional`, as when
+            // laravel-data hydrates a payload without the key.
+            // An untyped one has no `Optional` member; laravel-data hands it `null` when absent, so that is
+            // its default — and it keeps a defaulted argument from preceding one without a default.
+            'defaultExpression' => match (true) {
+                $tracksPresence => sprintf('new %s()', $optionalRef),
+                !$requiredOnInput => 'null',
+                default => null,
+            },
             // A promoted property unless the class inherits it from a morph base, where redeclaring a
             // readonly property would be a fatal.
             'promoted' => true,

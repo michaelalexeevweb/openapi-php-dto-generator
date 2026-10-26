@@ -40,15 +40,15 @@ final class UserPostRequestData extends Data
     public function __construct(
         #[MapName('first_name')]
         public readonly string $firstName,
-        public readonly string|Optional $nickname,
-        public readonly string|null|Optional $middleName,
+        public readonly string|Optional $nickname = new Optional(),
+        public readonly string|null|Optional $middleName = new Optional(),
         #[MapName('born_on')]
         #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
-        public readonly DateTimeImmutable|Optional $bornOn,
+        public readonly DateTimeImmutable|Optional $bornOn = new Optional(),
         #[WithoutValidation]
         #[DataCollectionOf(Address::class)]
-        public readonly array|Optional $addresses,
+        public readonly array|Optional $addresses = new Optional(),
     ) {
     }
 
@@ -87,6 +87,10 @@ explicit null while still allowing the key to be missing.
 `mixed` is the one exception. It cannot take part in a union type, so a free-form property is plain
 `mixed` and its presence is not observable — narrowing it to something `Optional` fits into would refuse
 payloads the schema allows.
+
+An optional argument defaults to `new Optional()`, so code that builds a DTO — a response — passes only
+what it has: `new UserResponse(firstName: 'Ada')` leaves the rest absent, exactly as a payload without
+those keys does. Before 2.15.93 every optional argument had to be spelled out.
 
 A `readOnly` property listed under `required` is `Optional` too, for the same reason: OpenAPI puts that
 requirement on the response alone, so a request may omit it. Until 2.15.36 it was emitted as plainly
@@ -191,6 +195,11 @@ A member cannot belong to more than one discriminated-union morph base: PHP perm
 class. Such a schema now fails generation with the member and both bases named, before existing
 output is replaced. Give each union its own member schema instead of sharing one across morph bases.
 
+The allOf pattern — a base with the discriminator whose variants `allOf` it — gets the same shape: the
+base is the abstract morph base, each variant extends it. Before 2.15.93 the base stayed a plain class
+its variants did not extend, so a property typed with it lost every field a variant adds. A
+discriminator the base declares as an enum is that enum on the base too, and `morph()` reads its value.
+
 A `propertyName` that is not a PHP identifier — `pet_type` — gets a `#[MapName('pet_type')]` on the base
 alongside `#[PropertyForMorph]`. The morph runs before there is an object, and laravel-data looks the
 value up by the property name and by its input-mapped name, so both spellings have to be there.
@@ -207,6 +216,16 @@ laravel-data's `validation_strategy` defaults to `OnlyRequests`. That is load-be
 | `Data::from($payload)` — a plain array | ❌ hydrates a rule-violating payload silently |
 
 So bind from the request, or use `validateAndCreate()`. `from($array)` is a hydrator, not a gate.
+
+A path parameter is not part of `$request->all()`, which is what `from($request)` reads. Its property
+carries laravel-data's `#[FromRouteParameter('widgetId')]`, which takes it from the route before the
+rules run (before 2.15.93 a required path parameter failed `present` on every request). A header or
+cookie parameter has no such attribute in laravel-data — merge it into the request before `from()`:
+
+```php
+$request->merge(['X-Tenant' => $request->header('X-Tenant')]);
+$params = WidgetHeaderParams::from($request);
+```
 
 
 ## Divergences from the other modes
@@ -253,5 +272,20 @@ unconstrained string can still be empty; a positive minLength, pattern, format o
 rejects it. Optional absence and schema-declared nullability remain separate from an empty string.
 
 Property names containing `.` or `*` are rejected during generation because Laravel treats them
-as path/wildcard syntax. Rename such wire properties or select another generation mode. Generation
-fails before replacing existing output.
+as path/wildcard syntax — laravel-data reads `#[MapName('a.b')]` as a nested path too, so there is no
+attribute to say otherwise. Rename such wire properties or generate that document in Laravel mode, which
+escapes the dot in its rules. Generation fails before replacing existing output.
+
+### Coming from Laravel mode
+
+The classes keep their names; what you read from them changes. laravel-data's own surface is public
+readonly properties, so the generated class has no getters:
+
+| Laravel mode | laravel-data mode |
+|---|---|
+| `$dto->getName()` | `$dto->name` |
+| `$dto->isNameProvided()` | `! $dto->name instanceof Optional` |
+| `$dto->getBornOn()` (the string) | `$dto->bornOn->format('Y-m-d')` |
+| `$dto->getBornOnAsDateTime()` | `$dto->bornOn` |
+| `UserRequest::fromValidated($request->validated())` via `UserRequestFormRequest` | `UserRequest::from($request)` |
+| `$dto->toArray()` | `$dto->toArray()` |
