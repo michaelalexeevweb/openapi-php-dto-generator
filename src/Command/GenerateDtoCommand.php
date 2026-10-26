@@ -3672,7 +3672,17 @@ final class GenerateDtoCommand extends Command
                             }
                             $classMap[$discriminatorValue] = $mappedClass;
                         }
-                        if ($classMap !== []) {
+                        $dispatched = $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && $classMap !== []
+                            ? $this->laravelDiscriminatorDispatch(
+                                variants: $variants,
+                                branchConstraints: $branchConstraints,
+                                propertyName: $propertyName,
+                                classMap: $classMap,
+                            )
+                            : null;
+                        if ($dispatched !== null) {
+                            $constraints = [...array_diff_key($constraints, ['oneOf' => true]), ...$dispatched];
+                        } elseif ($classMap !== []) {
                             $constraints['x-discriminator-property'] = $propertyName;
                             $constraints['x-discriminator-php-property'] = $this->normalizePropertyName($propertyName);
                             $constraints['x-discriminator-map'] = $classMap;

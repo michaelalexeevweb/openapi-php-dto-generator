@@ -3,6 +3,25 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.91 — 2026-10-26
+
+- Laravel schema errors keyed by field
+- Laravel enum list items take strings
+- Laravel inline discriminator union hydrates
+
+Laravel mode:
+
+- an error the schema check raises inside a value — a key missing in a discriminated variant, an item
+  of a list — was keyed by the top-level property, with the package's sentence. It is keyed by the
+  field it names (`shape.radius`, `levels.0`), and a missing key, a wrong type or a value outside an
+  enum is reported as the matching Laravel rule, so it reads like the rest of the error bag.
+- the items of a list of enums get `Rule::enum()` on `field.*`, as a scalar enum property does: a
+  query `?levels[]=2` against an int-backed enum was refused, the item being a string. In a JSON body a
+  string for an int-backed enum — item or property — is refused, as for a plain integer.
+- a discriminated `oneOf` of `$ref`s written on the property itself reached the constructor as an array —
+  a TypeError, a 500 for every valid payload. It is built as the variant its discriminator names, and
+  checked against that variant only, where a payload was told it lacked the fields of every variant.
+
 ## 2.15.90 — 2026-10-26
 
 - Laravel union interface publishes variants

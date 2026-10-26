@@ -331,7 +331,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
                 }
 
                 foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
-                    $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+                    self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
 {% if hasObjectConstraints %}
@@ -550,6 +550,72 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
 {% endif %}
 {% if interpreterMethodsBlock is not empty %}
+    /**
+     * Reports an interpreter message under the field it is about, as Laravel's own rules do: a key
+     * missing deep inside a union lands on `shape.radius`, a list item on `levels.0` — the message
+     * opens with that path. Before 2.15.91 every one of them was keyed by the top-level property.
+     *
+     * A claim a Laravel rule also makes — a missing key, a wrong type, a value outside an enum — is
+     * reported AS that rule, so it reads like the rest of the error bag and the application's
+     * translations apply. Anything else keeps the interpreter's sentence.
+     *
+     * A path the payload does not lead along — one into a JSON string's decoded `contentSchema` — is not
+     * a field of the request, so that message stays on the property with its own sentence.
+     */
+    private static function addOpenApiFieldError(Validator $validator, string $property, mixed $value, string $error): void
+    {
+        // `shape.radius is required`, `levels[0] must be one of: 1, 2`: the deeper segments, then the claim.
+        $rest = str_starts_with($error, $property) ? substr($error, strlen($property)) : '';
+        if (preg_match('/^((?:\.[^ .\[]+|\[\d+\])*) (.+)$/s', $rest, $match) !== 1) {
+            $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+
+            return;
+        }
+
+        preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
+        $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
+        $node = $value;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                $node = null;
+                break;
+            }
+            $node = $node[$segment];
+        }
+        if ($segments !== [] && !is_array($node)) {
+            $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+
+            return;
+        }
+
+        $path = implode('.', [$property, ...$segments]);
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
+        // is one mistake, reported once.
+        if ($segments !== [] && $validator->errors()->has($path)) {
+            return;
+        }
+        $claim = $match[2];
+
+        $rule = match ($claim) {
+            'is required' => 'present',
+            'must be of type integer' => 'integer',
+            'must be of type number' => 'numeric',
+            'must be of type string' => 'string',
+            'must be of type boolean' => 'boolean',
+            'must be of type array' => 'list',
+            'must be of type object' => 'array',
+            default => str_starts_with($claim, 'must be one of: ') ? 'enum' : null,
+        };
+
+        if ($rule !== null) {
+            $validator->addFailure($path, $rule);
+
+            return;
+        }
+
+        $validator->errors()->add($path, str_ends_with($error, '.') ? $error : $error . '.');
+    }
+
 {{ interpreterMethodsBlock|raw }}
 
 {% endif %}

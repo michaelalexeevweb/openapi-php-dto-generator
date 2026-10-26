@@ -112,7 +112,8 @@ final class Circle implements Shape { /* kind, radius */ }
 ```
 
 A property typed with it holds the variant its discriminator names, and every field of that variant is
-checked. A request body typed with it gets a `ShapeFormRequest` that reads the discriminator and takes
+checked — the fields of THAT variant only, also for a `oneOf` of `$ref`s with a discriminator written on
+the property itself (`Circle|Square`), which is built as the variant too. A request body typed with it gets a `ShapeFormRequest` that reads the discriminator and takes
 the rules, the schema checks and the DTO from that variant; an unknown or missing value is a 422 on the
 discriminator itself:
 
@@ -221,7 +222,11 @@ Two consequences worth stating plainly:
 - **a violation is reported once.** The interpreter only carries what the rules did not take, so a
   payload breaking `minLength` gets Laravel's message, not two messages;
 - **a schema that needs nothing beyond rules gets no interpreter at all** — no constants, no
-  `withValidator()`, nothing to forward. 6 of the 47 files in the demo corpus carry one.
+  `withValidator()`, nothing to forward. 6 of the 47 files in the demo corpus carry one;
+- **an error sits under the field it is about**, as a rule's error does: a key missing inside a
+  variant is `shape.radius`, a list item `levels.0`. A claim a rule also makes — a missing key, a
+  wrong type, a value outside an enum — is reported as that rule (`The shape.radius field must be
+  present.`), so your translations apply; any other keeps the interpreter's sentence.
 
 ### One thing no rule can express: object vs array
 

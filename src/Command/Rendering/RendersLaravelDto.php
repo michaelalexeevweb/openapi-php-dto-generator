@@ -827,7 +827,20 @@ trait RendersLaravelDto
         // (`laravelUnconsumedKeywords()` picks it up, through `laravelInterpreterSchemaFor()`).
         if ($itemClass !== null) {
             if ($this->laravelIsEnumClass($itemClass)) {
-                return [];
+                if (!$this->laravelItemEnumIsRuleChecked($property)) {
+                    return [];
+                }
+
+                // The same rule a scalar enum property gets. Left to the interpreter, the members were
+                // compared strictly, so `?levels[]=2` — a query value is always a string — was refused
+                // by an int-backed enum that lists 2.
+                $enumRule = sprintf('Rule::enum(\%s::class)', $this->laravelEnumFqcn($itemClass));
+
+                return [
+                    $this->laravelPathSegment($property['openApiName']) . '.*' => $this->laravelItemsNullable($property)
+                        ? ["'nullable'", $enumRule]
+                        : [$enumRule],
+                ];
             }
 
             // The item ITSELF must be an object. With no rule on `f.*` a string or a null item reached
@@ -1092,6 +1105,7 @@ trait RendersLaravelDto
         $raw = $this->laravelWithUnionEnumCast($param['declaredType'], sprintf('$data[%s]', $key), $raw);
 
         $itemsNullable = $this->laravelItemsNullable($property);
+        $inlineDiscriminator = $this->laravelInlineDiscriminator($property);
         $nestedDtoContainer = $this->laravelNestedDtoContainerExpression($property['type'], $containerRaw, $property['openApiName']);
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
@@ -1110,6 +1124,13 @@ trait RendersLaravelDto
                 $containerRaw,
             ),
             $enumClass !== null => sprintf('%s::from(%s)', $this->shortClassName($enumClass), $raw),
+            // `Circle|Square` written inline: handed over as the array it arrived as, the constructor
+            // refused it — a TypeError, a 500 for every request the validator had accepted.
+            $inlineDiscriminator !== null => $this->laravelDiscriminatorMatch(
+                rawAccess: $containerRaw,
+                propertyName: $inlineDiscriminator['propertyName'],
+                mapping: $inlineDiscriminator['mapping'],
+            ),
             $dtoClass !== null => $this->laravelNestedDtoExpression(
                 $dtoClass,
                 $containerRaw,
@@ -1208,6 +1229,9 @@ trait RendersLaravelDto
         }
         if ($this->laravelRulesNeedRuleFacade($property)) {
             $imports[] = 'Illuminate\Validation\Rule';
+        }
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && $this->laravelInlineDiscriminator($property) !== null) {
+            $imports[] = 'InvalidArgumentException';
         }
 
         foreach ([$this->laravelEnumClass($property), $this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $referenced) {
@@ -1567,7 +1591,7 @@ trait RendersLaravelDto
                 : sprintf('self::toJsonObjects(%s)', $mapped);
         }
 
-        if ($this->laravelDtoClass($property) !== null) {
+        if ($this->laravelDtoClass($property) !== null || $this->laravelInlineDiscriminator($property) !== null) {
             // `?: (object)[]` because `type: object` with nothing to write is `{}`, and `toArray()`
             // hands back the empty array PHP cannot tell from an empty LIST. Spelled long-hand for
             // the nullable case: `?->toArray() ?: (object)[]` would turn a legitimate null into `{}`.
@@ -2498,6 +2522,16 @@ trait RendersLaravelDto
             return sprintf('%s::fromValidated(%s)', $this->shortClassName($dtoClass), $rawAccess);
         }
 
+        return $this->laravelDiscriminatorMatch($rawAccess, $discriminator['propertyName'], $mapping);
+    }
+
+    /**
+     * The variant a payload's discriminator names, built from that payload.
+     *
+     * @param array<string, string> $mapping discriminator value => class
+     */
+    private function laravelDiscriminatorMatch(string $rawAccess, string $propertyName, array $mapping): string
+    {
         $arms = [];
         foreach ($mapping as $discriminatorValue => $targetClass) {
             $arms[] = sprintf(
@@ -2511,12 +2545,38 @@ trait RendersLaravelDto
         return sprintf(
             'match (%s[%s] ?? null) { %s, default => throw new InvalidArgumentException(sprintf(\'Unknown %s "%%s".\', (string)(%s[%s] ?? \'\'))) }',
             $rawAccess,
-            $this->phpStringLiteral($discriminator['propertyName']),
+            $this->phpStringLiteral($propertyName),
             implode(', ', $arms),
-            $discriminator['propertyName'],
+            $propertyName,
             $rawAccess,
-            $this->phpStringLiteral($discriminator['propertyName']),
+            $this->phpStringLiteral($propertyName),
         );
+    }
+
+    /**
+     * The discriminator of a `oneOf` written inline on the property — `Circle|Square`, no base class to
+     * carry it — once `laravelDiscriminatorDispatch()` has turned it into checks per variant.
+     *
+     * @param SchemaProperty $property
+     * @return array{propertyName: string, mapping: array<string, string>}|null
+     */
+    private function laravelInlineDiscriminator(array $property): ?array
+    {
+        $constraints = $property['constraints'] ?? [];
+        $propertyName = $constraints['x-discriminator-property'] ?? null;
+        $mapping = $constraints['x-discriminator-map'] ?? null;
+        if (!is_string($propertyName) || !is_array($mapping) || array_key_exists('oneOf', $constraints)) {
+            return null;
+        }
+
+        $classes = [];
+        foreach ($mapping as $value => $class) {
+            if (is_string($class)) {
+                $classes[(string)$value] = $class;
+            }
+        }
+
+        return $classes === [] ? null : ['propertyName' => $propertyName, 'mapping' => $classes];
     }
 
     /**
@@ -2617,7 +2677,9 @@ trait RendersLaravelDto
         $target = $nestedClass ?? $itemClass;
 
         if ($target !== null && $itemClass !== null && $this->laravelIsEnumClass($target)) {
-            return $this->laravelWithItemEnumMembers($schema, $property, $target);
+            return $this->laravelItemEnumIsRuleChecked($property)
+                ? $this->laravelWithoutItemEnumKeywords($schema, $property)
+                : $this->laravelWithItemEnumMembers($schema, $property, $target);
         }
 
         if ($target === null || $this->laravelIsEnumClass($target)) {
@@ -2676,6 +2738,57 @@ trait RendersLaravelDto
     private function laravelContainerValueKey(array $property): string
     {
         return ($property['isMap'] ?? null) === true ? 'additionalProperties' : 'items';
+    }
+
+    /**
+     * Whether the items of an enum-valued container are checked by `Rule::enum()` on `field.*`. A
+     * nullable INLINE enum stays with the interpreter, as it does for a property: its member list
+     * decides whether null is one of them, which `nullable` + `Rule::enum()` cannot say.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelItemEnumIsRuleChecked(array $property): bool
+    {
+        if (!$this->laravelItemsNullable($property)) {
+            return true;
+        }
+
+        $items = $this->laravelConstraintsFor($property)[$this->laravelContainerValueKey($property)] ?? null;
+
+        return !is_array($items) || !array_key_exists('enum', $items);
+    }
+
+    /**
+     * The container schema with what `Rule::enum()` on `field.*` already checks taken out of its items.
+     *
+     * @param array<string, mixed> $schema
+     * @param SchemaProperty $property
+     * @return array<string, mixed>
+     */
+    private function laravelWithoutItemEnumKeywords(array $schema, array $property): array
+    {
+        $key = $this->laravelContainerValueKey($property);
+        if (!is_array($schema[$key] ?? null)) {
+            return $schema;
+        }
+
+        $kept = [];
+        foreach ($schema[$key] as $keyword => $value) {
+            if (!in_array($keyword, ['type', 'enum', 'nullable'], true)) {
+                $kept[$keyword] = $value;
+            }
+        }
+
+        $pruned = [];
+        foreach ($schema as $keyword => $value) {
+            if ($keyword !== $key) {
+                $pruned[$keyword] = $value;
+            } elseif ($kept !== []) {
+                $pruned[$keyword] = $kept;
+            }
+        }
+
+        return $pruned;
     }
 
     /**
@@ -2857,6 +2970,68 @@ trait RendersLaravelDto
     }
 
     /**
+     * A discriminated `oneOf` property checked the way it is hydrated: by the variant its discriminator
+     * names. Matched branch by branch instead, a payload that fit none was reported against EVERY
+     * branch — `{"kind": "circle"}` was told it lacks `side` as well as `radius` — and once each error
+     * is keyed by its own field, a client highlights fields of a variant it never sent.
+     *
+     * Null when a branch is not a `$ref` the mapping names: then there is no variant to dispatch to,
+     * and the branch-by-branch match stays.
+     *
+     * @param array<int|string, mixed> $variants
+     * @param array<int, mixed> $branchConstraints
+     * @param array<string, string> $classMap
+     * @return array<string, mixed>|null
+     */
+    private function laravelDiscriminatorDispatch(
+        array $variants,
+        array $branchConstraints,
+        string $propertyName,
+        array $classMap,
+    ): ?array {
+        $branchByClass = [];
+        $acceptsNull = false;
+        foreach (array_values($variants) as $index => $variant) {
+            $branch = $branchConstraints[$index] ?? null;
+            if ($branch === ['type' => 'null']) {
+                $acceptsNull = true;
+
+                continue;
+            }
+            $ref = is_array($variant) ? ($variant['$ref'] ?? null) : null;
+            $class = is_string($ref) ? $this->schemaRefToClassName($ref) : 'mixed';
+            if (!is_array($branch) || !in_array($class, $classMap, true)) {
+                return null;
+            }
+            $branchByClass[$class] = $branch;
+        }
+        // `nullable: true` beside the union is appended as one more branch, past the variants.
+        $acceptsNull = $acceptsNull || in_array(['type' => 'null'], $branchConstraints, true);
+
+        $allOf = [[
+            'required' => [$propertyName],
+            'properties' => [$propertyName => ['enum' => array_map('strval', array_keys($classMap))]],
+        ]];
+        foreach ($classMap as $value => $class) {
+            $allOf[] = [
+                'if' => ['type' => 'object', 'properties' => [$propertyName => ['const' => $value]], 'required' => [$propertyName]],
+                'then' => $branchByClass[$class] ?? [],
+            ];
+        }
+
+        // `type` at the top, where the rule map turns it into `array` — and `nullable` into `nullable`.
+        // The discriminator stays for the hydrator, which builds the variant it names.
+        $dispatched = [
+            'type' => 'object',
+            'allOf' => $allOf,
+            'x-discriminator-property' => $propertyName,
+            'x-discriminator-map' => $classMap,
+        ];
+
+        return $acceptsNull ? [...$dispatched, 'nullable' => true] : $dispatched;
+    }
+
+    /**
      * Whether a declared type can hold an int, and therefore may receive a JSON `42.0` that the spec
      * counts as an integer. A `float` type needs no coercion — it accepts the value as it is.
      */
@@ -3007,6 +3182,14 @@ trait RendersLaravelDto
 
         $nestedClass = $this->laravelDtoClass($property);
         $itemClass = $this->laravelDtoItemClass($property);
+
+        // An int-backed enum is an integer on the wire, and `Rule::enum()` lets `"2"` through as 2.
+        $enumClass = $this->laravelEnumClass($property);
+        if ($enumClass !== null && $this->laravelIsIntBackedEnum($enumClass)) {
+            $paths[$path] = 'integer';
+        } elseif ($itemClass !== null && $this->laravelIsEnumClass($itemClass) && $this->laravelIsIntBackedEnum($itemClass)) {
+            $paths[$path . '.*'] = 'integer';
+        }
         $recurseClass = $nestedClass ?? ($itemClass !== null && !$this->laravelIsEnumClass($itemClass) ? $itemClass : null);
         if ($recurseClass === null || in_array($recurseClass, $visitedClasses, true)) {
             return $paths;

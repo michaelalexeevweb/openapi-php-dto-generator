@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Laravel;
 
+use BackedEnum;
 use FilesystemIterator;
 use Illuminate\Routing\Route;
 use Illuminate\Translation\ArrayLoader;
@@ -1160,7 +1161,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         $rejected = $this->validatorFactory()->make(['f' => 'zz'], $rules);
         call_user_func([$fqcn, 'withValidator'], $rejected);
         $this->assertTrue($rejected->fails(), 'an unknown enum member must be rejected');
-        $this->assertStringContainsString('must be one of', implode("\n", $rejected->errors()->all()));
+        // Reported as the rule Laravel has for it, so the application's translation applies.
+        $this->assertContains('validation.enum', $rejected->errors()->get('f'));
     }
 
     /**
@@ -1482,7 +1484,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         };
 
         $this->assertSame(
-            ['roles' => ['roles[0] must be one of: "Owner", "Guest".']],
+            // `roles.*` carries `Rule::enum()`, as a scalar enum property does.
+            ['roles.0' => ['The selected roles.0 is invalid.']],
             $validate(['roles' => ['bad']])->errors()->toArray(),
         );
 
@@ -1938,5 +1941,123 @@ final class LaravelRulesEnforcementTest extends TestCase
             $command->getGenerationWarnings(),
             static fn(string $warning): bool => str_contains($warning, '"size" in `required` and gives it a `default`'),
         ));
+    }
+
+    /**
+     * An interpreter error sits under the field it is about, as a rule's error does: a key missing
+     * inside a variant is `f.score`, not `f`, so a client can mark the field. A claim a Laravel rule
+     * also makes is reported as that rule, so it reads like the rest of the error bag.
+     */
+    public function testAnInterpreterErrorIsKeyedByTheFieldItNames(): void
+    {
+        $fqcn = $this->generateProbe('leaf error key', ['$ref' => '#/components/schemas/Palette'], [
+            'Palette' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string']],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'warm' => '#/components/schemas/WarmPalette',
+                    'cold' => '#/components/schemas/ColdPalette',
+                ]],
+            ],
+            'WarmPalette' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Palette'],
+                ['type' => 'object', 'required' => ['score'], 'properties' => ['score' => ['type' => 'integer']]],
+            ]],
+            'ColdPalette' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Palette'],
+                ['type' => 'object', 'required' => ['depth'], 'properties' => ['depth' => ['type' => 'integer']]],
+            ]],
+        ]);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $errors = function (array $data) use ($fqcn, $rules): array {
+            $validator = $this->validatorFactory()->make($data, $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator);
+
+            return $validator->errors()->toArray();
+        };
+
+        $this->assertSame(['f.score' => ['validation.present']], $errors(['f' => ['kind' => 'warm']]));
+        $this->assertSame(['f.score' => ['validation.integer']], $errors(['f' => ['kind' => 'warm', 'score' => 'x']]));
+        // `f.kind` carries `Rule::enum()` of its own: one mistake, one message.
+        $this->assertSame(['f.kind' => ['The selected f.kind is invalid.']], $errors(['f' => ['kind' => 'red']]));
+        $this->assertSame([], $errors(['f' => ['kind' => 'cold', 'depth' => 2]]));
+    }
+
+    /**
+     * A list of an int-backed enum read from the query string — `?levels[]=2`, the item a string —
+     * passes and is built as the case, as a scalar enum property is. The interpreter compared the
+     * members strictly and refused it. In a JSON body the string is still refused, by the raw check.
+     */
+    public function testAListOfAnIntEnumAcceptsItsStringForm(): void
+    {
+        $fqcn = $this->generateProbe('int enum list', [
+            'type' => 'array',
+            'items' => ['$ref' => '#/components/schemas/Level'],
+        ], ['Level' => ['type' => 'integer', 'enum' => [1, 2, 3]]]);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+
+        $validator = $this->validatorFactory()->make(['f' => ['2', 3]], $rules);
+        call_user_func([$fqcn, 'withValidator'], $validator);
+        $this->assertSame([], $validator->errors()->toArray());
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        $this->assertSame([2, 3], array_map(static fn(BackedEnum $level): int|string => $level->value, $dto->getF()));
+
+        $rejected = $this->validatorFactory()->make(['f' => ['9']], $rules);
+        call_user_func([$fqcn, 'withValidator'], $rejected);
+        $this->assertSame(['f.0'], array_keys($rejected->errors()->toArray()));
+
+        // A JSON body has types of its own: there `"2"` is a string, refused as for a plain integer.
+        $stringInBody = $this->validatorFactory()->make(['f' => ['2']], $rules);
+        call_user_func([$fqcn, 'withValidator'], $stringInBody, '{"f":["2"]}');
+        $this->assertSame(['f.0' => ['validation.integer']], $stringInBody->errors()->toArray());
+    }
+
+    /**
+     * `oneOf` of `$ref`s with a discriminator, written on the property itself: checked against the
+     * variant the discriminator names — not against every branch, which told a circle it lacked a
+     * square's `side` — and built as that variant, where the array reached a constructor typed
+     * `Circle|Square` and threw.
+     */
+    public function testAnInlineDiscriminatedPropertyIsCheckedAndBuiltAsItsVariant(): void
+    {
+        $fqcn = $this->generateProbe('inline discriminator', [
+            'oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']],
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                'circle' => '#/components/schemas/Circle',
+                'square' => '#/components/schemas/Square',
+            ]],
+        ], [
+            'Circle' => [
+                'type' => 'object',
+                'required' => ['kind', 'radius'],
+                'properties' => ['kind' => ['type' => 'string'], 'radius' => ['type' => 'integer', 'minimum' => 1]],
+            ],
+            'Square' => [
+                'type' => 'object',
+                'required' => ['kind', 'side'],
+                'properties' => ['kind' => ['type' => 'string'], 'side' => ['type' => 'integer']],
+            ],
+        ]);
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $validate = function (array $data) use ($fqcn, $rules): \Illuminate\Validation\Validator {
+            $validator = $this->validatorFactory()->make($data, $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator);
+
+            return $validator;
+        };
+
+        $this->assertSame(['f.radius' => ['validation.present']], $validate(['f' => ['kind' => 'circle']])->errors()->toArray());
+        $this->assertSame(['f.kind' => ['validation.enum']], $validate(['f' => ['kind' => 'oval']])->errors()->toArray());
+        $this->assertTrue($validate(['f' => 'x'])->fails());
+
+        $validator = $validate(['f' => ['kind' => 'square', 'side' => 2]]);
+        $this->assertTrue($validator->passes());
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        $this->assertStringEndsWith('\Square', get_class($dto->getF()));
+        $this->assertSame(['f' => ['kind' => 'square', 'side' => 2]], $dto->toArray());
     }
 }
