@@ -3,6 +3,24 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.102 — 2026-10-27
+
+- laravel root `[]` is an empty object
+- laravel-data framework bridge recipes
+
+Laravel and laravel-data modes:
+
+- 2.15.101 refused every JSON array sent for an object body, `[]` included. `[]` is how a PHP client
+  sends an empty object — `json_encode([])`, Laravel's `postJson()` with no data — and it already is one
+  nested, so a body with no required field answered 400 to a request meaning "no fields". A non-empty
+  array is still refused. Runtime mode refuses `[]` at the root as before.
+
+README.laravel-data.md:
+
+- recipes for running generated classes inside another framework (boot, request with route parameters,
+  argument resolver, response checked with `validate()`), for a body that is a list, and for a
+  "value or null" helper in place of Laravel-mode getters.
+
 ## 2.15.101 — 2026-10-27
 
 - laravel query parameters by style

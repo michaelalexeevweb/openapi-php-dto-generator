@@ -287,8 +287,8 @@ final class DataShapeTest extends TestCase
     }
 
     /**
-     * A JSON array sent for an object body is refused, `[]` included, as runtime mode refuses it. It
-     * decodes to the same PHP array an empty object does, so with every property optional it passed.
+     * A non-empty JSON array sent for an object body is refused: it decodes to the PHP array an object
+     * keyed 0..n-1 does, so with every property optional it passed. `[]` is the empty object, as nested.
      */
     public function testAnArrayBodyIsRefusedWhereTheBodyIsAnObject(): void
     {
@@ -311,8 +311,10 @@ final class DataShapeTest extends TestCase
             return [];
         };
 
-        $this->assertSame(['payload' => ['JSON body must be an object, got array.']], $errors('[]'));
-        $this->assertSame(['payload'], array_keys($errors('["a"]')));
+        $this->assertSame(['payload' => ['JSON body must be an object, got array.']], $errors('["a"]'));
+        // `[]` is the empty object, as it is nested: `json_encode([])` is how a PHP client sends one.
+        $this->assertSame([], $errors('[]'));
+        $this->assertSame([], $errors(' [ ] '));
         $this->assertSame([], $errors('{}'));
         $this->assertSame([], $errors('{"text":"a"}'));
     }

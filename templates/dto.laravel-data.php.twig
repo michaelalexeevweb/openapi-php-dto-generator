@@ -414,10 +414,14 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             }
 {% endif %}
 {% if rootIsObject|default(false) %}
-            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
-            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
+            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
-                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+                $decoded = json_decode($rawJson, false);
+                if (is_array($decoded) && $decoded !== []) {
+                    $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+                }
             }
 {% endif %}
 {% endif %}

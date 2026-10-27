@@ -285,9 +285,10 @@ Before 2.15.101 the `list` and `boolean` rules refused the first three, and the 
 strings — `"1"` was no int-backed enum case. A path parameter comes in later, through
 `#[FromRouteParameter]`, so a path LIST is not split this way.
 
-A request body sent as a JSON array — `[]` included — is refused under `payload` with `JSON body must be
-an object, got array.`, as runtime mode refuses it; it decodes to the same PHP array an empty object
-does. Nested, `[]` stays the empty object a PHP client encodes.
+A request body sent as a non-empty JSON array is refused under `payload` with `JSON body must be an
+object, got array.`; it decodes to the PHP array an object keyed 0..n-1 does. `[]` is the empty object,
+at the root as nested — `json_encode([])` is how a PHP client sends one. Runtime mode refuses `[]` at the
+root as well.
 
 
 ## Divergences from the other modes
@@ -381,6 +382,65 @@ a plain `Illuminate\Container\Container`, a config repository, the two singleton
 Copy it if you want the same in your own package's tests; in a real application none of it applies, since
 the framework provides all of it.
 
+### Inside another framework (Symfony, …)
+
+The same class is the recipe for running generated classes in an application that is not Laravel. The
+generator emits the classes only; the bridge is yours, and it has four parts:
+
+1. **Boot once per request** — a `kernel.request` listener, not every place that touches a class. Build
+   what `LaravelDataContainer::boot()` builds: the container set as the global instance and as the facade
+   application (laravel-data reaches the validator through the `Validator` facade), `config` with a
+   `data` key, a translator, the validation factory, and the `DataConfig` / `ContextResolver` singletons.
+   Give `config('data')` the keys `dataConfig()` lists rather than copying the package's `config/data.php`:
+   that file calls `app_path()` and `base_path()`. Your app may already define `app()`; the one
+   laravel-data calls must resolve from this container, with and without an argument.
+2. **The request** — convert the incoming request to `Illuminate\Http\Request` and bind it as `request`.
+   The emitted checks that need the raw body read it from there. A path parameter is read through
+   `#[FromRouteParameter]`, i.e. `$request->route()`, so give the converted request a route that carries
+   the matched parameters:
+
+   ```php
+   $route = new \Illuminate\Routing\Route(methods: [$method], uri: $pattern, action: []);
+   $route->bind($illuminateRequest);
+   $illuminateRequest->setRouteResolver(static fn() => $route);
+   ```
+
+3. **The argument** — a value resolver for a `Data` subclass that returns `$class::from($illuminateRequest)`
+   and turns `ValidationException::errors()` (keyed by field path) into your error response.
+4. **The response** — `$data->toArray()` with the container booted. To hold a response to the document,
+   `$class::validate($array)` runs the emitted `rules()` and `withValidator()` — measured on generated
+   classes, it adds no rule inferred from the PHP types beside them.
+
+A Laravel-mode application is the same minus step 2's route; see the FormRequest it already has.
+
+### A body that is a list
+
+A `requestBody` whose schema is `type: array` of a component has no class of its own — the item has one.
+Validate it item by item and key the errors by index, the way a nested list reports them:
+
+```php
+/** @return list<Widget> */
+function widgetsFrom(array $items): array
+{
+    $built = [];
+    $errors = [];
+    foreach (array_values($items) as $index => $item) {
+        try {
+            $built[] = Widget::validateAndCreate(is_array($item) ? $item : []);
+        } catch (ValidationException $exception) {
+            foreach ($exception->errors() as $path => $messages) {
+                $errors[$index . '.' . $path] = $messages;
+            }
+        }
+    }
+    if ($errors !== []) {
+        throw ValidationException::withMessages($errors);
+    }
+
+    return $built;
+}
+```
+
 ### Blank strings and literal property names
 
 Generated rules validate present blank strings against the same native rules as other values. An
@@ -403,3 +463,15 @@ readonly properties, so the generated class has no getters:
 | `$dto->getBornOnAsDateTime()` | `$dto->bornOn` |
 | `UserRequest::fromValidated($request->validated())` via `UserRequestFormRequest` | `UserRequest::from($request)` |
 | `$dto->toArray()` | `$dto->toArray()` |
+
+Code that wants "the value, or null when it was not sent" — what a Laravel-mode getter returned — reads
+better through a one-line helper of your own than through `instanceof Optional` at every call site:
+
+```php
+function valueOrNull(mixed $value): mixed
+{
+    return $value instanceof Optional ? null : $value;
+}
+```
+
+It is not generated: a getter per property is exactly the surface laravel-data does without.

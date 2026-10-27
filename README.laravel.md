@@ -371,10 +371,11 @@ $validator = Validator::make($data, WidgetsQueryParams::rules());
 
 ### A JSON array where the body is an object
 
-A request body sent as a JSON array — `[]` included — is refused under `payload` with `JSON body must be
-an object, got array.`, as runtime mode refuses it. It decodes to the same PHP array an empty object
-does, so with every property optional it passed before 2.15.101. Nested, `[]` stays the empty object a
-PHP client encodes (`json_encode([])`).
+A request body sent as a non-empty JSON array is refused under `payload` with `JSON body must be an
+object, got array.` It decodes to the PHP array an object keyed 0..n-1 does, so with every property
+optional it passed before 2.15.101. `[]` is the empty object, at the root as nested: `json_encode([])` is
+how a PHP client sends one, and Laravel's `postJson()` with no data sends it too. Runtime mode refuses
+`[]` at the root as well — the one place the two differ.
 
 ### Errors about the object itself
 
