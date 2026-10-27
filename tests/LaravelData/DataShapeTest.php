@@ -229,6 +229,47 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * A scalar union with an enum member — `oneOf: [$ref Tone, string, integer]` — is the enum case when
+     * the value is one of its members and the scalar otherwise, as in Laravel mode. laravel-data's own
+     * enum cast took every scalar for the enum: `"8812"` was a 500, "Could not cast enum".
+     */
+    public function testAScalarUnionWithAnEnumKeepsAValueOutsideIt(): void
+    {
+        $namespace = $this->generate([
+            'Tone' => ['type' => 'string', 'enum' => ['warm', 'cold']],
+            'Swatch' => [
+                'type' => 'object',
+                'required' => ['code'],
+                'properties' => [
+                    'tone' => ['oneOf' => [
+                        ['$ref' => '#/components/schemas/Tone'],
+                        ['type' => 'string', 'pattern' => '^\d+$'],
+                        ['type' => 'integer'],
+                    ]],
+                    'code' => ['type' => 'string'],
+                ],
+            ],
+        ]);
+        /** @var class-string $swatch */
+        $swatch = $namespace . '\Swatch';
+        $build = static fn(string $json): object => LaravelDataContainer::withRequest(
+            $json,
+            static fn(Request $request): object => $swatch::from($request),
+        );
+
+        $named = $build('{"tone":"warm","code":"a"}');
+        $this->assertInstanceOf($namespace . '\Tone', $named->tone);
+        $this->assertSame(['tone' => 'warm', 'code' => 'a'], $named->toArray());
+        $this->assertSame('8812', $build('{"tone":"8812","code":"a"}')->tone);
+        $this->assertSame(7, $build('{"tone":7,"code":"a"}')->tone);
+        $this->assertInstanceOf(Optional::class, $build('{"code":"a"}')->tone);
+        $this->assertSame(['tone' => 'cold', 'code' => 'b'], (new $swatch(code: 'b', tone: 'cold'))->toArray());
+
+        $this->expectException(ValidationException::class);
+        $build('{"tone":"pale","code":"a"}');
+    }
+
+    /**
      * @param array<string, mixed> $schemas
      * @param array<string, mixed> $paths
      */

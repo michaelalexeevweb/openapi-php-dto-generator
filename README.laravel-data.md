@@ -279,6 +279,12 @@ All measured and pinned; the full table with reasons is in
   PHP needs) — laravel-data writes keys in declaration order. One shape keeps the constructor's order: a
   class with a nullable property that has a schema default, since a declared readonly property cannot
   carry the default laravel-data would then read;
+- declares a scalar union with an enum member — `oneOf: [$ref Tone, string, integer]` — as
+  `UnitEnum|string|int` on the property, with the real `Tone|string|int` in `@var` and on the
+  constructor argument. laravel-data's enum cast reads the property type and took every scalar for the
+  enum (`"8812"` was a "Could not cast enum" 500); with `UnitEnum` it stands aside, and the constructor
+  picks the case — `Tone::tryFrom()` for a value of the enum's backing type, the scalar as sent
+  otherwise — as Laravel mode's hydrator does;
 - normalizes a discriminated union member with the discriminator LAST, because it is inherited from the
   abstract base and PHP lists a class's own properties first. Same keys, same values.
 

@@ -141,8 +141,11 @@ trait RendersLaravelDataDto
             ...array_column(array_filter($params, static fn(array $param): bool => $param['required']), 'name'),
             ...array_column(array_filter($params, static fn(array $param): bool => !$param['required']), 'name'),
         ];
-        $declaresProperties = $schemaOrder !== $constructorOrder
-            && array_filter($params, static fn(array $param): bool => $param['nullableWithDefault']) === [];
+        // A property whose constructor picks its enum case is declared apart from the constructor whatever
+        // the order; a nullable one with a schema default then stays promoted — see `nullableWithDefault`.
+        $declaresProperties = array_filter($params, static fn(array $param): bool => $param['assignment'] !== null) !== []
+            || ($schemaOrder !== $constructorOrder
+                && array_filter($params, static fn(array $param): bool => $param['nullableWithDefault']) === []);
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $interpreter = $this->renderLaravelInterpreterBlock(
@@ -423,8 +426,8 @@ trait RendersLaravelDataDto
      * normalize it.
      *
      * @param SchemaProperty $property
-     * @return array{declaredType: string, docType: ?string, name: string, required: bool,
-     *     openApiName: string, docDescription: ?string, attributes: array<int, string>,
+     * @return array{declaredType: string, propertyType: string, assignment: ?string, docType: ?string,
+     *     name: string, required: bool, openApiName: string, docDescription: ?string, attributes: array<int, string>,
      *     attributeImports: array<int, string>, tracksPresence: bool, nullableWithDefault: bool,
      *     defaultExpression: ?string, promoted: bool}
      */
@@ -562,8 +565,28 @@ trait RendersLaravelDataDto
             optionalRef: $optionalRef,
         );
 
+        // A scalar union with an enum member — `Tone|string|int` — is the enum case when the value is one
+        // of its members and the scalar otherwise, as in Laravel mode. laravel-data's own EnumCast reads
+        // the PROPERTY type and takes every scalar for the enum: `"8812"` died in `Tone::from()`, a 500.
+        // Spelled `UnitEnum` on the property, the type is no `BackedEnum` to that cast, and the
+        // constructor picks the case itself; `@var` and the parameter keep the real union.
+        $variable = '$' . $property['name'];
+        $enumCast = $this->laravelWithUnionEnumCast($property['type'], $variable, $variable);
+        $propertyType = $declaredType;
+        if ($enumCast !== $variable) {
+            $unitEnumRef = $this->libraryClassRef('UnitEnum', $namespace, $attributeImports);
+            $propertyType = implode('|', array_unique(array_map(
+                fn(string $member): string => array_key_exists($this->shortClassName($member), $this->enumSchemas)
+                    ? $unitEnumRef
+                    : $member,
+                explode('|', $declaredType),
+            )));
+        }
+
         return [
             'declaredType' => $declaredType,
+            'propertyType' => $propertyType,
+            'assignment' => $enumCast === $variable ? null : $enumCast,
             'docType' => $docType === null
                 ? null
                 : $this->laravelDataDeclaredType($docType, $typedAsRequired, $nullable, $optionalRef)[0],

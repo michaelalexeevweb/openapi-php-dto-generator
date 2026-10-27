@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.97 — 2026-10-27
+
+- laravel-data enum scalar union
+
+laravel-data mode:
+
+- a scalar union with an enum member (`oneOf: [$ref Tone, string, integer]`) died with "Could not
+  cast enum" — a 500 — on any value outside the enum, because laravel-data's enum cast reads the
+  property type and takes every scalar for the enum. The property is declared `UnitEnum|string|int`,
+  which that cast leaves alone, and the constructor picks the enum case when the value is one, the
+  scalar otherwise, as Laravel mode does. `@var` and the constructor keep the real union.
+
 ## 2.15.96 — 2026-10-26
 
 - laravel-data root union refuses unknown discriminator

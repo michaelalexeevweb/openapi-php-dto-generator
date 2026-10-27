@@ -154,14 +154,14 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endif %}
 {% if declaresProperties|default(false) %}
 {# Declared here, in the schema's order, because laravel-data writes `toArray()` in declaration order. #}
-{% for param in declaredParams|filter(param => param.promoted) %}
-{% if param.docType is not null %}
-    /** @var {{ param.docType }} */
+{% for param in declaredParams|filter(param => param.promoted and not param.nullableWithDefault) %}
+{% if param.docType is not null or param.propertyType != param.declaredType %}
+    /** @var {{ param.docType ?? param.declaredType }} */
 {% endif %}
 {% for attribute in param.attributes %}
     {{ attribute|raw }}
 {% endfor %}
-    public readonly {{ param.declaredType }} ${{ param.name }};
+    public readonly {{ param.propertyType }} ${{ param.name }};
 
 {% endfor %}
 {% set docParams = params|filter(param => param.docType is not null or param.docDescription is not null) %}
@@ -177,14 +177,22 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         {{ param.declaredType }} ${{ param.name }},
 {% endfor %}
 {% for param in optionalParams %}
+{% if param.promoted and param.nullableWithDefault %}
+{# laravel-data reads a declared property's default from the declaration, which a readonly one cannot have. #}
+{% for attribute in param.attributes %}
+        {{ attribute|raw }}
+{% endfor %}
+        public readonly {{ param.declaredType }} ${{ param.name }} = {{ param.defaultExpression }},
+{% else %}
         {{ param.declaredType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
+{% endif %}
 {% endfor %}
     ) {
 {% if parentArguments is not empty %}
         parent::__construct({% for argument in parentArguments %}${{ argument }}{{ loop.last ? '' : ', ' }}{% endfor %});
 {% endif %}
-{% for param in params|filter(param => param.promoted) %}
-        $this->{{ param.name }} = ${{ param.name }};
+{% for param in params|filter(param => param.promoted and not param.nullableWithDefault) %}
+        $this->{{ param.name }} = {{ param.assignment ?? ('$' ~ param.name) }};
 {% endfor %}
     }
 {% else %}
