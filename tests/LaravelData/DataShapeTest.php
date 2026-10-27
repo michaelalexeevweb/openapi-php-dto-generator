@@ -320,6 +320,45 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * The checks that need the raw body read it from the bound request, and they read it only when the
+     * data being validated IS that body. `validate($array)` on a response, or `validateAndCreate()` on
+     * one item, ran them against whatever the request carried: `{"meta":[1]}` in the request made a
+     * response with an object `meta` fail.
+     */
+    public function testTheRawBodyIsReadOnlyForTheBody(): void
+    {
+        $namespace = $this->generate(['Note' => [
+            'type' => 'object',
+            'properties' => [
+                'text' => ['type' => 'string'],
+                'meta' => ['type' => 'object', 'properties' => ['k' => ['type' => 'string']]],
+            ],
+        ]], [
+            '/api/test/notes' => ['post' => [
+                'operationId' => 'addNote',
+                'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Note']]]],
+                'responses' => ['204' => ['description' => 'OK']],
+            ]],
+        ]);
+        /** @var class-string $note */
+        $note = $namespace . '\Note';
+        $errors = static function (string $json, callable $work): array {
+            try {
+                LaravelDataContainer::withRequest($json, $work);
+            } catch (ValidationException $exception) {
+                return $exception->errors();
+            }
+
+            return [];
+        };
+
+        $this->assertSame(['meta'], array_keys($errors('{"meta":[1]}', static fn(Request $request): object => $note::from($request))));
+        $this->assertSame(['payload'], array_keys($errors('[1]', static fn(Request $request): object => $note::from($request))));
+        $this->assertSame([], $errors('{"meta":[1]}', static fn(): array => $note::validate(['meta' => ['k' => 'v']])));
+        $this->assertSame([], $errors('[1]', static fn(): object => $note::validateAndCreate(['text' => 'a'])));
+    }
+
+    /**
      * An optional argument is optional in PHP too: `new X(code: 'a')` was an ArgumentCountError for
      * every optional field left out. Left out, it is `Optional` — absent from `toArray()`, as when a
      * payload without the key is hydrated.

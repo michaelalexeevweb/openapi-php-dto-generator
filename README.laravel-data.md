@@ -158,8 +158,11 @@ Two consequences of laravel-data's hook signature:
   $raw = $container->bound('request') ? $container->make('request')->getContent() : null;
   ```
 
-  On `validateAndCreate($array)` there is no request, so that single check is skipped and everything else
-  still runs.
+  The body is used only when it IS the data being validated — every key of it in the validator's data,
+  unchanged, as `from($request)` gives it. `validate($array)` on a response or `validateAndCreate()` on
+  one item of a list runs while a request is bound, and before 2.15.103 that request's body was checked in
+  their place. Without a request, or with a different body, that single check is skipped and everything
+  else still runs.
 
 A message is keyed by the field it is about, as in Laravel mode: a wrong `value` deep in a union lands on
 `edge.value`, a list item on `levels.0`. A claim a Laravel rule also makes — a missing key, a wrong type,

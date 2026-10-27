@@ -3,6 +3,19 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.103 — 2026-10-27
+
+- laravel-data raw body only for the body
+
+laravel-data mode:
+
+- the checks that need the raw body — `type: object` sent as a JSON array, the root array — read it from
+  the bound request whenever there was one, so `validate($array)` on a response or `validateAndCreate()`
+  on one item of a list was checked against the REQUEST's body: a request `{"meta":[1]}` failed a
+  response whose `meta` was an object. The body is used only when the validator holds it, every key
+  unchanged, as `from($request)` gives it. Laravel mode takes the body from its FormRequest and was not
+  affected.
+
 ## 2.15.102 — 2026-10-27
 
 - laravel root `[]` is an empty object

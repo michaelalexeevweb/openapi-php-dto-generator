@@ -407,7 +407,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if interpreterMethodsBlock is not empty %}
 
 {% endif %}
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
 {% if objectShapePaths is not empty %}
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -431,9 +431,13 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if objectShapePaths is not empty or rootIsObject|default(false) %}
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody({{ validatorRef }} $validator): ?string
     {
         $container = {{ containerRef }}::getInstance();
         if (!$container->bound('request')) {
@@ -441,8 +445,26 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         }
 
         $request = $container->make('request');
+        if (!$request instanceof {{ requestRef }}) {
+            return null;
+        }
 
-        return $request instanceof {{ requestRef }} ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 {% endif %}
 {% if objectShapePaths is not empty %}

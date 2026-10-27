@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 17974 lines
+# laravel-data mode — 80 files, 18606 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -496,6 +496,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -620,7 +621,7 @@ final class ApiTest2PatchRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -634,9 +635,13 @@ final class ApiTest2PatchRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -644,8 +649,26 @@ final class ApiTest2PatchRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -665,6 +688,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -791,7 +815,7 @@ final class ApiTest2PostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -805,9 +829,13 @@ final class ApiTest2PostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -815,8 +843,26 @@ final class ApiTest2PostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -1791,6 +1837,7 @@ use LogicException;
 use Spatie\LaravelData\Data;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -1913,7 +1960,7 @@ final class ApiTestFilePostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -1927,9 +1974,13 @@ final class ApiTestFilePostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -1937,8 +1988,26 @@ final class ApiTestFilePostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -2330,6 +2399,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -2452,7 +2522,7 @@ final class ApiTestJobsPostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -2466,9 +2536,13 @@ final class ApiTestJobsPostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -2476,8 +2550,26 @@ final class ApiTestJobsPostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -2822,6 +2914,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -2946,7 +3039,7 @@ final class ApiTestLegacyPostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -2960,9 +3053,13 @@ final class ApiTestLegacyPostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -2970,8 +3067,26 @@ final class ApiTestLegacyPostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -3239,6 +3354,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -3361,7 +3477,7 @@ final class ApiTestRepresentationsPostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -3375,9 +3491,13 @@ final class ApiTestRepresentationsPostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -3385,8 +3505,26 @@ final class ApiTestRepresentationsPostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -3406,6 +3544,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -3528,7 +3667,7 @@ final class ApiTestRepresentationsPostRequestForm extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -3542,9 +3681,13 @@ final class ApiTestRepresentationsPostRequestForm extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -3552,8 +3695,26 @@ final class ApiTestRepresentationsPostRequestForm extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -3573,6 +3734,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -3695,7 +3857,7 @@ final class ApiTestRepresentationsPostRequestXml extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -3709,9 +3871,13 @@ final class ApiTestRepresentationsPostRequestXml extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -3719,8 +3885,26 @@ final class ApiTestRepresentationsPostRequestXml extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -4138,7 +4322,7 @@ final class ApiTestSerializationGetQueryParams extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -4146,9 +4330,13 @@ final class ApiTestSerializationGetQueryParams extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -4156,8 +4344,26 @@ final class ApiTestSerializationGetQueryParams extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -5201,7 +5407,7 @@ final class ApplicatorRefs extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -5209,9 +5415,13 @@ final class ApplicatorRefs extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -5219,8 +5429,26 @@ final class ApplicatorRefs extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -7047,6 +7275,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -7169,7 +7398,7 @@ final class CallbackJobDonePostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -7183,9 +7412,13 @@ final class CallbackJobDonePostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -7193,8 +7426,26 @@ final class CallbackJobDonePostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -7214,6 +7465,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -7336,7 +7588,7 @@ final class CallbackJobFailedPostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -7350,9 +7602,13 @@ final class CallbackJobFailedPostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -7360,8 +7616,26 @@ final class CallbackJobFailedPostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -7705,7 +7979,7 @@ final class ChainLink extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -7713,9 +7987,13 @@ final class ChainLink extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -7723,8 +8001,26 @@ final class ChainLink extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -8153,7 +8449,7 @@ final class ChainMiddle extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -8161,9 +8457,13 @@ final class ChainMiddle extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -8171,8 +8471,26 @@ final class ChainMiddle extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -8660,6 +8978,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_key_exists;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -8823,7 +9142,7 @@ final class ContainerAliases extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -8831,9 +9150,13 @@ final class ContainerAliases extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -8841,8 +9164,26 @@ final class ContainerAliases extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -9218,7 +9559,7 @@ final class Containers extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -9226,9 +9567,13 @@ final class Containers extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -9236,8 +9581,26 @@ final class Containers extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -10329,6 +10692,7 @@ use LogicException;
 use Spatie\LaravelData\Data;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -10453,7 +10817,7 @@ final class FileRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -10467,9 +10831,13 @@ final class FileRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -10477,8 +10845,26 @@ final class FileRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -10500,6 +10886,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_key_exists;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -10655,7 +11042,7 @@ final class ItemBounds extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -10663,9 +11050,13 @@ final class ItemBounds extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -10673,8 +11064,26 @@ final class ItemBounds extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -11012,7 +11421,7 @@ final class NestedContainers extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -11020,9 +11429,13 @@ final class NestedContainers extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -11030,8 +11443,26 @@ final class NestedContainers extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -11328,6 +11759,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_key_exists;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -11488,7 +11920,7 @@ final class NullableContainerValues extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -11496,9 +11928,13 @@ final class NullableContainerValues extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -11506,8 +11942,26 @@ final class NullableContainerValues extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -13435,7 +13889,7 @@ final class Test2 extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -13443,9 +13897,13 @@ final class Test2 extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -13453,8 +13911,26 @@ final class Test2 extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -13948,6 +14424,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -14072,7 +14549,7 @@ final class TestPatchRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -14086,9 +14563,13 @@ final class TestPatchRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -14096,8 +14577,26 @@ final class TestPatchRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
 
@@ -14320,7 +14819,7 @@ final class TestPostRequest extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -14334,9 +14833,13 @@ final class TestPostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -14344,8 +14847,26 @@ final class TestPostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -15022,7 +15543,7 @@ final class TreeNode extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -15030,9 +15551,13 @@ final class TreeNode extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -15040,8 +15565,26 @@ final class TreeNode extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -15955,7 +16498,7 @@ final class UnionUnderContainer extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -15963,9 +16506,13 @@ final class UnionUnderContainer extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -15973,8 +16520,26 @@ final class UnionUnderContainer extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -17137,7 +17702,7 @@ final class User extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -17145,9 +17710,13 @@ final class User extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -17155,8 +17724,26 @@ final class User extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -17699,7 +18286,7 @@ final class User2 extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -17707,9 +18294,13 @@ final class User2 extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -17717,8 +18308,26 @@ final class User2 extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -18065,6 +18674,7 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -18187,7 +18797,7 @@ final class WebhookOrderPlacedPostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
-            $rawJson = self::rawRequestBody();
+            $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
             // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
@@ -18201,9 +18811,13 @@ final class WebhookOrderPlacedPostRequest extends Data
     }
 
     /**
-     * The undecoded request body, or null when there is no request to take it from.
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
      */
-    private static function rawRequestBody(): ?string
+    private static function rawRequestBody(Validator $validator): ?string
     {
         $container = Container::getInstance();
         if (!$container->bound('request')) {
@@ -18211,7 +18825,25 @@ final class WebhookOrderPlacedPostRequest extends Data
         }
 
         $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
 
-        return $request instanceof Request ? $request->getContent() : null;
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 }
