@@ -3,6 +3,18 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.96 — 2026-10-26
+
+- laravel-data root union refuses unknown discriminator
+
+laravel-data mode:
+
+- a discriminated union as the root of a payload answered an unknown or missing discriminator with
+  `CannotCreateAbstractClass` — a 500 — because laravel-data picks the member class before it validates
+  anything, so no rule on the base could run. The abstract base overrides `from()` and
+  `validateAndCreate()` to check the discriminator with the framework's validator first: a 422 on the
+  discriminator, as the nested case already was.
+
 ## 2.15.95 — 2026-10-26
 
 - laravel-data keys in schema order

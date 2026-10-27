@@ -113,6 +113,37 @@ final class MorphDiscriminatorTest extends TestCase
     }
 
     /**
+     * The union as the ROOT of a payload: laravel-data picks the member class before it validates, so an
+     * unknown or missing discriminator was `CannotCreateAbstractClass` — a 500 — where the nested case
+     * above is a 422. The base checks it first, under the discriminator's wire name.
+     */
+    #[DataProvider('discriminatorNameProvider')]
+    public function testAnUnknownDiscriminatorAtTheRootIsAValidationError(string $wireName): void
+    {
+        $namespace = $this->generate($wireName);
+        /** @var class-string $shape */
+        $shape = $namespace . '\Shape';
+
+        $circle = LaravelDataContainer::withRequest(
+            sprintf('{"%s":"circle","r":3}', $wireName),
+            static fn(Request $request): object => $shape::from($request),
+        );
+        $this->assertInstanceOf($namespace . '\Circle', $circle);
+
+        foreach ([sprintf('{"%s":"nope"}', $wireName), '{}'] as $json) {
+            try {
+                LaravelDataContainer::withRequest($json, static fn(Request $request): object => $shape::from($request));
+                $this->fail('an unknown discriminator must not build: ' . $json);
+            } catch (ValidationException $exception) {
+                $this->assertSame([$wireName], array_keys($exception->errors()), $json);
+            }
+        }
+
+        $this->expectException(ValidationException::class);
+        $shape::validateAndCreate([$wireName => 'nope']);
+    }
+
+    /**
      * A member's own required property is still enforced after the morph picked the class.
      */
     #[DataProvider('discriminatorNameProvider')]

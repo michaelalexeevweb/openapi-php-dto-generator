@@ -284,6 +284,21 @@ trait RendersLaravelDataDto
         // it, so the match has to read the value back out.
         $enumRef = $enumTyped ? $this->libraryClassRef('BackedEnum', $namespace, $useStatements) : null;
 
+        // laravel-data resolves the member class BEFORE it validates anything, so a root payload with an
+        // unknown discriminator never reached a rule: `CannotCreateAbstractClass`, a 500. The base checks
+        // the discriminator with the framework's validator first.
+        $guard = [
+            'arrayableRef' => $this->libraryClassRef('Illuminate\Contracts\Support\Arrayable', $namespace, $useStatements),
+            'requestRef' => $this->libraryClassRef('Illuminate\Http\Request', $namespace, $useStatements),
+            'ruleRef' => $this->libraryClassRef('Illuminate\Validation\Rule', $namespace, $useStatements),
+            'validatorRef' => $this->libraryClassRef('Illuminate\Support\Facades\Validator', $namespace, $useStatements),
+            // `strval`: a numeric discriminator value is an INT key once PHP has the mapping.
+            'values' => '[' . implode(', ', array_map(
+                $this->phpStringLiteral(...),
+                array_map('strval', array_keys($mapping)),
+            )) . ']',
+        ];
+
         $members = [];
         foreach ($mapping as $discriminatorValue => $memberClass) {
             $this->appendImportForClass($useStatements, $memberClass, $namespace, $className);
@@ -312,6 +327,7 @@ trait RendersLaravelDataDto
                 'property' => $property,
                 'propertyType' => $propertyType,
                 'enumRef' => $enumRef,
+                'guard' => $guard,
                 'attributes' => $attributes,
                 'members' => $members,
                 'dataBase' => $dataBase,

@@ -198,6 +198,12 @@ A member takes the discriminator as a plain constructor parameter and forwards i
 inherited readonly property is a fatal, not a test failure. An unmapped discriminator value leaves the
 class unresolved and comes back as a 422, not an exception you have to translate.
 
+At the ROOT of a payload laravel-data picks the member before it validates anything, so an unknown or
+missing discriminator there was `CannotCreateAbstractClass` — a 500 — and no `rules()` on the base could
+run first. The base overrides `from()` and `validateAndCreate()` to check the discriminator with the
+framework's validator (`required`, `in:` the mapped values) and then hands over to laravel-data: a 422
+on `kind`, `The selected kind is invalid.` Before 2.15.96 only the nested case was a 422.
+
 A member cannot belong to more than one discriminated-union morph base: PHP permits only one parent
 class. Such a schema now fails generation with the member and both bases named, before existing
 output is replaced. Give each union its own member schema instead of sharing one across morph bases.

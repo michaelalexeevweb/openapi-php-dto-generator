@@ -87,6 +87,50 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
             default => null,
         };
     }
+
+    /**
+     * `from()` with the discriminator checked first. laravel-data picks the member class before it
+     * validates anything, so an unknown or missing value was `CannotCreateAbstractClass` — a 500 — where
+     * the same union nested in another class answers 422. Checked here, it is a 422 on
+     * `{{ morphBase.propertyName|php_doc }}` like any other invalid field.
+     */
+    public static function from(mixed ...$payloads): static
+    {
+        foreach ($payloads as $payload) {
+            self::assertKnownMember($payload);
+        }
+
+        return parent::from(...$payloads);
+    }
+
+    /**
+     * @param {{ morphBase.guard.arrayableRef }}<array-key, mixed>|array<array-key, mixed> $payload
+     */
+    public static function validateAndCreate({{ morphBase.guard.arrayableRef }}|array $payload): static
+    {
+        self::assertKnownMember($payload);
+
+        return parent::validateAndCreate($payload);
+    }
+
+    private static function assertKnownMember(mixed $payload): void
+    {
+        $values = match (true) {
+            $payload instanceof {{ morphBase.guard.requestRef }} => $payload->all(),
+            $payload instanceof {{ morphBase.guard.arrayableRef }} => $payload->toArray(),
+            is_array($payload) => $payload,
+            // Anything else — a model, an object — is laravel-data's to read.
+            default => null,
+        };
+        if ($values === null) {
+            return;
+        }
+
+        {{ morphBase.guard.validatorRef }}::make(
+            ['{{ morphBase.propertyName|php_string }}' => $values['{{ morphBase.propertyName|php_string }}'] ?? null],
+            ['{{ morphBase.propertyName|php_string }}' => ['required', {{ morphBase.guard.ruleRef }}::in({{ morphBase.guard.values|raw }})]],
+        )->validate();
+    }
 }
 {% elseif unionMembers is not null %}
 {% if interfaceExtends is not empty %}

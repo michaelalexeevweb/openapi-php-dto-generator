@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15835 lines
+# laravel-data mode — 80 files, 15935 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8546,9 +8546,15 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use BackedEnum;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Spatie\LaravelData\Attributes\PropertyForMorph;
 use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
+
+use function is_array;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -8585,6 +8591,50 @@ abstract class Discriminator extends Data implements PropertyMorphableData
             // abstract base — the discriminator is enforced by the schema's own rules besides.
             default => null,
         };
+    }
+
+    /**
+     * `from()` with the discriminator checked first. laravel-data picks the member class before it
+     * validates anything, so an unknown or missing value was `CannotCreateAbstractClass` — a 500 — where
+     * the same union nested in another class answers 422. Checked here, it is a 422 on
+     * `type` like any other invalid field.
+     */
+    public static function from(mixed ...$payloads): static
+    {
+        foreach ($payloads as $payload) {
+            self::assertKnownMember($payload);
+        }
+
+        return parent::from(...$payloads);
+    }
+
+    /**
+     * @param Arrayable<array-key, mixed>|array<array-key, mixed> $payload
+     */
+    public static function validateAndCreate(Arrayable|array $payload): static
+    {
+        self::assertKnownMember($payload);
+
+        return parent::validateAndCreate($payload);
+    }
+
+    private static function assertKnownMember(mixed $payload): void
+    {
+        $values = match (true) {
+            $payload instanceof Request => $payload->all(),
+            $payload instanceof Arrayable => $payload->toArray(),
+            is_array($payload) => $payload,
+            // Anything else — a model, an object — is laravel-data's to read.
+            default => null,
+        };
+        if ($values === null) {
+            return;
+        }
+
+        Validator::make(
+            ['type' => $values['type'] ?? null],
+            ['type' => ['required', Rule::in(['discriminator1', 'discriminator2'])]],
+        )->validate();
     }
 }
 
@@ -11177,9 +11227,15 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Spatie\LaravelData\Attributes\PropertyForMorph;
 use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
+
+use function is_array;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -11213,6 +11269,50 @@ abstract class Shape extends Data implements PropertyMorphableData
             // abstract base — the discriminator is enforced by the schema's own rules besides.
             default => null,
         };
+    }
+
+    /**
+     * `from()` with the discriminator checked first. laravel-data picks the member class before it
+     * validates anything, so an unknown or missing value was `CannotCreateAbstractClass` — a 500 — where
+     * the same union nested in another class answers 422. Checked here, it is a 422 on
+     * `kind` like any other invalid field.
+     */
+    public static function from(mixed ...$payloads): static
+    {
+        foreach ($payloads as $payload) {
+            self::assertKnownMember($payload);
+        }
+
+        return parent::from(...$payloads);
+    }
+
+    /**
+     * @param Arrayable<array-key, mixed>|array<array-key, mixed> $payload
+     */
+    public static function validateAndCreate(Arrayable|array $payload): static
+    {
+        self::assertKnownMember($payload);
+
+        return parent::validateAndCreate($payload);
+    }
+
+    private static function assertKnownMember(mixed $payload): void
+    {
+        $values = match (true) {
+            $payload instanceof Request => $payload->all(),
+            $payload instanceof Arrayable => $payload->toArray(),
+            is_array($payload) => $payload,
+            // Anything else — a model, an object — is laravel-data's to read.
+            default => null,
+        };
+        if ($values === null) {
+            return;
+        }
+
+        Validator::make(
+            ['kind' => $values['kind'] ?? null],
+            ['kind' => ['required', Rule::in(['circle', 'square'])]],
+        )->validate();
     }
 }
 
