@@ -111,6 +111,94 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * An interpreter message is keyed by the field it names, as in Laravel mode: `palette.score`, not
+     * `palette` with the path in the sentence. A claim a Laravel rule also makes is reported as that rule.
+     */
+    public function testAnInterpreterErrorIsKeyedByTheFieldItNames(): void
+    {
+        $namespace = $this->generate([
+            'Holder' => [
+                'type' => 'object',
+                'required' => ['palette'],
+                'properties' => ['palette' => ['nullable' => true, 'allOf' => [['$ref' => '#/components/schemas/Palette']]]],
+            ],
+            'Palette' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string', 'enum' => ['warm', 'cold']]],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'warm' => '#/components/schemas/WarmPalette',
+                    'cold' => '#/components/schemas/ColdPalette',
+                ]],
+            ],
+            'WarmPalette' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Palette'],
+                ['type' => 'object', 'required' => ['score'], 'properties' => ['score' => ['type' => 'integer']]],
+            ]],
+            'ColdPalette' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Palette'],
+                ['type' => 'object', 'required' => ['depth'], 'properties' => ['depth' => ['type' => 'integer']]],
+            ]],
+        ]);
+        /** @var class-string $holder */
+        $holder = $namespace . '\Holder';
+        $errors = static function (string $json) use ($holder): array {
+            try {
+                LaravelDataContainer::withRequest($json, static fn(Request $request): object => $holder::from($request));
+            } catch (ValidationException $exception) {
+                return $exception->errors();
+            }
+
+            return [];
+        };
+
+        $this->assertSame(['palette.score'], array_keys($errors('{"palette":{"kind":"warm","score":"x"}}')));
+        $this->assertSame(['palette.score'], array_keys($errors('{"palette":{"kind":"warm"}}')));
+        $this->assertSame([], $errors('{"palette":{"kind":"cold","depth":2}}'));
+    }
+
+    /**
+     * A property named `2` keeps that name on the way out. laravel-data `array_merge()`s the transformed
+     * array with the class's additional data, which renumbers an integer key: `{"2":"view","4":"edit"}`
+     * came out `["view","edit"]` — in a nested object and in a list too.
+     */
+    public function testAnIntegerPropertyNameSurvivesToArray(): void
+    {
+        $namespace = $this->generate([
+            'Grants' => [
+                'type' => 'object',
+                'required' => ['2', 'label'],
+                'properties' => [
+                    '2' => ['type' => 'string'],
+                    'label' => ['type' => 'string'],
+                    '4' => ['type' => 'string'],
+                    '7' => ['type' => 'string'],
+                ],
+            ],
+            'Holder' => [
+                'type' => 'object',
+                'required' => ['grants', 'all'],
+                'properties' => [
+                    'grants' => ['$ref' => '#/components/schemas/Grants'],
+                    'all' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Grants']],
+                ],
+            ],
+        ]);
+        /** @var class-string $holder */
+        $holder = $namespace . '\Holder';
+
+        $built = LaravelDataContainer::withRequest(
+            '{"grants":{"2":"view","label":"a","7":"own"},"all":[{"2":"edit","label":"b","4":"x"}]}',
+            static fn(Request $request): object => $holder::from($request),
+        );
+
+        $this->assertSame(
+            '{"grants":{"2":"view","label":"a","7":"own"},"all":[{"2":"edit","label":"b","4":"x"}]}',
+            $built->toJson(),
+        );
+    }
+
+    /**
      * `Data::from($request)` reads the query and the body; a path parameter is in neither, so its
      * `present` rule failed on every request. `#[FromRouteParameter]` brings it in before the rules run.
      */

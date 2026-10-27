@@ -133,6 +133,37 @@ trait RendersLaravelDataDto
 
         $objectShapePaths = array_values(array_unique($objectShapePaths));
 
+        // A wire name PHP reads as an integer key — `2` — loses itself on the way out: laravel-data
+        // `array_merge()`s the transformed array with the additional data, which renumbers integer keys,
+        // and `{"2":"view","4":"edit"}` came out `["view","edit"]`. The class puts the names back in its
+        // own `transform()`. A `writeOnly` property is `#[Hidden]` and never written, so it takes no slot.
+        $integerWireNames = [];
+        foreach ($properties as $property) {
+            $wireName = $property['openApiName'];
+            if ((string)(int)$wireName === $wireName && ($property['writeOnly'] ?? null) !== true) {
+                $integerWireNames[$property['name']] = $wireName;
+            }
+        }
+        $wireNameRestore = null;
+        if ($integerWireNames !== []) {
+            $wireNameRestore = [
+                'namesLiteral' => $this->renderPhpArrayLiteral($integerWireNames, 2),
+                'contextRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\Support\Transformation\TransformationContext',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'contextFactoryRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\Support\Transformation\TransformationContextFactory',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'optionalRef' => $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $useStatements),
+                'reflectionRef' => $this->libraryClassRef('ReflectionObject', $namespace, $useStatements),
+                'propertyRef' => $this->libraryClassRef('ReflectionProperty', $namespace, $useStatements),
+            ];
+        }
+
         // laravel-data writes `toArray()` in the order the PROPERTIES are declared, and a promoted property
         // is declared where its parameter is — required ones first, as PHP needs. Where that differs from
         // the schema's order, the properties are declared above the constructor in the schema's order
@@ -203,6 +234,7 @@ trait RendersLaravelDataDto
             'parentArguments' => $parentArguments,
             'declaresProperties' => $declaresProperties,
             'declaredParams' => $this->laravelInSchemaOrder($className, $params),
+            'wireNameRestore' => $wireNameRestore,
             'morphBase' => null,
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],

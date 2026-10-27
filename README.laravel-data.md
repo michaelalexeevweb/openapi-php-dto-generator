@@ -161,6 +161,12 @@ Two consequences of laravel-data's hook signature:
   On `validateAndCreate($array)` there is no request, so that single check is skipped and everything else
   still runs.
 
+A message is keyed by the field it is about, as in Laravel mode: a wrong `value` deep in a union lands on
+`edge.value`, a list item on `levels.0`. A claim a Laravel rule also makes — a missing key, a wrong type,
+a value outside an enum — is reported as that rule, so it reads like the rest of the error bag and the
+application's translations apply; a field a rule has already failed is not reported twice. Before
+2.15.100 every interpreter message here was keyed by the top-level property.
+
 ### Discriminated unions are an abstract base, not an interface
 
 This is the one place the emitted class *shape* differs between modes. laravel-data cannot hydrate an
@@ -286,6 +292,16 @@ as a step into a nested array, and laravel-data's `#[MapName('priority.comment')
 — there is no attribute that makes it a literal key. Laravel mode can: it escapes the dot in its own
 rules (`priority\.comment`). So either rename the property in the document (`priorityComment`), or
 generate that document in Laravel mode. `*` is refused the same way, in both Laravel modes.
+
+### A property named like an integer is restored on the way out
+
+A wire name PHP reads as an integer key — `"2"` — came out renumbered: laravel-data `array_merge()`s the
+transformed array with the class's additional data, and `array_merge()` renumbers integer keys, so
+`{"2":"view","4":"edit"}` was written `["view","edit"]`. Reading it in was never affected. A class with
+such a name overrides `transform()` — which `toArray()`, `toJson()`, a nested object and a list all go
+through — and puts the names back in the order laravel-data writes the properties. A partial
+transformation (`only()`, `except()`) that drops one of those properties shifts the rest; name the
+property in the document instead if you rely on partials there.
 
 ### The rest
 

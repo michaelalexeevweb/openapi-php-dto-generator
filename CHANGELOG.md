@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.100 — 2026-10-27
+
+- laravel-data interpreter error leaf key
+- laravel-data integer wire name kept
+
+laravel-data mode:
+
+- an interpreter message was keyed by the top-level property, with the path only in the sentence:
+  `edge` for `edge.value must be of type integer`. It is keyed by the field it names and reported as the
+  Laravel rule where one says the same, as in Laravel mode since 2.15.91; a field a rule already failed
+  is not reported twice.
+- a property named like an integer — `"2"` — came out renumbered, because laravel-data `array_merge()`s
+  the transformed array and that renumbers integer keys: `{"2":"view","4":"edit"}` was `["view","edit"]`.
+  Such a class overrides `transform()` to put the names back.
+
 ## 2.15.99 — 2026-10-27
 
 - laravel-data allOf base declares properties
