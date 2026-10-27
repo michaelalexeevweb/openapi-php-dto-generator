@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 27993 lines
+# laravel mode — 106 files, 28348 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -775,7 +775,9 @@ use function is_finite;
 use function is_float;
 use function is_string;
 use function json_decode;
+use function ltrim;
 use function property_exists;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -924,6 +926,12 @@ final class ApiTest2PatchRequest implements JsonSerializable
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawJsonShapes($validator, $rawJson);
+            }
+
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
             }
         });
     }
@@ -1157,7 +1165,9 @@ use function is_finite;
 use function is_float;
 use function is_string;
 use function json_decode;
+use function ltrim;
 use function property_exists;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -1308,6 +1318,12 @@ final class ApiTest2PostRequest implements JsonSerializable
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawJsonShapes($validator, $rawJson);
+            }
+
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
             }
         });
     }
@@ -3837,6 +3853,8 @@ use LogicException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -3965,6 +3983,14 @@ final class ApiTestFilePostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -4739,6 +4765,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -4867,6 +4895,14 @@ final class ApiTestJobsPostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -5270,10 +5306,16 @@ use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
 
+use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_unique;
 use function array_values;
+use function explode;
+use function filter_var;
 use function in_array;
+use function is_array;
+use function is_numeric;
 use function is_string;
 use function trim;
 
@@ -5319,6 +5361,67 @@ final class ApiTestLegacyPostQueryParams implements JsonSerializable
         if ($legacyFlag !== null) {
             $this->providedOpenApiKeys[] = 'legacyFlag';
         }
+    }
+
+    /**
+     * The query and path parameters as the document serializes them: `?ids=1,2` for an `explode: false`
+     * list, `?active=true` for a boolean, `?levels[]=2` for a list of ints. Laravel hands them over as
+     * strings, and its `boolean` and `list` rules refuse those spellings. The FormRequest calls this on
+     * the data it validates; validating without it, call it first.
+     *
+     * @param array<array-key, mixed> $input
+     * @return array<array-key, mixed>
+     */
+    public static function normalizeOpenApiParameters(array $input): array
+    {
+        if (array_key_exists('legacyFlag', $input)) {
+            $input['legacyFlag'] = self::openApiParameterValue($input['legacyFlag'], 'bool');
+        }
+
+        return $input;
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
     }
 
     /**
@@ -5541,6 +5644,19 @@ final class ApiTestLegacyPostQueryParamsFormRequest extends FormRequest
     }
 
     /**
+     * The parameters are then read as the document serializes them — `?ids=1,2`, `?active=true` —
+     * which the rules alone refuse.
+     *
+     * @return array<string, mixed>
+     */
+    public function validationData(): array
+    {
+        $data = parent::validationData();
+
+        return ApiTestLegacyPostQueryParams::normalizeOpenApiParameters($data);
+    }
+
+    /**
      * The validated payload as the generated DTO. `validated()` returns only the keys that were sent,
      * which is what the DTO's `isXxxProvided()` reads.
      */
@@ -5568,6 +5684,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -5696,6 +5814,14 @@ final class ApiTestLegacyPostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -6285,6 +6411,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -6413,6 +6541,14 @@ final class ApiTestRepresentationsPostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -6470,6 +6606,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -6598,6 +6736,14 @@ final class ApiTestRepresentationsPostRequestForm implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -6775,6 +6921,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -6903,6 +7051,14 @@ final class ApiTestRepresentationsPostRequestXml implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -7334,6 +7490,7 @@ use LogicException;
 use stdClass;
 
 use function array_is_list;
+use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
@@ -7347,6 +7504,7 @@ use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
+use function is_numeric;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -7445,6 +7603,79 @@ final class ApiTestSerializationGetQueryParams implements JsonSerializable
         if ($filter !== null) {
             $this->providedOpenApiKeys[] = 'filter';
         }
+    }
+
+    /**
+     * The query and path parameters as the document serializes them: `?ids=1,2` for an `explode: false`
+     * list, `?active=true` for a boolean, `?levels[]=2` for a list of ints. Laravel hands them over as
+     * strings, and its `boolean` and `list` rules refuse those spellings. The FormRequest calls this on
+     * the data it validates; validating without it, call it first.
+     *
+     * @param array<array-key, mixed> $input
+     * @return array<array-key, mixed>
+     */
+    public static function normalizeOpenApiParameters(array $input): array
+    {
+        if (array_key_exists('exploded', $input)) {
+            $input['exploded'] = self::openApiParameterList($input['exploded'], null, 'int');
+        }
+        if (array_key_exists('joined', $input)) {
+            $input['joined'] = self::openApiParameterList($input['joined'], ',', 'string');
+        }
+        if (array_key_exists('spaced', $input)) {
+            $input['spaced'] = self::openApiParameterList($input['spaced'], ' ', 'int');
+        }
+        if (array_key_exists('piped', $input)) {
+            $input['piped'] = self::openApiParameterList($input['piped'], '|', 'string');
+        }
+        if (array_key_exists('flag', $input)) {
+            $input['flag'] = self::openApiParameterValue($input['flag'], 'bool');
+        }
+
+        return $input;
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
     }
 
     /**
@@ -8220,6 +8451,8 @@ final class ApiTestSerializationGetQueryParamsFormRequest extends FormRequest
      * Laravel validates the query string and the body; a path, header or cookie parameter lives
      * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
      * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     * The parameters are then read as the document serializes them — `?ids=1,2`, `?active=true` —
+     * which the rules alone refuse.
      *
      * @return array<string, mixed>
      */
@@ -8233,7 +8466,7 @@ final class ApiTestSerializationGetQueryParamsFormRequest extends FormRequest
             $data['session'] = $this->cookie('session');
         }
 
-        return $data;
+        return ApiTestSerializationGetQueryParams::normalizeOpenApiParameters($data);
     }
 
     /**
@@ -8920,14 +9153,19 @@ use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
 
+use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_unique;
 use function array_values;
+use function explode;
 use function filter_var;
 use function floor;
 use function in_array;
+use function is_array;
 use function is_finite;
 use function is_float;
+use function is_numeric;
 use function is_string;
 use function trim;
 
@@ -8982,6 +9220,67 @@ final class ApiTestTenantsGetQueryParams implements JsonSerializable
         if ($verbose !== null) {
             $this->providedOpenApiKeys[] = 'verbose';
         }
+    }
+
+    /**
+     * The query and path parameters as the document serializes them: `?ids=1,2` for an `explode: false`
+     * list, `?active=true` for a boolean, `?levels[]=2` for a list of ints. Laravel hands them over as
+     * strings, and its `boolean` and `list` rules refuse those spellings. The FormRequest calls this on
+     * the data it validates; validating without it, call it first.
+     *
+     * @param array<array-key, mixed> $input
+     * @return array<array-key, mixed>
+     */
+    public static function normalizeOpenApiParameters(array $input): array
+    {
+        if (array_key_exists('verbose', $input)) {
+            $input['verbose'] = self::openApiParameterValue($input['verbose'], 'bool');
+        }
+
+        return $input;
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
     }
 
     /**
@@ -9277,6 +9576,8 @@ final class ApiTestTenantsGetQueryParamsFormRequest extends FormRequest
      * Laravel validates the query string and the body; a path, header or cookie parameter lives
      * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
      * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+     * The parameters are then read as the document serializes them — `?ids=1,2`, `?active=true` —
+     * which the rules alone refuse.
      *
      * @return array<string, mixed>
      */
@@ -9288,7 +9589,7 @@ final class ApiTestTenantsGetQueryParamsFormRequest extends FormRequest
             $data['tenant'] = $value;
         }
 
-        return $data;
+        return ApiTestTenantsGetQueryParams::normalizeOpenApiParameters($data);
     }
 
     /**
@@ -12374,6 +12675,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -12502,6 +12805,14 @@ final class CallbackJobDonePostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -12619,6 +12930,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -12747,6 +13060,14 @@ final class CallbackJobFailedPostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -17178,6 +17499,8 @@ use LogicException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -17308,6 +17631,14 @@ final class FileRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**
@@ -22913,7 +23244,9 @@ use function is_finite;
 use function is_float;
 use function is_string;
 use function json_decode;
+use function ltrim;
 use function property_exists;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -23062,6 +23395,12 @@ final class TestPatchRequest implements JsonSerializable
         $validator->after(static function (Validator $validator) use ($rawJson): void {
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawJsonShapes($validator, $rawJson);
+            }
+
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
             }
         });
     }
@@ -23540,6 +23879,12 @@ final class TestPostRequest implements JsonSerializable
 
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawJsonShapes($validator, $rawJson);
+            }
+
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
             }
         });
     }
@@ -28083,6 +28428,8 @@ use JsonSerializable;
 use LogicException;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -28211,6 +28558,14 @@ final class WebhookOrderPlacedPostRequest implements JsonSerializable
         // and an item no leaf rule reached (`{}`) was dropped. Kept whole, the container is what was
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
+
+        $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
     }
 
     /**

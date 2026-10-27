@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 17178 lines
+# laravel-data mode — 80 files, 17891 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -488,13 +488,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -604,6 +608,39 @@ final class ApiTest2PatchRequest extends Data
 
         return $rules;
     }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
+    }
 }
 
 ===== ApiTest2PostRequest.php =====
@@ -614,13 +651,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -731,6 +772,39 @@ final class ApiTest2PostRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -1696,14 +1770,18 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -1810,6 +1888,39 @@ final class ApiTestFilePostRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -2193,13 +2304,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -2306,6 +2421,39 @@ final class ApiTestJobsPostRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -2450,6 +2598,12 @@ use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_key_exists;
+use function array_map;
+use function explode;
+use function filter_var;
+use function is_array;
+use function is_numeric;
 use function is_string;
 use function trim;
 
@@ -2480,6 +2634,66 @@ final class ApiTestLegacyPostQueryParams extends Data
     public function __construct(
         public readonly bool|Optional $legacyFlag = new Optional(),
     ) {
+    }
+
+    /**
+     * The query and path parameters as the document serializes them, read before laravel-data validates
+     * or hydrates anything: `?ids=1,2` for an `explode: false` list, `?active=true` for a boolean,
+     * `?levels[]=2` for a list of ints. Its own pipeline hands everything over as strings.
+     *
+     * @param array<array-key, mixed> $properties
+     * @return array<array-key, mixed>
+     */
+    public static function prepareForPipeline(array $properties): array
+    {
+        if (array_key_exists('legacyFlag', $properties)) {
+            $properties['legacyFlag'] = self::openApiParameterValue($properties['legacyFlag'], 'bool');
+        }
+
+        return $properties;
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
     }
 
     /**
@@ -2576,13 +2790,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -2691,6 +2909,39 @@ final class ApiTestLegacyPostRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -2950,13 +3201,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -3064,6 +3319,39 @@ final class ApiTestRepresentationsPostRequest extends Data
 
         return $rules;
     }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
+    }
 }
 
 ===== ApiTestRepresentationsPostRequestForm.php =====
@@ -3074,13 +3362,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -3188,6 +3480,39 @@ final class ApiTestRepresentationsPostRequestForm extends Data
 
         return $rules;
     }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
+    }
 }
 
 ===== ApiTestRepresentationsPostRequestXml.php =====
@@ -3198,13 +3523,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -3311,6 +3640,39 @@ final class ApiTestRepresentationsPostRequestXml extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -3469,10 +3831,14 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_key_exists;
+use function array_map;
 use function array_shift;
 use function explode;
+use function filter_var;
 use function get_object_vars;
 use function is_array;
+use function is_numeric;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -3524,6 +3890,78 @@ final class ApiTestSerializationGetQueryParams extends Data
         #[WithoutValidation]
         public readonly ApiTestSerializationGetQueryParamsFilter|Optional $filter = new Optional(),
     ) {
+    }
+
+    /**
+     * The query and path parameters as the document serializes them, read before laravel-data validates
+     * or hydrates anything: `?ids=1,2` for an `explode: false` list, `?active=true` for a boolean,
+     * `?levels[]=2` for a list of ints. Its own pipeline hands everything over as strings.
+     *
+     * @param array<array-key, mixed> $properties
+     * @return array<array-key, mixed>
+     */
+    public static function prepareForPipeline(array $properties): array
+    {
+        if (array_key_exists('exploded', $properties)) {
+            $properties['exploded'] = self::openApiParameterList($properties['exploded'], null, 'int');
+        }
+        if (array_key_exists('joined', $properties)) {
+            $properties['joined'] = self::openApiParameterList($properties['joined'], ',', 'string');
+        }
+        if (array_key_exists('spaced', $properties)) {
+            $properties['spaced'] = self::openApiParameterList($properties['spaced'], ' ', 'int');
+        }
+        if (array_key_exists('piped', $properties)) {
+            $properties['piped'] = self::openApiParameterList($properties['piped'], '|', 'string');
+        }
+        if (array_key_exists('flag', $properties)) {
+            $properties['flag'] = self::openApiParameterValue($properties['flag'], 'bool');
+        }
+
+        return $properties;
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
     }
 
     /**
@@ -4163,6 +4601,12 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_key_exists;
+use function array_map;
+use function explode;
+use function filter_var;
+use function is_array;
+use function is_numeric;
 use function is_string;
 use function trim;
 
@@ -4196,6 +4640,66 @@ final class ApiTestTenantsGetQueryParams extends Data
         public readonly string|Optional $tenantQuery = new Optional(),
         public readonly bool|Optional $verbose = new Optional(),
     ) {
+    }
+
+    /**
+     * The query and path parameters as the document serializes them, read before laravel-data validates
+     * or hydrates anything: `?ids=1,2` for an `explode: false` list, `?active=true` for a boolean,
+     * `?levels[]=2` for a list of ints. Its own pipeline hands everything over as strings.
+     *
+     * @param array<array-key, mixed> $properties
+     * @return array<array-key, mixed>
+     */
+    public static function prepareForPipeline(array $properties): array
+    {
+        if (array_key_exists('verbose', $properties)) {
+            $properties['verbose'] = self::openApiParameterValue($properties['verbose'], 'bool');
+        }
+
+        return $properties;
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
     }
 
     /**
@@ -6487,13 +6991,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -6601,6 +7109,39 @@ final class CallbackJobDonePostRequest extends Data
 
         return $rules;
     }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
+    }
 }
 
 ===== CallbackJobFailedPostRequest.php =====
@@ -6611,13 +7152,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -6724,6 +7269,39 @@ final class CallbackJobFailedPostRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -9682,14 +10260,18 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -9798,6 +10380,39 @@ final class FileRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }
 
@@ -13259,13 +13874,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -13375,6 +13994,39 @@ final class TestPatchRequest extends Data
 
         return $rules;
     }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
+    }
 }
 
 ===== TestPostRequest.php =====
@@ -13385,8 +14037,10 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
@@ -13592,7 +14246,29 @@ final class TestPostRequest extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
         });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 
     /**
@@ -17304,13 +17980,17 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
 use function is_string;
+use function ltrim;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -17417,5 +18097,38 @@ final class WebhookOrderPlacedPostRequest extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody();
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+        });
+    }
+
+    /**
+     * The undecoded request body, or null when there is no request to take it from.
+     */
+    private static function rawRequestBody(): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+
+        return $request instanceof Request ? $request->getContent() : null;
     }
 }

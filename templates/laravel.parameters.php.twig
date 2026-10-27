@@ -1,0 +1,55 @@
+{% for read in parameterReads %}
+        if (array_key_exists('{{ read.wireName|php_string }}', ${{ parameterVariable }})) {
+{% if read.list %}
+            ${{ parameterVariable }}['{{ read.wireName|php_string }}'] = self::openApiParameterList(${{ parameterVariable }}['{{ read.wireName|php_string }}'], {{ read.delimiter is null ? 'null' : "'" ~ (read.delimiter|php_string) ~ "'" }}, '{{ read.kind }}');
+{% else %}
+            ${{ parameterVariable }}['{{ read.wireName|php_string }}'] = self::openApiParameterValue(${{ parameterVariable }}['{{ read.wireName|php_string }}'], '{{ read.kind }}');
+{% endif %}
+        }
+{% endfor %}
+
+        return ${{ parameterVariable }};
+    }
+
+    /**
+     * A list parameter as its `style` sends it: joined by the delimiter — `?ids=1,2` — or, for `form`
+     * exploded, one value per key, where a lone `?ids=1` is a list of one. Each item is then read as
+     * {@see openApiParameterValue()} reads a value.
+     */
+    private static function openApiParameterList(mixed $value, ?string $delimiter, string $kind): mixed
+    {
+        if (is_string($value)) {
+            $value = match (true) {
+                $delimiter === null => [$value],
+                $value === '' => [],
+                default => explode($delimiter, $value),
+            };
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_map(static fn(mixed $item): mixed => self::openApiParameterValue($item, $kind), $value);
+    }
+
+    /**
+     * A parameter value is a string; this is the value it stands for — `"7"` an int, `"true"` a bool. A
+     * string that is not one is left as it came, for the rules to refuse.
+     */
+    private static function openApiParameterValue(mixed $value, string $kind): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return match ($kind) {
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $value,
+            'float' => is_numeric($value) ? $value + 0 : $value,
+            'bool' => match ($value) {
+                'true', '1' => true,
+                'false', '0' => false,
+                default => $value,
+            },
+            default => $value,
+        };
+    }

@@ -235,6 +235,89 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * Query parameters are read as the document serializes them, before the rules run: `?ids=1,2` for an
+     * `explode: false` list, a lone `?tags=3` as a list of one, `?active=true` for a boolean — and the
+     * items of `?levels[]=2` as the ints an int-backed enum is built from. Laravel's `list` and `boolean`
+     * rules refused the first three, and the items stayed strings: `"2"` was no `Level`.
+     */
+    public function testQueryParametersAreReadByTheirStyle(): void
+    {
+        $namespace = $this->generate(['Level' => ['type' => 'integer', 'enum' => [1, 2, 3]]], [
+            '/api/test/widgets' => ['get' => [
+                'operationId' => 'listWidgets',
+                'parameters' => [
+                    ['name' => 'ids', 'in' => 'query', 'style' => 'form', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                    ['name' => 'tags', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                    ['name' => 'levels', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Level']]],
+                    ['name' => 'active', 'in' => 'query', 'schema' => ['type' => 'boolean']],
+                ],
+                'responses' => ['200' => ['description' => 'OK']],
+            ]],
+        ]);
+        $classes = array_values(array_filter(
+            array_map(static fn(string $file): string => basename($file, '.php'), glob($this->outputDirectory . '/*.php') ?: []),
+            static fn(string $class): bool => $class !== 'Level',
+        ));
+        /** @var class-string $params */
+        $params = $namespace . '\\' . $classes[0];
+        $build = static function (string $query) use ($params): object {
+            Container::getInstance()->instance('request', $request = Request::create(uri: '/api/test/widgets?' . $query, method: 'GET'));
+            try {
+                return $params::from($request);
+            } finally {
+                Container::getInstance()->forgetInstance('request');
+            }
+        };
+
+        $built = $build('ids=1,2&tags=3&levels[]=2&active=true');
+        $this->assertSame([1, 2], $built->ids);
+        $this->assertSame([3], $built->tags);
+        $this->assertSame([2], array_map(static fn(BackedEnum $level): int|string => $level->value, $built->levels));
+        $this->assertTrue($built->active);
+        $this->assertFalse($build('active=false')->active);
+
+        try {
+            $build('ids=1,x&active=yes');
+            $this->fail('A value its type cannot hold was accepted.');
+        } catch (ValidationException $exception) {
+            $failed = array_keys($exception->errors());
+            sort($failed);
+            $this->assertSame(['active', 'ids.1'], $failed);
+        }
+    }
+
+    /**
+     * A JSON array sent for an object body is refused, `[]` included, as runtime mode refuses it. It
+     * decodes to the same PHP array an empty object does, so with every property optional it passed.
+     */
+    public function testAnArrayBodyIsRefusedWhereTheBodyIsAnObject(): void
+    {
+        $namespace = $this->generate(['Note' => ['type' => 'object', 'properties' => ['text' => ['type' => 'string']]]], [
+            '/api/test/notes' => ['post' => [
+                'operationId' => 'addNote',
+                'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Note']]]],
+                'responses' => ['204' => ['description' => 'OK']],
+            ]],
+        ]);
+        /** @var class-string $note */
+        $note = $namespace . '\Note';
+        $errors = static function (string $json) use ($note): array {
+            try {
+                LaravelDataContainer::withRequest($json, static fn(Request $request): object => $note::from($request));
+            } catch (ValidationException $exception) {
+                return $exception->errors();
+            }
+
+            return [];
+        };
+
+        $this->assertSame(['payload' => ['JSON body must be an object, got array.']], $errors('[]'));
+        $this->assertSame(['payload'], array_keys($errors('["a"]')));
+        $this->assertSame([], $errors('{}'));
+        $this->assertSame([], $errors('{"text":"a"}'));
+    }
+
+    /**
      * An optional argument is optional in PHP too: `new X(code: 'a')` was an ArgumentCountError for
      * every optional field left out. Left out, it is `Optional` — absent from `toArray()`, as when a
      * payload without the key is hydrated.

@@ -277,6 +277,18 @@ $request->merge(['X-Tenant' => $request->header('X-Tenant')]);
 $params = WidgetHeaderParams::from($request);
 ```
 
+A query parameter arrives as a string, and the class reads it the way OpenAPI writes it in
+`prepareForPipeline()` — laravel-data's own hook, run before the rules: `?ids=1,2` for `explode: false`
+(`|` and space for `pipeDelimited` and `spaceDelimited`), a lone `?tags=3` as a list of one,
+`?active=true` for a boolean, and `"7"` as the int an `array<int>` or an int-backed enum item holds.
+Before 2.15.101 the `list` and `boolean` rules refused the first three, and the items of a list stayed
+strings — `"1"` was no int-backed enum case. A path parameter comes in later, through
+`#[FromRouteParameter]`, so a path LIST is not split this way.
+
+A request body sent as a JSON array — `[]` included — is refused under `payload` with `JSON body must be
+an object, got array.`, as runtime mode refuses it; it decodes to the same PHP array an empty object
+does. Nested, `[]` stays the empty object a PHP client encodes.
+
 
 ## Divergences from the other modes
 

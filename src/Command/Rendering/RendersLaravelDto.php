@@ -240,6 +240,9 @@ trait RendersLaravelDto
             'namespace' => $namespace,
             'imports' => $useStatements,
             'className' => $className,
+            'parameterReads' => $this->laravelParameterReads($properties),
+            'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
+            'rootIsObject' => $readsRawBody && array_key_exists($className, $this->requestPayloadClasses),
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],
             // Emit the object-level pass only where the document actually states something about the
@@ -1489,6 +1492,83 @@ trait RendersLaravelDto
         return $params;
     }
 
+    /**
+     * The query and path parameters to read as the document serializes them before the rules run, one
+     * entry per property: its wire name, whether it is a list, the delimiter its `style` joins the items
+     * with (null for `form` exploded, where a lone value is a list of one), and what a string item or
+     * value stands for.
+     *
+     * Everything there arrives as a string. Laravel's `boolean` rule refuses `"true"`, which is how
+     * OpenAPI writes a boolean in a query; its `list` rule refuses `?ids=1,2`, which is how
+     * `explode: false` writes a list; and nothing turned `?levels[]=2` into the int an `array<int>` or an
+     * int-backed enum promises. Symfony mode reads them this way since 2.15.76.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, array{wireName: string, list: bool, delimiter: ?string, kind: string}>
+     */
+    private function laravelParameterReads(array $properties): array
+    {
+        $reads = [];
+        foreach ($properties as $property) {
+            if (($property['inQuery'] ?? false) !== true && ($property['inPath'] ?? false) !== true) {
+                continue;
+            }
+
+            $type = ltrim($property['type'], '?');
+            if (preg_match('/^array<\??([A-Za-z_\\\][\w\\\]*)(?:\|null)?>$/', $type, $itemMatch) !== 1) {
+                if ($type === 'bool') {
+                    $reads[] = ['wireName' => $property['openApiName'], 'list' => false, 'delimiter' => null, 'kind' => 'bool'];
+                }
+                continue;
+            }
+
+            $style = $property['parameterStyle'] ?? (($property['inPath'] ?? false) === true ? 'simple' : 'form');
+            $explode = $property['parameterExplode'] ?? $style === 'form';
+            $delimiter = match ($style) {
+                'form' => $explode ? null : ',',
+                'spaceDelimited' => ' ',
+                'pipeDelimited' => '|',
+                'simple' => ',',
+                default => false,
+            };
+            if ($delimiter === false) {
+                continue;
+            }
+
+            $itemType = $itemMatch[1];
+            $enum = $this->enumSchemas[$this->shortClassName($itemType)] ?? null;
+            $kind = match (true) {
+                in_array($itemType, ['int', 'float', 'bool', 'string'], true) => $itemType,
+                $enum !== null => $enum['type'] === 'int' ? 'int' : 'string',
+                default => null,
+            };
+            if ($kind === null) {
+                continue;
+            }
+
+            $reads[] = ['wireName' => $property['openApiName'], 'list' => true, 'delimiter' => $delimiter, 'kind' => $kind];
+        }
+
+        return $reads;
+    }
+
+    /**
+     * The key type `rules()` declares. A property named like an integer — `2` — is an INT key once PHP
+     * has the array, so `array<string, …>` was a lie static analysis reported in the generated class.
+     *
+     * @param array<int, string> $paths
+     */
+    private function laravelRulesKeyType(array $paths): string
+    {
+        foreach ($paths as $path) {
+            if ((string)(int)$path === $path) {
+                return 'array-key';
+            }
+        }
+
+        return 'string';
+    }
+
     private function laravelIsEnumClass(string $className): bool
     {
         return array_key_exists($className, $this->enumSchemas);
@@ -2068,6 +2148,8 @@ trait RendersLaravelDto
             'pathParameters' => $located['path'],
             'headerParameters' => $located['header'],
             'cookieParameters' => $located['cookie'],
+            'readsParameters' => $this->laravelParameterReads($this->getSchemaProperties($dtoClassName)) !== [],
+            'rulesKeyType' => $this->laravelRulesKeyType(array_column($this->getSchemaProperties($dtoClassName), 'openApiName')),
             'sourceEndpoint' => $this->endpointByClass[$dtoClassName] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($dtoClassName),
         ]);

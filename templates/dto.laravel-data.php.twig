@@ -257,6 +257,20 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endif %}
 {% endif %}
 {% endif %}
+{% if parameterReads|default([]) is not empty %}
+
+    /**
+     * The query and path parameters as the document serializes them, read before laravel-data validates
+     * or hydrates anything: `?ids=1,2` for an `explode: false` list, `?active=true` for a boolean,
+     * `?levels[]=2` for a list of ints. Its own pipeline hands everything over as strings.
+     *
+     * @param array<array-key, mixed> $properties
+     * @return array<array-key, mixed>
+     */
+    public static function prepareForPipeline(array $properties): array
+    {
+{% include 'laravel.parameters.php.twig' with {parameterVariable: 'properties'} %}
+{% endif %}
 {% if wireNameRestore|default(null) is not null %}
 
     /**
@@ -298,7 +312,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      * Mentioning a property here takes it away from laravel-data's rule inferrers, which is the point:
      * these rules are the schema, theirs are a guess from the PHP type.
      *
-     * @return array<string, array<int, mixed>>
+     * @return array<{{ rulesKeyType|default('string') }}, array<int, mixed>>
      */
     public static function rules(): array
     {
@@ -326,15 +340,17 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endfor %}
     ];
 {% endif %}
-{% if interpreterMethodsBlock is not empty or objectShapePaths is not empty %}
+{% if interpreterMethodsBlock is not empty or objectShapePaths is not empty or rootIsObject|default(false) %}
 
     /**
 {% if interpreterMethodsBlock is not empty %}
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
-{% else %}
+{% elseif objectShapePaths is not empty %}
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+{% else %}
+     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
 {% endif %}
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -387,19 +403,28 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             }
 {% endif %}
 {% endif %}
-{% if objectShapePaths is not empty %}
+{% if objectShapePaths is not empty or rootIsObject|default(false) %}
 {% if interpreterMethodsBlock is not empty %}
 
 {% endif %}
             $rawJson = self::rawRequestBody();
+{% if objectShapePaths is not empty %}
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
 {% endif %}
+{% if rootIsObject|default(false) %}
+            // The body is an object: a JSON array at the root — `[]` included — is refused, as runtime mode
+            // refuses it. It decodes to the same PHP array an empty object does, so no rule can see it.
+            if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
+                $validator->errors()->add('payload', 'JSON body must be an object, got array.');
+            }
+{% endif %}
+{% endif %}
         });
     }
 {% endif %}
-{% if objectShapePaths is not empty %}
+{% if objectShapePaths is not empty or rootIsObject|default(false) %}
 
     /**
      * The undecoded request body, or null when there is no request to take it from.
@@ -415,6 +440,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
         return $request instanceof {{ requestRef }} ? $request->getContent() : null;
     }
+{% endif %}
+{% if objectShapePaths is not empty %}
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.

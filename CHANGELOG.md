@@ -3,6 +3,26 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.101 — 2026-10-27
+
+- laravel query parameters by style
+- laravel root array body refused
+- laravel rules() integer key type
+
+Laravel and laravel-data modes:
+
+- a query parameter was validated as the string it arrives as: `?ids=1,2` (`explode: false`), `|` and
+  space for `pipeDelimited` / `spaceDelimited`, a lone `?tags=3` and `?active=true` were refused by the
+  `list` and `boolean` rules, and in laravel-data the items of `?levels[]=2` stayed strings — `"1"` was
+  no int-backed enum case, a 500. They are read as the document serializes them before the rules run:
+  laravel-data in `prepareForPipeline()`, Laravel mode in a `normalizeOpenApiParameters()` the
+  FormRequest calls. Symfony mode reads them this way since 2.15.76.
+- a request body sent as a JSON array was accepted as an empty object when every property is optional.
+  It is refused under `payload`, `[]` included, as runtime mode refuses it.
+- a property named like an integer made `rules()` — and in Laravel mode `fromValidated()`, `toArray()`
+  and `jsonSerialize()` — declare `array<string, …>` over an int key; they declare `array<array-key, …>`
+  there.
+
 ## 2.15.100 — 2026-10-27
 
 - laravel-data interpreter error leaf key

@@ -33,7 +33,7 @@ use {{ import }};
 final class {{ className }} extends FormRequest
 {
     /**
-     * @return array<string, array<int, mixed>>
+     * @return array<{{ rulesKeyType|default('string') }}, array<int, mixed>>
      */
     public function rules(): array
     {
@@ -56,11 +56,17 @@ final class {{ className }} extends FormRequest
         {{ dtoClassName }}::withValidator($validator, $this->getContent());
     }
 
-{% if pathParameters is not empty or headerParameters is not empty or cookieParameters is not empty %}
+{% if pathParameters is not empty or headerParameters is not empty or cookieParameters is not empty or readsParameters|default(false) %}
     /**
+{% if pathParameters is not empty or headerParameters is not empty or cookieParameters is not empty %}
      * Laravel validates the query string and the body; a path, header or cookie parameter lives
      * elsewhere and is added here, under its OpenAPI name. A path parameter is taken as it appeared in
      * the URL — `originalParameter()` — so route model binding cannot hand the rules a model instead.
+{% endif %}
+{% if readsParameters|default(false) %}
+     * The parameters are then read as the document serializes them — `?ids=1,2`, `?active=true` —
+     * which the rules alone refuse.
+{% endif %}
      *
      * @return array<string, mixed>
      */
@@ -84,7 +90,11 @@ final class {{ className }} extends FormRequest
         }
 {% endfor %}
 
+{% if readsParameters|default(false) %}
+        return {{ dtoClassName }}::normalizeOpenApiParameters($data);
+{% else %}
         return $data;
+{% endif %}
     }
 
 {% endif %}

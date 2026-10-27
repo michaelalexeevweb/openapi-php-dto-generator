@@ -568,6 +568,98 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * A JSON array sent for an object body is refused, `[]` included, as runtime mode refuses it. It
+     * decodes to the same PHP array an empty object does, so with every property optional it passed.
+     */
+    public function testAnArrayBodyIsRefusedWhereTheBodyIsAnObject(): void
+    {
+        $namespace = 'LvRuleArrayBody';
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+        (new GenerateDtoCommand())->generateFromArray([
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/api/notes' => ['post' => [
+                'operationId' => 'addNote',
+                'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Note']]]],
+                'responses' => ['204' => ['description' => 'OK']],
+            ]]],
+            'components' => ['schemas' => ['Note' => ['type' => 'object', 'properties' => ['text' => ['type' => 'string']]]]],
+        ], $target, $namespace, 'laravel');
+        require_once $target . '/Note.php';
+        $dtoClass = $namespace . '\Note';
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$dtoClass, 'rules']);
+        $errors = function (string $json) use ($dtoClass, $rules): array {
+            /** @var array<string, mixed> $data */
+            $data = json_decode($json, true);
+            $validator = $this->validatorFactory()->make($data, $rules);
+            call_user_func([$dtoClass, 'withValidator'], $validator, $json);
+
+            return $validator->errors()->toArray();
+        };
+
+        $this->assertSame(['payload' => ['JSON body must be an object, got array.']], $errors('[]'));
+        $this->assertSame([], $errors('{}'));
+        $this->assertSame([], $errors('{"text":"a"}'));
+    }
+
+    /**
+     * Query parameters are read as the document serializes them: `?ids=1,2` for an `explode: false`
+     * list, `?names=a|b` for a `pipeDelimited` one, a lone `?tags=3` as a list of one, `?active=true` for a
+     * boolean. Laravel's `list` and `boolean` rules refused every one of those spellings.
+     */
+    public function testAFormRequestReadsQueryParametersByTheirStyle(): void
+    {
+        $namespace = 'LvRuleQueryStyle';
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+        (new GenerateDtoCommand())->generateFromArray([
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/api/widgets' => ['get' => [
+                'operationId' => 'listWidgets',
+                'parameters' => [
+                    ['name' => 'ids', 'in' => 'query', 'style' => 'form', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                    ['name' => 'tags', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                    ['name' => 'names', 'in' => 'query', 'style' => 'pipeDelimited', 'explode' => false, 'schema' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                    ['name' => 'active', 'in' => 'query', 'schema' => ['type' => 'boolean']],
+                ],
+                'responses' => ['200' => ['description' => 'OK']],
+            ]]],
+        ], $target, $namespace, 'laravel');
+        if (!class_exists(\Illuminate\Foundation\Http\FormRequest::class)) {
+            require_once __DIR__ . '/Stub/form-request.php';
+        }
+        $files = glob($target . '/*QueryParams*.php') ?: [];
+        foreach ($files as $file) {
+            require_once $file;
+        }
+        $dtoClass = $namespace . '\\' . basename((string)current(array_filter($files, static fn(string $f): bool => !str_contains($f, 'FormRequest'))), '.php');
+        $formRequestClass = $dtoClass . 'FormRequest';
+        $factory = $this->validatorFactory();
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$dtoClass, 'rules']);
+        $validate = static fn(string $uri): \Illuminate\Validation\Validator => $factory->make(
+            $formRequestClass::create(uri: $uri, method: 'GET')->validationData(),
+            $rules,
+        );
+
+        $valid = $validate('/api/widgets?ids=1,2&tags=3&names=a|b&active=true');
+        $this->assertTrue($valid->passes(), json_encode($valid->errors()->all()));
+        $dto = call_user_func([$dtoClass, 'fromValidated'], $valid->validated());
+        $this->assertSame([1, 2], $dto->getIds());
+        $this->assertSame([3], $dto->getTags());
+        $this->assertSame(['a', 'b'], $dto->getNames());
+        $this->assertTrue($dto->getActive());
+        $this->assertFalse(call_user_func([$dtoClass, 'fromValidated'], $validate('/api/widgets?active=false')->validated())->getActive());
+
+        $failed = array_keys($validate('/api/widgets?ids=1,x&active=yes')->errors()->toArray());
+        sort($failed);
+        $this->assertSame(['active', 'ids.1'], $failed);
+    }
+
+    /**
      * An optional property must accept an absent key and a value, and still reject a value that breaks
      * its own rules. That is `sometimes`, and it is what makes PATCH work.
      *

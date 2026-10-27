@@ -355,6 +355,27 @@ integer, as JSON Schema says. The strict rule variants are not used: they arrive
 this mode's floor, and `integer:strict` refuses `42.0`. A form body has no JSON types, so there a value is
 accepted and hydrated as the declared type.
 
+### Query parameters as the document serializes them
+
+The FormRequest hands its validation data through the DTO's `normalizeOpenApiParameters()` first, which
+reads a query or path parameter the way OpenAPI writes it: `?ids=1,2` for `explode: false` (`|` and space
+for `pipeDelimited` and `spaceDelimited`), a lone `?tags=3` as a list of one, `?active=true` for a
+boolean, and `"7"` as the int an `array<int>` or an int-backed enum item holds. Laravel's `list` and
+`boolean` rules refused those spellings before 2.15.101. Validating without the FormRequest, call it on
+the data first:
+
+```php
+$data = WidgetsQueryParams::normalizeOpenApiParameters($request->query());
+$validator = Validator::make($data, WidgetsQueryParams::rules());
+```
+
+### A JSON array where the body is an object
+
+A request body sent as a JSON array — `[]` included — is refused under `payload` with `JSON body must be
+an object, got array.`, as runtime mode refuses it. It decodes to the same PHP array an empty object
+does, so with every property optional it passed before 2.15.101. Nested, `[]` stays the empty object a
+PHP client encodes (`json_encode([])`).
+
 ### Errors about the object itself
 
 A keyword about the whole payload — `additionalProperties: false`, `minProperties`, `dependentRequired`,

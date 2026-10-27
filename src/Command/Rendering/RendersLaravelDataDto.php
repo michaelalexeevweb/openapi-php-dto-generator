@@ -185,7 +185,10 @@ trait RendersLaravelDataDto
             $interpreterConstraints,
             array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
         );
-        $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [];
+        // A request body is an object, and only the raw body still says whether `[]` was sent for it.
+        $rootIsObject = array_key_exists($className, $this->requestPayloadClasses)
+            && !array_key_exists($className, $this->parameterPayloadClasses);
+        $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [] || $rootIsObject;
         foreach ($interpreter['imports'] as $interpreterImport) {
             $useStatements[] = $interpreterImport;
         }
@@ -196,9 +199,11 @@ trait RendersLaravelDataDto
         $containerRef = null;
         $requestRef = null;
         $stdClassRef = null;
-        if ($objectShapePaths !== []) {
+        if ($objectShapePaths !== [] || $rootIsObject) {
             $containerRef = $this->libraryClassRef('Illuminate\Container\Container', $namespace, $useStatements);
             $requestRef = $this->libraryClassRef('Illuminate\Http\Request', $namespace, $useStatements);
+        }
+        if ($objectShapePaths !== []) {
             $stdClassRef = $this->libraryClassRef('stdClass', $namespace, $useStatements);
         }
 
@@ -235,6 +240,8 @@ trait RendersLaravelDataDto
             'declaresProperties' => $declaresProperties,
             'declaredParams' => $this->laravelInSchemaOrder($className, $params),
             'wireNameRestore' => $wireNameRestore,
+            'parameterReads' => $this->laravelParameterReads($properties),
+            'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
             'morphBase' => null,
             'implementedInterfaces' => $implementedInterfaces,
             'interpreterConstsBlock' => $interpreter['consts'],
@@ -247,6 +254,7 @@ trait RendersLaravelDataDto
             'params' => $params,
             'rules' => $rules,
             'objectShapePaths' => $objectShapePaths,
+            'rootIsObject' => $rootIsObject,
             'unionMembers' => null,
             'interfaceExtends' => [],
             'discriminatorProperty' => null,
