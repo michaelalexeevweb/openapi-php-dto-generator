@@ -481,7 +481,9 @@ trait RendersLaravelDataDto
         }
 
         $itemClass = $this->laravelDtoItemClass($property);
+        $enumItemClass = null;
         if ($itemClass !== null && $this->laravelIsEnumClass($itemClass)) {
+            $enumItemClass = $itemClass;
             $itemClass = null;
         }
 
@@ -572,6 +574,19 @@ trait RendersLaravelDataDto
         // constructor picks the case itself; `@var` and the parameter keep the real union.
         $variable = '$' . $property['name'];
         $enumCast = $this->laravelWithUnionEnumCast($property['type'], $variable, $variable);
+
+        // The items of a list or map of enum values, likewise: laravel-data casts container items only
+        // behind `data.features.cast_and_transform_iterables`, which ships off, so `["warm"]` stayed a
+        // list of strings under an `array<Tone>` docblock. A value already a case — the flag on, or a
+        // caller's own — passes through.
+        if ($enumItemClass !== null) {
+            $enumCast = sprintf(
+                'is_array(%1$s) ? array_map(static fn(mixed $item): mixed => %2$s($item) ? %3$s::from($item) : $item, %1$s) : %1$s',
+                $variable,
+                $this->enumSchemas[$enumItemClass]['type'] === 'int' ? 'is_int' : 'is_string',
+                $enumItemClass,
+            );
+        }
         $propertyType = $declaredType;
         if ($enumCast !== $variable) {
             $unitEnumRef = $this->libraryClassRef('UnitEnum', $namespace, $attributeImports);
@@ -725,8 +740,13 @@ trait RendersLaravelDataDto
             return [];
         }
 
+        // `!` zeroes what the format does not name: without it `createFromFormat()` fills in the CURRENT time
+        // of day, and `2022-01-01` became 2022-01-01T13:43:14 where every other mode reads midnight — an
+        // interval filter then dropped the rows dated exactly on its bound. The cast formats a mutable
+        // `DateTime` value with the same pattern before parsing it, which `!` cannot round-trip, so the plain
+        // pattern stays behind it for that path alone.
         $castFormats = $temporalFormat === 'Y-m-d'
-            ? ["'Y-m-d'"]
+            ? ["'!Y-m-d'", "'Y-m-d'"]
             // The same patterns every other mode accepts (`GeneratedDtoInterface::DATE_TIME_FORMATS`,
             // and the `date_format:` rule this same schema emits). laravel-data's default is the single
             // `config('data.date_format')`, which cannot parse a value carrying microseconds — a payload

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\LaravelData;
 
+use BackedEnum;
 use Illuminate\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -267,6 +268,64 @@ final class DataShapeTest extends TestCase
 
         $this->expectException(ValidationException::class);
         $build('{"tone":"pale","code":"a"}');
+    }
+
+    /**
+     * A list of enum values holds the cases its docblock promises. laravel-data casts container items
+     * only behind `data.features.cast_and_transform_iterables`, which ships off, so the strings stayed
+     * strings and `$item->value` died on them; the constructor picks the cases itself.
+     */
+    public function testAListOfAnEnumHoldsItsCases(): void
+    {
+        $namespace = $this->generate([
+            'Tone' => ['type' => 'string', 'enum' => ['warm', 'cold']],
+            'Palette' => [
+                'type' => 'object',
+                'properties' => [
+                    'tones' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tone']],
+                    'byName' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Tone']],
+                ],
+            ],
+        ]);
+        /** @var class-string $palette */
+        $palette = $namespace . '\Palette';
+        /** @var class-string<BackedEnum> $tone */
+        $tone = $namespace . '\Tone';
+
+        $built = LaravelDataContainer::withRequest(
+            '{"tones":["warm","cold"],"byName":{"sky":"cold"}}',
+            static fn(Request $request): object => $palette::from($request),
+        );
+
+        $this->assertSame([$tone::from('warm'), $tone::from('cold')], $built->tones);
+        $this->assertSame(['sky' => $tone::from('cold')], $built->byName);
+        $this->assertSame('{"tones":["warm","cold"],"byName":{"sky":"cold"}}', $built->toJson());
+        $this->assertSame([$tone::from('warm')], (new $palette(tones: [$tone::from('warm')]))->tones);
+        $this->assertInstanceOf(Optional::class, (new $palette())->tones);
+    }
+
+    /**
+     * A `format: date` is midnight, as every other mode reads it. Parsed with a bare `Y-m-d`,
+     * `createFromFormat()` filled in the current time of day, and an interval filter dropped the rows
+     * dated exactly on its bound.
+     */
+    public function testADateIsMidnight(): void
+    {
+        $namespace = $this->generate(['Window' => [
+            'type' => 'object',
+            'required' => ['since'],
+            'properties' => ['since' => ['type' => 'string', 'format' => 'date']],
+        ]]);
+        /** @var class-string $window */
+        $window = $namespace . '\Window';
+
+        $built = LaravelDataContainer::withRequest(
+            '{"since":"2022-01-01"}',
+            static fn(Request $request): object => $window::from($request),
+        );
+
+        $this->assertSame('2022-01-01T00:00:00.000000', $built->since->format('Y-m-d\TH:i:s.u'));
+        $this->assertSame(['since' => '2022-01-01'], $built->toArray());
     }
 
     /**

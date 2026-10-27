@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use BackedEnum;
 use Error;
 use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
@@ -359,6 +360,15 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"es":["a","b"]}',
                 'runtime' => ['es' => ['a', 'b']],
                 'symfony' => ['es' => ['a', 'b']],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['es' => [['#case' => 'a'], ['#case' => 'b']]],
+                        'reason' => 'laravel-data transforms container items only behind '
+                            . '`data.features.cast_and_transform_iterables`, which ships off, so the '
+                            . 'cases the constructor picked stay cases in toArray(); json_encode writes '
+                            . 'their backing values, so the wire is the same',
+                    ],
+                ],
             ],
             'array of scalars' => [
                 'schema' => self::object(['list' => ['type' => 'array', 'items' => ['type' => 'string']]], ['list']),
@@ -532,10 +542,12 @@ final class NormalizationParityTest extends TestCase
                             . 'is already gone — the same limit laravel-data declares',
                     ],
                     'laravel-data' => [
-                        'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
-                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
-                            . 'as [] rather than {}',
+                        'expected' => ['es' => ['x' => ['#case' => 'a'], 'y' => ['#case' => 'b']]],
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does, '
+                            . 'so an empty map encodes as [] rather than {}; and it transforms container '
+                            . 'items only behind `data.features.cast_and_transform_iterables`, which '
+                            . 'ships off, so the values stay the cases the constructor picked — '
+                            . 'json_encode writes their backing values',
                     ],
                 ],
             ],
@@ -1054,10 +1066,16 @@ final class NormalizationParityTest extends TestCase
      * An `stdClass` in the output is meaningful — it is what makes an empty map encode as `{}`
      * instead of `[]` — but two stdClass instances are never identical, so assertSame cannot see
      * it. Rewriting them as `['#object' => ...]` keeps the distinction visible in the expectations
-     * while staying comparable.
+     * while staying comparable. An enum case left in the array form is written `['#case' => value]` for
+     * the same reason: each mode's case class is its own, and the difference from a bare value is the
+     * point.
      */
     private function canonicalize(mixed $value): mixed
     {
+        if ($value instanceof BackedEnum) {
+            return ['#case' => $value->value];
+        }
+
         if ($value instanceof stdClass) {
             return ['#object' => $this->canonicalize((array)$value)];
         }

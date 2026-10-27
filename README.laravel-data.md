@@ -43,7 +43,7 @@ final class UserPostRequestData extends Data
         public readonly string|Optional $nickname = new Optional(),
         public readonly string|null|Optional $middleName = new Optional(),
         #[MapName('born_on')]
-        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
+        #[WithCast(DateTimeInterfaceCast::class, format: ['!Y-m-d', 'Y-m-d'])]
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
         public readonly DateTimeImmutable|Optional $bornOn = new Optional(),
         #[WithoutValidation]
@@ -279,6 +279,19 @@ All measured and pinned; the full table with reasons is in
   PHP needs) — laravel-data writes keys in declaration order. One shape keeps the constructor's order: a
   class with a nullable property that has a schema default, since a declared readonly property cannot
   carry the default laravel-data would then read;
+- picks the cases of a list or map of enum values in the constructor. laravel-data casts container items
+  only behind `data.features.cast_and_transform_iterables`, which ships off, so `["warm"]` stayed a list
+  of strings under an `array<Tone>` docblock. With the flag off `toArray()` then holds the cases, not
+  their values — `json_encode` and `toJson()` still write `["warm"]`. To get values from `toArray()` as
+  well, turn the flag on in `config/data.php`; the constructor leaves a value that is already a case
+  alone, so it works either way:
+
+  ```php
+  'features' => [
+      'cast_and_transform_iterables' => true,
+  ],
+  ```
+
 - declares a scalar union with an enum member — `oneOf: [$ref Tone, string, integer]` — as
   `UnitEnum|string|int` on the property, with the real `Tone|string|int` in `@var` and on the
   constructor argument. laravel-data's enum cast reads the property type and took every scalar for the

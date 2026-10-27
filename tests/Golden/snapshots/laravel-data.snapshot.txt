@@ -3784,7 +3784,7 @@ use function trim;
 final class ApiTestSerializationGetQueryParamsFilter extends Data
 {
     public function __construct(
-        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
+        #[WithCast(DateTimeInterfaceCast::class, format: ['!Y-m-d', 'Y-m-d'])]
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
         public readonly DateTimeImmutable|Optional $since = new Optional(),
     ) {
@@ -15633,7 +15633,7 @@ final class User2 extends Data
         public readonly string $name,
         #[WithoutValidation]
         public readonly User2Pet|null $pet,
-        #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d'])]
+        #[WithCast(DateTimeInterfaceCast::class, format: ['!Y-m-d', 'Y-m-d'])]
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
         public readonly DateTimeImmutable $createdAt,
     ) {

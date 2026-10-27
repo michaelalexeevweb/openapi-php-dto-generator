@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.98 — 2026-10-27
+
+- laravel-data enum list items cast
+- laravel-data date is midnight
+
+laravel-data mode:
+
+- a list or map of enum values held strings under an `array<Tone>` docblock — laravel-data casts container
+  items only behind `data.features.cast_and_transform_iterables`, which ships off — so `$item->value`
+  died on them. The constructor picks the cases; a value already a case passes through. With the flag off
+  `toArray()` holds the cases (the JSON is unchanged); README shows the flag that makes it write values.
+- a `format: date` was parsed with `Y-m-d`, which fills in the CURRENT time of day: `2022-01-01` became
+  `2022-01-01T13:43:14`, where every other mode reads midnight. The cast leads with `!Y-m-d`.
+
 ## 2.15.97 — 2026-10-27
 
 - laravel-data enum scalar union
