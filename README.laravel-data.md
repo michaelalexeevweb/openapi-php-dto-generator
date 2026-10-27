@@ -213,6 +213,37 @@ base is the abstract morph base, each variant extends it. Before 2.15.93 the bas
 its variants did not extend, so a property typed with it lost every field a variant adds. A
 discriminator the base declares as an enum is that enum on the base too, and `morph()` reads its value.
 
+Here the base declares every property its own schema declares, not the discriminator alone, so code
+typed with the base reads them — `$event->uuid` on the abstract class. Each variant redeclares them, in
+the schema's order, and assigns them in its own constructor; that is also what keeps `toArray()` in the
+schema's order, since PHP lists a class's own properties before the inherited ones:
+
+```php
+abstract class Event extends Data implements PropertyMorphableData
+{
+    public readonly string $uuid;
+
+    #[PropertyForMorph]
+    public readonly EventKind $kind;
+
+    // morph(), from(), validateAndCreate() as above
+}
+
+final class Tapped extends Event
+{
+    public function __construct(
+        public readonly string $uuid,
+        public readonly EventKind $kind,
+        public readonly int $count,
+    ) {
+    }
+}
+```
+
+PHP accepts the redeclaration only with the SAME type, so a base property some variant types
+differently stays that variant's alone (and a discriminator typed differently keeps the layout above).
+Before 2.15.99 the base declared only the discriminator, and every variant wrote it last.
+
 A `propertyName` that is not a PHP identifier — `pet_type` — gets a `#[MapName('pet_type')]` on the base
 alongside `#[PropertyForMorph]`. The morph runs before there is an object, and laravel-data looks the
 value up by the property name and by its input-mapped name, so both spellings have to be there.
@@ -270,7 +301,11 @@ All measured and pinned; the full table with reasons is in
   `array<DateTimeImmutable>`. `#[WithCast]` casts the PROPERTY, never its items — measured against the
   package, `['2026-03-10']` comes back unchanged — and `#[DataCollectionOf]` wants a `Data` class, which
   `DateTimeImmutable` is not. A per-item cast would have to be a `Cast` class of ours emitted into
-  generated code that today depends on nothing from this package. The wire form is unaffected; see
+  generated code that today depends on nothing from this package. Nor does the constructor convert
+  them, as it does a list of enum values: laravel-data writes the items back untransformed, and a
+  `DateTimeImmutable` encodes as `{"date": …, "timezone_type": …}` — with
+  `cast_and_transform_iterables` on, as ATOM rather than the schema's `Y-m-d`. A backed enum encodes as
+  its value either way, which is why the two are treated differently. The wire form is unaffected; see
   [Temporal container items](README.support-matrix.md#temporal-container-items);
 - echoes a `readOnly` property the client sent — `#[Hidden]` is an exact counterpart to `writeOnly` and
   there is none for `readOnly`;
@@ -298,8 +333,9 @@ All measured and pinned; the full table with reasons is in
   enum (`"8812"` was a "Could not cast enum" 500); with `UnitEnum` it stands aside, and the constructor
   picks the case — `Tone::tryFrom()` for a value of the enum's backing type, the scalar as sent
   otherwise — as Laravel mode's hydrator does;
-- normalizes a discriminated union member with the discriminator LAST, because it is inherited from the
-  abstract base and PHP lists a class's own properties first. Same keys, same values.
+- normalizes a member of a `oneOf` discriminated union with the discriminator LAST, because it is
+  inherited from the abstract base and PHP lists a class's own properties first. Same keys, same values.
+  An `allOf` union keeps the schema's order — its members redeclare the base's properties.
 
 Everything in the validation vocabulary is identical to the other four modes, including
 `additionalProperties: false` on a DTO-shaped schema, which the two hydrating modes cannot see at all.

@@ -74,8 +74,10 @@ trait RendersLaravelDataDto
         // A member of a discriminated union extends its abstract base, which already declares the
         // discriminator property. Redeclaring a readonly property in a child is a fatal, so the member
         // takes it as a plain constructor parameter and forwards it.
+        // Unless the base is an `allOf` one that declares its properties for the members to redeclare —
+        // see `laravelDataMorphBaseProperties()`.
         $morphBase = $this->laravelDataMorphBaseFor($className);
-        $morphDiscriminator = $morphBase === null
+        $morphDiscriminator = $morphBase === null || $this->laravelDataMorphBaseProperties($morphBase, $namespace) !== null
             ? null
             : ($this->discriminatorSchemas[$morphBase]['propertyName'] ?? null);
 
@@ -283,6 +285,27 @@ trait RendersLaravelDataDto
             }
         }
 
+        // An `allOf` base declares what its schema declares, so code typed with the base reads the common
+        // properties too. The discriminator carries `#[PropertyForMorph]` on its declaration.
+        $declaredProperties = $this->laravelDataMorphBaseProperties($className, $namespace);
+        if ($declaredProperties !== null) {
+            foreach ($this->getSchemaProperties($className) as $baseProperty) {
+                foreach ($this->laravelImportsForProperty($baseProperty, $namespace, $className) as $import) {
+                    if ($import !== 'InvalidArgumentException') {
+                        $useStatements[] = $import;
+                    }
+                }
+            }
+            foreach ($declaredProperties as $index => $declared) {
+                foreach ($declared['attributeImports'] as $attributeImport) {
+                    $useStatements[] = $attributeImport;
+                }
+                if ($declared['openApiName'] === $propertyName) {
+                    $declaredProperties[$index]['attributes'] = [sprintf('#[%s]', $morphForRef), ...$declared['attributes']];
+                }
+            }
+        }
+
         // `DataMorphClassResolver` casts an enum-typed discriminator to its case before `morph()` sees
         // it, so the match has to read the value back out.
         $enumRef = $enumTyped ? $this->libraryClassRef('BackedEnum', $namespace, $useStatements) : null;
@@ -332,6 +355,7 @@ trait RendersLaravelDataDto
                 'enumRef' => $enumRef,
                 'guard' => $guard,
                 'attributes' => $attributes,
+                'declaredProperties' => $declaredProperties,
                 'members' => $members,
                 'dataBase' => $dataBase,
                 'morphable' => $morphableRef,
@@ -350,6 +374,55 @@ trait RendersLaravelDataDto
             'interfaceExtends' => [],
             'discriminatorProperty' => $propertyName,
         ]);
+    }
+
+    /**
+     * The properties an `allOf` discriminator base declares itself, or null when it keeps the constructor
+     * that takes the discriminator alone.
+     *
+     * Declared, not promoted, and every member redeclares them in the schema's order with its own
+     * constructor. A property the base only inherited down was missing from code typed with the base —
+     * `$event->uuid` on the abstract class — and PHP lists a subclass's own properties before the
+     * inherited ones, so `toArray()` wrote the discriminator last. Redeclaring needs the SAME type in every
+     * member, so a property some member types differently stays the members' alone; a discriminator typed
+     * differently keeps the old layout for the whole union.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function laravelDataMorphBaseProperties(string $baseClass, string $namespace): ?array
+    {
+        if (!$this->laravelIsAllOfDiscriminatorBase($baseClass)) {
+            return null;
+        }
+
+        $memberTypes = [];
+        foreach (array_unique(array_values($this->discriminatorSchemas[$baseClass]['mapping'])) as $memberClass) {
+            $memberTypes[$memberClass] = [];
+            foreach ($this->getSchemaProperties($memberClass) as $memberProperty) {
+                $memberTypes[$memberClass][$memberProperty['openApiName']] = $this->resolveLaravelDataParam(
+                    property: $memberProperty,
+                    namespace: $namespace,
+                )['declaredType'];
+            }
+        }
+
+        $declared = [];
+        foreach ($this->getSchemaProperties($baseClass) as $baseProperty) {
+            $param = $this->resolveLaravelDataParam($baseProperty, $namespace);
+            $shared = array_filter(
+                $memberTypes,
+                static fn(array $types): bool => ($types[$baseProperty['openApiName']] ?? null) !== $param['declaredType'],
+            ) === [];
+            if ($shared) {
+                $declared[] = $param;
+                continue;
+            }
+            if ($baseProperty['openApiName'] === $this->discriminatorSchemas[$baseClass]['propertyName']) {
+                return null;
+            }
+        }
+
+        return $declared;
     }
 
     /**

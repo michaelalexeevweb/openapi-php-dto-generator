@@ -55,6 +55,21 @@ use {{ import }};
 {% if morphBase is not null %}
 abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ morphBase.morphable }}
 {
+{% if morphBase.declaredProperties is not null %}
+{# Each member redeclares these in the schema's order and assigns them in its own constructor. #}
+{% for param in morphBase.declaredProperties %}
+{% if param.docType is not null or param.propertyType != param.declaredType %}
+    /** @var {{ param.docType ?? param.declaredType }} */
+{% endif %}
+{% for attribute in param.attributes %}
+    {{ attribute|raw }}
+{% endfor %}
+    public readonly {{ param.propertyType }} ${{ param.name }};
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% else %}
     public function __construct(
 {% for attribute in morphBase.attributes %}
         {{ attribute|raw }}
@@ -62,6 +77,7 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
         public readonly {{ morphBase.propertyType }} ${{ morphBase.property }},
     ) {
     }
+{% endif %}
 
     /**
      * Which member class a payload describes, read from the discriminator BEFORE anything is hydrated —

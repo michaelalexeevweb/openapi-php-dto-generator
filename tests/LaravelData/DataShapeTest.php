@@ -56,8 +56,11 @@ final class DataShapeTest extends TestCase
             ],
             'Palette' => [
                 'type' => 'object',
-                'required' => ['kind'],
-                'properties' => ['kind' => ['type' => 'string', 'enum' => ['warm', 'cold']]],
+                'required' => ['kind', 'label'],
+                'properties' => [
+                    'kind' => ['type' => 'string', 'enum' => ['warm', 'cold']],
+                    'label' => ['type' => 'string'],
+                ],
                 'discriminator' => ['propertyName' => 'kind', 'mapping' => [
                     'warm' => '#/components/schemas/WarmPalette',
                     'cold' => '#/components/schemas/ColdPalette',
@@ -76,25 +79,33 @@ final class DataShapeTest extends TestCase
         $base = new ReflectionClass($namespace . '\Palette');
         $this->assertTrue($base->isAbstract());
         $this->assertTrue($base->implementsInterface(PropertyMorphableData::class));
+        // What the base schema declares is readable through the base type, not only through a member.
+        $this->assertTrue($base->hasProperty('label'));
 
         /** @var class-string $holder */
         $holder = $namespace . '\Holder';
         $built = LaravelDataContainer::withRequest(
-            '{"palette":{"kind":"warm","score":3},"palettes":[{"kind":"cold","depth":2},{"kind":"warm","score":1}]}',
+            '{"palette":{"kind":"warm","label":"a","score":3},"palettes":[{"kind":"cold","label":"b","depth":2},{"kind":"warm","label":"c","score":1}]}',
             static fn(Request $request): object => $holder::from($request),
         );
 
         $this->assertInstanceOf($namespace . '\WarmPalette', $built->palette);
         $this->assertSame(3, $built->palette->score);
+        $this->assertSame('a', $built->palette->label);
         $this->assertInstanceOf($namespace . '\ColdPalette', $built->palettes[0]);
+        // The schema's order: the base's properties first, as `allOf` lists them — not the member's own
+        // first and the inherited ones after, which is how PHP lists a subclass's properties.
         $this->assertSame(
-            ['palette' => ['score' => 3, 'kind' => 'warm'], 'palettes' => [['depth' => 2, 'kind' => 'cold'], ['score' => 1, 'kind' => 'warm']]],
+            [
+                'palette' => ['kind' => 'warm', 'label' => 'a', 'score' => 3],
+                'palettes' => [['kind' => 'cold', 'label' => 'b', 'depth' => 2], ['kind' => 'warm', 'label' => 'c', 'score' => 1]],
+            ],
             $built->toArray(),
         );
 
         $this->expectException(ValidationException::class);
         LaravelDataContainer::withRequest(
-            '{"palette":{"kind":"warm"},"palettes":[]}',
+            '{"palette":{"kind":"warm","label":"a"},"palettes":[]}',
             static fn(Request $request): object => $holder::from($request),
         );
     }

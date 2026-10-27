@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.99 — 2026-10-27
+
+- laravel-data allOf base declares properties
+- laravel-data allOf member in schema order
+
+laravel-data mode:
+
+- the abstract base of an `allOf` discriminated union declared only the discriminator, so a property
+  the base schema declares — `uuid` beside `kind` — was missing from code typed with the base. The base
+  declares them all; each member redeclares them with the same type, in the schema's order, and assigns
+  them in its own constructor. A property some member types differently stays the members' own.
+- the same members wrote `toArray()` with the discriminator LAST, since PHP lists a class's own
+  properties before the inherited ones; the redeclaration puts the keys in the schema's order.
+
 ## 2.15.98 — 2026-10-27
 
 - laravel-data enum list items cast

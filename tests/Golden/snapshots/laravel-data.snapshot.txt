@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 15935 lines
+# laravel-data mode — 80 files, 15932 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -8567,11 +8567,10 @@ use function is_array;
  */
 abstract class Discriminator extends Data implements PropertyMorphableData
 {
-    public function __construct(
-        #[PropertyForMorph]
-        public readonly DiscriminatorType $type,
-    ) {
-    }
+    #[PropertyForMorph]
+    public readonly DiscriminatorType $type;
+
+    public readonly string|null $name;
 
     /**
      * Which member class a payload describes, read from the discriminator BEFORE anything is hydrated —
@@ -8670,11 +8669,10 @@ use function trim;
 final class Discriminator1 extends Discriminator
 {
     public function __construct(
-        DiscriminatorType $type,
+        public readonly DiscriminatorType $type,
         public readonly string|null $name,
         public readonly int $id,
     ) {
-        parent::__construct($type);
     }
 
     /**
@@ -8798,13 +8796,12 @@ use function trim;
 final class Discriminator2 extends Discriminator
 {
     public function __construct(
-        DiscriminatorType $type,
+        public readonly DiscriminatorType $type,
         public readonly string|null $name,
         public readonly int $id,
         #[MapName('NAme')]
         public readonly string $nAme2,
     ) {
-        parent::__construct($type);
     }
 
     /**
