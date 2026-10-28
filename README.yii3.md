@@ -381,12 +381,18 @@ keys — so after hydration it holds the decoded arrays, and after `create()` th
 is declared `array<string, Detail|array<string, mixed>>` for that reason; `create()` takes
 `array<string, Detail>`. Its values are validated either way.
 
-### A discriminated base (`allOf`)
+### A union: `oneOf`, `anyOf` and a discriminated `allOf` base
 
-A base with a `discriminator` whose variants `allOf` it is an INTERFACE here, as in Symfony mode: the
-classes are flattened, so a variant cannot extend it, and it implements it instead. A property typed by
-the base takes any variant built with `create()`. The hydrator cannot build an interface, so a REQUEST
-property typed by the base is not filled — see [Divergences](#divergences-from-the-other-modes).
+A union is an INTERFACE here, as in Symfony mode, and its members implement it — an `allOf` variant too:
+the classes are flattened, so it cannot extend its base. The hydrator cannot build an interface, so a
+property typed by one is declared `Report|array`:
+
+- from a payload it holds the decoded array, and the interpreter checks it against the member the
+  discriminator names (or against every member of a `oneOf`) — `getMeta()` hands you that array; build
+  the member yourself when you need the object: `$hydrator->create(AlphaReport::class, $input->getMeta())`;
+- `create()` takes the member object, `AlphaReport::create(...)`.
+
+The same holds for the items of a list or map of a union.
 
 ## A body that is a list
 
@@ -438,9 +444,11 @@ was sent.
   the same signal this mode reads for presence. The verdict is still "invalid"; the sentence is
   `field "status" is required.`. Nothing in generated code can separate the two cases, because the raw
   value never reaches the object;
-- **a discriminated union in a PAYLOAD is not built** — a `oneOf`/`anyOf` and an `allOf` discriminated
-  base alike. The hydrator casts to the DECLARED type, and the declared type is the union interface.
-  The interface is still the right type for a response and for code that constructs a member itself — see the [support matrix](README.support-matrix.md#divergences).
+- **a union in a PAYLOAD is held as the decoded array**, not built — a `oneOf`/`anyOf` and an `allOf`
+  discriminated base alike. The hydrator casts to the DECLARED type, an interface it cannot instantiate,
+  so the property is `Union|array` and the interpreter checks the array — see
+  [A union](#a-union-oneof-anyof-and-a-discriminated-allof-base). The interface is still the type for a
+  response and for code that constructs a member itself — see the [support matrix](README.support-matrix.md#divergences).
 
 ## Testing generated classes without a Yii3 application
 

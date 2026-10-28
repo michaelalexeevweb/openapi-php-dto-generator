@@ -359,6 +359,9 @@ trait RendersYii3Dto
             'namespace' => $namespace,
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
+            'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($className),
+            'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'imports' => $this->yii3SortedImports($useStatements, $ruleImports, $sourceImports),
             'classAttributes' => $classAttributes,
             'libAbstractInput' => $this->yii3Lib('AbstractInput'),
@@ -440,6 +443,14 @@ trait RendersYii3Dto
             $type = 'array';
         } else {
             $type = $this->formatPhpTypeForNamespace($type, $namespace);
+            // A union interface cannot be built by the hydrator: a property typed by one stayed unfilled
+            // and a request carrying it was refused as missing it. It holds the decoded array instead —
+            // the interpreter picks the branch and checks it — or the member `create()` was given.
+            if ($this->yii3IsUnionInterface($property['type'])) {
+                $docType = $type . '|array<string, mixed>';
+                $createDocType = $type;
+                $type .= '|array';
+            }
         }
         $wireBoolean = $this->yii3IsWireBoolean($property);
         if ($wireBoolean) {
@@ -504,6 +515,9 @@ trait RendersYii3Dto
             str_contains($type, '|') => $type . '|null',
             default => '?' . $type,
         };
+        if ($createDocType !== null && $nullable && !str_contains($type, '<') && !str_starts_with($createDocType, '?')) {
+            $createDocType = '?' . $createDocType;
+        }
 
         // A DECLARED, uninitialised typed property — no promotion, no constructor, no sentinel of ours.
         //
@@ -566,17 +580,17 @@ trait RendersYii3Dto
         $payloadValue = $wireBoolean
             ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
             : '$this->' . $property['name'];
-        $mapValueClass = preg_match('/^\??array<string,\s*\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)>$/', $property['type'], $mapMatch) === 1
-            && $this->isGeneratedDtoType($mapMatch[1])
-            ? $this->formatPhpTypeForNamespace(ltrim($mapMatch[1], '\\'), $namespace)
-            : null;
-        if ($mapValueClass !== null) {
+        $held = $this->yii3HoldsUnbuiltObjects($property['type']);
+        $dataSet = $this->yii3Lib('DataSetInterface');
+        if ($held === 'value') {
+            $payloadValue = sprintf('$this->%1$s instanceof %2$s ? $this->%1$s->getData() : $this->%1$s', $property['name'], $dataSet);
+        } elseif ($held === 'items') {
             $payloadValue = sprintf(
                 'array_map(static fn(mixed $item): mixed => $item instanceof %2$s ? $item->getData() : $item, $this->%1$s)',
                 $property['name'],
-                $mapValueClass,
+                $dataSet,
             );
-            if (str_starts_with($propertyType, '?')) {
+            if (str_contains($propertyType, 'null') || str_starts_with($propertyType, '?')) {
                 $payloadValue = sprintf('$this->%s === null ? null : %s', $property['name'], $payloadValue);
             }
         }
@@ -885,12 +899,13 @@ trait RendersYii3Dto
      */
     private function yii3NestingAttributes(array $property, array &$ruleImports): array
     {
+        // A union interface is held as the decoded array, which `Nested` refuses; the interpreter checks it.
         if ($this->isGeneratedDtoType($property['type'])) {
-            return [$this->yii3Rule('Nested', [], $ruleImports)];
+            return $this->yii3IsUnionInterface($property['type']) ? [] : [$this->yii3Rule('Nested', [], $ruleImports)];
         }
 
         $itemType = $this->yii3ArrayItemType($property);
-        if ($itemType !== null && $this->isGeneratedDtoType($itemType)) {
+        if ($itemType !== null && $this->isGeneratedDtoType($itemType) && !$this->yii3IsUnionInterface($itemType)) {
             $this->yii3Rule('Nested', [], $ruleImports);
 
             // `#[Collection]` is a HYDRATOR attribute, not a rule, and without it the elements arrive
@@ -976,6 +991,9 @@ trait RendersYii3Dto
             'namespace' => $namespace,
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
+            'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($className),
+            'sourceRelated' => $this->relatedByClass[$className] ?? null,
             // A non-null `unionMembers` is what selects the interface branch of the template — the
             // same switch `dto.symfony.php.twig` uses, so the two modes read alike.
             'unionMembers' => array_map(
@@ -1641,7 +1659,9 @@ PHP;
     private function yii3HeldDocType(string $type, bool $asBuilt = false): string
     {
         $builtItem = $this->yii3ListItemTypeOf($type);
-        $builtItem = $builtItem !== null && $this->isGeneratedDtoType(ltrim($builtItem, '?')) ? ltrim($builtItem, '?') : null;
+        $builtItem = $builtItem !== null && $this->isGeneratedDtoType(ltrim($builtItem, '?')) && !$this->yii3IsUnionInterface($builtItem)
+            ? ltrim($builtItem, '?')
+            : null;
 
         $depth = 0;
         $held = '';
@@ -1701,14 +1721,15 @@ PHP;
     }
 
     /**
-     * The class schema with the value schema of every map of objects (`additionalProperties: {$ref: X}`)
-     * written out in place.
+     * The class schema with every value the hydrator does NOT build written out in place, so the
+     * interpreter checks it.
      *
-     * The other modes build an `X` per value and validate it through it. The yii3 hydrator builds
-     * objects only for a LIST (`#[Collection]`), so a map holds the decoded arrays — and with the
-     * `$ref` left as it was, the constraints kept only `type: object` and NOTHING checked the values:
-     * `{"byId": {"k": {"id": 0}}}` passed a `minimum: 1`. Inlined, the interpreter checks each value,
-     * an array or an object `create()` was given alike.
+     * The other modes build an object per value and validate it through it. The yii3 hydrator builds one
+     * only for a property typed by a class and for the items of a list (`#[Collection]`) — so a map of
+     * objects, and anything typed by a union interface, holds the decoded arrays. With the `$ref` left as
+     * it was, the constraints kept at most `type: object` and NOTHING checked the values:
+     * `{"byId": {"k": {"id": 0}}}` passed a `minimum: 1`. Inlined, the interpreter checks each value, an
+     * array or an object `create()` was given alike.
      *
      * @param array<string, mixed> $schema
      * @return array<string, mixed>
@@ -1721,15 +1742,29 @@ PHP;
 
         $properties = [];
         foreach ($schema['properties'] as $name => $property) {
-            if (is_array($property) && is_array($property['additionalProperties'] ?? null)) {
-                $ref = $this->referenceOrSingleRefAllOf($property['additionalProperties']);
-                if ($ref !== null && $this->nestedObjectRefDefinition($ref) !== null) {
-                    // Depth two: below where anything is materialized, which is what makes it inline
-                    // the `$ref` itself and everything under it.
-                    $property['additionalProperties'] = $this->inlineNestedContainerValidation(
-                        schema: $property['additionalProperties'],
-                        depth: 2,
-                    );
+            if (is_array($property)) {
+                $union = $this->yii3UnionValueSchema($property);
+                if ($union !== null) {
+                    $property = $union + (($property['nullable'] ?? false) === true ? ['nullable' => true] : []);
+                }
+                foreach (['items', 'additionalProperties'] as $container) {
+                    if (!is_array($property[$container] ?? null)) {
+                        continue;
+                    }
+                    $union = $this->yii3UnionValueSchema($property[$container]);
+                    if ($union !== null) {
+                        $property[$container] = $union;
+                        continue;
+                    }
+                    $ref = $this->referenceOrSingleRefAllOf($property[$container]);
+                    if ($container === 'additionalProperties' && $ref !== null && $this->nestedObjectRefDefinition($ref) !== null) {
+                        // Depth two: below where anything is materialized, which is what makes it
+                        // inline the `$ref` itself and everything under it.
+                        $property[$container] = $this->inlineNestedContainerValidation(
+                            schema: $property[$container],
+                            depth: 2,
+                        );
+                    }
                 }
             }
             $properties[$name] = $property;
@@ -1737,6 +1772,127 @@ PHP;
         $schema['properties'] = $properties;
 
         return $schema;
+    }
+
+    /**
+     * The schema a value typed by a union interface is checked against, or null when it is not one.
+     *
+     * A discriminated union becomes an `if`/`then`/`else` chain on the discriminator — the interpreter
+     * picks the branch on an OBJECT only, and here the value is the decoded array. Without a
+     * discriminator the members are a `oneOf` (or `anyOf`) of their schemas.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>|null
+     */
+    private function yii3UnionValueSchema(array $schema): ?array
+    {
+        $ref = $this->referenceOrSingleRefAllOf($schema);
+        $prefix = '#/components/schemas/';
+        if ($ref === null || !str_starts_with($ref, $prefix)) {
+            return null;
+        }
+        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
+        if (!$this->yii3IsUnionInterface($className)) {
+            return null;
+        }
+        $union = $this->dtoSchemas[$className] ?? [];
+
+        $discriminator = is_array($union['discriminator'] ?? null) ? $union['discriminator'] : [];
+        $property = $discriminator['propertyName'] ?? null;
+        $mapping = is_array($discriminator['mapping'] ?? null) ? $discriminator['mapping'] : [];
+        if (is_string($property) && $mapping !== []) {
+            $chain = null;
+            foreach (array_reverse($mapping, true) as $value => $memberRef) {
+                $link = [
+                    'if' => ['properties' => [$property => ['const' => (string)$value]]],
+                    'then' => is_string($memberRef) ? $this->yii3MemberSchema($memberRef) : [],
+                ];
+                if ($chain !== null) {
+                    $link['else'] = $chain;
+                }
+                $chain = $link;
+            }
+
+            return [
+                'type' => 'object',
+                'required' => [$property],
+                // Marked inline: an `enum` is otherwise taken for one a generated enum class enforces.
+                'properties' => [$property => ['enum' => array_map('strval', array_keys($mapping)), 'x-php-inline-enum' => true]],
+            ] + $chain;
+        }
+
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (is_array($union[$keyword] ?? null) && $union[$keyword] !== []) {
+                $members = [];
+                foreach ($union[$keyword] as $member) {
+                    $memberRef = is_array($member) ? $this->referenceOrSingleRefAllOf($member) : null;
+                    $members[] = $memberRef !== null ? $this->yii3MemberSchema($memberRef) : (is_array($member) ? $member : []);
+                }
+
+                return [$keyword => $members];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * One member of a union, written out: its own properties with the inline `allOf` branches merged,
+     * and every `$ref` below it inlined.
+     *
+     * @return array<string, mixed>
+     */
+    private function yii3MemberSchema(string $ref): array
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return [];
+        }
+        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
+
+        return $this->inlineNestedContainerValidation(
+            schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+            depth: 2,
+        );
+    }
+
+    /**
+     * Whether a type names an interface this mode emits for a union: a `oneOf`/`anyOf` schema, or an
+     * `allOf` discriminated base.
+     */
+    private function yii3IsUnionInterface(string $type): bool
+    {
+        $className = ltrim($type, '?\\');
+        foreach ($this->unionInterfacesByClass as $interfaces) {
+            if (in_array($className, $interfaces, true)) {
+                return true;
+            }
+        }
+
+        return $this->isAllOfDiscriminatorBase($className);
+    }
+
+    /**
+     * Where a property holds generated objects the hydrator did not build: `value` for the property
+     * itself (typed by a union interface), `items` for the values of a list or map one level down,
+     * null for neither.
+     */
+    private function yii3HoldsUnbuiltObjects(string $type): ?string
+    {
+        if (!str_contains($type, '<')) {
+            return $this->yii3IsUnionInterface($type) ? 'value' : null;
+        }
+        if (preg_match('/^\??array<(string,\s*)?\??\\\?([A-Za-z_][A-Za-z0-9_\\\]*)>$/', $type, $match) !== 1) {
+            return null;
+        }
+        $item = $this->shortClassName($match[2]);
+        if (!$this->isGeneratedDtoType($item)) {
+            return null;
+        }
+
+        // A list of plain classes is built by `#[Collection]`; a map of them, and a container of a union,
+        // is not.
+        return $match[1] !== '' || $this->yii3IsUnionInterface($item) ? 'items' : null;
     }
 
     /**

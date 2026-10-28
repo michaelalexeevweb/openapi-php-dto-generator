@@ -3,6 +3,22 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.107 — 2026-10-28
+
+- yii3 union in a payload read
+- yii3 class docblock with spec link
+
+yii3 mode:
+
+- a property typed by a union — a `oneOf`/`anyOf` or an `allOf` discriminated base, all interfaces here —
+  was never filled: the hydrator cannot build an interface, so a request carrying one was refused as
+  missing it. It is declared `Union|array`: from a payload it holds the decoded array, checked by the
+  interpreter against the member its discriminator names (or every member of a `oneOf`); `create()` takes
+  the member object. The items of a list or map of a union likewise — `#[Collection]` of an interface
+  dropped every item.
+- a class had no docblock: neither the "auto-generated, do not edit" notice nor the `Route:`, `From:` and
+  `Spec: @see <spec>` lines every other mode writes, nor `@deprecated`.
+
 ## 2.15.106 — 2026-10-28
 
 - yii3 nullable written by `create()`

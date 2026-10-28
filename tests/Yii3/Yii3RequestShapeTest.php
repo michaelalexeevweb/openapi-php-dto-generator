@@ -386,6 +386,60 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertFalse($container->validate($board::create(byId: ['k' => $detail::create(id: 0)]))->isValid());
     }
 
+    public function testAValueTypedByAUnionIsReadAndChecked(): void
+    {
+        // A union is an interface, which the hydrator cannot build: a request carrying one was refused
+        // as missing it. It holds the decoded array, and the interpreter picks the branch.
+        $namespace = $this->generate([
+            'Board' => [
+                'type' => 'object',
+                'required' => ['meta'],
+                'properties' => [
+                    'meta' => ['$ref' => '#/components/schemas/Report'],
+                    'shapes' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shape']],
+                ],
+            ],
+            'Report' => [
+                'type' => 'object',
+                'required' => ['report'],
+                'properties' => ['report' => ['type' => 'string']],
+                'discriminator' => ['propertyName' => 'report', 'mapping' => [
+                    'alpha' => '#/components/schemas/AlphaReport',
+                    'beta' => '#/components/schemas/BetaReport',
+                ]],
+            ],
+            'AlphaReport' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Report'],
+                ['type' => 'object', 'required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]],
+            ]],
+            'BetaReport' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Report'],
+                ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+            ]],
+            'Shape' => ['oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']]],
+            'Circle' => ['type' => 'object', 'required' => ['radius'], 'properties' => ['radius' => ['type' => 'number']], 'additionalProperties' => false],
+            'Square' => ['type' => 'object', 'required' => ['side'], 'properties' => ['side' => ['type' => 'number']], 'additionalProperties' => false],
+        ]);
+        $board = $namespace . '\Board';
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($board, $payload));
+
+        self::assertSame([], $verdict(['meta' => ['report' => 'alpha', 'a' => 1], 'shapes' => [['radius' => 1], ['side' => 2]]]));
+        self::assertSame([], $verdict(['meta' => ['report' => 'beta']]));
+        self::assertNotSame([], $verdict(['meta' => ['report' => 'alpha']]), 'the branch is checked');
+        self::assertNotSame([], $verdict(['meta' => ['report' => 'alpha', 'a' => 'x']]));
+        self::assertNotSame([], $verdict(['meta' => ['report' => 'gamma']]));
+        self::assertNotSame([], $verdict(['meta' => ['report' => 'beta'], 'shapes' => [['edge' => 1]]]));
+
+        $container = new Yii3Container();
+        $read = $container->hydrate($board, ['meta' => ['report' => 'alpha', 'a' => 1]]);
+        self::assertSame(['report' => 'alpha', 'a' => 1], $read->getMeta());
+
+        $alpha = $namespace . '\AlphaReport';
+        $built = $board::create(meta: $alpha::create(report: ($namespace . '\ReportReport')::from('alpha'), a: 1));
+        self::assertSame(['meta' => ['report' => 'alpha', 'a' => 1]], $built->getData());
+        self::assertTrue($container->validate($built)->isValid());
+    }
+
     public function testKeysAreWrittenInTheSchemasOrder(): void
     {
         // The properties were declared required-first, and `getData()` follows the declaration.
