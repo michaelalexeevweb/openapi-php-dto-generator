@@ -3,6 +3,24 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.108 — 2026-10-28
+
+- yii3 enum beside scalar kept
+- yii3 enum union getter gives case
+- yii3 union interface names members
+
+yii3 mode:
+
+- a union of an enum and a scalar (`oneOf: [{$ref: Scope}, {type: integer}]`) was declared `Scope|int`, and
+  the hydrator, finding no builtin member for `"all"`, cast it: `"all"` and `"nope"` both became `0`, and
+  passed — the enum branch asserted nothing, so the whole `oneOf` was dropped from the constraints. The
+  property is declared with `string` and `int` both, the enum branch is checked inline, and the getter
+  returns the case for a listed value.
+- a discriminated union interface was empty, so a body that IS a union gave a caller nothing to pick the
+  member by. It carries `OPENAPI_DISCRIMINATOR` and `OPENAPI_DISCRIMINATOR_MAPPING` — where every member
+  implements that one union interface, since a constant inherited from two interfaces is a fatal error.
+  README.yii3 "A body that is a union".
+
 ## 2.15.107 — 2026-10-28
 
 - yii3 union in a payload read

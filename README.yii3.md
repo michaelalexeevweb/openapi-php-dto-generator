@@ -394,6 +394,36 @@ property typed by one is declared `Report|array`:
 
 The same holds for the items of a list or map of a union.
 
+A union of an enum and a scalar (`oneOf: [{$ref: Scope}, {type: integer}]`) is declared with `string`
+and `int` both — `Scope|int|string` — so the value is kept as sent and the interpreter checks it; the
+getter returns the case for a listed value (`Scope::All`) and the scalar otherwise.
+
+### A body that is a union
+
+The hydrator cannot build the interface an action argument would be typed by. A discriminated union
+names its members instead, so a resolver of yours can pick one:
+
+```php
+interface Ident
+{
+    public const string OPENAPI_DISCRIMINATOR = 'entityType';
+    public const array OPENAPI_DISCRIMINATOR_MAPPING = [
+        'city' => CityIdent::class,
+        'region' => RegionIdent::class,
+    ];
+}
+
+$body = $request->getParsedBody();
+$class = Ident::OPENAPI_DISCRIMINATOR_MAPPING[$body[Ident::OPENAPI_DISCRIMINATOR] ?? ''] ?? null;
+if ($class === null) {
+    // 400: unknown or missing entityType
+}
+$input = $validatingHydrator->create($class, $body);
+```
+
+The constants are emitted only where every member implements this one union interface: a class that
+inherits the same constant from two interfaces does not load.
+
 ## A body that is a list
 
 `requestBody: {type: array, items: {$ref: Widget}}` has no class of its own — only `Widget` does — and

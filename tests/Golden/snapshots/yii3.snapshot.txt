@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 34149 lines
+# yii3 mode — 80 files, 34167 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -20857,10 +20857,19 @@ namespace GoldenCorpus;
  * Members: Discriminator1|Discriminator2
  *
  * Discriminated by `type`; the branch is chosen by the emitted interpreter, not by an attribute — Yii3 has
- * no discriminator mapping of its own.
+ * no discriminator mapping of its own. To build the member for a payload yourself, look its
+ * class up in `OPENAPI_DISCRIMINATOR_MAPPING`.
  */
 interface Discriminator
 {
+    /** The property whose value names the member. */
+    public const string OPENAPI_DISCRIMINATOR = 'type';
+
+    /** Discriminator value => the member class to build for it. */
+    public const array OPENAPI_DISCRIMINATOR_MAPPING = [
+        'discriminator1' => Discriminator1::class,
+        'discriminator2' => Discriminator2::class,
+    ];
 }
 
 ===== Discriminator1.php =====
@@ -27088,10 +27097,19 @@ namespace GoldenCorpus;
  * Members: Circle|Square
  *
  * Discriminated by `kind`; the branch is chosen by the emitted interpreter, not by an attribute — Yii3 has
- * no discriminator mapping of its own.
+ * no discriminator mapping of its own. To build the member for a payload yourself, look its
+ * class up in `OPENAPI_DISCRIMINATOR_MAPPING`.
  */
 interface Shape
 {
+    /** The property whose value names the member. */
+    public const string OPENAPI_DISCRIMINATOR = 'kind';
+
+    /** Discriminator value => the member class to build for it. */
+    public const array OPENAPI_DISCRIMINATOR_MAPPING = [
+        'circle' => Circle::class,
+        'square' => Square::class,
+    ];
 }
 
 ===== Square.php =====

@@ -451,6 +451,17 @@ trait RendersYii3Dto
                 $createDocType = $type;
                 $type .= '|array';
             }
+            // An enum beside a scalar keeps the value AS SENT: with `Scope|int` the hydrator, finding no
+            // builtin member for `"all"`, fell back to casting it — `"all"` and `"nope"` both became 0, and
+            // passed. With `string` and `int` both declared the value is kept, the interpreter checks it
+            // against the union, and the getter turns a listed one into the case.
+            if ($this->yii3UnionEnumMember($property['type']) !== null) {
+                foreach (['string', 'int'] as $scalar) {
+                    if (!in_array($scalar, explode('|', $type), true)) {
+                        $type .= '|' . $scalar;
+                    }
+                }
+            }
         }
         $wireBoolean = $this->yii3IsWireBoolean($property);
         if ($wireBoolean) {
@@ -535,6 +546,21 @@ trait RendersYii3Dto
             : '$this->' . $property['name'];
         $getterDocType = $docType;
         $createValue = '$' . $property['name'];
+
+        // A union of an enum and a scalar (`oneOf: [{enum: [all, team]}, {type: integer}]`): the hydrator
+        // casts to the first builtin member the value matches, so `"all"` stayed the STRING and code
+        // comparing against the case took the other branch. The getter hands out the case — a value the
+        // enum does not list stays as it came. Every other mode gives the case.
+        $unionEnum = $this->yii3UnionEnumMember($property['type']);
+        if ($unionEnum !== null && !$wireBoolean) {
+            $enumClass = $this->formatPhpTypeForNamespace($unionEnum, $namespace);
+            $getterValue = sprintf(
+                '(is_%1$s($this->%2$s) ? (%3$s::tryFrom($this->%2$s) ?? $this->%2$s) : $this->%2$s)',
+                $this->enumSchemas[$unionEnum]['type'] === 'int' ? 'int' : 'string',
+                $property['name'],
+                $enumClass,
+            );
+        }
         $default = $this->yii3DefaultExpression($property, $type, $docType);
         $getterType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType;
 
@@ -987,7 +1013,29 @@ trait RendersYii3Dto
     ): string {
         $members = $unionTypes !== [] ? $unionTypes : array_values($discriminator['mapping'] ?? []);
 
+        // What a caller needs to pick the member for a payload itself — the hydrator cannot build an
+        // interface, so a body that IS a union had nothing to go by. Emitted only where every member
+        // implements this one union interface: a class inheriting the same constant from two interfaces
+        // is a fatal error at load time.
+        $imports = [];
+        $mapping = [];
+        $soleUnion = $members !== [];
+        foreach ($members as $member) {
+            if (count($this->implementedUnionInterfaces($member, $this->discriminatorBaseForMember($member))) !== 1) {
+                $soleUnion = false;
+            }
+        }
+        if ($soleUnion) {
+            foreach ($discriminator['mapping'] ?? [] as $value => $member) {
+                $this->appendImportForClass($imports, $member, $namespace, $className);
+                $mapping[$value] = $this->shortClassName($member);
+            }
+        }
+        sort($imports);
+
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
+            'imports' => array_values(array_unique($imports)),
+            'discriminatorMapping' => $mapping,
             'namespace' => $namespace,
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
@@ -1747,6 +1795,7 @@ PHP;
                 if ($union !== null) {
                     $property = $union + (($property['nullable'] ?? false) === true ? ['nullable' => true] : []);
                 }
+                $property = $this->yii3WithEnumBranchesInlined($property);
                 foreach (['items', 'additionalProperties'] as $container) {
                     if (!is_array($property[$container] ?? null)) {
                         continue;
@@ -1770,6 +1819,37 @@ PHP;
             $properties[$name] = $property;
         }
         $schema['properties'] = $properties;
+
+        return $schema;
+    }
+
+    /**
+     * A `oneOf`/`anyOf` with an enum `$ref` among its branches, the enum written out in place.
+     *
+     * Such a branch extracts to nothing — elsewhere the enum CLASS is the check — and a branch that
+     * asserts nothing makes the whole keyword unenforceable, so it was dropped: `Scope|int` accepted
+     * `"nope"`. This mode keeps the value as sent (see the property type), so the branches have to
+     * judge it.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function yii3WithEnumBranchesInlined(array $schema): array
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!is_array($schema[$keyword] ?? null)) {
+                continue;
+            }
+            $branches = [];
+            foreach ($schema[$keyword] as $branch) {
+                $ref = is_array($branch) ? $this->referenceOrSingleRefAllOf($branch) : null;
+                $definition = $ref !== null ? $this->nestedScalarRefDefinition($ref, $this->rootSpecFile) : null;
+                $branches[] = is_array($definition) && is_array($definition['enum'] ?? null)
+                    ? $definition + ['x-php-inline-enum' => true]
+                    : $branch;
+            }
+            $schema[$keyword] = $branches;
+        }
 
         return $schema;
     }
@@ -1854,6 +1934,29 @@ PHP;
             schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
             depth: 2,
         );
+    }
+
+    /**
+     * The generated enum in a union with builtin members (`Scope|string|int`), or null. A union of
+     * several enums is left alone: a value may name a case of more than one.
+     */
+    private function yii3UnionEnumMember(string $type): ?string
+    {
+        if (str_contains($type, '<') || !str_contains($type, '|')) {
+            return null;
+        }
+        $enums = [];
+        $hasScalar = false;
+        foreach (explode('|', ltrim($type, '?')) as $member) {
+            $member = ltrim($member, '\\');
+            if (array_key_exists($member, $this->enumSchemas)) {
+                $enums[] = $member;
+            } elseif (in_array($member, ['string', 'int', 'float', 'bool'], true)) {
+                $hasScalar = true;
+            }
+        }
+
+        return $hasScalar && count($enums) === 1 ? $enums[0] : null;
     }
 
     /**

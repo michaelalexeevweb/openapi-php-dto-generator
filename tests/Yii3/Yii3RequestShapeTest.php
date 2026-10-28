@@ -440,6 +440,60 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertTrue($container->validate($built)->isValid());
     }
 
+    public function testAnEnumBesideAScalarKeepsTheValueAndReadsAsTheCase(): void
+    {
+        // `Scope|int`: the hydrator found no builtin member for `"all"` and cast it — `"all"` and `"nope"`
+        // both became 0, and passed. A listed value read back as the string, never as the case.
+        $namespace = $this->generate([
+            'Filter' => [
+                'type' => 'object',
+                'properties' => ['scope' => ['oneOf' => [['$ref' => '#/components/schemas/Scope'], ['type' => 'integer']]]],
+            ],
+            'Scope' => ['type' => 'string', 'enum' => ['all', 'team']],
+        ]);
+        $filter = $namespace . '\Filter';
+        $scope = $namespace . '\Scope';
+        $container = new Yii3Container();
+        $read = static fn(array $payload): mixed => $container->hydrate($filter, $payload)->getScope();
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($filter, $payload));
+
+        self::assertSame($scope::from('all'), $read(['scope' => 'all']));
+        self::assertSame(5, $read(['scope' => 5]));
+        self::assertSame([], $verdict(['scope' => 'team']));
+        self::assertSame([], $verdict(['scope' => 5]));
+        self::assertArrayHasKey('scope', $verdict(['scope' => 'nope']));
+        self::assertArrayHasKey('scope', $verdict(['scope' => '5']));
+
+        $built = $filter::create(scope: $scope::from('team'));
+        self::assertSame(['scope' => 'team'], $built->getData());
+        self::assertTrue($container->validate($built)->isValid());
+    }
+
+    public function testADiscriminatedUnionNamesItsMembers(): void
+    {
+        // A body that IS a union gave a caller nothing to pick the member by: the interface was empty.
+        $namespace = $this->generate([
+            'Ident' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string']],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'city' => '#/components/schemas/CityIdent',
+                    'region' => '#/components/schemas/RegionIdent',
+                ]],
+            ],
+            'CityIdent' => ['allOf' => [['$ref' => '#/components/schemas/Ident'], ['type' => 'object', 'properties' => ['cityId' => ['type' => 'integer']]]]],
+            'RegionIdent' => ['allOf' => [['$ref' => '#/components/schemas/Ident'], ['type' => 'object', 'properties' => ['regionId' => ['type' => 'integer']]]]],
+        ]);
+        $ident = $namespace . '\Ident';
+
+        self::assertSame('kind', constant($ident . '::OPENAPI_DISCRIMINATOR'));
+        self::assertSame(
+            ['city' => $namespace . '\CityIdent', 'region' => $namespace . '\RegionIdent'],
+            constant($ident . '::OPENAPI_DISCRIMINATOR_MAPPING'),
+        );
+    }
+
     public function testKeysAreWrittenInTheSchemasOrder(): void
     {
         // The properties were declared required-first, and `getData()` follows the declaration.
