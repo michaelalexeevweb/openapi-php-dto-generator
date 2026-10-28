@@ -39,7 +39,7 @@ final class DeclarationHonestyTest extends TestCase
 
     /**
      * yii3 builds objects only for the items of a list of DTOs (`#[Collection]`); a DTO anywhere else in a
-     * container is the decoded JSON, and is now declared as such. An enum member is held as its value and
+     * container is the decoded JSON — or the object `create()` was given — and is declared as such. An enum member is held as its value and
      * handed out as a case by the getter.
      */
     public function testYii3DeclaresTheDecodedValuesItDoesNotBuild(): void
@@ -48,8 +48,8 @@ final class DeclarationHonestyTest extends TestCase
 
         $this->assertStringContainsString('/** @return array<Kind> */' . "\n" . '    public function getKinds(): array', $source);
         $this->assertStringContainsString('/** @return array<Tag> */' . "\n" . '    public function getTags(): array', $source);
-        $this->assertStringContainsString('/** @return array<string, array<string, mixed>> */' . "\n" . '    public function getTagMap(): array', $source);
-        $this->assertStringContainsString('/** @return array<array<array<string, mixed>>> */' . "\n" . '    public function getTagRows(): array', $source);
+        $this->assertStringContainsString('/** @return array<string, Tag|array<string, mixed>> */' . "\n" . '    public function getTagMap(): array', $source);
+        $this->assertStringContainsString('/** @return array<array<Tag|array<string, mixed>>> */' . "\n" . '    public function getTagRows(): array', $source);
         // An optional container's getter says null as its native type does.
         $this->assertStringContainsString('/** @return ?array<Kind> */' . "\n" . '    public function getOptKinds(): ?array', $source);
 

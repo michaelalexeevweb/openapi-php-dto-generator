@@ -100,13 +100,14 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
-{% set docParams = params|filter(param => param.getterDocType is not null) %}
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
+{% set docParams = params|filter(param => param.createDocType is not null) %}
 {% if docParams is not empty %}
      *
 {% for param in docParams %}
-     * @param {{ param.propertyType starts with '?' and not (param.getterDocType starts with '?') ? '?' : '' }}{{ param.getterDocType }} ${{ param.name }}
+     * @param {{ param.propertyType starts with '?' and not (param.createDocType starts with '?') ? '?' : '' }}{{ param.createDocType }} ${{ param.name }}
 {% endfor %}
 {% endif %}
      */
@@ -120,7 +121,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     ): self {
         ${{ createVariable }} = new self();
 {% for param in params %}
-{% if param.tracksPresence %}
+{% if param.tracksPresence and not param.createAlwaysWrites %}
         if (${{ param.name }} !== null) {
             ${{ createVariable }}->{{ param.name }} = {{ param.createValue|raw }};
         }
@@ -135,8 +136,9 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
 {% if params|filter(param => param.tracksPresence) is not empty %}
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -144,6 +146,23 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;

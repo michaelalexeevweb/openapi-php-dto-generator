@@ -294,7 +294,8 @@ gives the same answer using only what the framework and PHP already provide.
 An optional property with a schema `default` reads as that default when the key is absent:
 `getSize()` answers `10` while `isSizeProvided()` stays false. The property itself stays uninitialised
 — it records what was sent — so `getData()` leaves the key out, as runtime and Laravel mode do. A list or
-map default is not applied.
+map default is not applied. Where the schema does not let the property be null, the getter cannot answer
+null either, and its return type says so: `getSize(): int`.
 
 ## Rule mapping
 
@@ -340,19 +341,28 @@ The class has no constructor — the hydrator fills its properties, and an unini
 typo or a wrong type is caught by the IDE and PHPStan:
 
 ```php
-$response = ScoreResponse::create(
-    score: $score,
-    kind: ScoreKind::Manual,        // enums, dates and nested objects as the getters return them
-    tags: [Tag::create(name: 'a')], // a list of objects built beforehand is kept
-    // an optional argument left out — or passed null — is "not sent"
+$response = PersonView::create(
+    name: $name,
+    photo: $photoOrNull,              // `nullable: true` — written as given, `"photo": null` included
+    kind: PersonKind::Guest,          // enums, dates and nested objects as the getters return them
+    tags: [Tag::create(name: 'a')],   // a list, or a map, of objects built beforehand is kept
+    // any other optional argument left out — or passed null — is "not sent"
 );
 
-$response = $response->withProvided('note');   // …unless it must reach the wire as an explicit null
+$response = $response->withoutProperty('photo');   // leave a nullable one out after all
 ```
 
-Required properties are the leading arguments, optional ones follow with a `null` default. `null` cannot
-say both "not sent" and "sent as null" at once, so the second is `withProvided('<openapi name>')`,
-which returns a copy — the same split Laravel mode makes between `create()` and `withProvided()`.
+Required properties are the leading arguments, optional ones follow with a `null` default. What a `null`
+argument means depends on the schema:
+
+| the property | `null` given, or the argument left out |
+|---|---|
+| `nullable: true` | written as `null` — what runtime and Symfony mode write |
+| not nullable | "not sent": the key is left out, since `null` is not a value it may have |
+
+So a nullable property is always on the wire; `withoutProperty('<openapi name>')` returns a copy without
+it. `withProvided('<openapi name>')` is the opposite for a property that is not nullable — a copy with it
+sent as `null`, which the schema refuses, so it is for a payload meant to fail.
 
 Building from an array through the hydrator still works, keyed by the OpenAPI names (`first_name`, not
 `firstName`). Two things to know about that path:
@@ -363,6 +373,43 @@ Building from an array through the hydrator still works, keyed by the OpenAPI na
   is not an array or a `DataInterface`, so a list of instances built beforehand comes back empty. Pass
   arrays, use `create()`, or register a resolver of your own under `CollectionResolver::class` that
   keeps instances of the item class.
+
+### A map of objects
+
+`additionalProperties: {$ref: Detail}` is not built by the hydrator — `#[Collection]` would renumber the
+keys — so after hydration it holds the decoded arrays, and after `create()` the objects it was given. It
+is declared `array<string, Detail|array<string, mixed>>` for that reason; `create()` takes
+`array<string, Detail>`. Its values are validated either way.
+
+### A discriminated base (`allOf`)
+
+A base with a `discriminator` whose variants `allOf` it is an INTERFACE here, as in Symfony mode: the
+classes are flattened, so a variant cannot extend it, and it implements it instead. A property typed by
+the base takes any variant built with `create()`. The hydrator cannot build an interface, so a REQUEST
+property typed by the base is not filled — see [Divergences](#divergences-from-the-other-modes).
+
+## A body that is a list
+
+`requestBody: {type: array, items: {$ref: Widget}}` has no class of its own — only `Widget` does — and
+an action argument is one input class. Read the list yourself and hydrate each item through the
+validating hydrator:
+
+```php
+$body = $request->getParsedBody();
+if (!is_array($body) || !array_is_list($body)) {
+    // 400: the body must be a JSON array
+}
+
+$widgets = [];
+$errors = [];
+foreach ($body as $index => $item) {
+    $widget = $validatingHydrator->create(Widget::class, is_array($item) ? $item : []);
+    foreach ($widget->getValidationResult()?->getErrorMessagesIndexedByPath() ?? [] as $path => $messages) {
+        $errors["$index.$path"] = $messages;   // `1.title`, as the other modes report it
+    }
+    $widgets[] = $widget;
+}
+```
 
 ## A property named like a method of the class
 
@@ -391,9 +438,9 @@ was sent.
   the same signal this mode reads for presence. The verdict is still "invalid"; the sentence is
   `field "status" is required.`. Nothing in generated code can separate the two cases, because the raw
   value never reaches the object;
-- **a discriminated union in a PAYLOAD is not built.** The hydrator casts to the DECLARED type, and
-  the declared type is the union interface. The interface is still the right type for a response and
-  for code that constructs a member itself — see the [support matrix](README.support-matrix.md#divergences).
+- **a discriminated union in a PAYLOAD is not built** — a `oneOf`/`anyOf` and an `allOf` discriminated
+  base alike. The hydrator casts to the DECLARED type, and the declared type is the union interface.
+  The interface is still the right type for a response and for code that constructs a member itself — see the [support matrix](README.support-matrix.md#divergences).
 
 ## Testing generated classes without a Yii3 application
 

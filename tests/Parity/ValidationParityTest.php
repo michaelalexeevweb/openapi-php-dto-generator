@@ -1937,7 +1937,6 @@ final class ValidationParityTest extends TestCase
                 $tag,
                 '{"f":{"k":{"id":1}}}',
                 '{"f":{"k":"x"}}',
-                $droppedByYii3,
             ],
             // A `$ref` to a MAP component as a list item: its values were checked nowhere, while the same
             // map written inline was enforced in every mode.

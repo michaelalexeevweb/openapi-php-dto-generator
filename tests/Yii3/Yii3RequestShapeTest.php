@@ -8,6 +8,7 @@ use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use ReflectionAttribute;
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionProperty;
 
 /**
@@ -330,14 +331,59 @@ final class Yii3RequestShapeTest extends TestCase
 
         $built = $envelope::create(success: true, items: [$item::create(name: 'a')], kind: $kind::from('round'));
 
-        self::assertFalse($built->isMessageProvided());
-        self::assertSame(['success' => true, 'items' => [['name' => 'a']], 'kind' => 'round'], $built->getData());
+        // `message` may be null by the schema, so it is written as given — null included, as runtime and
+        // Symfony mode write it. `kind` may not, so a null argument there would have meant "not sent".
+        self::assertTrue($built->isMessageProvided());
+        self::assertSame(['success' => true, 'message' => null, 'items' => [['name' => 'a']], 'kind' => 'round'], $built->getData());
         self::assertTrue((new Yii3Container())->validate($built)->isValid());
 
-        $withNull = $built->withProvided('message');
-        self::assertTrue($withNull->isMessageProvided());
-        self::assertSame(['success' => true, 'message' => null, 'items' => [['name' => 'a']], 'kind' => 'round'], $withNull->getData());
-        self::assertFalse($built->isMessageProvided(), 'withProvided() returns a copy.');
+        $without = $built->withoutProperty('message');
+        self::assertFalse($without->isMessageProvided());
+        self::assertSame(['success' => true, 'items' => [['name' => 'a']], 'kind' => 'round'], $without->getData());
+        self::assertTrue($built->isMessageProvided(), 'withoutProperty() returns a copy.');
+
+        $noKind = $envelope::create(success: true, items: []);
+        self::assertFalse($noKind->isKindProvided());
+        self::assertTrue($noKind->withProvided('kind')->isKindProvided());
+    }
+
+    public function testCreateTakesBuiltObjectsWhereTheHydratorLeavesArrays(): void
+    {
+        // A map of objects and an allOf-discriminated base: the map took only arrays, and the base was a
+        // class of its own that no variant was a subtype of, so neither could hold a built object.
+        $namespace = $this->generate([
+            'Board' => [
+                'type' => 'object',
+                'properties' => [
+                    'byId' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Detail']],
+                    'meta' => ['$ref' => '#/components/schemas/Report'],
+                ],
+            ],
+            'Detail' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer', 'minimum' => 1]]],
+            'Report' => [
+                'type' => 'object',
+                'required' => ['report'],
+                'properties' => ['report' => ['type' => 'string']],
+                'discriminator' => ['propertyName' => 'report', 'mapping' => ['alpha' => '#/components/schemas/AlphaReport']],
+            ],
+            'AlphaReport' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Report'],
+                ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]],
+            ]],
+        ]);
+        $board = $namespace . '\Board';
+        $detail = $namespace . '\Detail';
+        $alpha = $namespace . '\AlphaReport';
+
+        self::assertTrue(is_subclass_of($alpha, $namespace . '\Report'));
+
+        $built = $board::create(byId: ['k' => $detail::create(id: 2)], meta: $alpha::create(report: ($namespace . '\ReportReport')::from('alpha'), a: 1));
+        self::assertSame(['byId' => ['k' => ['id' => 2]], 'meta' => ['report' => 'alpha', 'a' => 1]], $built->getData());
+        self::assertTrue((new Yii3Container())->validate($built)->isValid());
+        // A map value was checked by nothing at all — hydrated or built.
+        $container = new Yii3Container();
+        self::assertFalse($container->validate($container->hydrate($board, ['byId' => ['k' => ['id' => 0]]]))->isValid());
+        self::assertFalse($container->validate($board::create(byId: ['k' => $detail::create(id: 0)]))->isValid());
     }
 
     public function testKeysAreWrittenInTheSchemasOrder(): void
@@ -375,6 +421,7 @@ final class Yii3RequestShapeTest extends TestCase
         $container = new Yii3Container();
 
         $absent = $container->hydrate($namespace . '\Filter', []);
+        self::assertSame('int', (string)(new ReflectionMethod($namespace . '\Filter', 'getSize'))->getReturnType(), 'A default makes the getter total.');
         self::assertSame('square', $absent->getKind()?->value);
         self::assertSame(10, $absent->getSize());
         self::assertFalse($absent->isSizeProvided());

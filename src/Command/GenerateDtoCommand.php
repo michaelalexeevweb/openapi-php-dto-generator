@@ -6155,7 +6155,7 @@ final class GenerateDtoCommand extends Command
             return $this->renderLaravelDtoClass(
                 namespace: $namespace,
                 className: $className,
-                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                properties: $this->flattenedProperties($className, $schemaMetadata['properties']),
                 unionTypes: $schemaMetadata['unionTypes'],
                 discriminator: $schemaMetadata['discriminator'] ?? null,
                 isAbstract: $schemaMetadata['abstract'] ?? false,
@@ -6169,7 +6169,7 @@ final class GenerateDtoCommand extends Command
             return $this->renderLaravelDataDtoClass(
                 namespace: $namespace,
                 className: $className,
-                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                properties: $this->flattenedProperties($className, $schemaMetadata['properties']),
                 unionTypes: $schemaMetadata['unionTypes'],
                 discriminator: $schemaMetadata['discriminator'] ?? null,
                 isAbstract: $schemaMetadata['abstract'] ?? false,
@@ -6182,7 +6182,7 @@ final class GenerateDtoCommand extends Command
             return $this->renderYii3DtoClass(
                 namespace: $namespace,
                 className: $className,
-                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                properties: $this->flattenedProperties($className, $schemaMetadata['properties']),
                 unionTypes: $schemaMetadata['unionTypes'],
                 discriminator: $schemaMetadata['discriminator'] ?? null,
                 extends: $schemaMetadata['extends'],
@@ -6197,7 +6197,7 @@ final class GenerateDtoCommand extends Command
             return $this->renderSymfonyDtoClass(
                 namespace: $namespace,
                 className: $className,
-                properties: $this->flattenedSymfonyProperties($className, $schemaMetadata['properties']),
+                properties: $this->flattenedProperties($className, $schemaMetadata['properties']),
                 unionTypes: $schemaMetadata['unionTypes'],
                 discriminator: $schemaMetadata['discriminator'] ?? null,
                 extends: $schemaMetadata['extends'],

@@ -3,6 +3,31 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.106 — 2026-10-28
+
+- yii3 nullable written by `create()`
+- yii3 map of objects validated
+- yii3 `create()` takes map of objects
+- yii3 allOf base is an interface
+- yii3 defaulted getter not nullable
+
+yii3 mode:
+
+- `create()` dropped every optional argument left `null`, so a `nullable: true` property never reached
+  the wire as `null` — code written for runtime mode passes `photo: null` meaning `"photo": null`. A
+  property the schema lets be null is now written as given; `withoutProperty('photo')` returns a copy
+  without it. A null argument still means "not sent" where null is not a legal value.
+- the values of a map of objects (`additionalProperties: {$ref: X}`) were checked by nothing: the hydrator
+  leaves them arrays, and the constraints kept only `type: object`. The value schema is inlined for the
+  interpreter, and an object `create()` was given is checked in its wire form.
+- such a map took only arrays: `create()` takes `array<string, X>` and the property is declared
+  `array<string, X|array<string, mixed>>`. The same goes for a DTO two containers deep.
+- an `allOf` discriminated base was a class of its own, unrelated to its variants, so a property typed by
+  it could hold none of them. It is an interface the variants implement, as in Symfony mode. The hydrator
+  cannot build it in a REQUEST — the existing divergence for a discriminated union.
+- a getter with a schema default the schema does not let be null answered `?int`; it answers `int`.
+- README.yii3: recipe for a body that is a list.
+
 ## 2.15.105 — 2026-10-28
 
 - yii3 `create()` named constructor

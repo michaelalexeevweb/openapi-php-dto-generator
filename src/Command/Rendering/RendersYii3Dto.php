@@ -193,7 +193,9 @@ trait RendersYii3Dto
 
         // Same reasoning as the other attribute modes: a oneOf/anyOf schema is a TYPE, not a data
         // class, so it becomes an interface its members implement.
-        if ($unionTypes !== [] || ($isAbstract && $discriminator !== null)) {
+        // The allOf pattern too: a variant `allOf`s the base, and flattened it cannot extend it. As a class
+        // of its own the base was unrelated to every variant, so a property typed by it could hold none.
+        if ($unionTypes !== [] || ($isAbstract && $discriminator !== null) || $this->isAllOfDiscriminatorBase($className)) {
             return $this->renderYii3UnionInterface(
                 namespace: $namespace,
                 className: $className,
@@ -255,7 +257,9 @@ trait RendersYii3Dto
         $interpreterConstraints = $this->yii3PruneNativelyCovered(
             $this->filterInterpreterConstraints(
                 constraints: $this->extractValidationConstraints(
-                    $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                    $this->yii3WithMapValuesInlined(
+                        $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                    ),
                 ),
                 allowScalarKeywords: true,
             ),
@@ -426,11 +430,13 @@ trait RendersYii3Dto
         // `?array<Tag> $tags`, which does not parse.
         $type = $property['type'];
         $docType = null;
+        $createDocType = null;
         if (str_contains($type, '<')) {
             // The ITEMS of a temporal container stay strings in this mode — `#[ToDateTime]` cannot
             // convert them (see the attribute emitter), so promising `DateTimeImmutable` here would
             // be a docblock the object never honours.
             $docType = $this->formatDocblockTypeForNamespace($this->yii3HeldDocType($type), $namespace);
+            $createDocType = $this->formatDocblockTypeForNamespace($this->yii3HeldDocType($type, asBuilt: true), $namespace);
             $type = 'array';
         } else {
             $type = $this->formatPhpTypeForNamespace($type, $namespace);
@@ -515,6 +521,19 @@ trait RendersYii3Dto
             : '$this->' . $property['name'];
         $getterDocType = $docType;
         $createValue = '$' . $property['name'];
+        $default = $this->yii3DefaultExpression($property, $type, $docType);
+        $getterType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType;
+
+        // A default the schema does not let be null makes the getter total: it answers either what was
+        // sent or the default, so its type says so and the caller needs no `?? …` of its own. A null the
+        // schema forbids is refused by the interpreter; the getter still answers the default for it.
+        $schemaNullable = $property['schemaNullable'] ?? $property['nullable'];
+        if ($default !== null && !$schemaNullable) {
+            $getterType = $wireBoolean ? 'bool' : (string)preg_replace('/^\?|\|null$/', '', $getterType);
+            if (!$wireBoolean) {
+                $getterValue .= ' ?? ' . $default;
+            }
+        }
 
         // A list or map of enum members HOLDS the backing values — `#[Collection]` would drop a member
         // the enum lacks before any rule could report it — so the getter is where they become cases,
@@ -524,6 +543,7 @@ trait RendersYii3Dto
             $enumClass = $this->formatPhpTypeForNamespace($enumItem['enum'], $namespace);
             $backing = $this->enumSchemas[$enumItem['enum']]['type'];
             $getterDocType = $this->formatDocblockTypeForNamespace(ltrim($property['type'], '?'), $namespace);
+            $createDocType = $getterDocType;
             $getterValue = $enumItem['nullableItem']
                 ? sprintf('array_map(static fn(?%2$s $item): ?%3$s => $item === null ? null : %3$s::from($item), $this->%1$s)', $property['name'], $backing, $enumClass)
                 : sprintf('array_map(static fn(%2$s $item): %3$s => %3$s::from($item), $this->%1$s)', $property['name'], $backing, $enumClass);
@@ -538,6 +558,29 @@ trait RendersYii3Dto
             }
         }
 
+        // The payload the interpreter reads. A map of objects holds decoded arrays after the hydrator but
+        // objects after `create()`, and the interpreter skips a generated object — elsewhere it validates
+        // itself through a cascade, which a map does not have here. Its wire form is what the hydrated
+        // array is too, so both are checked alike. A wire boolean reads as the boolean its string names;
+        // anything else stays as it came, for the interpreter to refuse.
+        $payloadValue = $wireBoolean
+            ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
+            : '$this->' . $property['name'];
+        $mapValueClass = preg_match('/^\??array<string,\s*\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)>$/', $property['type'], $mapMatch) === 1
+            && $this->isGeneratedDtoType($mapMatch[1])
+            ? $this->formatPhpTypeForNamespace(ltrim($mapMatch[1], '\\'), $namespace)
+            : null;
+        if ($mapValueClass !== null) {
+            $payloadValue = sprintf(
+                'array_map(static fn(mixed $item): mixed => $item instanceof %2$s ? $item->getData() : $item, $this->%1$s)',
+                $property['name'],
+                $mapValueClass,
+            );
+            if (str_starts_with($propertyType, '?')) {
+                $payloadValue = sprintf('$this->%s === null ? null : %s', $property['name'], $payloadValue);
+            }
+        }
+
         return [
             'attributes' => $attributes,
             'declaration' => 'public readonly ' . $propertyType . ' $' . $property['name'] . ';',
@@ -547,19 +590,20 @@ trait RendersYii3Dto
             'name' => $property['name'],
             'openApiName' => $property['openApiName'],
             'getter' => 'get' . ucfirst($property['name']),
-            'getterType' => $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType,
-            // The boolean a wire string names; anything else stays as it came, for the interpreter to
-            // refuse — `type: boolean` is left to it for exactly this property.
-            'payloadValue' => $wireBoolean
-                ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
-                : '$this->' . $property['name'],
+            'getterType' => $getterType,
+            'payloadValue' => $payloadValue,
             'getterValue' => $getterValue,
             'getterDocType' => $getterDocType,
             // What an absent key reads as: the schema `default`, as every other mode gives it.
-            'default' => $this->yii3DefaultExpression($property, $type, $docType),
+            'default' => $default,
             // `create()` takes what the getter hands out, and stores what the property holds.
             'createType' => $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType,
+            'createDocType' => $createDocType ?? $getterDocType,
             'createValue' => $createValue,
+            // A property the SCHEMA lets be null is written whatever `create()` is given, null included —
+            // runtime and Symfony mode write it so, and code built for them passes `photo: null` meaning
+            // `"photo": null`. Only where null is not a legal value does a null argument mean "not sent".
+            'createAlwaysWrites' => $schemaNullable && !$this->propertyIsRequiredOnInput($property),
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
             'writeOnly' => ($property['writeOnly'] ?? false) === true || ($property['readOnly'] ?? false) === true,
             'temporalFormat' => $this->yii3TemporalFormat($property, $propertyType),
@@ -1590,9 +1634,11 @@ PHP;
      * enum lacks before any rule can report it, and it renumbers a map's keys.
      *
      * Declaring the class there was a promise the object never kept: `getKinds()[0]->value` passed
-     * PHPStan and failed at runtime.
+     * PHPStan and failed at runtime. A DTO there is declared `X|array<string, mixed>`: the hydrator
+     * leaves the array, `create()` stores the object it is given. `$asBuilt` is the type `create()`
+     * takes — the object alone.
      */
-    private function yii3HeldDocType(string $type): string
+    private function yii3HeldDocType(string $type, bool $asBuilt = false): string
     {
         $builtItem = $this->yii3ListItemTypeOf($type);
         $builtItem = $builtItem !== null && $this->isGeneratedDtoType(ltrim($builtItem, '?')) ? ltrim($builtItem, '?') : null;
@@ -1617,7 +1663,8 @@ PHP;
             } elseif (array_key_exists($short, $this->enumSchemas)) {
                 $held .= $this->enumSchemas[$short]['type'];
             } elseif ($this->isGeneratedDtoType($short) && !($depth === 1 && $short === $builtItem)) {
-                $held .= 'array<string, mixed>';
+                // The hydrator leaves it the decoded JSON; `create()` stores the object it is given.
+                $held .= $asBuilt ? $name : $name . '|array<string, mixed>';
             } else {
                 $held .= $name;
             }
@@ -1651,6 +1698,45 @@ PHP;
 
         // A map (`array<string, V>`) has no single item class to nest into.
         return $item === '' || str_contains($item, ',') ? null : ltrim($item, '\\');
+    }
+
+    /**
+     * The class schema with the value schema of every map of objects (`additionalProperties: {$ref: X}`)
+     * written out in place.
+     *
+     * The other modes build an `X` per value and validate it through it. The yii3 hydrator builds
+     * objects only for a LIST (`#[Collection]`), so a map holds the decoded arrays — and with the
+     * `$ref` left as it was, the constraints kept only `type: object` and NOTHING checked the values:
+     * `{"byId": {"k": {"id": 0}}}` passed a `minimum: 1`. Inlined, the interpreter checks each value,
+     * an array or an object `create()` was given alike.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function yii3WithMapValuesInlined(array $schema): array
+    {
+        if (!is_array($schema['properties'] ?? null)) {
+            return $schema;
+        }
+
+        $properties = [];
+        foreach ($schema['properties'] as $name => $property) {
+            if (is_array($property) && is_array($property['additionalProperties'] ?? null)) {
+                $ref = $this->referenceOrSingleRefAllOf($property['additionalProperties']);
+                if ($ref !== null && $this->nestedObjectRefDefinition($ref) !== null) {
+                    // Depth two: below where anything is materialized, which is what makes it inline
+                    // the `$ref` itself and everything under it.
+                    $property['additionalProperties'] = $this->inlineNestedContainerValidation(
+                        schema: $property['additionalProperties'],
+                        depth: 2,
+                    );
+                }
+            }
+            $properties[$name] = $property;
+        }
+        $schema['properties'] = $properties;
+
+        return $schema;
     }
 
     /**

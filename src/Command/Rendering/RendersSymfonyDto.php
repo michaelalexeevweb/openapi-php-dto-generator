@@ -704,46 +704,6 @@ PHP;
     private const array SYMFONY_ANNOTATION_KEYWORDS = ['nullable'];
 
     /**
-     * Returns the full, flattened property list for a Symfony DTO: inherited properties (resolved
-     * recursively through allOf parents) followed by own ones, deduplicated by name so a child
-     * override wins. Falls back to the pre-resolved own properties when the schema is not
-     * registered (e.g. a union marker).
-     *
-     * @param array<int, SchemaProperty> $ownProperties
-     * @return array<int, SchemaProperty>
-     */
-    private function flattenedSymfonyProperties(string $className, array $ownProperties): array
-    {
-        $all = array_key_exists($className, $this->dtoSchemas)
-            ? $this->getSchemaProperties($className)
-            : $ownProperties;
-
-        $byName = [];
-        foreach ($all as $property) {
-            $byName[$property['name']] = $property;
-        }
-
-        $values = array_values($byName);
-
-        // Symfony mode keeps schema order: it is the order the properties are declared in, and so
-        // the order the serializer writes the keys in. Only required properties are constructor
-        // parameters there, so no optional one can precede them.
-        if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
-            return $values;
-        }
-
-        // Elsewhere required params (which get no default) must precede optional ones (which get a
-        // default), otherwise PHP emits an "optional before required" deprecation and construction by
-        // the required args alone fails. usort is stable on PHP 8.3, so schema order is otherwise kept.
-        usort(
-            $values,
-            static fn(array $a, array $b): int => ($b['required'] ? 1 : 0) <=> ($a['required'] ? 1 : 0),
-        );
-
-        return $values;
-    }
-
-    /**
      * @param SchemaProperty $property
      * @return array{
      *     declaredType: string,

@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 33455 lines
+# yii3 mode — 80 files, 33623 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -191,8 +191,9 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $test2,
@@ -564,8 +565,9 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $test,
@@ -937,8 +939,9 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $message,
@@ -1325,8 +1328,9 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $idPatchTest2,
@@ -1730,8 +1734,9 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $idPostTest2,
@@ -2113,8 +2118,9 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $message,
@@ -2557,8 +2563,9 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $id,
@@ -2580,8 +2587,9 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -2589,6 +2597,23 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -3036,8 +3061,9 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $id,
@@ -3059,8 +3085,9 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -3068,6 +3095,23 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -3515,8 +3559,9 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $id,
@@ -3538,8 +3583,9 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -3547,6 +3593,23 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -3994,8 +4057,9 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $id,
@@ -4017,8 +4081,9 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -4026,6 +4091,23 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -4408,8 +4490,9 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $id,
@@ -4787,8 +4870,9 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $id,
@@ -5157,8 +5241,9 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         UploadedFileInterface $file,
@@ -5503,8 +5588,9 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         bool $accepted,
@@ -5876,8 +5962,9 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $reason,
@@ -6249,8 +6336,9 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $message,
@@ -6624,8 +6712,9 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $callbackUrl,
@@ -6997,8 +7086,9 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         bool $ok,
@@ -7377,8 +7467,9 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?bool $legacyFlag = null,
@@ -7392,8 +7483,9 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -7401,6 +7493,23 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -7770,8 +7879,9 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $payload,
@@ -8143,8 +8253,9 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         bool $ok,
@@ -8516,8 +8627,9 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $row,
@@ -8891,8 +9003,9 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $payload,
@@ -9266,8 +9379,9 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $field,
@@ -9641,8 +9755,9 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $element,
@@ -10044,8 +10159,9 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<int> $matrixIds
      * @param array<string> $labelIds
@@ -10692,8 +10808,9 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param ?array<int> $exploded
      * @param ?array<string> $joined
@@ -10754,8 +10871,9 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -10763,6 +10881,23 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -11282,8 +11417,9 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?DateTimeImmutable $since = null,
@@ -11297,8 +11433,9 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -11306,6 +11443,23 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -11698,8 +11852,9 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?string $cursor = null,
@@ -11713,8 +11868,9 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -11722,6 +11878,23 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -12136,8 +12309,9 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $tenant,
@@ -12157,8 +12331,9 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -12166,6 +12341,23 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -12609,8 +12801,9 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $tenant,
@@ -12634,8 +12827,9 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -12643,6 +12837,23 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -13374,8 +13585,9 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<array<string, mixed>> $mustContain
      */
@@ -13441,8 +13653,9 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -13450,6 +13663,23 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -14111,8 +14341,9 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?string $label = null,
@@ -14126,8 +14357,9 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -14135,6 +14367,23 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -14578,8 +14827,9 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?string $trigger = null,
@@ -14593,8 +14843,9 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -14602,6 +14853,23 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -15023,8 +15291,9 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?string $trigger = null,
@@ -15038,8 +15307,9 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -15047,6 +15317,23 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -15508,8 +15795,9 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $plain,
@@ -15531,8 +15819,9 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -15540,6 +15829,23 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -15919,8 +16225,9 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $state,
@@ -16294,8 +16601,9 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $failure,
@@ -16679,8 +16987,9 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $name,
@@ -17085,8 +17394,9 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param ?array<ChainTag> $tags
      */
@@ -17104,8 +17414,9 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -17113,6 +17424,23 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -17491,8 +17819,9 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<ChainLink> $links
      */
@@ -17871,8 +18200,9 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $label,
@@ -18257,8 +18587,9 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $kind,
@@ -18725,8 +19056,9 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<array<string>> $listOfLists
      * @param ?array<array<string, mixed>> $listOfMaps
@@ -18755,8 +19087,9 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -18764,6 +19097,23 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -19201,9 +19551,13 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function ctype_digit;
+use function floor;
 use function get_object_vars;
 use function in_array;
 use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
@@ -19274,6 +19628,21 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
             ],
             'tagsByKey' => [
                 'type' => 'object',
+                'additionalProperties' => [
+                    'type' => 'object',
+                    'required' => [
+                        'id',
+                        'name',
+                    ],
+                    'properties' => [
+                        'id' => [
+                            'type' => 'integer',
+                        ],
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                ],
             ],
         ],
     ];
@@ -19294,7 +19663,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
     public readonly array $shapes;
 
-    /** @var ?array<string, array<string, mixed>> */
+    /** @var ?array<string, Tag|array<string, mixed>> */
     public readonly ?array $tagsByKey;
 
     /** @return array<string> */
@@ -19333,7 +19702,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         return $this->shapes;
     }
 
-    /** @return ?array<string, array<string, mixed>> */
+    /** @return ?array<string, Tag|array<string, mixed>> */
     public function getTagsByKey(): ?array
     {
         return $this->hasProperty('tagsByKey') ? $this->tagsByKey : null;
@@ -19347,14 +19716,15 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<string> $dates
      * @param ?array<string, string> $datesByDay
      * @param ?array<string> $timestamps
      * @param array<Shape> $shapes
-     * @param ?array<string, array<string, mixed>> $tagsByKey
+     * @param ?array<string, Tag> $tagsByKey
      */
     public static function create(
         array $dates,
@@ -19380,8 +19750,9 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -19389,6 +19760,23 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -19539,7 +19927,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
             $payload['shapes'] = $this->shapes;
         }
         if ($this->hasProperty('tagsByKey')) {
-            $payload['tagsByKey'] = $this->tagsByKey;
+            $payload['tagsByKey'] = $this->tagsByKey === null ? null : array_map(static fn(mixed $item): mixed => $item instanceof Tag ? $item->getData() : $item, $this->tagsByKey);
         }
 
         return $payload;
@@ -19680,6 +20068,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         }
 
         return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
             'array' => is_array($value) && array_is_list($value),
             'object' => is_array($value) || is_object($value),
@@ -20202,426 +20591,17 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
-use BackedEnum;
-use DateTimeInterface;
-use OverflowException;
-use ReflectionProperty;
-use Yiisoft\Hydrator\Validator\Attribute\Validate;
-use Yiisoft\Input\Http\AbstractInput;
-use Yiisoft\Validator\DataSetInterface;
-use Yiisoft\Validator\EmptyCondition\WhenNull;
-use Yiisoft\Validator\Helper\ObjectParser;
-use Yiisoft\Validator\Result;
-use Yiisoft\Validator\Rule\Callback;
-use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\RulesProviderInterface;
-use Yiisoft\Validator\ValidationContext;
-
-use function array_filter;
-use function array_key_exists;
-use function array_map;
-use function ctype_digit;
-use function get_object_vars;
-use function implode;
-use function is_array;
-use function is_object;
-use function is_string;
-use function method_exists;
-use function preg_split;
-use function property_exists;
-use function sprintf;
-use function str_ends_with;
-use function str_starts_with;
-use function strpos;
-use function substr;
-
-use const PREG_SPLIT_NO_EMPTY;
-
-#[Callback(method: 'validateOpenApiConstraints')]
-final class Discriminator extends AbstractInput implements DataSetInterface, RulesProviderInterface
+/**
+ * NOTE: This DTO is auto-generated from an OpenAPI schema.
+ * Do not edit this file manually.
+ *
+ * Members: Discriminator1|Discriminator2
+ *
+ * Discriminated by `type`; the branch is chosen by the emitted interpreter, not by an attribute — Yii3 has
+ * no discriminator mapping of its own.
+ */
+interface Discriminator
 {
-    /** OpenAPI name => PHP property name. */
-    private const array OPENAPI_PROPERTY_NAMES = [
-        'type' => 'type',
-        'name' => 'name',
-    ];
-
-    /** Names not written out: writeOnly by definition, readOnly because a client may not set them. */
-    private const array OPENAPI_WRITE_ONLY = [
-    ];
-
-    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
-        'type' => 'object',
-        'required' => [
-            'type',
-            'name',
-        ],
-        'properties' => [
-            'type' => [
-                'type' => 'string',
-            ],
-            'name' => [
-                'nullable' => true,
-            ],
-        ],
-    ];
-
-    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
-
-    public readonly DiscriminatorType $type;
-
-    #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
-    public readonly ?string $name;
-
-    public function getType(): DiscriminatorType
-    {
-        return $this->type;
-    }
-
-    public function getName(): ?string
-    {
-        return $this->name;
-    }
-
-    /**
-     * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
-     */
-    public static function create(
-        DiscriminatorType $type,
-        ?string $name,
-    ): self {
-        $dto = new self();
-        $dto->type = $type;
-        $dto->name = $name;
-
-        return $dto;
-    }
-
-    /**
-     * Rules come from the attributes above; this only re-exposes them. A class that provides a
-     * data set has its own attribute parsing skipped by the validator, so without this method
-     * NOTHING would be validated — not even a missing required property.
-     */
-    public function getRules(): iterable
-    {
-        return (new ObjectParser($this))->getRules();
-    }
-
-    /**
-     * Whether the payload carried this property at all.
-     *
-     * An unhydrated typed property is UNINITIALISED, which is the language's own record of
-     * what the payload did not contain. A property sent as null IS initialised, so the two
-     * are distinguishable without any sentinel value.
-     */
-    public function hasProperty(string $property): bool
-    {
-        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
-
-        return property_exists($this, $name)
-            && (new ReflectionProperty($this, $name))->isInitialized($this);
-    }
-
-    public function getPropertyValue(string $property): mixed
-    {
-        return $this->hasProperty($property)
-            ? $this->{self::OPENAPI_PROPERTY_NAMES[$property] ?? $property}
-            : null;
-    }
-
-    /**
-     * What the object holds, under the names the schema uses, in WIRE form.
-     *
-     * Yii3 ships no response normalizer, so this doubles as the array form: a backed enum
-     * becomes its value and a date its ISO-8601 string, which is what every other mode
-     * produces. The interpreter reads `toOpenApiValidationPayload()` instead and sees the
-     * values as held.
-     *
-     * @return array<string, mixed>
-     */
-    public function getData(): ?array
-    {
-        $payload = $this->toOpenApiValidationPayload();
-        foreach (self::OPENAPI_WRITE_ONLY as $writeOnly) {
-            unset($payload[$writeOnly]);
-        }
-
-        return array_map(self::openApiWireValue(...), $payload);
-    }
-
-    /**
-     * One value in wire form. Recurses, because a nested DTO and a list of them are values
-     * too — without it `getData()` handed back objects where every other mode gives arrays.
-     */
-    private static function openApiWireValue(mixed $value, ?string $temporalFormat = null): mixed
-    {
-        if ($value instanceof BackedEnum) {
-            return $value->value;
-        }
-        if ($value instanceof DateTimeInterface) {
-            // The schema decides the shape: `format: date` is a DATE, and writing a whole
-            // timestamp for it diverged from every other mode. Sub-second precision is kept
-            // only when the value carries it, so a plain timestamp is not widened with a
-            // `.000000` the client never sent.
-            if ($temporalFormat === 'date') {
-                return $value->format('Y-m-d');
-            }
-            if ($temporalFormat === 'time') {
-                return $value->format('H:i:sP');
-            }
-
-            return $value->format('u') === '000000'
-                ? $value->format('c')
-                : $value->format('Y-m-d\TH:i:s.uP');
-        }
-        if (is_object($value) && method_exists($value, 'getData')) {
-            // A `type: object` with nothing to write is `{}`, and PHP spells that the same
-            // as an empty LIST — so the empty case is cast here, the one place that still
-            // knows the value came from an object schema.
-            $data = $value->getData();
-            return $data === [] ? (object)$data : $data;
-        }
-        if (is_array($value)) {
-            return array_map(
-                static fn(mixed $item): mixed => self::openApiWireValue($item, $temporalFormat),
-                $value,
-            );
-        }
-
-        return $value;
-    }
-
-    /**
-     * Entered once per object by the class-level #[Callback]: `$value` IS this DTO, and the paths are
-     * set by the interpreter rather than by a property label.
-     */
-    private function validateOpenApiConstraints(mixed $value, Callback $rule, ValidationContext $context): Result
-    {
-        $result = new Result();
-        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
-            $path = self::openApiViolationPath($error);
-            // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
-                valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
-                ),
-            );
-        }
-
-        return $result;
-    }
-
-    /**
-     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
-     * Machinery for the generated validation, not an API to call.
-     *
-     * @internal
-     *
-     * @return array<string, mixed>
-     */
-    public function toOpenApiValidationPayload(): array
-    {
-        $payload = [];
-        if ($this->hasProperty('type')) {
-            $payload['type'] = $this->type;
-        }
-        if ($this->hasProperty('name')) {
-            $payload['name'] = $this->name;
-        }
-
-        return $payload;
-    }
-
-    /**
-     * @param array<string, mixed> $schema
-     * @return array<int, string>
-     */
-    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
-    {
-        if ($depth > 0) {
-            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        }
-        try {
-            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
-        } catch (OverflowException $error) {
-            return [$error->getMessage()];
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $schema
-     * @return array<int, string>
-     */
-    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
-    {
-        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
-        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
-            throw new OverflowException($path . ' exceeds maximum validation depth.');
-        }
-
-        $errors = [];
-        $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
-        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
-
-        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
-            $typeConstraint = $schema['type'];
-            if (is_string($typeConstraint)) {
-                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
-                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
-                }
-            } elseif (is_array($typeConstraint)) {
-                $typeMatched = false;
-                foreach ($typeConstraint as $candidateType) {
-                    if (is_string($candidateType) && $this->matchesOpenApiCallbackType($normalizedValue, $candidateType)) {
-                        $typeMatched = true;
-                        break;
-                    }
-                }
-                if (!$typeMatched) {
-                    $errors[] = sprintf('%s must be of type %s', $path, implode('|', array_filter($typeConstraint, 'is_string')));
-                }
-            }
-        }
-
-        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
-            foreach ($schema['required'] as $requiredProp) {
-                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
-                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
-                }
-            }
-        }
-
-        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
-            foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
-                    continue;
-                }
-                if (!array_key_exists($propertyName, $structuredValue)) {
-                    continue;
-                }
-                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
-                    continue;
-                }
-                $errors = [
-                    ...$errors,
-                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
-                ];
-            }
-        }
-
-        return $errors;
-    }
-
-    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
-    {
-        if (is_array($type)) {
-            if ($type === []) {
-                return true;
-            }
-            foreach ($type as $candidate) {
-                if (is_string($candidate) && $candidate !== '' && $this->matchesOpenApiCallbackType($value, $candidate)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        if (!is_string($type) || $type === '') {
-            return true;
-        }
-
-        if ($value instanceof BackedEnum) {
-            $value = $value->value;
-        }
-        return match ($type) {
-            'string' => is_string($value),
-            'object' => is_array($value) || is_object($value),
-            default => true,
-        };
-    }
-
-    private function normalizeOpenApiCallbackValue(mixed $value, array $_schema): mixed
-    {
-        if ($value instanceof BackedEnum) {
-            $value = $value->value;
-        }
-        return $value;
-    }
-
-    private function normalizeOpenApiStructuralValue(mixed $value): mixed
-    {
-        if (is_array($value) || !is_object($value)) {
-            return $value;
-        }
-
-        // Generated DTOs expose their OpenAPI-named payload themselves.
-        if (method_exists($value, 'toOpenApiValidationPayload')) {
-            return $value->toOpenApiValidationPayload();
-        }
-        // Any other object: only its public state is visible, under PHP property names.
-        return get_object_vars($value);
-    }
-
-    private function isGeneratedOpenApiDtoObject(mixed $value): bool
-    {
-        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
-        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
-        return is_object($value)
-            && method_exists($value, 'validateOpenApiConstraints')
-            && method_exists($value, 'toOpenApiValidationPayload');
-    }
-
-    /**
-     * The property a message is about, as a value path, or null when it is about the payload itself.
-     *
-     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
-     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
-     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
-     * an error response groups by property, and every keyword this interpreter owns was landing at
-     * the root instead, where a per-field renderer never shows it.
-     */
-    private static function openApiViolationPath(string $error): ?string
-    {
-        if (!str_starts_with($error, 'field "')) {
-            return null;
-        }
-
-        $closing = strpos($error, '"', 7);
-        if ($closing === false) {
-            return null;
-        }
-
-        $property = substr($error, 7, $closing - 7);
-        if ($property === '') {
-            return null;
-        }
-
-        // Anything after the closing quote up to the first space is the rest of the path, so
-        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
-        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
-        $rest = substr($error, $closing + 1);
-        $deeper = '';
-        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
-            $space = strpos($rest, ' ');
-            $deeper = $space === false ? $rest : substr($rest, 0, $space);
-        }
-
-        return $property . $deeper;
-    }
-
-    private function openApiChildPath(string $path, string $propertyName): string
-    {
-        // The first level names the field the way the runtime validator's caller does, so both
-        // modes report the same subject: `field "tags" must ...`.
-        return $path === 'payload'
-            ? sprintf('field "%s"', $propertyName)
-            : $path . '.' . $propertyName;
-    }
 }
 
 ===== Discriminator1.php =====
@@ -20668,7 +20648,7 @@ use function substr;
 use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
-final class Discriminator1 extends AbstractInput implements DataSetInterface, RulesProviderInterface
+final class Discriminator1 extends AbstractInput implements Discriminator, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
@@ -20728,8 +20708,9 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         DiscriminatorType $type,
@@ -21116,7 +21097,7 @@ use function substr;
 use const PREG_SPLIT_NO_EMPTY;
 
 #[Callback(method: 'validateOpenApiConstraints')]
-final class Discriminator2 extends AbstractInput implements DataSetInterface, RulesProviderInterface
+final class Discriminator2 extends AbstractInput implements Discriminator, DataSetInterface, RulesProviderInterface
 {
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
@@ -21189,8 +21170,9 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         DiscriminatorType $type,
@@ -21643,8 +21625,9 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $name,
@@ -22033,8 +22016,9 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $name,
@@ -22437,8 +22421,9 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         UploadedFileInterface $file,
@@ -22884,8 +22869,9 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<int> $scores
      * @param ?array<string, int> $scoresByKey
@@ -22909,8 +22895,9 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -22918,6 +22905,23 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -23601,7 +23605,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     /** @var ?array<array<string>> */
     public readonly ?array $enumRows;
 
-    /** @var ?array<array<array<string, mixed>>> */
+    /** @var ?array<array<Tag|array<string, mixed>>> */
     public readonly ?array $tagRows;
 
     /** @return array<array<int>> */
@@ -23676,7 +23680,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         return $this->hasProperty('enumRows');
     }
 
-    /** @return ?array<array<array<string, mixed>>> */
+    /** @return ?array<array<Tag|array<string, mixed>>> */
     public function getTagRows(): ?array
     {
         return $this->hasProperty('tagRows') ? $this->tagRows : null;
@@ -23690,8 +23694,9 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<array<int>> $matrix
      * @param array<array<string, string>> $rowsOfMaps
@@ -23700,7 +23705,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
      * @param ?array<array<string>> $dateRows
      * @param ?array<array<float|int>> $numRows
      * @param ?array<array<string>> $enumRows
-     * @param ?array<array<array<string, mixed>>> $tagRows
+     * @param ?array<array<Tag>> $tagRows
      */
     public static function create(
         array $matrix,
@@ -23738,8 +23743,9 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -23747,6 +23753,23 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -24398,8 +24421,9 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<?string> $listOfNullable
      * @param ?array<string, ?int> $mapOfNullable
@@ -24428,8 +24452,9 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -24437,6 +24462,23 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -24988,8 +25030,9 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $kind,
@@ -25009,8 +25052,9 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -25018,6 +25062,23 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -25502,8 +25563,9 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $name,
@@ -25952,8 +26014,9 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $title,
@@ -25977,8 +26040,9 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -25986,6 +26050,23 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -26385,8 +26466,9 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $legacyId,
@@ -26791,8 +26873,9 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $kind,
@@ -27182,8 +27265,9 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $id,
@@ -27560,8 +27644,9 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $id,
@@ -28017,8 +28102,9 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<Tag> $tags
      */
@@ -28046,8 +28132,9 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -28055,6 +28142,23 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -28488,8 +28592,9 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         ?string $region = null,
@@ -28503,8 +28608,9 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -28512,6 +28618,23 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -28898,8 +29021,9 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $id,
@@ -29377,8 +29501,9 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $id,
@@ -29402,8 +29527,9 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -29411,6 +29537,23 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -30115,8 +30258,9 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<string, mixed> $children
      */
@@ -30884,8 +31028,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         TreeNode $tree,
@@ -30909,8 +31054,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
     }
 
     /**
-     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
-     * since an argument left `null` there means "not sent". A property already present is kept.
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null; a property already present is
+     * kept. `create()` already writes null for a property the schema lets be null — for any other, null
+     * is a value the schema refuses, so this is for a payload meant to fail.
      */
     public function withProvided(string $property): self
     {
@@ -30918,6 +31064,23 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
         if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
             $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+
+    /**
+     * A copy without `$property` (its OpenAPI name), as if the payload had never carried it — for a
+     * property `create()` writes whatever it is given.
+     */
+    public function withoutProperty(string $property): self
+    {
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        $copy = new self();
+        foreach (self::OPENAPI_PROPERTY_NAMES as $openApiName => $phpName) {
+            if ($phpName !== $name && $this->hasProperty($openApiName)) {
+                $copy->{$phpName} = $this->{$phpName};
+            }
         }
 
         return $copy;
@@ -31538,8 +31701,9 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      *
      * @param array<string> $tags
      */
@@ -32101,8 +32265,9 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $id,
@@ -32561,8 +32726,9 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         int $id,
@@ -33009,8 +33175,9 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $name,
@@ -33399,8 +33566,9 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
-     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+     * the properties itself. A property the schema lets be null is written whatever it is given, null
+     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
+     * its property stays absent, as when a payload lacks the key.
      */
     public static function create(
         string $orderId,
