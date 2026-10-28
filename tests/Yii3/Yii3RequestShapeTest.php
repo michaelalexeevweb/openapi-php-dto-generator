@@ -488,6 +488,9 @@ final class Yii3RequestShapeTest extends TestCase
         $ident = $namespace . '\Ident';
 
         self::assertSame('kind', constant($ident . '::OPENAPI_DISCRIMINATOR'));
+        // Every member is a data set; code taking one by that contract refused the union type.
+        self::assertTrue(is_subclass_of($ident, \Yiisoft\Validator\DataSetInterface::class));
+        self::assertTrue(is_subclass_of($ident, \Yiisoft\Validator\RulesProviderInterface::class));
         self::assertSame(
             ['city' => $namespace . '\CityIdent', 'region' => $namespace . '\RegionIdent'],
             constant($ident . '::OPENAPI_DISCRIMINATOR_MAPPING'),

@@ -1031,10 +1031,20 @@ trait RendersYii3Dto
                 $mapping[$value] = $this->shortClassName($member);
             }
         }
+        // Every member is a data set and a rules provider, so the interface says so: code taking "any
+        // generated object" by `DataSetInterface` refused a union-typed response, which is one of them.
+        $extends = [];
+        foreach (['DataSetInterface' => 'Yiisoft\Validator\DataSetInterface', 'RulesProviderInterface' => 'Yiisoft\Validator\RulesProviderInterface'] as $short => $fqcn) {
+            $extends[] = $this->yii3Lib($short);
+            if (!$this->namespaceDeclaresClass($short, $this->yii3RenderNamespace)) {
+                $imports[] = $fqcn;
+            }
+        }
         sort($imports);
 
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
             'imports' => array_values(array_unique($imports)),
+            'interfaceExtends' => $extends,
             'discriminatorMapping' => $mapping,
             'namespace' => $namespace,
             'className' => $className,

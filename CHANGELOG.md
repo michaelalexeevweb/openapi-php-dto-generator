@@ -3,6 +3,16 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.109 — 2026-10-28
+
+- yii3 union interface is a data set
+
+yii3 mode:
+
+- a union interface declared nothing, though every member implements `DataSetInterface` and
+  `RulesProviderInterface`: code taking any generated object by that contract refused a union-typed
+  response. The interface extends both.
+
 ## 2.15.108 — 2026-10-28
 
 - yii3 enum beside scalar kept

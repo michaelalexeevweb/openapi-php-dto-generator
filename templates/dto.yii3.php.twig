@@ -42,7 +42,7 @@ use {{ import }};
 
 {% endif %}
  */
-interface {{ className }}
+interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 {
 {% if discriminatorMapping is not empty %}
     /** The property whose value names the member. */
