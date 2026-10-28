@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Yii3;
 
+use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use ReflectionAttribute;
 use ReflectionClass;
@@ -205,6 +206,120 @@ final class Yii3RequestShapeTest extends TestCase
      * …and the mirror: a bound that an empty value genuinely breaks is still enforced, so the case
      * above is not "empty values skip validation".
      */
+    public function testAGetterNamedLikeAnInterfaceMethodTakesASuffix(): void
+    {
+        // `data` gave `getData(): ?string` beside `DataSetInterface::getData()` — "Cannot redeclare",
+        // and the class never loaded.
+        $namespace = $this->generate([
+            'Envelope' => [
+                'type' => 'object',
+                'properties' => ['data' => ['type' => 'string'], 'rules' => ['type' => 'string']],
+            ],
+        ]);
+
+        $container = new Yii3Container();
+        $envelope = $container->hydrate($namespace . '\Envelope', ['data' => 'd', 'rules' => 'r']);
+
+        self::assertSame('d', $envelope->getDataValue());
+        self::assertSame('r', $envelope->getRulesValue());
+        self::assertSame(['data' => 'd', 'rules' => 'r'], $envelope->getData());
+    }
+
+    public function testABooleanQueryParameterReadsTrueAndFalse(): void
+    {
+        // OpenAPI writes a boolean parameter `true` / `false`; the hydrator's `(bool)` cast made
+        // `?force=false` TRUE, and the rules passed it.
+        $namespace = $this->generateSpec([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/posts' => ['get' => [
+                'operationId' => 'listPosts',
+                'parameters' => [['name' => 'force', 'in' => 'query', 'schema' => ['type' => 'boolean']]],
+                'responses' => ['204' => ['description' => 'OK']],
+            ]]],
+        ]);
+        $class = $namespace . '\PostsGetQueryParams';
+        $read = function (string $value) use ($class): array {
+            $container = new Yii3Container((new ServerRequest('GET', '/posts'))->withQueryParams(['force' => $value]));
+            $input = $container->hydrator()->create($class, []);
+
+            return [$input->getForce(), $this->messages($container->validate($input))];
+        };
+
+        self::assertSame([false, []], $read('false'));
+        self::assertSame([true, []], $read('true'));
+        self::assertSame([false, []], $read('0'));
+        self::assertSame([true, []], $read('1'));
+        self::assertArrayHasKey('force', $read('yes')[1]);
+    }
+
+    public function testAValueTheCastWouldCorruptIsRefused(): void
+    {
+        // The hydrator casts BEFORE the rules run: `"abc"` reached `#[Integer]` as 0 and `2.5` as 2, both
+        // validated, and the corrupted value was stored. `#[Validate]` checks the raw value.
+        $namespace = $this->generate([
+            'Probe' => [
+                'type' => 'object',
+                'required' => ['score'],
+                'properties' => [
+                    'score' => ['type' => 'integer', 'nullable' => true, 'minimum' => 0, 'maximum' => 3],
+                    'label' => ['type' => 'string'],
+                    'ratio' => ['type' => 'number'],
+                    'active' => ['type' => 'boolean'],
+                ],
+            ],
+        ]);
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($namespace . '\Probe', $payload));
+
+        self::assertArrayHasKey('score', $verdict(['score' => 'abc']));
+        self::assertArrayHasKey('score', $verdict(['score' => 2.5]));
+        self::assertArrayHasKey('label', $verdict(['score' => 1, 'label' => 5]));
+        self::assertArrayHasKey('ratio', $verdict(['score' => 1, 'ratio' => 'x']));
+        self::assertArrayHasKey('active', $verdict(['score' => 1, 'active' => 'yes']));
+        self::assertSame([], $verdict(['score' => 2, 'label' => 'a', 'ratio' => 1.5, 'active' => true]));
+        self::assertSame([], $verdict(['score' => null]));
+        // A numeric string is what a query, a form or a database row carries; the cast reads it right.
+        self::assertSame([], $verdict(['score' => '2', 'ratio' => '1.5']));
+    }
+
+    public function testAPropertyNamedWithADotIsReadByItsLiteralKey(): void
+    {
+        // `#[Data('priority.note')]` is a PATH to the hydrator — `['priority']['note']` — so a nested
+        // `{"priority":{"note":…}}`, which the schema does not describe, filled the property too.
+        $namespace = $this->generate([
+            'Probe' => [
+                'type' => 'object',
+                'required' => ['priority.note'],
+                'properties' => ['priority.note' => ['type' => 'string']],
+            ],
+        ]);
+
+        $container = new Yii3Container();
+        $probe = $container->hydrate($namespace . '\Probe', ['priority.note' => 'urgent']);
+
+        self::assertSame('urgent', $probe->getPriorityNote());
+        self::assertTrue($container->validate($probe)->isValid());
+        self::assertFalse($container->validate($container->hydrate($namespace . '\Probe', ['priority' => ['note' => 'x']]))->isValid());
+    }
+
+    public function testARequiredNameWithoutAPropertyIsNotDemanded(): void
+    {
+        // The generator warns that such a requirement is enforced nowhere, as the other modes do; this
+        // one demanded it of every object, which can never carry it — a correct response failed.
+        $namespace = $this->generate([
+            'Probe' => [
+                'type' => 'object',
+                'required' => ['header', 'scores'],
+                'properties' => ['header' => ['type' => 'string']],
+            ],
+        ]);
+
+        $container = new Yii3Container();
+
+        self::assertTrue($container->validate($container->hydrate($namespace . '\Probe', ['header' => 'h']))->isValid());
+        self::assertArrayHasKey('header', $this->messages($container->validate($container->hydrate($namespace . '\Probe', []))));
+    }
+
     public function testAnEmptyValueStillBreaksABoundThatForbidsIt(): void
     {
         $namespace = $this->generate([

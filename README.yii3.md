@@ -134,6 +134,41 @@ hydrator registration into code whose whole point is to depend only on yiisoft �
 A schema whose ONLY temporal values are container items needs no `ext-intl` at all now, for the same
 reason: no `#[ToDateTime]` is emitted for it.
 
+## Setup you must not skip, part three: the validating hydrator
+
+**Hydrate through `ValidatingHydrator`, and register `ValidateResolver` as an attribute resolver.** The
+hydrator casts BEFORE any rule runs — `PhpNativeTypeCaster` turns `"abc"` into `0` and `2.5` into `2` for
+an `int` property — so a rule on the property judges the cast value and passes it. Each scalar property
+therefore also carries hydrator-validator's `#[Validate]`, which checks the RAW value before the cast:
+
+```php
+#[Integer(skipOnEmpty: new WhenNull())]
+#[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+public readonly ?int $score;
+```
+
+The raw rule is the same lenient one — a numeric string from a query, a form or a database row passes
+and the cast reads it right; what it refuses is a value the cast would corrupt.
+
+```php
+$validator = new Validator();
+$validateResolver = new ValidateResolver($validator);   // the SAME instance the factory hands out
+$hydrator = new ValidatingHydrator(
+    hydrator: new Hydrator(
+        new CompositeTypeCaster(new PhpNativeTypeCaster(), new EnumTypeCaster(), new HydratorTypeCaster()),
+        new ContainerAttributeResolverFactory($container),   // resolves ValidateResolver to that instance
+    ),
+    validator: $validator,
+    validateResolver: $validateResolver,
+);
+
+$input = $hydrator->create(ScoreRequest::class);
+$result = $input->getValidationResult();   // the raw checks' verdict when one failed, the object's otherwise
+```
+
+Without the resolver registered, hydration fails loudly — the attribute factory cannot build it. With a
+plain `Hydrator`, the raw checks are skipped silently and a corrupted value is stored, as before 2.15.104.
+
 ## What the generated class looks like
 
 ```php
@@ -275,6 +310,41 @@ hydrator leaves out of the input. Listing it under `required` puts that requirem
 alone — OpenAPI is explicit — so the property is typed nullable and its name is taken out of the
 interpreter's `required` list. Until 2.15.36 the emitted class contradicted itself: it refused to read
 the field from a request and then demanded the field be there.
+
+## Building a response
+
+A generated class has no constructor — its readonly properties are filled by the hydrator, and an
+uninitialised one is how "absent" is recorded — so a response is built the same way a request is: from
+an array keyed by the OpenAPI names.
+
+```php
+$response = $hydrator->create(ScoreResponse::class, [
+    'score' => $score,
+    'label' => $label,
+    // a key left out is "not sent"; `null` is an explicit null
+]);
+
+$errors = $validator->validate($response);   // a mistyped key is a missing required one, reported here
+```
+
+The keys are the document's names (`first_name`, `x-trace`), not the PHP property names. A typo in an
+optional key is silent — the property simply stays absent — so validate responses in development and
+tests: a required key misspelled comes back as `field "score" is required.`
+
+## A property named like a method of the class
+
+The class implements `DataSetInterface` and `RulesProviderInterface`, so a property `data`, `rules`,
+`propertyValue` or `validationResult` cannot have the getter its name suggests — `getData()` is the data
+set's. Its getter takes a `Value` suffix instead: `getDataValue()`, `getRulesValue()`.
+
+## Boolean parameters
+
+A query, path, header or cookie parameter arrives as a string, and OpenAPI writes a boolean as
+`true` / `false`. The hydrator's cast is `(bool)`, which made `?force=false` TRUE, and `BooleanValue`
+takes only `"1"` and `"0"`. Such a property is declared `bool|string`, which the cast leaves alone; the
+getter returns the boolean the string names (`true`/`1` and `false`/`0`), and anything else is refused as
+`field "force" must be of type boolean.` Read it through `getForce()` — the property itself holds what
+was sent.
 
 ## Divergences from the other modes
 

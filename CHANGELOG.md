@@ -3,6 +3,34 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.104 — 2026-10-28
+
+- yii3 raw value checked before the cast
+- yii3 boolean parameter reads `false`
+- yii3 dotted name read literally
+- yii3 undeclared required name not demanded
+- yii3 getter clash with interface method
+
+yii3 mode:
+
+- the hydrator casts before any rule runs, so `{"score":"abc"}` reached `#[Integer]` as 0 and `2.5` as 2,
+  validated, and was stored. Each scalar property also carries hydrator-validator's `#[Validate]` with the
+  same rule, checking the raw value. It needs `ValidatingHydrator` and a registered `ValidateResolver` —
+  README.yii3 "Setup you must not skip, part three".
+- a boolean query, path, header or cookie parameter was cast with `(bool)`, so `?force=false` read TRUE.
+  It is declared `bool|string`; the getter returns the boolean `true`/`1`/`false`/`0` names, anything
+  else is refused.
+- `#[Data('priority.note')]` is a path to the hydrator, so `{"priority":{"note":…}}` filled the property
+  too. The dot is escaped and only the literal key is read.
+- a `required` name with no property was demanded of every object, which can never carry it — a correct
+  response failed. It is dropped, as in the other modes, and the generation warning was already saying so.
+
+- a property named `data`, `rules`, `propertyValue` or `validationResult` gave a getter that redeclared a
+  method of `DataSetInterface`, `RulesProviderInterface` or `AbstractInput` — "Cannot redeclare", and the
+  class never loaded. That getter takes a `Value` suffix: `getDataValue()`.
+
+README.yii3.md: building a response, boolean parameters.
+
 ## 2.15.103 — 2026-10-27
 
 - laravel-data raw body only for the body

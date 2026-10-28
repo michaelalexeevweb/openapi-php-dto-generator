@@ -152,6 +152,7 @@ trait RendersYii3Dto
         'ToDateTime' => 'Yiisoft\Hydrator\Attribute\Parameter\ToDateTime',
         'UploadedFileInterface' => 'Psr\Http\Message\UploadedFileInterface',
         'UploadedFiles' => 'Yiisoft\Input\Http\Attribute\Parameter\UploadedFiles',
+        'Validate' => 'Yiisoft\Hydrator\Validator\Attribute\Validate',
         'ValidationContext' => 'Yiisoft\Validator\ValidationContext',
         'WhenNull' => 'Yiisoft\Validator\EmptyCondition\WhenNull',
     ];
@@ -214,6 +215,25 @@ trait RendersYii3Dto
                 sourceImports: $sourceImports,
                 useStatements: $useStatements,
             );
+        }
+
+        // A getter named like a method the class already has is a fatal at load time: a property `data`
+        // gave `getData(): ?string` beside `DataSetInterface::getData()`, and the whole class failed with
+        // "Cannot redeclare". Such a getter takes a `Value` suffix, repeated until the name is free.
+        $takenGetters = ['getData', 'getRules', 'getPropertyValue', 'getValidationResult'];
+        foreach ($parameters as $parameter) {
+            $takenGetters[] = $parameter['getter'];
+        }
+        foreach ($parameters as $index => $parameter) {
+            if (!in_array($parameter['getter'], ['getData', 'getRules', 'getPropertyValue', 'getValidationResult'], true)) {
+                continue;
+            }
+            $getter = $parameter['getter'];
+            while (in_array($getter, $takenGetters, true)) {
+                $getter .= 'Value';
+            }
+            $takenGetters[] = $getter;
+            $parameters[$index]['getter'] = $getter;
         }
 
         $phpToOpenApiNameMap = [];
@@ -354,7 +374,8 @@ trait RendersYii3Dto
      * @param array<int, string> $useStatements
      * @return array{attributes: array<int, string>, declaration: string, docType: string|null,
      *     tracksPresence: bool, propertyType: string, name: string, openApiName: string,
-     *     getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}
+     *     getter: string, getterType: string, payloadValue: string, getterValue: string,
+     *     providedGetter: string, writeOnly: bool, temporalFormat: string|null}
      */
     private function renderYii3Parameter(
         array $property,
@@ -374,10 +395,12 @@ trait RendersYii3Dto
         // `x-trace-id`) therefore bound nothing at all — every such property came back empty.
         // `#[Data]` names the key to read, which is the question `#[SerializedName]` answers in
         // Symfony mode. A per-property SOURCE attribute already carries the wire name itself.
+        // The key is a PATH to it: `ArrayData` splits on `.`, so `priority.note` read `['priority']['note']`
+        // and the literal key was never found. `parsePath()` takes `\` as its escape character.
         if ($source === null && $property['openApiName'] !== $property['name']) {
             $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\Data';
             $attributes[] = '#[' . $this->yii3Lib('Data')
-                . '(' . $this->phpStringLiteral($property['openApiName']) . ')]';
+                . '(' . $this->phpStringLiteral(addcslashes($property['openApiName'], '\.')) . ')]';
         }
 
         foreach ($this->yii3ValidationAttributes($property, $ruleImports) as $attribute) {
@@ -397,6 +420,10 @@ trait RendersYii3Dto
             $type = 'array';
         } else {
             $type = $this->formatPhpTypeForNamespace($type, $namespace);
+        }
+        $wireBoolean = $this->yii3IsWireBoolean($property);
+        if ($wireBoolean) {
+            $type = 'bool|string';
         }
 
         if ($type === 'DateTimeImmutable' && !in_array('DateTimeImmutable', $useStatements, true)) {
@@ -478,6 +505,15 @@ trait RendersYii3Dto
             'name' => $property['name'],
             'openApiName' => $property['openApiName'],
             'getter' => 'get' . ucfirst($property['name']),
+            'getterType' => $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType,
+            // The boolean a wire string names; anything else stays as it came, for the interpreter to
+            // refuse — `type: boolean` is left to it for exactly this property.
+            'payloadValue' => $wireBoolean
+                ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
+                : '$this->' . $property['name'],
+            'getterValue' => $wireBoolean
+                ? sprintf("in_array(\$this->%s, [true, 'true', '1'], true)", $property['name'])
+                : '$this->' . $property['name'],
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
             'writeOnly' => ($property['writeOnly'] ?? false) === true || ($property['readOnly'] ?? false) === true,
             'temporalFormat' => $this->yii3TemporalFormat($property, $propertyType),
@@ -682,6 +718,27 @@ trait RendersYii3Dto
         // one message, which is the same rule the other modes follow.
         $attributes = $this->yii3SkipNullOnEach($attributes, $ruleImports);
 
+        // The type rule above checks the property, which the hydrator has already CAST: `"abc"` reached
+        // it as 0 and `2.5` as 2, so both validated and were stored. `#[Validate]` is hydrator-validator's
+        // check of the RAW value, before the cast. The same lenient rule, so a numeric string from a
+        // query, a form or a database row still passes; what it refuses is a value the cast would
+        // corrupt. Not for a boolean parameter: `?active=true` is how OpenAPI writes one, and
+        // `BooleanValue` takes only `"1"` and `"0"`.
+        $isParameter = ($property['inQuery'] ?? false) === true
+            || ($property['inPath'] ?? false) === true
+            || ($property['inHeader'] ?? false) === true
+            || ($property['inCookie'] ?? false) === true;
+        if ($typeRule !== null && $this->yii3TypeRuleApplies($property) && !($isParameter && $typeRule === 'BooleanValue')) {
+            $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
+            $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\WhenNull';
+            $attributes[] = sprintf(
+                '#[%s(new %s(skipOnEmpty: new %s()))]',
+                $this->yii3Lib('Validate'),
+                $this->yii3Lib($typeRule, 'Yiisoft\Validator\Rule\\' . $typeRule),
+                $this->yii3Lib('WhenNull'),
+            );
+        }
+
         return $attributes;
     }
 
@@ -857,7 +914,7 @@ trait RendersYii3Dto
      * @param array<string, mixed> $constraints
      * @param array<string, string> $phpToOpenApiNameMap
      * @param array{enum: bool, temporal: bool} $valueKinds
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
+     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, getterType: string, payloadValue: string, getterValue: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
      * @return array{consts: string, methods: string, imports: array<int, string>, entered: bool}
      */
     private function renderYii3InterpreterBlock(
@@ -902,7 +959,7 @@ trait RendersYii3Dto
      * pay (which is why `EmitsOpenApiInterpreter` was folded away), and with three the entry point is
      * still the ONLY difference — the interpreter body below it is identical, character for character.
      *
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
+     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, getterType: string, payloadValue: string, getterValue: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
      */
     private function yii3RepackageInterpreterEntry(string $methods, array $parameters): string
     {
@@ -1083,7 +1140,7 @@ PHP;
      * data set. An absent optional is left OUT — `hasProperty()` decides, so the interpreter never
      * sees a property the payload did not carry.
      *
-     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
+     * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, getterType: string, payloadValue: string, getterValue: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
      */
     private function renderYii3StandalonePayloadMethod(array $parameters): string
     {
@@ -1097,7 +1154,7 @@ PHP;
             // interpreter should have rejected with "Required parameter … not found" into an uncaught
             // PHP Error. Measured on six shapes; every one of them crashed.
             $lines[] = sprintf('        if ($this->hasProperty(%s)) {', $key);
-            $lines[] = sprintf('            $payload[%s] = $this->%s;', $key, $parameter['name']);
+            $lines[] = sprintf('            $payload[%s] = %s;', $key, $parameter['payloadValue']);
             $lines[] = '        }';
         }
 
@@ -1218,6 +1275,12 @@ PHP;
      * read the field from a request and then demanded the field be there. OpenAPI settles which half
      * is wrong — readOnly plus required takes effect on the RESPONSE only.
      *
+     * A name the class declares no property for goes too, for the same reason: that payload can never
+     * carry it, so every object — a correct response included — failed `field "x" is required`. The
+     * generator warns that such a requirement is enforced nowhere, which is what the other four modes
+     * do; this one enforced it everywhere. Kept where `additionalProperties` or `patternProperties` may
+     * supply the key.
+     *
      * Top level only. A nested `required` belongs to a nested schema, whose own properties are not
      * these.
      *
@@ -1233,17 +1296,24 @@ PHP;
         }
 
         $readOnlyNames = [];
+        $declaredNames = [];
         foreach ($properties as $property) {
+            $declaredNames[] = $property['openApiName'];
             if (($property['readOnly'] ?? false) === true) {
                 $readOnlyNames[] = $property['openApiName'];
             }
         }
+        $opensTheObject = ($constraints['additionalProperties'] ?? false) !== false
+            || array_key_exists('patternProperties', $constraints);
+        $undeclaredNames = $opensTheObject
+            ? []
+            : array_filter($required, static fn(mixed $name): bool => !in_array($name, $declaredNames, true));
 
-        if ($readOnlyNames === []) {
+        if ($readOnlyNames === [] && $undeclaredNames === []) {
             return $constraints;
         }
 
-        $kept = array_values(array_diff($required, $readOnlyNames));
+        $kept = array_values(array_diff($required, $readOnlyNames, $undeclaredNames));
 
         // Rebuilt rather than unset: the result says what the constraints ARE, and "nothing is
         // required any more" is expressed by not writing the key. Walked in place so `required`
@@ -1439,11 +1509,29 @@ PHP;
     {
         $type = ltrim($property['type'], '?');
 
-        return !str_contains($type, '|')
+        return !$this->yii3IsWireBoolean($property)
+            && !str_contains($type, '|')
             && !str_contains($type, '<')
             && $type !== 'DateTimeImmutable'
             && !array_key_exists($type, $this->enumSchemas)
             && !array_key_exists($type, $this->dtoSchemas);
+    }
+
+    /**
+     * A boolean parameter: a query, path, header or cookie value, so a STRING, and OpenAPI writes it
+     * `true` / `false`. The hydrator casts to `bool` with `(bool)`, which made `?force=false` true — and
+     * `BooleanValue` takes only `"1"` and `"0"`. Such a property is declared `bool|string`, which the
+     * cast leaves alone; the getter and the validation payload read the string as the boolean it names.
+     *
+     * @param SchemaProperty $property
+     */
+    private function yii3IsWireBoolean(array $property): bool
+    {
+        return ltrim($property['type'], '?') === 'bool'
+            && (($property['inQuery'] ?? false) === true
+                || ($property['inPath'] ?? false) === true
+                || ($property['inHeader'] ?? false) === true
+                || ($property['inCookie'] ?? false) === true);
     }
 
     /**

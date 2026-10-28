@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 31431 lines
+# yii3 mode — 80 files, 31597 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -127,6 +127,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -180,6 +181,7 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $test2;
 
     public function getTest2(): string
@@ -484,6 +486,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -537,6 +540,7 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $test;
 
     public function getTest(): string
@@ -841,6 +845,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -894,6 +899,7 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $message;
 
     public function getMessage(): string
@@ -1198,6 +1204,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -1257,9 +1264,11 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $idPatchTest2;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $namePatchTest2;
 
     public function getIdPatchTest2(): int
@@ -1572,6 +1581,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -1634,12 +1644,15 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $idPostTest2;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $namePostTest2;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $surnamePostTest2;
 
     public function getIdPostTest2(): int
@@ -1960,6 +1973,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -2013,6 +2027,7 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $message;
 
     public function getMessage(): string
@@ -2317,6 +2332,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -2395,21 +2411,25 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $id;
 
     #[Request('actionId')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $actionId;
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -2751,6 +2771,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -2829,21 +2850,25 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $id;
 
     #[Request('actionId')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $actionId;
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -3185,6 +3210,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -3263,21 +3289,25 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $id;
 
     #[Request('tagId')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $tagId;
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -3619,6 +3649,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -3697,21 +3728,25 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $id;
 
     #[Request('tagId')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $tagId;
 
     #[Query('page')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $page;
 
     #[Query('limit')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
     #[LessThanOrEqual(100, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $limit;
 
     public function getId(): string
@@ -4053,6 +4088,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
@@ -4112,6 +4148,7 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $id;
 
     public function getId(): string
@@ -4416,6 +4453,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
@@ -4475,6 +4513,7 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $id;
 
     public function getId(): string
@@ -5108,6 +5147,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -5161,6 +5201,7 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[BooleanValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new BooleanValue(skipOnEmpty: new WhenNull()))]
     public readonly bool $accepted;
 
     public function getAccepted(): bool
@@ -5465,6 +5506,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -5518,6 +5560,7 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $reason;
 
     public function getReason(): string
@@ -5822,6 +5865,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -5875,6 +5919,7 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $message;
 
     public function getMessage(): string
@@ -6179,6 +6224,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -6234,6 +6280,7 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $callbackUrl;
 
     public function getCallbackUrl(): string
@@ -6538,6 +6585,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -6591,6 +6639,7 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[BooleanValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new BooleanValue(skipOnEmpty: new WhenNull()))]
     public readonly bool $ok;
 
     public function getOk(): bool
@@ -6899,10 +6948,8 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromQuery;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Validator\DataSetInterface;
-use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
-use Yiisoft\Validator\Rule\BooleanValue;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
@@ -6911,6 +6958,7 @@ use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_object;
@@ -6952,12 +7000,11 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Query('legacyFlag')]
-    #[BooleanValue(skipOnEmpty: new WhenNull())]
-    public readonly ?bool $legacyFlag;
+    public readonly bool|string|null $legacyFlag;
 
     public function getLegacyFlag(): ?bool
     {
-        return $this->hasProperty('legacyFlag') ? $this->legacyFlag : null;
+        return $this->hasProperty('legacyFlag') ? in_array($this->legacyFlag, [true, 'true', '1'], true) : null;
     }
 
     /** Whether the payload carried `legacyFlag` at all. */
@@ -7094,7 +7141,7 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
     {
         $payload = [];
         if ($this->hasProperty('legacyFlag')) {
-            $payload['legacyFlag'] = $this->legacyFlag;
+            $payload['legacyFlag'] = match ($this->legacyFlag) { 'true', '1' => true, 'false', '0' => false, default => $this->legacyFlag };
         }
 
         return $payload;
@@ -7264,6 +7311,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -7319,6 +7367,7 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $payload;
 
     public function getPayload(): string
@@ -7623,6 +7672,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -7676,6 +7726,7 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[BooleanValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new BooleanValue(skipOnEmpty: new WhenNull()))]
     public readonly bool $ok;
 
     public function getOk(): bool
@@ -7980,6 +8031,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -8033,6 +8085,7 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $row;
 
     public function getRow(): string
@@ -8337,6 +8390,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -8392,6 +8446,7 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $payload;
 
     public function getPayload(): string
@@ -8696,6 +8751,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -8751,6 +8807,7 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $field;
 
     public function getField(): string
@@ -9055,6 +9112,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -9110,6 +9168,7 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $element;
 
     public function getElement(): string
@@ -9833,6 +9892,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -9840,7 +9900,6 @@ use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
-use Yiisoft\Validator\Rule\BooleanValue;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\Rule\StringValue;
@@ -9854,6 +9913,7 @@ use function array_map;
 use function ctype_digit;
 use function floor;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -9983,15 +10043,16 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     public readonly ?array $nested;
 
     #[Query('flag')]
-    #[BooleanValue(skipOnEmpty: new WhenNull())]
-    public readonly ?bool $flag;
+    public readonly bool|string|null $flag;
 
     #[Query('strict')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $strict;
 
     #[Query('raw')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $raw;
 
     /** @var ?array<string> */
@@ -9999,6 +10060,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     public readonly ?array $xCodes;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $session;
 
     #[Query('filter')]
@@ -10067,7 +10129,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
     public function getFlag(): ?bool
     {
-        return $this->hasProperty('flag') ? $this->flag : null;
+        return $this->hasProperty('flag') ? in_array($this->flag, [true, 'true', '1'], true) : null;
     }
 
     /** Whether the payload carried `flag` at all. */
@@ -10275,7 +10337,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
             $payload['nested'] = $this->nested;
         }
         if ($this->hasProperty('flag')) {
-            $payload['flag'] = $this->flag;
+            $payload['flag'] = match ($this->flag) { 'true', '1' => true, 'false', '0' => false, default => $this->flag };
         }
         if ($this->hasProperty('strict')) {
             $payload['strict'] = $this->strict;
@@ -10955,6 +11017,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromQuery;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -11012,6 +11075,7 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
 
     #[Query('cursor')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $cursor;
 
     public function getCursor(): ?string
@@ -11323,6 +11387,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -11390,14 +11455,17 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
 
     #[Request('tenant')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $tenant;
 
     #[Query('region')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $region;
 
     #[Query('tenant')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $tenantQuery;
 
     public function getTenant(): int
@@ -11731,6 +11799,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
@@ -11739,7 +11808,6 @@ use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
-use Yiisoft\Validator\Rule\BooleanValue;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
@@ -11751,6 +11819,7 @@ use function array_map;
 use function ctype_digit;
 use function floor;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -11808,19 +11877,21 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
 
     #[Request('tenant')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $tenant;
 
     #[Query('region')]
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $region;
 
     #[Query('tenant')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $tenantQuery;
 
     #[Query('verbose')]
-    #[BooleanValue(skipOnEmpty: new WhenNull())]
-    public readonly ?bool $verbose;
+    public readonly bool|string|null $verbose;
 
     public function getTenant(): int
     {
@@ -11851,7 +11922,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
 
     public function getVerbose(): ?bool
     {
-        return $this->hasProperty('verbose') ? $this->verbose : null;
+        return $this->hasProperty('verbose') ? in_array($this->verbose, [true, 'true', '1'], true) : null;
     }
 
     /** Whether the payload carried `verbose` at all. */
@@ -11997,7 +12068,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
             $payload['tenant'] = $this->tenantQuery;
         }
         if ($this->hasProperty('verbose')) {
-            $payload['verbose'] = $this->verbose;
+            $payload['verbose'] = match ($this->verbose) { 'true', '1' => true, 'false', '0' => false, default => $this->verbose };
         }
 
         return $payload;
@@ -12169,6 +12240,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -12411,9 +12483,11 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     public readonly ?string $vacuous;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $имя;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $名前;
 
     public readonly string|int|float|bool|array|null $forbiddenKey;
@@ -13145,6 +13219,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -13218,6 +13293,7 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $label;
 
     public function getLabel(): ?string
@@ -13581,6 +13657,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -13651,6 +13728,7 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $trigger;
 
     public function getTrigger(): ?string
@@ -14005,6 +14083,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -14062,6 +14141,7 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $trigger;
 
     public function getTrigger(): ?string
@@ -14404,6 +14484,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -14475,20 +14556,24 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $plain;
 
     #[Data('it\'s')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 2, skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $itS;
 
-    #[Data('back\slash')]
+    #[Data('back\\\slash')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $backSlash;
 
-    #[Data('both\\\'s')]
+    #[Data('both\\\\\'s')]
     #[Integer(skipOnEmpty: new WhenNull())]
     #[GreaterThanOrEqual(1, type: 'original', skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $bothS;
 
     public function getPlain(): string
@@ -14831,6 +14916,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -14886,6 +14972,7 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $state;
 
     public function getState(): string
@@ -15190,6 +15277,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -15245,6 +15333,7 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $failure;
 
     public function getFailure(): string
@@ -15549,6 +15638,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -15605,9 +15695,11 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $meow;
 
     public function getName(): string
@@ -15921,6 +16013,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -15983,6 +16076,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 3, skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $code;
 
     /** @var ?array<ChainTag> */
@@ -16678,6 +16772,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -16733,6 +16828,7 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 2, skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $label;
 
     public function getLabel(): string
@@ -17037,6 +17133,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -17094,9 +17191,11 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $kind;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $radius;
 
     public function getKind(): string
@@ -18947,6 +19046,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -19011,6 +19111,7 @@ final class Discriminator extends AbstractInput implements DataSetInterface, Rul
     public readonly DiscriminatorType $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $name;
 
     public function getType(): DiscriminatorType
@@ -19358,6 +19459,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -19426,9 +19528,11 @@ final class Discriminator1 extends AbstractInput implements DataSetInterface, Ru
     public readonly DiscriminatorType $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $name;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     public function getType(): DiscriminatorType
@@ -19785,6 +19889,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -19856,13 +19961,16 @@ final class Discriminator2 extends AbstractInput implements DataSetInterface, Ru
     public readonly DiscriminatorType $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $name;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[Data('NAme')]
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $nAme2;
 
     public function getType(): DiscriminatorType
@@ -20245,6 +20353,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -20301,9 +20410,11 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $bark;
 
     public function getName(): string
@@ -20616,6 +20727,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -20672,9 +20784,11 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $bark;
 
     public function getName(): string
@@ -20988,6 +21102,7 @@ use DateTimeInterface;
 use OverflowException;
 use Psr\Http\Message\UploadedFileInterface;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\UploadedFiles;
@@ -21052,9 +21167,11 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
     public readonly UploadedFileInterface $file;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $surname;
 
     public function getFile(): UploadedFileInterface
@@ -23321,6 +23438,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -23411,12 +23529,15 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $kind;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $code;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $extra;
 
     public function getKind(): string
@@ -23861,6 +23982,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -23914,6 +24036,7 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     public function getName(): string
@@ -24220,6 +24343,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -24299,9 +24423,11 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly ?int $serverId;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $title;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
@@ -24312,6 +24438,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     public readonly ?DateTimeImmutable $writtenAt;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $secret;
 
     public function getServerId(): ?int
@@ -24682,6 +24809,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -24735,6 +24863,7 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $legacyId;
 
     public function getLegacyId(): int
@@ -25059,6 +25188,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -25116,9 +25246,11 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $kind;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $side;
 
     public function getKind(): string
@@ -25431,6 +25563,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -25488,9 +25621,11 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     public function getId(): int
@@ -25803,6 +25938,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -25856,6 +25992,7 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     public function getId(): int
@@ -26161,6 +26298,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -26241,9 +26379,11 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     /** @var array<Tag> */
@@ -26660,6 +26800,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -26712,6 +26853,7 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $region;
 
     public function getRegion(): ?string
@@ -27015,6 +27157,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -27077,12 +27220,15 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $surname;
 
     public function getId(): int
@@ -27403,6 +27549,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -27505,18 +27652,22 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     public readonly int|string $code;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Url(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $homepage;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $endpoint;
 
     public function getId(): int
@@ -28084,6 +28235,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -28235,6 +28387,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 1, skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $label;
 
     /** @var array<string, mixed> */
@@ -30050,6 +30203,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -30124,9 +30278,11 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[Nested(skipOnEmpty: new WhenNull())]
@@ -30490,6 +30646,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -30564,9 +30721,11 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
+    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[Nested(skipOnEmpty: new WhenNull())]
@@ -30925,6 +31084,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -30988,15 +31148,19 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $meow;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $bark;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $test;
 
     public function getName(): string
@@ -31325,6 +31489,7 @@ use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
@@ -31380,6 +31545,7 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly string $orderId;
 
     public function getOrderId(): string

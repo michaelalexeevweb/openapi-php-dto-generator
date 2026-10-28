@@ -15,10 +15,14 @@ use Yiisoft\Hydrator\TypeCaster\CompositeTypeCaster;
 use Yiisoft\Hydrator\TypeCaster\EnumTypeCaster;
 use Yiisoft\Hydrator\TypeCaster\HydratorTypeCaster;
 use Yiisoft\Hydrator\TypeCaster\PhpNativeTypeCaster;
+use Yiisoft\Hydrator\Validator\Attribute\ValidateResolver;
+use Yiisoft\Hydrator\Validator\ValidatingHydrator;
+use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\RequestProvider\RequestProvider;
 use Yiisoft\RequestProvider\RequestProviderInterface;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Validator;
+use Yiisoft\Validator\ValidatorInterface;
 
 /**
  * The wiring a generated yii3 input needs, without a Yii3 application.
@@ -49,6 +53,42 @@ final class Yii3Container implements ContainerInterface
     {
         $this->requestProvider = new RequestProvider($request ?? new ServerRequest('POST', '/'));
         $this->instances[RequestProviderInterface::class] = $this->requestProvider;
+        // The emitted `#[Validate]` resolves through `ValidateResolver`, which needs the validator; ONE
+        // instance, because `ValidatingHydrator` hands it the result to fill and the attribute
+        // resolution must find that same one.
+        $validator = new Validator();
+        $this->instances[ValidatorInterface::class] = $validator;
+        $this->instances[ValidateResolver::class] = new ValidateResolver($validator);
+    }
+
+    /**
+     * Hydrates through `ValidatingHydrator`, as an application must for the RAW-value checks, and
+     * returns the verdict it stored on the input — the raw checks' when one failed, the object's
+     * otherwise.
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function hydrateValidated(string $class, array $payload, string $method = 'POST', string $uri = '/'): Result
+    {
+        $this->requestProvider->set(
+            (new ServerRequest($method, $uri))->withParsedBody($payload),
+        );
+        $validator = $this->instances[ValidatorInterface::class];
+        $resolver = $this->instances[ValidateResolver::class];
+        if (!$validator instanceof ValidatorInterface || !$resolver instanceof ValidateResolver) {
+            throw new RuntimeException('The validator is wired in the constructor.');
+        }
+
+        $input = (new ValidatingHydrator($this->hydrator(), $validator, $resolver))->create($class, $payload);
+        if (!$input instanceof AbstractInput) {
+            throw new RuntimeException(sprintf('%s is not an input class.', $class));
+        }
+        $result = $input->getValidationResult();
+        if ($result === null) {
+            throw new RuntimeException('The validating hydrator stored no verdict.');
+        }
+
+        return $result;
     }
 
     /**
