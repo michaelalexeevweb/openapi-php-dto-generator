@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.105 — 2026-10-28
+
+- yii3 `create()` named constructor
+- yii3 keys in schema order
+- yii3 getter reads schema default
+- yii3 enum list getter gives cases
+- shared rendering traits
+
+yii3 mode:
+
+- a class had no way to be built in code but the hydrator over an array keyed by strings: a typo was
+  silent, and a list of objects built beforehand was dropped by the hydrator's `CollectionResolver`. Each
+  class gets a static `create()` with an argument per property — required first, optional ones defaulting
+  to `null`, which means "not sent". `withProvided('key')` returns a copy with that key sent as an explicit
+  null. The hydrator never calls `create()`, so presence tracking is unchanged.
+- properties were declared required-first, and `getData()` follows the declaration: `success, message,
+  payload` came out `success, payload, message`. They are declared in the schema's order.
+- an optional property's schema `default` was not applied: `getType()` answered null for an absent key.
+  The getter returns the default; the property stays absent, `isTypeProvided()` false, and `getData()`
+  leaves the key out, as runtime and Laravel mode do.
+- a list or map of enum members is still held as the backing values (`#[Collection]` drops an unknown one
+  before any rule reports it), but its getter now returns the cases and `create()` takes them.
+
+Internal:
+
+- no mode's rendering trait calls another mode's any more. What they shared moved into
+  `RendersCommonDtoParts`, and the Laravel validation rules both Laravel modes emit into
+  `RendersLaravelValidation`. The golden corpus is byte-identical across the move.
+
 ## 2.15.104 — 2026-10-28
 
 - yii3 raw value checked before the cast

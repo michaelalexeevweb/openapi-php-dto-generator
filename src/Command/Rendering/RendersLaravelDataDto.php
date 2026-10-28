@@ -29,7 +29,7 @@ use RuntimeException;
  *
  * The rule translator and the interpreter are NOT reimplemented: `laravelRulesForProperty()`,
  * `laravelNestedRules()`, `laravelItemRulesForProperty()` and `renderLaravelInterpreterBlock()` come
- * from `RendersLaravelDto` and produce exactly the same rule array and the same messages, which is what
+ * from `RendersLaravelValidation` and produce exactly the same rule array and the same messages, which is what
  * lets the parity suites hold both modes to one expectation.
  *
  * @phpstan-import-type SchemaProperty from \OpenapiPhpDtoGenerator\Command\GenerateDtoCommand
@@ -169,7 +169,7 @@ trait RendersLaravelDataDto
         // the schema's order, the properties are declared above the constructor in the schema's order
         // instead: `{success, payload, message}` came out for a schema declaring `success, message,
         // payload`, where the other modes keep the schema's order.
-        $schemaOrder = array_column($this->laravelInSchemaOrder($className, $params), 'name');
+        $schemaOrder = array_column($this->inSchemaOrder($className, $params), 'name');
         $constructorOrder = [
             ...array_column(array_filter($params, static fn(array $param): bool => $param['required']), 'name'),
             ...array_column(array_filter($params, static fn(array $param): bool => !$param['required']), 'name'),
@@ -238,7 +238,7 @@ trait RendersLaravelDataDto
             'stdClassRef' => $stdClassRef,
             'parentArguments' => $parentArguments,
             'declaresProperties' => $declaresProperties,
-            'declaredParams' => $this->laravelInSchemaOrder($className, $params),
+            'declaredParams' => $this->inSchemaOrder($className, $params),
             'wireNameRestore' => $wireNameRestore,
             'parameterReads' => $this->laravelParameterReads($properties),
             'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
@@ -501,7 +501,7 @@ trait RendersLaravelDataDto
         ?array $discriminator,
     ): string {
         $interfaceExtends = [];
-        foreach ($this->symfonyImplementedUnionInterfaces($className, null) as $unionInterface) {
+        foreach ($this->implementedUnionInterfaces($className, null) as $unionInterface) {
             $interfaceExtends[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
 
@@ -721,7 +721,7 @@ trait RendersLaravelDataDto
             'name' => $property['name'],
             'required' => $requiredOnInput,
             'openApiName' => $property['openApiName'],
-            'docDescription' => $this->resolveSymfonyDocDescription($property),
+            'docDescription' => $this->resolveDocDescription($property),
             'attributes' => $attributes,
             'attributeImports' => $attributeImports,
             'tracksPresence' => $tracksPresence,

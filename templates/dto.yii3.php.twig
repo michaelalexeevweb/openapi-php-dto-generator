@@ -76,13 +76,13 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
 {% endfor %}
 {% for param in params %}
 
-{% if param.docType is not null %}
-    /** @return {{ param.propertyType starts with '?' and not (param.docType starts with '?') ? '?' : '' }}{{ param.docType }} */
+{% if param.getterDocType is not null %}
+    /** @return {{ param.propertyType starts with '?' and not (param.getterDocType starts with '?') ? '?' : '' }}{{ param.getterDocType }} */
 {% endif %}
     public function {{ param.getter }}(): {{ param.getterType }}
     {
 {% if param.tracksPresence %}
-        return $this->hasProperty('{{ param.openApiName|php_string }}') ? {{ param.getterValue|raw }} : null;
+        return $this->hasProperty('{{ param.openApiName|php_string }}') ? {{ param.getterValue|raw }} : {{ (param.default ?? 'null')|raw }};
 {% else %}
         return {{ param.getterValue|raw }};
 {% endif %}
@@ -96,6 +96,59 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     }
 {% endif %}
 {% endfor %}
+{% if params is not empty %}
+
+    /**
+     * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
+     * the properties itself. An optional argument left `null` is NOT SENT: its property stays absent, as
+     * when a payload lacks the key. `withProvided()` sends one as an explicit null instead.
+{% set docParams = params|filter(param => param.getterDocType is not null) %}
+{% if docParams is not empty %}
+     *
+{% for param in docParams %}
+     * @param {{ param.propertyType starts with '?' and not (param.getterDocType starts with '?') ? '?' : '' }}{{ param.getterDocType }} ${{ param.name }}
+{% endfor %}
+{% endif %}
+     */
+    public static function create(
+{% for param in params|filter(param => not param.tracksPresence) %}
+        {{ param.createType }} ${{ param.name }},
+{% endfor %}
+{% for param in params|filter(param => param.tracksPresence) %}
+        {{ param.createType }} ${{ param.name }} = null,
+{% endfor %}
+    ): self {
+        ${{ createVariable }} = new self();
+{% for param in params %}
+{% if param.tracksPresence %}
+        if (${{ param.name }} !== null) {
+            ${{ createVariable }}->{{ param.name }} = {{ param.createValue|raw }};
+        }
+{% else %}
+        ${{ createVariable }}->{{ param.name }} = {{ param.createValue|raw }};
+{% endif %}
+{% endfor %}
+
+        return ${{ createVariable }};
+    }
+{% endif %}
+{% if params|filter(param => param.tracksPresence) is not empty %}
+
+    /**
+     * A copy with `$property` (its OpenAPI name) sent as an explicit null — what `create()` cannot say,
+     * since an argument left `null` there means "not sent". A property already present is kept.
+     */
+    public function withProvided(string $property): self
+    {
+        $copy = clone $this;
+        $name = self::OPENAPI_PROPERTY_NAMES[$property] ?? $property;
+        if (in_array($name, self::OPENAPI_PROPERTY_NAMES, true) && !$copy->hasProperty($property)) {
+            $copy->{$name} = null;
+        }
+
+        return $copy;
+    }
+{% endif %}
 
     /**
      * Rules come from the attributes above; this only re-exposes them. A class that provides a

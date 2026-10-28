@@ -202,6 +202,11 @@ trait RendersYii3Dto
             );
         }
 
+        // Declared in the order the schema lists them, which is the order `getData()` writes the keys
+        // in. They arrived required-first, and `{success, message, payload}` came out
+        // `{success, payload, message}`, where every other mode keeps the schema's order.
+        $properties = $this->inSchemaOrder($className, $properties);
+
         $useStatements = [self::YII3_ABSTRACT_INPUT];
         $ruleImports = [];
         $sourceImports = [];
@@ -302,7 +307,7 @@ trait RendersYii3Dto
         // Computed BEFORE the imports are written: without this the union interface is emitted and
         // nothing implements it, so a property typed by the union could never hold a branch.
         $implements = [];
-        foreach ($this->symfonyImplementedUnionInterfaces($className, $extends) as $unionInterface) {
+        foreach ($this->implementedUnionInterfaces($className, $extends) as $unionInterface) {
             $this->appendImportForClass($useStatements, $unionInterface, $namespace, $className);
             $implements[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
@@ -339,6 +344,13 @@ trait RendersYii3Dto
             }
         }
 
+        // `create()` builds into a local variable, which must not share its name with an argument.
+        $createVariable = 'dto';
+        $argumentNames = array_column($parameters, 'name');
+        for ($suffix = 2; in_array($createVariable, $argumentNames, true); $suffix++) {
+            $createVariable = 'dto' . $suffix;
+        }
+
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
             'namespace' => $namespace,
             'className' => $className,
@@ -348,6 +360,7 @@ trait RendersYii3Dto
             'libAbstractInput' => $this->yii3Lib('AbstractInput'),
             'implements' => $implements,
             'params' => $parameters,
+            'createVariable' => $createVariable,
             'temporalParams' => $temporalParams,
             'interpreterConstsBlock' => $interpreter['entered'] ? rtrim($interpreter['consts'], "\n") : '',
             'interpreterMethodsBlock' => $interpreter['entered'] ? rtrim($interpreter['methods'], "\n") : '',
@@ -375,6 +388,7 @@ trait RendersYii3Dto
      * @return array{attributes: array<int, string>, declaration: string, docType: string|null,
      *     tracksPresence: bool, propertyType: string, name: string, openApiName: string,
      *     getter: string, getterType: string, payloadValue: string, getterValue: string,
+     *     getterDocType: string|null, default: string|null, createType: string, createValue: string,
      *     providedGetter: string, writeOnly: bool, temporalFormat: string|null}
      */
     private function renderYii3Parameter(
@@ -496,6 +510,34 @@ trait RendersYii3Dto
         // own (worked, but put a type no Yii3 user has ever seen into every optional property), and
         // promoted constructor parameters (the hydrator stops filling a constructor the moment the
         // class declares properties of its own).
+        $getterValue = $wireBoolean
+            ? sprintf("in_array(\$this->%s, [true, 'true', '1'], true)", $property['name'])
+            : '$this->' . $property['name'];
+        $getterDocType = $docType;
+        $createValue = '$' . $property['name'];
+
+        // A list or map of enum members HOLDS the backing values — `#[Collection]` would drop a member
+        // the enum lacks before any rule could report it — so the getter is where they become cases,
+        // and `create()` takes cases and stores their values. Every other mode hands out cases.
+        $enumItem = $this->yii3EnumContainerItem($property['type']);
+        if ($enumItem !== null) {
+            $enumClass = $this->formatPhpTypeForNamespace($enumItem['enum'], $namespace);
+            $backing = $this->enumSchemas[$enumItem['enum']]['type'];
+            $getterDocType = $this->formatDocblockTypeForNamespace(ltrim($property['type'], '?'), $namespace);
+            $getterValue = $enumItem['nullableItem']
+                ? sprintf('array_map(static fn(?%2$s $item): ?%3$s => $item === null ? null : %3$s::from($item), $this->%1$s)', $property['name'], $backing, $enumClass)
+                : sprintf('array_map(static fn(%2$s $item): %3$s => %3$s::from($item), $this->%1$s)', $property['name'], $backing, $enumClass);
+            $createValue = $enumItem['nullableItem']
+                ? sprintf('array_map(static fn(?%2$s $item): ?%3$s => $item?->value, $%1$s)', $property['name'], $enumClass, $backing)
+                : sprintf('array_map(static fn(%2$s $item): %3$s => $item->value, $%1$s)', $property['name'], $enumClass, $backing);
+            // In parentheses: the getter puts this inside a ternary of its own, and PHP refuses to nest
+            // one unparenthesised. `create()` needs no guard — it stores an optional argument only when
+            // it is not null.
+            if (str_starts_with($propertyType, '?')) {
+                $getterValue = sprintf('($this->%s === null ? null : %s)', $property['name'], $getterValue);
+            }
+        }
+
         return [
             'attributes' => $attributes,
             'declaration' => 'public readonly ' . $propertyType . ' $' . $property['name'] . ';',
@@ -511,9 +553,13 @@ trait RendersYii3Dto
             'payloadValue' => $wireBoolean
                 ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
                 : '$this->' . $property['name'],
-            'getterValue' => $wireBoolean
-                ? sprintf("in_array(\$this->%s, [true, 'true', '1'], true)", $property['name'])
-                : '$this->' . $property['name'],
+            'getterValue' => $getterValue,
+            'getterDocType' => $getterDocType,
+            // What an absent key reads as: the schema `default`, as every other mode gives it.
+            'default' => $this->yii3DefaultExpression($property, $type, $docType),
+            // `create()` takes what the getter hands out, and stores what the property holds.
+            'createType' => $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType,
+            'createValue' => $createValue,
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
             'writeOnly' => ($property['writeOnly'] ?? false) === true || ($property['readOnly'] ?? false) === true,
             'temporalFormat' => $this->yii3TemporalFormat($property, $propertyType),
@@ -1605,6 +1651,49 @@ PHP;
 
         // A map (`array<string, V>`) has no single item class to nest into.
         return $item === '' || str_contains($item, ',') ? null : ltrim($item, '\\');
+    }
+
+    /**
+     * The enum a list or map holds the members of, one level deep: `array<Kind>`, `array<string, ?Kind>`.
+     *
+     * @return array{enum: string, nullableItem: bool}|null
+     */
+    private function yii3EnumContainerItem(string $type): ?array
+    {
+        if (preg_match('/^\??array<(?:(?:string|int|array-key),\s*)?(\?)?\\\?([A-Za-z_][A-Za-z0-9_\\\]*)>$/', $type, $match) !== 1) {
+            return null;
+        }
+        $enum = $this->shortClassName($match[2]);
+
+        return array_key_exists($enum, $this->enumSchemas)
+            ? ['enum' => $enum, 'nullableItem' => $match[1] === '?']
+            : null;
+    }
+
+    /**
+     * The schema `default` of an optional property as a PHP expression, or null when there is none to
+     * give. A container is left out: its value is held in wire form, and `renderDefaultValue()` writes
+     * every array default as `[]`.
+     *
+     * @param SchemaProperty $property
+     */
+    private function yii3DefaultExpression(array $property, string $type, ?string $docType): ?string
+    {
+        if ($property['default'] === null || $docType !== null || $this->propertyIsRequiredOnInput($property)) {
+            return null;
+        }
+
+        $raw = ltrim($property['type'], '?\\');
+        $rendered = $this->renderDefaultValue($property['default'], $raw, $type);
+        if ($rendered === '') {
+            return null;
+        }
+        $expression = substr($rendered, strlen(' = '));
+
+        // The case is resolved against the enum's short name; the file may have to spell it otherwise.
+        return array_key_exists($raw, $this->enumSchemas) && str_starts_with($expression, $raw . '::')
+            ? $type . substr($expression, strlen($raw))
+            : $expression;
     }
 
     private function isGeneratedDtoType(string $type): bool

@@ -302,6 +302,118 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertFalse($container->validate($container->hydrate($namespace . '\Probe', ['priority' => ['note' => 'x']]))->isValid());
     }
 
+    public function testCreateBuildsAnObjectThatKnowsWhatWasSent(): void
+    {
+        // A response was only buildable from an array keyed by strings: a typo was silent, and a list of
+        // objects built beforehand was dropped by the hydrator's collection resolver.
+        $namespace = $this->generate([
+            'Envelope' => [
+                'type' => 'object',
+                'required' => ['success', 'items'],
+                'properties' => [
+                    'success' => ['type' => 'boolean'],
+                    'message' => ['type' => 'string', 'nullable' => true],
+                    'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']],
+                    'kind' => ['$ref' => '#/components/schemas/Kind'],
+                ],
+            ],
+            'Item' => [
+                'type' => 'object',
+                'required' => ['name'],
+                'properties' => ['name' => ['type' => 'string']],
+            ],
+            'Kind' => ['type' => 'string', 'enum' => ['round', 'square']],
+        ]);
+        $envelope = $namespace . '\Envelope';
+        $item = $namespace . '\Item';
+        $kind = $namespace . '\Kind';
+
+        $built = $envelope::create(success: true, items: [$item::create(name: 'a')], kind: $kind::from('round'));
+
+        self::assertFalse($built->isMessageProvided());
+        self::assertSame(['success' => true, 'items' => [['name' => 'a']], 'kind' => 'round'], $built->getData());
+        self::assertTrue((new Yii3Container())->validate($built)->isValid());
+
+        $withNull = $built->withProvided('message');
+        self::assertTrue($withNull->isMessageProvided());
+        self::assertSame(['success' => true, 'message' => null, 'items' => [['name' => 'a']], 'kind' => 'round'], $withNull->getData());
+        self::assertFalse($built->isMessageProvided(), 'withProvided() returns a copy.');
+    }
+
+    public function testKeysAreWrittenInTheSchemasOrder(): void
+    {
+        // The properties were declared required-first, and `getData()` follows the declaration.
+        $namespace = $this->generate([
+            'Envelope' => [
+                'type' => 'object',
+                'required' => ['success', 'payload'],
+                'properties' => [
+                    'success' => ['type' => 'boolean'],
+                    'message' => ['type' => 'string'],
+                    'payload' => ['type' => 'string'],
+                ],
+            ],
+        ]);
+
+        $envelope = (new Yii3Container())->hydrate($namespace . '\Envelope', ['payload' => 'p', 'message' => 'm', 'success' => true]);
+
+        self::assertSame(['success', 'message', 'payload'], array_keys($envelope->getData()));
+    }
+
+    public function testAnAbsentValueReadsAsTheSchemaDefault(): void
+    {
+        $namespace = $this->generate([
+            'Filter' => [
+                'type' => 'object',
+                'properties' => [
+                    'kind' => ['$ref' => '#/components/schemas/Kind'],
+                    'size' => ['type' => 'integer', 'default' => 10],
+                ],
+            ],
+            'Kind' => ['type' => 'string', 'enum' => ['round', 'square'], 'default' => 'square'],
+        ]);
+        $container = new Yii3Container();
+
+        $absent = $container->hydrate($namespace . '\Filter', []);
+        self::assertSame('square', $absent->getKind()?->value);
+        self::assertSame(10, $absent->getSize());
+        self::assertFalse($absent->isSizeProvided());
+        self::assertSame([], $absent->getData(), 'The default is read, not written: absent stays absent.');
+
+        $sent = $container->hydrate($namespace . '\Filter', ['kind' => 'round', 'size' => 3]);
+        self::assertSame('round', $sent->getKind()?->value);
+        self::assertSame(3, $sent->getSize());
+    }
+
+    public function testAListOfEnumMembersReadsAsCases(): void
+    {
+        // The list holds the backing values — `#[Collection]` drops a member the enum lacks before a rule
+        // can report it — and the getter handed those strings out where every other mode gives cases.
+        $namespace = $this->generate([
+            'Filter' => [
+                'type' => 'object',
+                'required' => ['kinds'],
+                'properties' => [
+                    'kinds' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Kind']],
+                    'byName' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Kind']],
+                ],
+            ],
+            'Kind' => ['type' => 'string', 'enum' => ['round', 'square']],
+        ]);
+        $container = new Yii3Container();
+        $kind = $namespace . '\Kind';
+
+        $filter = $container->hydrate($namespace . '\Filter', ['kinds' => ['round', 'square'], 'byName' => ['a' => 'round']]);
+        self::assertTrue($container->validate($filter)->isValid());
+        self::assertSame([$kind::from('round'), $kind::from('square')], $filter->getKinds());
+        self::assertSame(['a' => $kind::from('round')], $filter->getByName());
+
+        self::assertFalse($container->validate($container->hydrate($namespace . '\Filter', ['kinds' => ['oval']]))->isValid());
+
+        $built = $namespace . '\Filter';
+        self::assertSame(['kinds' => ['square']], $built::create(kinds: [$kind::from('square')])->getData());
+    }
+
     public function testARequiredNameWithoutAPropertyIsNotDemanded(): void
     {
         // The generator warns that such a requirement is enforced nowhere, as the other modes do; this

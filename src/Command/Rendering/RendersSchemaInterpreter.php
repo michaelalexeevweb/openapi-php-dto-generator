@@ -19,7 +19,7 @@ use OpenapiPhpDtoGenerator\Service\DtoValidator;
  *
  *     symfony        #[Assert\Callback]        $context->buildViolation(...)->atPath(...)
  *     laravel        withValidator()           $validator->errors()->add($property, ...)
- *     laravel-data   the Laravel packaging, reached through RendersLaravelDto
+ *     laravel-data   the Laravel packaging, reached through RendersLaravelValidation
  *     yii3           #[Callback]               $result->addError($message, valuePath: ...)
  *
  * Why one copy rather than four: the walk is ~1500 emitted lines, and the parity suites exist to
@@ -92,7 +92,7 @@ trait RendersSchemaInterpreter
      *                                      its own way and feeds it the raw decoded payload, where neither
      *                                      the `#[Assert\Callback]` entry point, the object-payload view it
      *                                      needs, nor any nested-DTO handling can apply — see
-     *                                      `RendersLaravelDto::renderLaravelInterpreterBlock()`.
+     *                                      `RendersLaravelValidation::renderLaravelInterpreterBlock()`.
      * @param array<string, mixed> $recursiveSchemas folded schemas a `x-openapi-recurse` marker points
      *                                               back into, keyed by class name. A recursive schema
      *                                               cannot be written out inline — the literal would be
@@ -3030,5 +3030,21 @@ PHP,
         }
 
         return $filtered;
+    }
+
+    /**
+     * Whether the emitted interpreter enforces this `format` at all. A custom or unlisted one
+     * (`uppercase`, `slug`, …) falls through to the permissive default, exactly as the runtime
+     * validator does — so putting it in a constraint map buys nothing but an emitted interpreter.
+     */
+    private function openApiInterpreterChecksFormat(string $format): bool
+    {
+        if (in_array($format, self::OPENAPI_NUMERIC_FORMATS, true)) {
+            return true;
+        }
+
+        $arm = self::OPENAPI_FORMAT_ARMS[$format] ?? null;
+
+        return $arm !== null && $arm[0] !== 'true';
     }
 }

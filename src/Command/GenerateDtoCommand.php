@@ -10,8 +10,10 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
 use OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses;
 use OpenapiPhpDtoGenerator\Command\Rendering\QualifiedNameImports;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersCommonDtoParts;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDataDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelDto;
+use OpenapiPhpDtoGenerator\Command\Rendering\RendersLaravelValidation;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSchemaInterpreter;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
@@ -73,8 +75,10 @@ final class GenerateDtoCommand extends Command
     // INTERPRETER is shared too, and by four of the five: `RendersSchemaInterpreter` holds the one
     // walker, and symfony, laravel, laravel-data and yii3 each wrap it in an entry point of their own.
     use NamesLibraryClasses;
+    use RendersCommonDtoParts;
     use RendersLaravelDataDto;
     use RendersLaravelDto;
+    use RendersLaravelValidation;
     use RendersRuntimeDto;
     use RendersSchemaInterpreter;
     use RendersSymfonyDto;

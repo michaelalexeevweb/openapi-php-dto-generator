@@ -134,6 +134,20 @@ hydrator registration into code whose whole point is to depend only on yiisoft �
 A schema whose ONLY temporal values are container items needs no `ext-intl` at all now, for the same
 reason: no `#[ToDateTime]` is emitted for it.
 
+### A container of enum members holds their values; the getter gives cases
+
+A list or map of enum members (`array<Kind>`, `array<string, Kind>`) holds the backing values, typed
+`array<string>`. `#[Collection(Kind::class)]` is not emitted: it drops a value the enum lacks before any
+rule can report it, and it renumbers a map's keys. The getter returns the cases, and `create()` takes
+them:
+
+```php
+/** @var array<string> */
+public readonly array $kinds;      // ["round", "square"]
+
+$filter->getKinds();               // [Kind::Round, Kind::Square]
+```
+
 ## Setup you must not skip, part three: the validating hydrator
 
 **Hydrate through `ValidatingHydrator`, and register `ValidateResolver` as an attribute resolver.** The
@@ -222,7 +236,8 @@ and the emitted interpreter reports that as `field "title" is required.` — onc
 **The class has no constructor, and that is the point.** With none, the hydrator fills PROPERTIES
 directly — so a key the payload did not carry leaves its property uninitialised, which is PHP's own
 record of what was absent. A property sent as `null` IS initialised. That single fact gives PATCH
-semantics with nothing invented.
+semantics with nothing invented. To build one in code, use the static `create()` — see
+[Building a response](#building-a-response).
 
 `#[FromBody]` (or `#[FromQuery]`) appears only on classes that ARE a request payload. A nested schema
 carries no source attribute — with one, it would re-read the whole request body instead of the value
@@ -274,6 +289,13 @@ An earlier version of this mode did emit a sentinel enum, and it worked; it was 
 a type no Yii3 developer has ever seen into every optional property. The uninitialised-property route
 gives the same answer using only what the framework and PHP already provide.
 
+## Schema defaults
+
+An optional property with a schema `default` reads as that default when the key is absent:
+`getSize()` answers `10` while `isSizeProvided()` stays false. The property itself stays uninitialised
+— it records what was sent — so `getData()` leaves the key out, as runtime and Laravel mode do. A list or
+map default is not applied.
+
 ## Rule mapping
 
 Natively expressed by `yiisoft/validator`:
@@ -313,23 +335,34 @@ the field from a request and then demanded the field be there.
 
 ## Building a response
 
-A generated class has no constructor — its readonly properties are filled by the hydrator, and an
-uninitialised one is how "absent" is recorded — so a response is built the same way a request is: from
-an array keyed by the OpenAPI names.
+The class has no constructor — the hydrator fills its properties, and an uninitialised one is how
+"absent" is recorded. To build one in code there is `create()`, with an argument per property, so a
+typo or a wrong type is caught by the IDE and PHPStan:
 
 ```php
-$response = $hydrator->create(ScoreResponse::class, [
-    'score' => $score,
-    'label' => $label,
-    // a key left out is "not sent"; `null` is an explicit null
-]);
+$response = ScoreResponse::create(
+    score: $score,
+    kind: ScoreKind::Manual,        // enums, dates and nested objects as the getters return them
+    tags: [Tag::create(name: 'a')], // a list of objects built beforehand is kept
+    // an optional argument left out — or passed null — is "not sent"
+);
 
-$errors = $validator->validate($response);   // a mistyped key is a missing required one, reported here
+$response = $response->withProvided('note');   // …unless it must reach the wire as an explicit null
 ```
 
-The keys are the document's names (`first_name`, `x-trace`), not the PHP property names. A typo in an
-optional key is silent — the property simply stays absent — so validate responses in development and
-tests: a required key misspelled comes back as `field "score" is required.`
+Required properties are the leading arguments, optional ones follow with a `null` default. `null` cannot
+say both "not sent" and "sent as null" at once, so the second is `withProvided('<openapi name>')`,
+which returns a copy — the same split Laravel mode makes between `create()` and `withProvided()`.
+
+Building from an array through the hydrator still works, keyed by the OpenAPI names (`first_name`, not
+`firstName`). Two things to know about that path:
+
+- a typo in an optional key is silent — the property stays absent — so validate responses in
+  development and tests (`$validator->validate($response)`);
+- a list of nested objects must be given as ARRAYS. yiisoft's `CollectionResolver` skips every item that
+  is not an array or a `DataInterface`, so a list of instances built beforehand comes back empty. Pass
+  arrays, use `create()`, or register a resolver of your own under `CollectionResolver::class` that
+  keeps instances of the item class.
 
 ## A property named like a method of the class
 

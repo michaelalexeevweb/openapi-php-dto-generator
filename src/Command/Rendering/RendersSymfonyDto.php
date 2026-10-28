@@ -27,22 +27,6 @@ use OpenapiPhpDtoGenerator\Service\DtoValidator;
 trait RendersSymfonyDto
 {
     /**
-     * Whether the emitted interpreter enforces this `format` at all. A custom or unlisted one
-     * (`uppercase`, `slug`, …) falls through to the permissive default, exactly as the runtime
-     * validator does — so putting it in a constraint map buys nothing but an emitted interpreter.
-     */
-    private function openApiInterpreterChecksFormat(string $format): bool
-    {
-        if (in_array($format, self::OPENAPI_NUMERIC_FORMATS, true)) {
-            return true;
-        }
-
-        $arm = self::OPENAPI_FORMAT_ARMS[$format] ?? null;
-
-        return $arm !== null && $arm[0] !== 'true';
-    }
-
-    /**
      * Whether the generated Symfony DTOs carry `read`/`write` serialization groups. Set once per
      * run from the whole schema set — see `documentNeedsSerializationGroups()` for why it is all
      * classes or none.
@@ -290,7 +274,7 @@ trait RendersSymfonyDto
             }
         }
         $implementedInterfaces = [];
-        foreach ($this->symfonyImplementedUnionInterfaces($className, $extends) as $unionInterface) {
+        foreach ($this->implementedUnionInterfaces($className, $extends) as $unionInterface) {
             $this->appendImportForClass($useStatements, $unionInterface, $namespace, $className);
             $implementedInterfaces[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
@@ -639,7 +623,7 @@ PHP;
                 $imports[] = 'DateTimeImmutable';
             }
         }
-        $memberNames = $unionTypes !== [] ? $unionTypes : $this->symfonyDiscriminatorMembers($className);
+        $memberNames = $unionTypes !== [] ? $unionTypes : $this->discriminatorMembers($className);
         foreach ($memberNames as $member) {
             $this->appendImportForClass($imports, $member, $namespace, $className);
         }
@@ -701,24 +685,6 @@ PHP;
     }
 
     /**
-     * Classes a discriminated base maps to (its members are linked by the discriminator mapping,
-     * not by a oneOf/anyOf member list).
-     *
-     * @return array<int, string>
-     */
-    private function symfonyDiscriminatorMembers(string $className): array
-    {
-        $members = [];
-        foreach ($this->dtoSchemas as $candidate => $_definition) {
-            if ($this->discriminatorBaseForMember($candidate) === $className) {
-                $members[] = $candidate;
-            }
-        }
-
-        return $members;
-    }
-
-    /**
      * An object schema with a discriminator mapping to OTHER schemas — the variants `allOf` it. In
      * runtime mode it is a parent class; here it is an interface with `#[DiscriminatorMap]`. A base
      * that maps a value to itself is a concrete type of its own and stays a class.
@@ -727,47 +693,6 @@ PHP;
     {
         // yii3 shares the interface lookup, but keeps the base a class of its own.
         return $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && $this->isAllOfDiscriminatorBase($className);
-    }
-
-    /**
-     * The allOf pattern itself, whatever the mode: an object base with a discriminator whose mapping
-     * names only OTHER schemas, each of which `allOf`s it.
-     */
-    private function isAllOfDiscriminatorBase(string $className): bool
-    {
-        $discriminator = $this->discriminatorSchemas[$className] ?? null;
-        if ($discriminator === null || $discriminator['mapping'] === [] || $this->isOneOfDiscriminatorBase($className)) {
-            return false;
-        }
-
-        return !in_array($className, $discriminator['mapping'], true)
-            && $this->symfonyDiscriminatorMembers($className) !== [];
-    }
-
-    /**
-     * Union interfaces this class implements: the oneOf/anyOf schemas listing it as a member, plus
-     * any discriminated base it is mapped to (Symfony DTOs are flattened, so the base cannot be a
-     * parent class).
-     *
-     * @return array<int, string>
-     */
-    private function symfonyImplementedUnionInterfaces(string $className, ?string $extends): array
-    {
-        $interfaces = $this->unionInterfacesByClass[$className] ?? [];
-
-        $base = $extends;
-        $guard = 0;
-        while ($base !== null && $guard++ < 10) {
-            if ($this->isOneOfDiscriminatorBase($base) || $this->isSymfonyAllOfDiscriminatorBase($base)) {
-                $interfaces[] = $base;
-            }
-            $base = $this->discriminatorBaseForMember($base);
-        }
-
-        return array_values(array_unique(array_filter(
-            $interfaces,
-            static fn(string $interface): bool => $interface !== $className,
-        )));
     }
 
     /**
@@ -975,7 +900,7 @@ PHP;
             'serializedName' => $property['name'] !== $property['openApiName'] ? $property['openApiName'] : null,
             'default' => $defaultLiteral,
             'attributes' => $this->resolveSymfonyAttributes($property),
-            'docDescription' => $this->resolveSymfonyDocDescription($property),
+            'docDescription' => $this->resolveDocDescription($property),
             'getter' => 'get' . ucfirst($property['name']),
             // A temporal property is a DateTimeImmutable to the code that reads it, and the string
             // the schema asks for on the wire: `format: date` must not grow a time part, and a
@@ -1153,141 +1078,6 @@ PHP;
     {
         return is_string($property['temporalFormat'] ?? null)
             && $this->shortClassName(ltrim($property['type'], '?')) === 'DateTimeImmutable';
-    }
-
-    /**
-     * The body of a temporal getter, or null when the property is not a date/date-time.
-     *
-     * @param SchemaProperty $property
-     */
-    private function symfonyTemporalGetterBody(array $property): ?string
-    {
-        $temporalFormat = $property['temporalFormat'] ?? null;
-        if (!is_string($temporalFormat)) {
-            return null;
-        }
-
-        $baseType = ltrim($property['type'], '?');
-        if ($this->shortClassName($baseType) !== 'DateTimeImmutable') {
-            return null;
-        }
-
-        $nullable = $property['nullable'] || !$this->propertyIsRequiredOnInput($property);
-        $name = $property['name'];
-        $guard = $nullable ? sprintf('$this->%s === null ? null : ', $name) : '';
-
-        if ($temporalFormat === 'Y-m-d') {
-            return sprintf('%s$this->%s->format(\'Y-m-d\')', $guard, $name);
-        }
-
-        // Same rule as runtime mode: keep sub-second precision when the value carries it.
-        return sprintf(
-            '%s($this->%s->format(\'u\') === \'000000\'' . "\n            " . '? $this->%s->format(\'c\')' . "\n            " . ': $this->%s->format(\'Y-m-d\TH:i:s.uP\'))',
-            $guard,
-            $name,
-            $name,
-            $name,
-        );
-    }
-
-    /**
-     * Whether the property is an ARRAY or MAP whose ITEMS are dates — `items: {format: date}` and
-     * `additionalProperties: {format: date}` both land here.
-     *
-     * A predicate rather than "is the getter body non-null?": every mode has to answer this question,
-     * and two of them (laravel-data, yii3) answer it without emitting a getter at all — laravel-data
-     * to declare the docblock honestly, yii3 to keep an attribute off a container its resolver cannot
-     * read.
-     *
-     * @param SchemaProperty $property
-     */
-    private function propertyHasTemporalItems(array $property): bool
-    {
-        if (!is_string($property['itemsTemporalFormat'] ?? null) || !str_contains($property['type'], '<')) {
-            return false;
-        }
-
-        $itemType = $this->resolveArrayItemPhpType(ltrim($property['type'], '?'));
-
-        return $this->shortClassName(ltrim($itemType, '?')) === 'DateTimeImmutable';
-    }
-
-    /**
-     * The body of a temporal ARRAY/MAP getter, or null when the items are not date/date-time.
-     *
-     * `items: {format: date}` types the item as DateTimeImmutable exactly like the scalar case, and
-     * the reader is owed the same string. Symfony's DateTimeNormalizer would print every item RFC
-     * 3339 — a `date` array leaving as date-times contradicts the schema it came from.
-     *
-     * @param SchemaProperty $property
-     */
-    private function symfonyTemporalArrayGetterBody(array $property): ?string
-    {
-        if (!$this->propertyHasTemporalItems($property)) {
-            return null;
-        }
-
-        // The predicate above already established this is a non-empty string; the `?? null` is only
-        // because the key is optional in the shape.
-        $itemsTemporalFormat = $property['itemsTemporalFormat'] ?? null;
-        $name = $property['name'];
-        $nullable = $property['nullable'] || !$this->propertyIsRequiredOnInput($property);
-        $guard = $nullable ? sprintf('$this->%s === null ? null : ', $name) : '';
-
-        // `mixed`, and an `instanceof` test rather than a parameter type — the same rule runtime
-        // mode follows. PHP cannot type the ITEMS of an array, so a DTO built by hand can hold a
-        // string where the docblock promises a date; a typed callback turns that into a TypeError
-        // from inside the getter, which takes `DtoNormalizer::validate()` down with it — the very
-        // call whose job is to REPORT the mismatch. Passing the value through leaves it reportable.
-        // A null item needs no arm of its own: it fails `instanceof` like any other non-date.
-        if ($itemsTemporalFormat === 'Y-m-d') {
-            $callback = 'static fn (mixed $item): mixed => $item instanceof DateTimeImmutable'
-                . "\n                " . '? $item->format(\'Y-m-d\')'
-                . "\n                " . ': $item';
-        } else {
-            // Same rule as runtime mode: keep sub-second precision when the value carries it.
-            $callback = 'static fn (mixed $item): mixed => $item instanceof DateTimeImmutable'
-                . "\n                " . '? ($item->format(\'u\') === \'000000\''
-                . "\n                    " . '? $item->format(\'c\')'
-                . "\n                    " . ': $item->format(\'Y-m-d\TH:i:s.uP\'))'
-                . "\n                " . ': $item';
-        }
-
-        return sprintf(
-            '%sarray_map(' . "\n            " . '%s,' . "\n            " . '$this->%s,' . "\n        " . ')',
-            $guard,
-            $callback,
-            $name,
-        );
-    }
-
-    /**
-     * The `description` / `example` / `deprecated` annotations as one `@param` suffix. Promoted
-     * constructor properties cannot carry their own docblock (and PHP's `#[\Deprecated]` does not
-     * apply to properties), so the constructor docblock is where this metadata can live — the same
-     * text the runtime mode puts on the getter.
-     *
-     * @param SchemaProperty $property
-     */
-    private function resolveSymfonyDocDescription(array $property): ?string
-    {
-        $parts = [];
-
-        if (($property['deprecated'] ?? false) === true) {
-            $parts[] = 'Deprecated.';
-        }
-
-        $description = $property['description'] ?? null;
-        if (is_string($description) && $description !== '') {
-            $parts[] = $this->stripDocAnnotationSentenceDot($description);
-        }
-
-        $example = $property['example'] ?? null;
-        if (is_string($example) && $example !== '') {
-            $parts[] = 'Example: ' . $example;
-        }
-
-        return $parts === [] ? null : implode(' ', $parts);
     }
 
     /**
@@ -1871,16 +1661,5 @@ PHP;
             ],
             true,
         );
-    }
-
-    private function numericLiteral(int|float $value): string
-    {
-        if (is_int($value)) {
-            return (string)$value;
-        }
-
-        $rendered = json_encode($value);
-
-        return is_string($rendered) ? $rendered : (string)$value;
     }
 }

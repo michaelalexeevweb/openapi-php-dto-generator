@@ -1397,38 +1397,6 @@ trait RendersRuntimeDto
         return str_replace('DateTimeImmutable', 'string', $docType);
     }
 
-    private function resolveArrayItemPhpType(string $fullType): string
-    {
-        if (!str_starts_with($fullType, 'array<')) {
-            return 'mixed';
-        }
-
-        $itemType = substr($fullType, 6, -1);
-        if ($itemType === '') {
-            return 'mixed';
-        }
-
-        // Map type `array<string, V>` — the value type is the part after the key prefix. Only a
-        // comma at depth 0 separates key from value: `array<array<string, mixed>>` is a LIST of
-        // maps, and splitting on its inner comma used to yield the unparsable type `mixed>`.
-        $depth = 0;
-        $length = strlen($itemType);
-        for ($i = 0; $i < $length; $i++) {
-            $character = $itemType[$i];
-            if ($character === '<') {
-                $depth++;
-            } elseif ($character === '>') {
-                $depth--;
-            } elseif ($character === ',' && $depth === 0) {
-                $itemType = ltrim(substr($itemType, $i + 1));
-                break;
-            }
-        }
-
-        // A generic item type (a nested list or map) is still just `array` to PHP.
-        return str_contains($itemType, '<') ? 'array' : $itemType;
-    }
-
     /**
      * @param SchemaProperty $parentProperty
      * @param SchemaProperty $childProperty
@@ -1444,21 +1412,6 @@ trait RendersRuntimeDto
         }
 
         return true;
-    }
-
-    /**
-     * Removes the trailing period from a single-sentence PHPDoc tag description so the
-     * generated @param line is already a fixed point of the php-cs-fixer
-     * phpdoc_annotation_without_dot rule (which strips that dot otherwise). Multi-sentence
-     * text (any internal period) is left untouched — the rule does not act on it either.
-     */
-    private function stripDocAnnotationSentenceDot(string $text): string
-    {
-        if (substr_count($text, '.') === 1 && str_ends_with($text, '.')) {
-            return substr($text, 0, -1);
-        }
-
-        return $text;
     }
 
     private function normalizeInRequestFlagName(string $propertyName): string
