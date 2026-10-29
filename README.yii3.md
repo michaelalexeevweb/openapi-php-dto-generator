@@ -467,12 +467,12 @@ was sent.
 - **`in: header` and `in: cookie` are not bound.** `input-http` ships `#[Body]`, `#[Query]`,
   `#[Request]` and `#[UploadedFiles]` and has no header or cookie attribute at all. Path parameters
   arrive through `#[Request]`, which reads PSR-7 request attributes — where routers put them;
-- **an out-of-range enum value is reported as a MISSING key.** Elsewhere it is a message naming the
-  allowed values. Here the hydrator cannot cast `"nope"` to the generated enum, so it skips the
-  property — and a skipped property is indistinguishable from one the payload never carried, which is
-  the same signal this mode reads for presence. The verdict is still "invalid"; the sentence is
-  `field "status" is required.`. Nothing in generated code can separate the two cases, because the raw
-  value never reaches the object;
+- **an out-of-range enum value is refused with Yii's own `In` message**, not one naming the allowed
+  values. The hydrator cannot cast `"nope"` to the generated enum, so it skips the property, and a
+  skipped property is indistinguishable from one the payload never carried — for an OPTIONAL property
+  the value was simply lost and the request answered as if it had no filter. Every enum property
+  therefore carries `#[Validate(new In([...]))]`, a check of the RAW value before the cast: strict in a
+  body, which is JSON, lenient for a parameter, which arrives as text (`?level=1`);
 - **a union in a PAYLOAD is held as the decoded array**, not built — a `oneOf`/`anyOf` and an `allOf`
   discriminated base alike. The hydrator casts to the DECLARED type, an interface it cannot instantiate,
   so the property is `Union|array` and the interpreter checks the array — see

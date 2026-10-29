@@ -67,11 +67,17 @@ final class Yii3Container implements ContainerInterface
      * otherwise.
      *
      * @param array<string, mixed> $payload
+     * @param array<string, mixed> $query
      */
-    public function hydrateValidated(string $class, array $payload, string $method = 'POST', string $uri = '/'): Result
-    {
+    public function hydrateValidated(
+        string $class,
+        array $payload,
+        string $method = 'POST',
+        string $uri = '/',
+        array $query = [],
+    ): Result {
         $this->requestProvider->set(
-            (new ServerRequest($method, $uri))->withParsedBody($payload),
+            (new ServerRequest($method, $uri))->withParsedBody($payload)->withQueryParams($query),
         );
         $validator = $this->instances[ValidatorInterface::class];
         $resolver = $this->instances[ValidateResolver::class];

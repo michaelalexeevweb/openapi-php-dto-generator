@@ -3,6 +3,16 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.111 — 2026-10-29
+
+- yii3 enum outside list refused
+
+yii3 mode:
+
+- an enum value outside the list was cast by nothing, so the hydrator skipped the property and an
+  OPTIONAL one read as "not sent" — `?level=nonsense` answered as if the filter were absent. Every enum
+  property carries a raw `In` check of the cases now: strict in a body, lenient for a parameter.
+
 ## 2.15.110 — 2026-10-29
 
 - yii3 required null refused

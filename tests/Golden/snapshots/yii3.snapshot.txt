@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 34231 lines
+# yii3 mode — 80 files, 34237 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -20932,6 +20932,7 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\In;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
@@ -20995,6 +20996,7 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    #[Validate(new In(['discriminator1', 'discriminator2'], strict: true, skipOnEmpty: new WhenMissing()))]
     public readonly DiscriminatorType $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -21386,6 +21388,7 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\In;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
@@ -21452,6 +21455,7 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    #[Validate(new In(['discriminator1', 'discriminator2'], strict: true, skipOnEmpty: new WhenMissing()))]
     public readonly DiscriminatorType $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -28359,6 +28363,7 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Each;
+use Yiisoft\Validator\Rule\In;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\Rule\StringValue;
@@ -28455,6 +28460,7 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     #[Nested(skipOnEmpty: new WhenNull())]
     public readonly ?Test2UserType $userType;
 
+    #[Validate(new In(['cat', 'dog'], strict: true, skipOnEmpty: new WhenMissing()))]
     public readonly Test2Types $types;
 
     public function getId(): int

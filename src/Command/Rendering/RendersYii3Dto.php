@@ -873,26 +873,57 @@ trait RendersYii3Dto
             || ($property['inPath'] ?? false) === true
             || ($property['inHeader'] ?? false) === true
             || ($property['inCookie'] ?? false) === true;
+        // A REQUIRED property the schema does not let be null is declared non-nullable, and the cast
+        // turns a null into `''` or 0 before anything else sees it — `{"name": null}` created a record
+        // with an empty name, every rule having skipped the null. Here only a MISSING key is skipped
+        // (the interpreter reports that one), so the raw null is refused. An optional property is
+        // nullable in PHP and keeps its null, which the interpreter refuses itself.
+        $refusesNull = $this->propertyIsRequiredOnInput($property)
+            && !($property['schemaNullable'] ?? $property['nullable']);
+        $skip = $refusesNull ? 'WhenMissing' : 'WhenNull';
         if ($typeRule !== null && $this->yii3TypeRuleApplies($property) && !($isParameter && $typeRule === 'BooleanValue')) {
-            // A REQUIRED property the schema does not let be null is declared non-nullable, and the cast
-            // turns a null into `''` or 0 before anything else sees it — `{"name": null}` created a record
-            // with an empty name, every rule having skipped the null. Here only a MISSING key is skipped
-            // (the interpreter reports that one), so the raw null is refused. An optional property is
-            // nullable in PHP and keeps its null, which the interpreter refuses itself.
-            $refusesNull = $this->propertyIsRequiredOnInput($property)
-                && !($property['schemaNullable'] ?? $property['nullable']);
-            $skip = $refusesNull ? 'WhenMissing' : 'WhenNull';
-            $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
-            $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\\' . $skip;
-            $attributes[] = sprintf(
-                '#[%s(new %s(skipOnEmpty: new %s()))]',
-                $this->yii3Lib('Validate'),
-                $this->yii3Lib($typeRule, 'Yiisoft\Validator\Rule\\' . $typeRule),
-                $this->yii3Lib($skip, 'Yiisoft\Validator\EmptyCondition\\' . $skip),
+            $attributes[] = $this->yii3RawRule(rule: $typeRule, arguments: [], skip: $skip, ruleImports: $ruleImports);
+        }
+
+        // `EnumTypeCaster` cannot cast a value outside the list, so the hydrator skips the property and
+        // it stays uninitialised — for an OPTIONAL one that reads as "not sent": `?level=nonsense`
+        // answered as if the filter were absent. The raw value is checked against the cases instead.
+        // Strict in a body, which is JSON and says `1`; a parameter arrives as text and says `"1"`.
+        $enum = $this->enumSchemas[ltrim($property['type'], '?')] ?? null;
+        if ($enum !== null) {
+            $values = array_map(
+                static fn(string|int $value): string => var_export($value, true),
+                $enum['values'],
             );
+            $arguments = ['[' . implode(', ', $values) . ']'];
+            if (!$isParameter) {
+                $arguments[] = 'strict: true';
+            }
+            $attributes[] = $this->yii3RawRule(rule: 'In', arguments: $arguments, skip: $skip, ruleImports: $ruleImports);
         }
 
         return $attributes;
+    }
+
+    /**
+     * One `#[Validate]`: hydrator-validator's check of the RAW value, before the hydrator casts it.
+     *
+     * @param array<int, string> $arguments
+     * @param array<int, string> $ruleImports
+     */
+    private function yii3RawRule(string $rule, array $arguments, string $skip, array &$ruleImports): string
+    {
+        $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
+        $ruleImports[] = 'Yiisoft\Validator\Rule\\' . $rule;
+        $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\\' . $skip;
+        $arguments[] = sprintf('skipOnEmpty: new %s()', $this->yii3Lib($skip, 'Yiisoft\Validator\EmptyCondition\\' . $skip));
+
+        return sprintf(
+            '#[%s(new %s(%s))]',
+            $this->yii3Lib('Validate'),
+            $this->yii3Lib($rule, 'Yiisoft\Validator\Rule\\' . $rule),
+            implode(', ', $arguments),
+        );
     }
 
     /**

@@ -526,6 +526,70 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame(['name' => 'field "name" is required.'], $verdict(['count' => 1, 'note' => 'n']));
     }
 
+    public function testAnEnumValueOutsideTheListIsRefused(): void
+    {
+        // `EnumTypeCaster` cannot cast the value, so the property is skipped and stays uninitialised —
+        // which for an OPTIONAL property reads as "not sent": `?shade=nonsense` answered as if the
+        // filter were absent.
+        $namespace = $this->generate([
+            'Probe' => [
+                'type' => 'object',
+                'required' => ['size'],
+                'properties' => [
+                    'size' => ['$ref' => '#/components/schemas/Size'],
+                    'shade' => ['$ref' => '#/components/schemas/Shade'],
+                    'level' => ['$ref' => '#/components/schemas/Level'],
+                ],
+            ],
+            'Size' => ['type' => 'string', 'enum' => ['small', 'large']],
+            'Shade' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+            'Level' => ['type' => 'integer', 'enum' => [0, 1]],
+        ]);
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($namespace . '\Probe', $payload));
+
+        self::assertSame([], $verdict(['size' => 'small', 'shade' => 'azure', 'level' => 1]));
+        self::assertSame([], $verdict(['size' => 'small']));
+        self::assertArrayHasKey('shade', $verdict(['size' => 'small', 'shade' => 'nonsense']));
+        self::assertArrayHasKey('level', $verdict(['size' => 'small', 'level' => 7]));
+        // A body is JSON: the string "1" is not the integer the schema lists.
+        self::assertArrayHasKey('level', $verdict(['size' => 'small', 'level' => '1']));
+        self::assertArrayHasKey('size', $verdict(['size' => 'medium']));
+    }
+
+    public function testAQueryEnumValueOutsideTheListIsRefused(): void
+    {
+        $namespace = $this->generateSpec([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/widgets' => [
+                    'get' => [
+                        'parameters' => [
+                            ['name' => 'withAll', 'in' => 'query', 'schema' => ['type' => 'integer', 'enum' => [0, 1]]],
+                        ],
+                        'responses' => ['204' => ['description' => 'none']],
+                    ],
+                ],
+            ],
+        ]);
+        $class = null;
+        foreach ((array)glob($this->outputDirectory . '/' . $namespace . '/*QueryParams.php') as $file) {
+            if (is_string($file)) {
+                $class = $namespace . '\\' . basename($file, '.php');
+            }
+        }
+        self::assertNotNull($class, 'the operation must produce a parameters class');
+        $verdict = fn(array $query): array => $this->messages(
+            (new Yii3Container())->hydrateValidated(class: $class, payload: [], method: 'GET', query: $query),
+        );
+
+        // A query string carries text, so "1" is the integer 1.
+        self::assertSame([], $verdict(['withAll' => '1']));
+        self::assertSame([], $verdict([]));
+        self::assertArrayHasKey('withAll', $verdict(['withAll' => 'nonsense']));
+        self::assertArrayHasKey('withAll', $verdict(['withAll' => '7']));
+    }
+
     public function testKeysAreWrittenInTheSchemasOrder(): void
     {
         // The properties were declared required-first, and `getData()` follows the declaration.
