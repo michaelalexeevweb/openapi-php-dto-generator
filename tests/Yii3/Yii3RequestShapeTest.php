@@ -329,18 +329,21 @@ final class Yii3RequestShapeTest extends TestCase
         $item = $namespace . '\Item';
         $kind = $namespace . '\Kind';
 
+        // `message` may be null by the schema: left out it is not sent, as in runtime mode, and `null` is
+        // written as `"message": null`. A `null` default could not tell the two apart, and one of them was
+        // always wrong on the wire.
         $built = $envelope::create(success: true, items: [$item::create(name: 'a')], kind: $kind::from('round'));
-
-        // `message` may be null by the schema, so it is written as given — null included, as runtime and
-        // Symfony mode write it. `kind` may not, so a null argument there would have meant "not sent".
-        self::assertTrue($built->isMessageProvided());
-        self::assertSame(['success' => true, 'message' => null, 'items' => [['name' => 'a']], 'kind' => 'round'], $built->getData());
+        self::assertFalse($built->isMessageProvided());
+        self::assertSame(['success' => true, 'items' => [['name' => 'a']], 'kind' => 'round'], $built->getData());
         self::assertTrue((new Yii3Container())->validate($built)->isValid());
 
-        $without = $built->withoutProperty('message');
+        $withNull = $envelope::create(success: true, message: null, items: [], kind: $kind::from('round'));
+        self::assertTrue($withNull->isMessageProvided());
+        self::assertSame(['success' => true, 'message' => null, 'items' => [], 'kind' => 'round'], $withNull->getData());
+
+        $without = $withNull->withoutProperty('message');
         self::assertFalse($without->isMessageProvided());
-        self::assertSame(['success' => true, 'items' => [['name' => 'a']], 'kind' => 'round'], $without->getData());
-        self::assertTrue($built->isMessageProvided(), 'withoutProperty() returns a copy.');
+        self::assertTrue($withNull->isMessageProvided(), 'withoutProperty() returns a copy.');
 
         $noKind = $envelope::create(success: true, items: []);
         self::assertFalse($noKind->isKindProvided());
@@ -495,6 +498,32 @@ final class Yii3RequestShapeTest extends TestCase
             ['city' => $namespace . '\CityIdent', 'region' => $namespace . '\RegionIdent'],
             constant($ident . '::OPENAPI_DISCRIMINATOR_MAPPING'),
         );
+    }
+
+    public function testARequiredValueSentAsNullIsRefused(): void
+    {
+        // The cast turned the null into '' and 0 before any rule saw it, and every rule skipped null:
+        // `{"name": null}` created a record with an empty name.
+        $namespace = $this->generate([
+            'Probe' => [
+                'type' => 'object',
+                'required' => ['name', 'count', 'note'],
+                'properties' => [
+                    'name' => ['type' => 'string'],
+                    'count' => ['type' => 'integer'],
+                    'note' => ['type' => 'string', 'nullable' => true],
+                    'label' => ['type' => 'string'],
+                ],
+            ],
+        ]);
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($namespace . '\Probe', $payload));
+
+        self::assertSame([], $verdict(['name' => 'a', 'count' => 1, 'note' => null]));
+        self::assertArrayHasKey('name', $verdict(['name' => null, 'count' => 1, 'note' => 'n']));
+        self::assertArrayHasKey('count', $verdict(['name' => 'a', 'count' => null, 'note' => 'n']));
+        self::assertArrayHasKey('label', $verdict(['name' => 'a', 'count' => 1, 'note' => 'n', 'label' => null]));
+        // A missing key is still reported once, by the interpreter.
+        self::assertSame(['name' => 'field "name" is required.'], $verdict(['count' => 1, 'note' => 'n']));
     }
 
     public function testKeysAreWrittenInTheSchemasOrder(): void

@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 34179 lines
+# yii3 mode — 80 files, 34231 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -136,6 +136,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -191,7 +192,7 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $test2;
 
     public function getTest2(): string
@@ -201,9 +202,9 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $test2,
@@ -514,6 +515,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -569,7 +571,7 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $test;
 
     public function getTest(): string
@@ -579,9 +581,9 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $test,
@@ -892,6 +894,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -949,7 +952,7 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $message;
 
     public function getMessage(): string
@@ -959,9 +962,9 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $message,
@@ -1273,6 +1276,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -1335,11 +1339,11 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $idPatchTest2;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $namePatchTest2;
 
     public function getIdPatchTest2(): int
@@ -1354,9 +1358,9 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $idPatchTest2,
@@ -1673,6 +1677,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -1738,15 +1743,15 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $idPostTest2;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $namePostTest2;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $surnamePostTest2;
 
     public function getIdPostTest2(): int
@@ -1766,9 +1771,9 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $idPostTest2,
@@ -2089,6 +2094,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -2146,7 +2152,7 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $message;
 
     public function getMessage(): string
@@ -2156,9 +2162,9 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $message,
@@ -2472,6 +2478,7 @@ use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -2552,12 +2559,12 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
     #[Request('actionId')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $actionId;
 
     #[Query('page')]
@@ -2607,9 +2614,9 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $id,
@@ -2976,6 +2983,7 @@ use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -3056,12 +3064,12 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
     #[Request('actionId')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $actionId;
 
     #[Query('page')]
@@ -3111,9 +3119,9 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $id,
@@ -3480,6 +3488,7 @@ use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -3560,12 +3569,12 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
     #[Request('tagId')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $tagId;
 
     #[Query('page')]
@@ -3615,9 +3624,9 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $id,
@@ -3984,6 +3993,7 @@ use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -4064,12 +4074,12 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
     #[Request('tagId')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $tagId;
 
     #[Query('page')]
@@ -4119,9 +4129,9 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $id,
@@ -4487,6 +4497,7 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -4548,7 +4559,7 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
     public function getId(): string
@@ -4558,9 +4569,9 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $id,
@@ -4873,6 +4884,7 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -4934,7 +4946,7 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Uuid(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
     public function getId(): string
@@ -4944,9 +4956,9 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $id,
@@ -5321,9 +5333,9 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         UploadedFileInterface $file,
@@ -5607,6 +5619,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -5664,7 +5677,7 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[BooleanValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new BooleanValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new BooleanValue(skipOnEmpty: new WhenMissing()))]
     public readonly bool $accepted;
 
     public function getAccepted(): bool
@@ -5674,9 +5687,9 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         bool $accepted,
@@ -5987,6 +6000,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -6044,7 +6058,7 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $reason;
 
     public function getReason(): string
@@ -6054,9 +6068,9 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $reason,
@@ -6367,6 +6381,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -6424,7 +6439,7 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $message;
 
     public function getMessage(): string
@@ -6434,9 +6449,9 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $message,
@@ -6748,6 +6763,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -6806,7 +6822,7 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $callbackUrl;
 
     public function getCallbackUrl(): string
@@ -6816,9 +6832,9 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $callbackUrl,
@@ -7129,6 +7145,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -7188,7 +7205,7 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[BooleanValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new BooleanValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new BooleanValue(skipOnEmpty: new WhenMissing()))]
     public readonly bool $ok;
 
     public function getOk(): bool
@@ -7198,9 +7215,9 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         bool $ok,
@@ -7587,9 +7604,9 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?bool $legacyFlag = null,
@@ -7937,6 +7954,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -7997,7 +8015,7 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $payload;
 
     public function getPayload(): string
@@ -8007,9 +8025,9 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $payload,
@@ -8320,6 +8338,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -8377,7 +8396,7 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[BooleanValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new BooleanValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new BooleanValue(skipOnEmpty: new WhenMissing()))]
     public readonly bool $ok;
 
     public function getOk(): bool
@@ -8387,9 +8406,9 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         bool $ok,
@@ -8700,6 +8719,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -8757,7 +8777,7 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $row;
 
     public function getRow(): string
@@ -8767,9 +8787,9 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $row,
@@ -9081,6 +9101,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -9139,7 +9160,7 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $payload;
 
     public function getPayload(): string
@@ -9149,9 +9170,9 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $payload,
@@ -9463,6 +9484,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -9521,7 +9543,7 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $field;
 
     public function getField(): string
@@ -9531,9 +9553,9 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $field,
@@ -9845,6 +9867,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -9903,7 +9926,7 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $element;
 
     public function getElement(): string
@@ -9913,9 +9936,9 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $element,
@@ -10323,9 +10346,9 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<int> $matrixIds
      * @param array<string> $labelIds
@@ -10978,9 +11001,9 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param ?array<int> $exploded
      * @param ?array<string> $joined
@@ -11594,9 +11617,9 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?DateTimeImmutable $since = null,
@@ -12035,9 +12058,9 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?string $cursor = null,
@@ -12387,6 +12410,7 @@ use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -12456,7 +12480,7 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
 
     #[Request('tenant')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $tenant;
 
     #[Query('region')]
@@ -12498,9 +12522,9 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $tenant,
@@ -12862,6 +12886,7 @@ use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\Query;
 use Yiisoft\Input\Http\Attribute\Parameter\Request;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -12940,7 +12965,7 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
 
     #[Request('tenant')]
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $tenant;
 
     #[Query('region')]
@@ -12996,9 +13021,9 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $tenant,
@@ -13784,9 +13809,9 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<array<string, mixed>> $mustContain
      */
@@ -14546,9 +14571,9 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?string $label = null,
@@ -15038,9 +15063,9 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?string $trigger = null,
@@ -15508,9 +15533,9 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?string $trigger = null,
@@ -15888,6 +15913,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -15962,13 +15988,13 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $plain;
 
     #[Data('it\'s')]
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 2, skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $itS;
 
     #[Data('back\\\slash')]
@@ -16016,9 +16042,9 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $plain,
@@ -16384,6 +16410,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -16442,7 +16469,7 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $state;
 
     public function getState(): string
@@ -16452,9 +16479,9 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $state,
@@ -16766,6 +16793,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -16824,7 +16852,7 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $failure;
 
     public function getFailure(): string
@@ -16834,9 +16862,9 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $failure,
@@ -17147,6 +17175,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -17205,11 +17234,11 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $meow;
 
     public function getName(): string
@@ -17224,9 +17253,9 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $name,
@@ -17543,6 +17572,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\Collection;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -17608,7 +17638,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 3, skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $code;
 
     /** @var ?array<ChainTag> */
@@ -17635,9 +17665,9 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param ?array<ChainTag> $tags
      */
@@ -18064,9 +18094,9 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<ChainLink> $links
      */
@@ -18382,6 +18412,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -18439,7 +18470,7 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 2, skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $label;
 
     public function getLabel(): string
@@ -18449,9 +18480,9 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $label,
@@ -18762,6 +18793,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -18821,11 +18853,11 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $kind;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $radius;
 
     public function getKind(): string
@@ -18840,9 +18872,9 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $kind,
@@ -19313,9 +19345,9 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<array<string>> $listOfLists
      * @param ?array<array<string, mixed>> $listOfMaps
@@ -19977,9 +20009,9 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<string> $dates
      * @param ?array<string, string> $datesByDay
@@ -20895,6 +20927,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -20969,7 +21002,7 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
     public readonly ?string $name;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     public function getType(): DiscriminatorType
@@ -20989,9 +21022,9 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         DiscriminatorType $type,
@@ -21348,6 +21381,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -21425,12 +21459,12 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
     public readonly ?string $name;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[Data('NAme')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $nAme2;
 
     public function getType(): DiscriminatorType
@@ -21455,9 +21489,9 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         DiscriminatorType $type,
@@ -21837,6 +21871,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -21895,11 +21930,11 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $bark;
 
     public function getName(): string
@@ -21914,9 +21949,9 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $name,
@@ -22232,6 +22267,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -22290,11 +22326,11 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $bark;
 
     public function getName(): string
@@ -22309,9 +22345,9 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $name,
@@ -22630,6 +22666,7 @@ use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Input\Http\Attribute\Parameter\UploadedFiles;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -22694,11 +22731,11 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
     public readonly UploadedFileInterface $file;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $surname;
 
     public function getFile(): UploadedFileInterface
@@ -22718,9 +22755,9 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         UploadedFileInterface $file,
@@ -23170,9 +23207,9 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<int> $scores
      * @param ?array<string, int> $scoresByKey
@@ -23999,9 +24036,9 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<array<int>> $matrix
      * @param array<array<string, string>> $rowsOfMaps
@@ -24730,9 +24767,9 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<?string> $listOfNullable
      * @param ?array<string, ?int> $mapOfNullable
@@ -25210,6 +25247,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -25303,7 +25341,7 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $kind;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -25343,9 +25381,9 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $kind,
@@ -25815,6 +25853,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -25870,7 +25909,7 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     public function getName(): string
@@ -25880,9 +25919,9 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $name,
@@ -26195,6 +26234,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -26281,7 +26321,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     public readonly ?int $serverId;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $title;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
@@ -26335,9 +26375,9 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $title,
@@ -26726,6 +26766,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -26783,7 +26824,7 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $legacyId;
 
     public function getLegacyId(): int
@@ -26793,9 +26834,9 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $legacyId,
@@ -27138,6 +27179,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -27197,11 +27239,11 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $kind;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $side;
 
     public function getKind(): string
@@ -27216,9 +27258,9 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $kind,
@@ -27534,6 +27576,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -27593,11 +27636,11 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     public function getId(): int
@@ -27612,9 +27655,9 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $id,
@@ -27930,6 +27973,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -27985,7 +28029,7 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     public function getId(): int
@@ -27995,9 +28039,9 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $id,
@@ -28309,6 +28353,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\Collection;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -28392,11 +28437,11 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     /** @var array<Tag> */
@@ -28457,9 +28502,9 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<Tag> $tags
      */
@@ -28953,9 +28998,9 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         ?string $region = null,
@@ -29295,6 +29340,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -29358,15 +29404,15 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $surname;
 
     public function getId(): int
@@ -29386,9 +29432,9 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $id,
@@ -29710,6 +29756,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -29813,11 +29860,11 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     public readonly int|string $code;
@@ -29870,9 +29917,9 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $id,
@@ -30459,6 +30506,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -30612,7 +30660,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 1, skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $label;
 
     /** @var array<string, mixed> */
@@ -30631,9 +30679,9 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<string, mixed> $children
      */
@@ -31405,9 +31453,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         TreeNode $tree,
@@ -32082,9 +32130,9 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param array<string> $tags
      */
@@ -32535,6 +32583,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -32680,11 +32729,11 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     /** @var Animal2|array<string, mixed> */
@@ -32720,9 +32769,9 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      *
      * @param ?Animal2 $pet
      */
@@ -33158,6 +33207,7 @@ use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -33234,11 +33284,11 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Integer(skipOnEmpty: new WhenNull())]
-    #[Validate(new Integer(skipOnEmpty: new WhenNull()))]
+    #[Validate(new Integer(skipOnEmpty: new WhenMissing()))]
     public readonly int $id;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[Nested(skipOnEmpty: new WhenNull())]
@@ -33270,9 +33320,9 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         int $id,
@@ -33621,6 +33671,7 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -33688,19 +33739,19 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $meow;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $bark;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $test;
 
     public function getName(): string
@@ -33725,9 +33776,9 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $name,
@@ -34054,6 +34105,7 @@ use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Input\Http\Attribute\Data\FromBody;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -34112,7 +34164,7 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $orderId;
 
     public function getOrderId(): string
@@ -34122,9 +34174,9 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
      */
     public static function create(
         string $orderId,

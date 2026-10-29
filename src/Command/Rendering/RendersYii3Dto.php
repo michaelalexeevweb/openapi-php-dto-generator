@@ -379,6 +379,7 @@ trait RendersYii3Dto
             'libReflectionProperty' => $this->yii3Lib('ReflectionProperty'),
             'libBackedEnum' => $this->yii3Lib('BackedEnum'),
             'libDateTimeInterface' => $this->yii3Lib('DateTimeInterface'),
+            'libStdClass' => $this->yii3Lib('stdClass', 'stdClass'),
             // Only the class branch of the template; the interface branch is entered above.
             'unionMembers' => null,
             'discriminatorProperty' => null,
@@ -396,6 +397,7 @@ trait RendersYii3Dto
      *     tracksPresence: bool, propertyType: string, name: string, openApiName: string,
      *     getter: string, getterType: string, payloadValue: string, getterValue: string,
      *     getterDocType: string|null, default: string|null, createType: string, createValue: string,
+     *     createDocType: string|null, createMarker: bool, createMarkerType: string|null,
      *     providedGetter: string, writeOnly: bool, temporalFormat: string|null}
      */
     private function renderYii3Parameter(
@@ -621,6 +623,20 @@ trait RendersYii3Dto
             }
         }
 
+        // An optional property the SCHEMA lets be null has two things to say a `null` default cannot tell
+        // apart: `"photo": null` (code written for runtime mode passes `photo: null` meaning exactly that)
+        // and no key at all (`create(success: true)` with no `message`, which runtime mode never wrote).
+        // Its default is therefore a fresh `stdClass` — a value no such property can hold, and no class of
+        // ours: left out, the key stays absent; `null` is written. The docblock keeps the real type.
+        $createType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType;
+        $createMarker = $schemaNullable && !$this->propertyIsRequiredOnInput($property);
+        $createMarkerType = null;
+        if ($createMarker) {
+            $useStatements[] = 'stdClass';
+            $createMarkerType = (str_starts_with($createType, '?') ? substr($createType, 1) . '|null' : $createType)
+                . '|' . $this->yii3Lib('stdClass', 'stdClass');
+        }
+
         return [
             'attributes' => $attributes,
             'declaration' => 'public readonly ' . $propertyType . ' $' . $property['name'] . ';',
@@ -637,13 +653,12 @@ trait RendersYii3Dto
             // What an absent key reads as: the schema `default`, as every other mode gives it.
             'default' => $default,
             // `create()` takes what the getter hands out, and stores what the property holds.
-            'createType' => $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType,
-            'createDocType' => $createDocType ?? $getterDocType,
+            'createType' => $createType,
+            // Set wherever the getter's docblock is: a container, a union, a list of enum members.
+            'createDocType' => $createMarker ? ($createDocType ?? $createType) : $createDocType,
             'createValue' => $createValue,
-            // A property the SCHEMA lets be null is written whatever `create()` is given, null included —
-            // runtime and Symfony mode write it so, and code built for them passes `photo: null` meaning
-            // `"photo": null`. Only where null is not a legal value does a null argument mean "not sent".
-            'createAlwaysWrites' => $schemaNullable && !$this->propertyIsRequiredOnInput($property),
+            'createMarker' => $createMarker,
+            'createMarkerType' => $createMarkerType,
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
             'writeOnly' => ($property['writeOnly'] ?? false) === true || ($property['readOnly'] ?? false) === true,
             'temporalFormat' => $this->yii3TemporalFormat($property, $propertyType),
@@ -859,13 +874,21 @@ trait RendersYii3Dto
             || ($property['inHeader'] ?? false) === true
             || ($property['inCookie'] ?? false) === true;
         if ($typeRule !== null && $this->yii3TypeRuleApplies($property) && !($isParameter && $typeRule === 'BooleanValue')) {
+            // A REQUIRED property the schema does not let be null is declared non-nullable, and the cast
+            // turns a null into `''` or 0 before anything else sees it — `{"name": null}` created a record
+            // with an empty name, every rule having skipped the null. Here only a MISSING key is skipped
+            // (the interpreter reports that one), so the raw null is refused. An optional property is
+            // nullable in PHP and keeps its null, which the interpreter refuses itself.
+            $refusesNull = $this->propertyIsRequiredOnInput($property)
+                && !($property['schemaNullable'] ?? $property['nullable']);
+            $skip = $refusesNull ? 'WhenMissing' : 'WhenNull';
             $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
-            $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\WhenNull';
+            $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\\' . $skip;
             $attributes[] = sprintf(
                 '#[%s(new %s(skipOnEmpty: new %s()))]',
                 $this->yii3Lib('Validate'),
                 $this->yii3Lib($typeRule, 'Yiisoft\Validator\Rule\\' . $typeRule),
-                $this->yii3Lib('WhenNull'),
+                $this->yii3Lib($skip, 'Yiisoft\Validator\EmptyCondition\\' . $skip),
             );
         }
 

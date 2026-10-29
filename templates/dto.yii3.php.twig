@@ -151,9 +151,9 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
 
     /**
      * The object built in code — a response, or a value to nest. The hydrator never calls this; it fills
-     * the properties itself. A property the schema lets be null is written whatever it is given, null
-     * included; `withoutProperty()` leaves one out. Any other optional argument left `null` is NOT SENT:
-     * its property stays absent, as when a payload lacks the key.
+     * the properties itself. An optional argument left out is NOT SENT: its property stays absent, as when
+     * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
+     * anywhere else `null` means "not sent" too.
 {% set docParams = params|filter(param => param.createDocType is not null) %}
 {% if docParams is not empty %}
      *
@@ -167,12 +167,20 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
         {{ param.createType }} ${{ param.name }},
 {% endfor %}
 {% for param in params|filter(param => param.tracksPresence) %}
+{% if param.createMarker %}
+        {{ param.createMarkerType }} ${{ param.name }} = new {{ libStdClass }}(),
+{% else %}
         {{ param.createType }} ${{ param.name }} = null,
+{% endif %}
 {% endfor %}
     ): self {
         ${{ createVariable }} = new self();
 {% for param in params %}
-{% if param.tracksPresence and not param.createAlwaysWrites %}
+{% if param.createMarker %}
+        if (!${{ param.name }} instanceof {{ libStdClass }}) {
+            ${{ createVariable }}->{{ param.name }} = {{ param.createValue|raw }};
+        }
+{% elseif param.tracksPresence %}
         if (${{ param.name }} !== null) {
             ${{ createVariable }}->{{ param.name }} = {{ param.createValue|raw }};
         }

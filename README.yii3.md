@@ -343,26 +343,25 @@ typo or a wrong type is caught by the IDE and PHPStan:
 ```php
 $response = PersonView::create(
     name: $name,
-    photo: $photoOrNull,              // `nullable: true` — written as given, `"photo": null` included
+    photo: $photoOrNull,              // `nullable: true` — passed null, it is written as `"photo": null`
     kind: PersonKind::Guest,          // enums, dates and nested objects as the getters return them
     tags: [Tag::create(name: 'a')],   // a list, or a map, of objects built beforehand is kept
-    // any other optional argument left out — or passed null — is "not sent"
+    // an optional argument left out is "not sent": its key is not written
 );
-
-$response = $response->withoutProperty('photo');   // leave a nullable one out after all
 ```
 
-Required properties are the leading arguments, optional ones follow with a `null` default. What a `null`
-argument means depends on the schema:
+Required properties are the leading arguments, optional ones follow. What an optional argument means:
 
-| the property | `null` given, or the argument left out |
-|---|---|
-| `nullable: true` | written as `null` — what runtime and Symfony mode write |
-| not nullable | "not sent": the key is left out, since `null` is not a value it may have |
+| the property | left out | passed `null` |
+|---|---|---|
+| `nullable: true` | not sent | written as `null` |
+| not nullable | not sent | not sent — `null` is not a value it may have |
 
-So a nullable property is always on the wire; `withoutProperty('<openapi name>')` returns a copy without
-it. `withProvided('<openapi name>')` is the opposite for a property that is not nullable — a copy with it
-sent as `null`, which the schema refuses, so it is for a payload meant to fail.
+That is runtime mode's behaviour. A `null` default could not tell the first row's two columns apart, so a
+nullable argument defaults to a fresh `stdClass` instead — a value no such property can hold, and no
+class of this package; the docblock keeps the real type (`@param ?string $photo`). Two helpers return a
+copy: `withoutProperty('<openapi name>')` without a key, and `withProvided('<openapi name>')` with a key
+sent as `null` — for a property that is not nullable that is a payload meant to fail.
 
 Building from an array through the hydrator still works, keyed by the OpenAPI names (`first_name`, not
 `firstName`). Two things to know about that path:

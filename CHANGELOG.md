@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.110 — 2026-10-29
+
+- yii3 required null refused
+- yii3 `create()` tells left out from null
+
+yii3 mode:
+
+- a REQUIRED property the schema does not let be null took `null`: the cast turned it into `''` or `0`
+  before any rule saw it, and every rule skipped null — `{"name": null}` created a record with an empty
+  name. The raw check skips only a missing key now, so the null is refused.
+- since 2.15.106 `create()` wrote a nullable optional property as `null` even when the argument was left
+  out — `create(success: true)` sent `"message": null`, which runtime mode never wrote. Such an argument
+  defaults to a fresh `stdClass`, a value the property cannot hold: left out, the key is not written;
+  `null`, it is written as `null`.
+
 ## 2.15.109 — 2026-10-28
 
 - yii3 union interface is a data set
