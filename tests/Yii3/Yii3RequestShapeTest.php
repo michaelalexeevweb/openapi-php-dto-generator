@@ -389,6 +389,118 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertFalse($container->validate($board::create(byId: ['k' => $detail::create(id: 0)]))->isValid());
     }
 
+    public function testAMapOfObjectsIsBuiltTheWayTheReadmeSays(): void
+    {
+        // No attribute builds a map — `#[Collection]` renumbers the keys — so README.yii3 has the reader
+        // build the values with the same hydrator. This is that recipe, run.
+        $namespace = $this->generate([
+            'Board' => [
+                'type' => 'object',
+                'properties' => [
+                    'byId' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Detail']],
+                ],
+            ],
+            'Detail' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]],
+        ]);
+        $detail = $namespace . '\Detail';
+        $container = new Yii3Container();
+        $hydrator = $container->hydrator();
+        $input = $container->hydrate($namespace . '\Board', ['byId' => ['first' => ['id' => 1], 'second' => ['id' => 2]]]);
+
+        $byId = array_map(
+            static fn(object|array $item): object => $item instanceof $detail ? $item : $hydrator->create($detail, $item),
+            $input->getById() ?? [],
+        );
+
+        self::assertSame(['first', 'second'], array_keys($byId));
+        self::assertContainsOnlyInstancesOf($detail, $byId);
+        self::assertSame(2, $byId['second']->getId());
+    }
+
+    public function testANullableReferenceInsideAUnionMemberTakesNull(): void
+    {
+        // OpenAPI 3.0 writes a nullable reference as `nullable: true` beside `allOf: [$ref]`. A union is
+        // checked as an array against its member's schema, and there the `nullable` was lost: a member
+        // built with a null person failed "must be of type object".
+        $namespace = $this->generate([
+            'Shelf' => [
+                'type' => 'object',
+                'required' => ['folders'],
+                'properties' => [
+                    'folders' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Folder']],
+                ],
+            ],
+            'Folder' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string']],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => ['plain' => '#/components/schemas/PlainFolder']],
+            ],
+            'PlainFolder' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Folder'],
+                [
+                    'type' => 'object',
+                    'required' => ['owner'],
+                    'properties' => [
+                        'owner' => ['nullable' => true, 'allOf' => [['$ref' => '#/components/schemas/Person']]],
+                    ],
+                ],
+            ]],
+            'Person' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']]],
+        ], openApiVersion: '3.0.3');
+        $shelf = $namespace . '\Shelf';
+        $plain = $namespace . '\PlainFolder';
+        $kind = ($namespace . '\FolderKind');
+        $container = new Yii3Container();
+
+        $folder = $plain::create(kind: ($namespace . '\FolderKind')::from('plain'), owner: null);
+        self::assertSame([], $this->messages($container->validate($shelf::create(folders: [$folder]))));
+        self::assertSame([], $this->messages($container->validate($container->hydrate($shelf, ['folders' => [['kind' => 'plain', 'owner' => null]]]))));
+        // …and the reference is still checked when it is there.
+        self::assertNotSame([], $this->messages($container->validate($container->hydrate($shelf, ['folders' => [['kind' => 'plain', 'owner' => []]]]))));
+    }
+
+    public function testAUnionInterfaceDeclaresTheGettersItsMembersShare(): void
+    {
+        // Code typed by the interface could only reach a member's value through `getPropertyValue()`.
+        $namespace = $this->generate([
+            'Event' => [
+                'type' => 'object',
+                'required' => ['uuid', 'kind'],
+                'properties' => [
+                    'uuid' => ['type' => 'string', 'format' => 'uuid'],
+                    'kind' => ['type' => 'string', 'enum' => ['ping', 'pong']],
+                    'note' => ['type' => 'string'],
+                ],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'ping' => '#/components/schemas/PingEvent',
+                    'pong' => '#/components/schemas/PongEvent',
+                ]],
+            ],
+            'PingEvent' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Event'],
+                ['type' => 'object', 'properties' => ['delay' => ['type' => 'integer']]],
+            ]],
+            'PongEvent' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Event'],
+                ['type' => 'object', 'properties' => ['delay' => ['type' => 'string']]],
+            ]],
+        ]);
+        $event = new ReflectionClass($namespace . '\Event');
+        $kind = $namespace . '\EventKind';
+
+        $methods = array_map(static fn(ReflectionMethod $method): string => $method->getName(), $event->getMethods());
+        self::assertContains('getUuid', $methods);
+        self::assertContains('getKind', $methods);
+        self::assertContains('getNote', $methods);
+        // `delay` is an integer in one member and a string in the other: no signature fits both.
+        self::assertNotContains('getDelay', $methods);
+
+        $ping = ($namespace . '\PingEvent')::create(uuid: 'b7c4f0e2-6a1d-4c3e-9f2a-1d2e3f4a5b6c', kind: $kind::from('ping'));
+        self::assertInstanceOf($event->getName(), $ping);
+        self::assertSame('b7c4f0e2-6a1d-4c3e-9f2a-1d2e3f4a5b6c', $ping->getUuid());
+    }
+
     public function testAValueTypedByAUnionIsReadAndChecked(): void
     {
         // A union is an interface, which the hydrator cannot build: a request carrying one was refused
@@ -554,6 +666,30 @@ final class Yii3RequestShapeTest extends TestCase
         // A body is JSON: the string "1" is not the integer the schema lists.
         self::assertArrayHasKey('level', $verdict(['size' => 'small', 'level' => '1']));
         self::assertArrayHasKey('size', $verdict(['size' => 'medium']));
+    }
+
+    public function testADateThatDoesNotParseIsRefused(): void
+    {
+        // `#[ToDateTime]` that parses nothing leaves the property uninitialised — for an OPTIONAL one that
+        // reads as "not sent", and `{"begin": "nonsense"}` answered as if there were no filter.
+        $namespace = $this->generate([
+            'Range' => [
+                'type' => 'object',
+                'required' => ['at'],
+                'properties' => [
+                    'at' => ['type' => 'string', 'format' => 'date-time'],
+                    'begin' => ['type' => 'string', 'format' => 'date'],
+                    'opens' => ['type' => 'string', 'format' => 'time'],
+                ],
+            ],
+        ]);
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($namespace . '\Range', $payload));
+
+        self::assertSame([], $verdict(['at' => '2026-03-10T08:00:00+00:00', 'begin' => '2026-03-10', 'opens' => '08:30:00+00:00']));
+        self::assertSame([], $verdict(['at' => '2026-03-10T08:00:00.250000+00:00']));
+        self::assertArrayHasKey('begin', $verdict(['at' => '2026-03-10T08:00:00+00:00', 'begin' => 'nonsense']));
+        self::assertArrayHasKey('opens', $verdict(['at' => '2026-03-10T08:00:00+00:00', 'opens' => 'noon']));
+        self::assertArrayHasKey('at', $verdict(['at' => 'tomorrow']));
     }
 
     public function testAQueryEnumValueOutsideTheListIsRefused(): void

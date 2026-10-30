@@ -4096,7 +4096,39 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        return $schema;
+        return $this->foldNullableReferenceAllOf($schema);
+    }
+
+    /**
+     * OpenAPI 3.0 has no nullable `$ref`, so a document writes one as `nullable: true` beside a
+     * one-branch `allOf` — and the generator reads it that way, declaring the property `?Person`. Once
+     * the branch is inlined, though, `nullable` sat one level above the `type: object` it was meant to
+     * relax: the null passed the outer schema and failed the branch, "must be of type object". The
+     * branch is lifted next to its `nullable`, where it means what the document meant. Only an inlined
+     * branch, and only when no keyword appears on both levels — anything else stays as written.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function foldNullableReferenceAllOf(array $schema): array
+    {
+        $allOf = $schema['allOf'] ?? null;
+        if (($schema['nullable'] ?? false) !== true || !is_array($allOf) || count($allOf) !== 1) {
+            return $schema;
+        }
+        $branch = $allOf[array_key_first($allOf)];
+        if (!is_array($branch) || array_key_exists('$ref', $branch)) {
+            return $schema;
+        }
+
+        $outer = [];
+        foreach ($schema as $keyword => $value) {
+            if ($keyword !== 'allOf') {
+                $outer[$keyword] = $value;
+            }
+        }
+
+        return array_intersect_key($branch, $outer) === [] ? [...$outer, ...$branch] : $schema;
     }
 
     /**

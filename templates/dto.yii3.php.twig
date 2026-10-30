@@ -55,6 +55,15 @@ interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 {% endfor %}
     ];
 {% endif %}
+{% for getter in interfaceGetters %}
+{% if not loop.first or discriminatorMapping is not empty %}
+
+{% endif %}
+{% if getter.docType is not null %}
+    /** @return {{ getter.docType }} */
+{% endif %}
+    public function {{ getter.getter }}(): {{ getter.getterType }};
+{% endfor %}
 }
 {% else %}
 {% for import in imports %}

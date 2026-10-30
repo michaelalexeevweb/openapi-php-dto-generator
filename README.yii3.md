@@ -380,6 +380,21 @@ keys — so after hydration it holds the decoded arrays, and after `create()` th
 is declared `array<string, Detail|array<string, mixed>>` for that reason; `create()` takes
 `array<string, Detail>`. Its values are validated either way.
 
+Yii3 has no attribute that builds a map: `#[Collection]` appends (`$collection[] = …`), and a resolver of
+your own cannot be named on a generated property. Build the values where you read them — the hydrator
+that built the input builds them, and `array_map()` keeps the keys:
+
+```php
+$byId = array_map(
+    static fn(Detail|array $detail): Detail => $detail instanceof Detail
+        ? $detail
+        : $hydrator->create(Detail::class, $detail),
+    $input->getById() ?? [],
+);
+```
+
+The values were already validated with the input, so a plain `Hydrator` is enough here.
+
 ### A union: `oneOf`, `anyOf` and a discriminated `allOf` base
 
 A union is an INTERFACE here, as in Symfony mode, and its members implement it — an `allOf` variant too:
@@ -390,6 +405,10 @@ property typed by one is declared `Report|array`:
   discriminator names (or against every member of a `oneOf`) — `getMeta()` hands you that array; build
   the member yourself when you need the object: `$hydrator->create(AlphaReport::class, $input->getMeta())`;
 - `create()` takes the member object, `AlphaReport::create(...)`.
+
+The interface declares the getters its members share — same name, same type in every one — so code
+typed by it reads `$event->getUuid()` directly. A property whose type differs between members is left
+to the member.
 
 The same holds for the items of a list or map of a union.
 
@@ -472,7 +491,11 @@ was sent.
   skipped property is indistinguishable from one the payload never carried — for an OPTIONAL property
   the value was simply lost and the request answered as if it had no filter. Every enum property
   therefore carries `#[Validate(new In([...]))]`, a check of the RAW value before the cast: strict in a
-  body, which is JSON, lenient for a parameter, which arrives as text (`?level=1`);
+  body, which is JSON, lenient for a parameter, which arrives as text (`?level=1`). A date the
+  hydrator cannot parse was lost the same way, and is checked the same way — against the formats
+  `#[ToDateTime]` is given, with Yii's "must be a date" message;
+- **a map of objects in a PAYLOAD is held as the decoded arrays** — `#[Collection]` would renumber
+  the keys; see [A map of objects](#a-map-of-objects) for building them;
 - **a union in a PAYLOAD is held as the decoded array**, not built — a `oneOf`/`anyOf` and an `allOf`
   discriminated base alike. The hydrator casts to the DECLARED type, an interface it cannot instantiate,
   so the property is `Union|array` and the interpreter checks the array — see

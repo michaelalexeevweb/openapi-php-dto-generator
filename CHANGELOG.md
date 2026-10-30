@@ -3,6 +3,31 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.112 — 2026-10-30
+
+- yii3 unparsable date refused
+- yii3 union interface getters
+- nullable `allOf` reference takes null
+- yii3 map recipe documented
+
+yii3 mode:
+
+- a date `#[ToDateTime]` could not parse left the property unset, so an OPTIONAL one read as "not
+  sent" — `{"begin": "nonsense"}` answered as if there were no filter. A raw check against the same
+  formats refuses it now.
+- a union interface declares the getters every member shares with the same signature; code typed by
+  the interface no longer needs `getPropertyValue()`.
+- a map of objects in a payload stays the decoded arrays: Yii3 has no attribute that builds a map, and
+  `#[Collection]` renumbers the keys. README.yii3 "A map of objects" shows building the values with the
+  same hydrator, keys kept; listed under Divergences.
+
+All modes:
+
+- `nullable: true` beside a one-branch `allOf` — how OpenAPI 3.0 writes a nullable `$ref` — was lost
+  where the reference is inlined into a container's or a union member's checks: `null` passed the
+  outer schema and failed the branch, "must be of type object". The branch is lifted beside its
+  `nullable` now.
+
 ## 2.15.111 — 2026-10-29
 
 - yii3 enum outside list refused

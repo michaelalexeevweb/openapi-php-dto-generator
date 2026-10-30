@@ -1039,6 +1039,34 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * OpenAPI 3.0 has no nullable `$ref`; a document writes one as `nullable: true` beside a one-branch
+     * `allOf`. Where the reference is inlined — two containers down, nothing materializes — the
+     * `nullable` stayed above the branch, and the branch refused the null it was meant to admit.
+     */
+    #[DataProvider('everyMode')]
+    public function testANullableAllOfReferenceAdmitsNullWhereItIsInlined(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec([
+            'type' => 'array',
+            'items' => ['type' => 'array', 'items' => ['nullable' => true, 'allOf' => [['$ref' => '#/components/schemas/Person']]]],
+        ]);
+        $spec['openapi'] = '3.0.3';
+        $spec['components']['schemas']['Person'] = ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']]];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'nullable-allof-ref', '{"f":[[null, {"name":"a"}]]}', '{"f":[[{}]]}'),
+        );
+    }
+
+    public static function everyMode(): iterable
+    {
+        foreach (GenerationMode::cases() as $mode) {
+            yield $mode->value => [$mode];
+        }
+    }
+
+    /**
      * laravel-data reports an object-level error under a usable key, without a leading space.
      */
     public function testLaravelDataKeysObjectLevelErrors(): void

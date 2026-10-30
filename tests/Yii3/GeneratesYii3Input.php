@@ -45,10 +45,10 @@ trait GeneratesYii3Input
     /**
      * @param array<string, mixed> $schemas
      */
-    private function generate(array $schemas): string
+    private function generate(array $schemas, string $openApiVersion = '3.1.0'): string
     {
         return $this->generateSpec([
-            'openapi' => '3.1.0',
+            'openapi' => $openApiVersion,
             'info' => ['title' => 'T', 'version' => '1.0.0'],
             'components' => ['schemas' => $schemas],
         ]);

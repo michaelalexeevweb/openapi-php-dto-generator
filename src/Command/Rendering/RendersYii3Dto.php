@@ -902,6 +902,32 @@ trait RendersYii3Dto
             $attributes[] = $this->yii3RawRule(rule: 'In', arguments: $arguments, skip: $skip, ruleImports: $ruleImports);
         }
 
+        // The same loss for a date: `#[ToDateTime]` that parses nothing leaves the property uninitialised,
+        // and `{"begin": "nonsense"}` read as "no filter". The raw string is checked against the formats
+        // the hydrator is told to parse — one rule for `date`, any of them for the others.
+        $temporalFormat = is_string($format) && array_key_exists($format, self::YII3_TEMPORAL_WIRE_FORMATS)
+            ? $format
+            : 'date-time';
+        if (ltrim($property['type'], '?') === 'DateTimeImmutable') {
+            $dateRule = self::YII3_FORMAT_RULES[$temporalFormat];
+            $ruleImports[] = 'Yiisoft\Validator\Rule\Date\\' . $dateRule;
+            $parsers = array_map(
+                fn(string $wireFormat): string => sprintf("new %s(format: 'php:%s')", $this->yii3Lib($dateRule, 'Yiisoft\Validator\Rule\Date\\' . $dateRule), $wireFormat),
+                self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat],
+            );
+            $attributes[] = count($parsers) === 1
+                ? $this->yii3RawRule(rule: $dateRule, arguments: ["format: 'php:" . self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat][0] . "'"], skip: $skip, ruleImports: $ruleImports)
+                : $this->yii3RawRule(
+                    rule: 'AnyRule',
+                    arguments: [
+                        '[' . implode(', ', $parsers) . ']',
+                        sprintf("message: '{Property} must be a %s.'", $temporalFormat === 'time' ? 'time' : 'date'),
+                    ],
+                    skip: $skip,
+                    ruleImports: $ruleImports,
+                );
+        }
+
         return $attributes;
     }
 
@@ -913,15 +939,18 @@ trait RendersYii3Dto
      */
     private function yii3RawRule(string $rule, array $arguments, string $skip, array &$ruleImports): string
     {
+        $fqcn = in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)
+            ? 'Yiisoft\Validator\Rule\Date\\' . $rule
+            : 'Yiisoft\Validator\Rule\\' . $rule;
         $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
-        $ruleImports[] = 'Yiisoft\Validator\Rule\\' . $rule;
+        $ruleImports[] = $fqcn;
         $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\\' . $skip;
         $arguments[] = sprintf('skipOnEmpty: new %s()', $this->yii3Lib($skip, 'Yiisoft\Validator\EmptyCondition\\' . $skip));
 
         return sprintf(
             '#[%s(new %s(%s))]',
             $this->yii3Lib('Validate'),
-            $this->yii3Lib($rule, 'Yiisoft\Validator\Rule\\' . $rule),
+            $this->yii3Lib($rule, $fqcn),
             implode(', ', $arguments),
         );
     }
@@ -1094,11 +1123,13 @@ trait RendersYii3Dto
                 $imports[] = $fqcn;
             }
         }
+        $interfaceGetters = $this->yii3SharedGetters(members: $members, namespace: $namespace, imports: $imports);
         sort($imports);
 
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
             'imports' => array_values(array_unique($imports)),
             'interfaceExtends' => $extends,
+            'interfaceGetters' => $interfaceGetters,
             'discriminatorMapping' => $mapping,
             'namespace' => $namespace,
             'className' => $className,
@@ -1114,6 +1145,76 @@ trait RendersYii3Dto
             ),
             'discriminatorProperty' => $discriminator === null ? null : $discriminator['propertyName'],
         ]);
+    }
+
+    /**
+     * The getters every member of a union declares alike — same name, same return type, same docblock —
+     * so code typed by the interface can read `$event->getUuid()` instead of `getPropertyValue('uuid')`.
+     *
+     * Worked out from the MEMBERS, each rendered the way its own class is: an interface method whose
+     * signature differs from the member's is a fatal at load time, so a getter is declared only where
+     * all of them agree. A member that is itself a union declares no getters, and then neither does this.
+     *
+     * @param array<int, string> $members
+     * @param array<int, string> $imports
+     * @return array<int, array{getter: string, getterType: string, docType: string|null}>
+     */
+    private function yii3SharedGetters(array $members, string $namespace, array &$imports): array
+    {
+        $shared = null;
+        $sharedImports = [];
+        foreach ($members as $member) {
+            if (!array_key_exists($member, $this->dtoSchemas) || $this->yii3IsUnionInterface($member)) {
+                return [];
+            }
+
+            $getters = [];
+            foreach ($this->flattenedProperties($member, []) as $property) {
+                $ruleImports = [];
+                $sourceImports = [];
+                $useStatements = [];
+                $parameter = $this->renderYii3Parameter(
+                    property: $property,
+                    namespace: $namespace,
+                    ruleImports: $ruleImports,
+                    sourceImports: $sourceImports,
+                    useStatements: $useStatements,
+                );
+                // A getter renamed for a clash with a method of the class takes a suffix there; left out.
+                if (in_array($parameter['getter'], ['getData', 'getRules', 'getPropertyValue', 'getValidationResult'], true)) {
+                    continue;
+                }
+                $docType = $parameter['getterDocType'] === null
+                    ? null
+                    : (str_starts_with($parameter['propertyType'], '?') && !str_starts_with($parameter['getterDocType'], '?') ? '?' : '')
+                        . $parameter['getterDocType'];
+                $getters[$parameter['getter']] = [
+                    'getter' => $parameter['getter'],
+                    'getterType' => $parameter['getterType'],
+                    'docType' => $docType,
+                ];
+                $sharedImports[$parameter['getter']] = array_values(array_filter(
+                    $useStatements,
+                    static fn(string $import): bool => $import !== 'stdClass',
+                ));
+            }
+
+            $shared = $shared === null
+                ? $getters
+                : array_filter(
+                    $shared,
+                    static fn(array $getter, string $name): bool => ($getters[$name] ?? null) === $getter,
+                    ARRAY_FILTER_USE_BOTH,
+                );
+        }
+
+        foreach (array_keys($shared ?? []) as $name) {
+            foreach ($sharedImports[$name] ?? [] as $import) {
+                $imports[] = $import;
+            }
+        }
+
+        return array_values($shared ?? []);
     }
 
     /**

@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 34237 lines
+# yii3 mode — 80 files, 34252 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -11536,6 +11536,7 @@ use DateTimeInterface;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\ToDateTime;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
@@ -11602,6 +11603,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
 
     #[Date(skipOnEmpty: new WhenNull())]
     #[ToDateTime(format: 'php:Y-m-d')]
+    #[Validate(new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenNull()))]
     public readonly ?DateTimeImmutable $since;
 
     public function getSince(): ?DateTimeImmutable
@@ -20911,6 +20913,12 @@ interface Discriminator extends DataSetInterface, RulesProviderInterface
         'discriminator1' => Discriminator1::class,
         'discriminator2' => Discriminator2::class,
     ];
+
+    public function getType(): DiscriminatorType;
+
+    public function getName(): ?string;
+
+    public function getId(): int;
 }
 
 ===== Discriminator1.php =====
@@ -26242,6 +26250,7 @@ use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\AnyRule;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Date\DateTime;
 use Yiisoft\Validator\Rule\Integer;
@@ -26333,6 +26342,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s.up')]
     #[ToDateTime(format: 'php:Y-m-d H:i:s')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s')]
+    #[Validate(new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: '{Property} must be a date.', skipOnEmpty: new WhenNull()))]
     public readonly ?DateTimeImmutable $writtenAt;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -27167,6 +27177,8 @@ interface Shape extends DataSetInterface, RulesProviderInterface
         'circle' => Circle::class,
         'square' => Square::class,
     ];
+
+    public function getKind(): string;
 }
 
 ===== Square.php =====
@@ -32593,6 +32605,7 @@ use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\AnyRule;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Date\DateTime;
 use Yiisoft\Validator\Rule\Integer;
@@ -32750,6 +32763,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s.up')]
     #[ToDateTime(format: 'php:Y-m-d H:i:s')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s')]
+    #[Validate(new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: '{Property} must be a date.', skipOnEmpty: new WhenMissing()))]
     public readonly DateTimeImmutable $createdAt;
 
     public function getId(): int
@@ -33302,6 +33316,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
 
     #[Date(skipOnEmpty: new WhenNull())]
     #[ToDateTime(format: 'php:Y-m-d')]
+    #[Validate(new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenMissing()))]
     public readonly DateTimeImmutable $createdAt;
 
     public function getId(): int
