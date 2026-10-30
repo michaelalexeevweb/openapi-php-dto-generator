@@ -501,6 +501,46 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame('b7c4f0e2-6a1d-4c3e-9f2a-1d2e3f4a5b6c', $ping->getUuid());
     }
 
+    public function testAUnionInterfaceDeclaresOnlyWhatEveryImplementingClassShares(): void
+    {
+        // A child the mapping never names implements the interface too: `EchoEvent` requires `note`, so
+        // its getter answers `string` where the members' answers `?string`, and the interface declaring
+        // `?string` was a fatal at load time.
+        $namespace = $this->generate([
+            'Event' => [
+                'type' => 'object',
+                'required' => ['uuid', 'kind'],
+                'properties' => [
+                    'uuid' => ['type' => 'string'],
+                    'kind' => ['type' => 'string', 'enum' => ['ping', 'pong']],
+                    'note' => ['type' => 'string'],
+                ],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'ping' => '#/components/schemas/PingEvent',
+                    'pong' => '#/components/schemas/PongEvent',
+                ]],
+            ],
+            'PingEvent' => ['allOf' => [['$ref' => '#/components/schemas/Event']]],
+            'PongEvent' => ['allOf' => [['$ref' => '#/components/schemas/Event']]],
+            'EchoEvent' => [
+                'type' => 'object',
+                'required' => ['note'],
+                'allOf' => [
+                    ['$ref' => '#/components/schemas/Event'],
+                    ['type' => 'object', 'properties' => ['loud' => ['type' => 'boolean']]],
+                ],
+            ],
+        ]);
+        $echo = new ReflectionClass($namespace . '\EchoEvent');
+        $event = new ReflectionClass($namespace . '\Event');
+
+        self::assertTrue($echo->implementsInterface($event->getName()));
+        self::assertSame('string', (string)$echo->getMethod('getNote')->getReturnType());
+        $methods = array_map(static fn(ReflectionMethod $method): string => $method->getName(), $event->getMethods());
+        self::assertContains('getUuid', $methods);
+        self::assertNotContains('getNote', $methods);
+    }
+
     public function testANullableReferenceToAUnionTakesNull(): void
     {
         $namespace = $this->generate([
@@ -812,6 +852,83 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame([], $verdict([]));
         self::assertArrayHasKey('withAll', $verdict(['withAll' => 'nonsense']));
         self::assertArrayHasKey('withAll', $verdict(['withAll' => '7']));
+    }
+
+    public function testAQueryListOfScalarsIsReadAsTheItemsType(): void
+    {
+        // A query string carries text: `?ids[]=11` held `"11"`, and the strict check refused it as not an
+        // integer, where a lone `?id=11` is cast. Every other mode reads the items as the schema types them.
+        $namespace = $this->generateSpec([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/widgets' => [
+                    'get' => [
+                        'parameters' => [
+                            ['name' => 'ids', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+                            ['name' => 'weights', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'number']]],
+                            ['name' => 'flags', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'boolean']]],
+                        ],
+                        'responses' => ['204' => ['description' => 'none']],
+                    ],
+                ],
+            ],
+        ]);
+        $class = null;
+        foreach ((array)glob($this->outputDirectory . '/' . $namespace . '/*QueryParams.php') as $file) {
+            if (is_string($file)) {
+                $class = $namespace . '\\' . basename($file, '.php');
+            }
+        }
+        self::assertNotNull($class, 'the operation must produce a parameters class');
+        $query = ['ids' => ['11', '22'], 'weights' => ['1.5', '2'], 'flags' => ['true', '0']];
+
+        $input = (new Yii3Container())->hydrateValidatedInput(class: $class, payload: [], method: 'GET', query: $query);
+        $result = $input->getValidationResult();
+        self::assertNotNull($result);
+        self::assertSame([], $this->messages($result));
+        self::assertSame([11, 22], $input->getIds());
+        self::assertSame([1.5, 2.0], $input->getWeights());
+        self::assertSame([true, false], $input->getFlags());
+
+        $refused = $this->messages(
+            (new Yii3Container())->hydrateValidated(class: $class, payload: [], method: 'GET', query: ['ids' => ['11', 'abc'], 'weights' => ['x'], 'flags' => ['maybe']]),
+        );
+        self::assertArrayHasKey('ids.1', $refused);
+        self::assertArrayHasKey('weights.0', $refused);
+        self::assertArrayHasKey('flags.0', $refused);
+    }
+
+    public function testAContainerDefaultIsWhatAnAbsentKeyReadsAs(): void
+    {
+        // `default: []` on an optional list read as null when the key was left out; a scalar default
+        // was already applied. Every other mode gives the default.
+        $namespace = $this->generate([
+            'Shade' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+            'Filters' => [
+                'type' => 'object',
+                'properties' => [
+                    'ids' => ['type' => 'array', 'items' => ['type' => 'integer'], 'default' => []],
+                    'sizes' => ['type' => 'array', 'items' => ['type' => 'integer'], 'default' => [1, 2]],
+                    'shades' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shade'], 'default' => []],
+                    'labels' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'default' => []],
+                ],
+            ],
+        ]);
+        $container = new Yii3Container();
+
+        $absent = $container->hydrate($namespace . '\Filters', []);
+        self::assertSame([], $absent->getIds());
+        self::assertSame([1, 2], $absent->getSizes());
+        self::assertSame([], $absent->getShades());
+        self::assertSame([], $absent->getLabels());
+        self::assertFalse($absent->isIdsProvided());
+
+        $sent = $container->hydrate($namespace . '\Filters', ['ids' => [3], 'sizes' => [], 'shades' => ['azure']]);
+        self::assertSame([3], $sent->getIds());
+        self::assertSame([], $sent->getSizes());
+        self::assertSame('azure', $sent->getShades()[0]->value);
+        self::assertSame('array', (string)(new ReflectionMethod($sent, 'getIds'))->getReturnType());
     }
 
     public function testARequiredValueWithADefaultMayBeLeftOut(): void

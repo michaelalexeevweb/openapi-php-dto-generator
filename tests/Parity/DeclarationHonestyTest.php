@@ -10,7 +10,9 @@ use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
@@ -100,6 +102,57 @@ final class DeclarationHonestyTest extends TestCase
         );
         $dto = (new DtoDeserializer())->deserialize($request, 'DeclRuntime\Box');
         $this->assertInstanceOf(stdClass::class, $dto->getDeep()[0][0]);
+    }
+
+    /**
+     * `required` beside an `allOf` binds the properties its branches declare. Each branch was read on its
+     * own, so they came out optional — nullable and tracked for presence — while validation required them.
+     */
+    #[DataProvider('everyMode')]
+    public function testRequiredBesideAnAllOfBindsItsBranches(GenerationMode $mode): void
+    {
+        $namespace = 'DeclSibling' . $mode->tag();
+        $target = $this->outputDirectory . '/' . $namespace;
+        (new GenerateDtoCommand())->generateFromArray(
+            [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'paths' => [],
+                'components' => ['schemas' => [
+                    'Note' => ['type' => 'object', 'properties' => ['text' => ['type' => 'string']]],
+                    'Memo' => [
+                        'type' => 'object',
+                        'required' => ['text', 'extra'],
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/Note'],
+                            ['type' => 'object', 'properties' => ['extra' => ['type' => 'string'], 'spare' => ['type' => 'string']]],
+                        ],
+                    ],
+                ]],
+            ],
+            $target,
+            $namespace,
+            $mode->value,
+        );
+        $source = (string)file_get_contents($target . '/Memo.php');
+
+        $declares = static fn(string $name, string $type): bool => preg_match(
+            sprintf('/function get%1$s\(\): %2$s\b|readonly %2$s \$%3$s\b/', ucfirst($name), preg_quote($type, '/'), $name),
+            $source,
+        ) === 1;
+        $this->assertTrue($declares('extra', 'string'), 'extra is required beside the allOf');
+        $this->assertFalse($declares('spare', 'string'), 'spare is not');
+        // Runtime keeps a single-`$ref` branch as the parent class, whose getter cannot change here.
+        if ($mode !== GenerationMode::Runtime) {
+            $this->assertTrue($declares('text', 'string'), 'text comes from the referenced branch');
+        }
+    }
+
+    public static function everyMode(): iterable
+    {
+        foreach (GenerationMode::cases() as $mode) {
+            yield $mode->value => [$mode];
+        }
     }
 
     private function generate(string $mode, string $namespace): string

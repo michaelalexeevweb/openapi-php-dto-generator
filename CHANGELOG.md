@@ -3,6 +3,31 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.115 — 2026-10-30
+
+- yii3 container default applied
+- yii3 query list items cast
+- yii3 union getters every implementer
+- required beside allOf honoured
+
+yii3 mode:
+
+- an optional list or map with `default: []` read as null when the key was left out; scalar defaults were
+  already applied. It reads as `[]` now, and a list of plain scalars as listed; the getter is typed
+  `array`.
+- a list of integers, numbers or booleans in a query, path, header or cookie parameter held its items as
+  strings, and the strict check refused `?ids[]=11` as not an integer. The getter and the check read the
+  items as the schema types them; one that does not read so is refused under its index (`ids.1`).
+- a union interface declared the getters its mapped members share, but an `allOf` child the mapping does
+  not name implements it too; where its getter differed, the class failed to load. The getters are now
+  the ones every implementing class shares.
+
+Every mode:
+
+- `required` written beside an `allOf` was ignored by the declarations: each branch was read on its own,
+  so the properties it named came out optional — nullable and tracked for presence — while validation
+  did require them. They are required now.
+
 ## 2.15.114 — 2026-10-30
 
 - yii3 scalar for container refused

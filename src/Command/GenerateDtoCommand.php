@@ -2829,6 +2829,8 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
+            $allProperties = $this->withSiblingRequired($allProperties, $schemaDefinition);
+
             // Multiple merged branches can declare the same property with conflicting types.
             // The inheritance path rejects such conflicts; the merge path must too, instead of
             // silently keeping whichever branch happens to be last.
@@ -6706,10 +6708,39 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
-            return $this->dedupeCaseInsensitivePropertyNames($allProperties);
+            return $this->dedupeCaseInsensitivePropertyNames($this->withSiblingRequired($allProperties, $schemaDefinition));
         }
 
         return $this->extractProperties($schemaDefinition, $className);
+    }
+
+    /**
+     * `required` written BESIDE an `allOf` binds the properties its branches declare — it is a keyword
+     * of the same schema. Each branch was read on its own, so a property listed there came out optional:
+     * typed nullable and tracked for presence, while the validation, built from the whole schema, did
+     * require it. The flag is set here, where the branches meet.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @param array<string, mixed> $schemaDefinition
+     * @return array<int, SchemaProperty>
+     */
+    private function withSiblingRequired(array $properties, array $schemaDefinition): array
+    {
+        $required = is_array($schemaDefinition['required'] ?? null) ? $schemaDefinition['required'] : [];
+        if ($required === []) {
+            return $properties;
+        }
+
+        $marked = [];
+        foreach ($properties as $property) {
+            if (!$property['required'] && in_array($property['openApiName'], $required, true)) {
+                $property['required'] = true;
+                $property['nullable'] = $property['schemaNullable'] ?? $property['nullable'];
+            }
+            $marked[] = $property;
+        }
+
+        return $marked;
     }
 
     /**

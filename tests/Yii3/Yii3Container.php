@@ -79,6 +79,35 @@ final class Yii3Container implements ContainerInterface
         array $query = [],
         bool $nestedPaths = false,
     ): Result {
+        $result = $this->hydrateValidatedInput(
+            class: $class,
+            payload: $payload,
+            method: $method,
+            uri: $uri,
+            query: $query,
+            nestedPaths: $nestedPaths,
+        )->getValidationResult();
+        if ($result === null) {
+            throw new RuntimeException('The validating hydrator stored no verdict.');
+        }
+
+        return $result;
+    }
+
+    /**
+     * The same hydration, handing back the input itself — for what its getters answer.
+     *
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $query
+     */
+    public function hydrateValidatedInput(
+        string $class,
+        array $payload,
+        string $method = 'POST',
+        string $uri = '/',
+        array $query = [],
+        bool $nestedPaths = false,
+    ): AbstractInput {
         $this->requestProvider->set(
             (new ServerRequest($method, $uri))->withParsedBody($payload)->withQueryParams($query),
         );
@@ -105,12 +134,8 @@ final class Yii3Container implements ContainerInterface
         if (!$input instanceof AbstractInput) {
             throw new RuntimeException(sprintf('%s is not an input class.', $class));
         }
-        $result = $input->getValidationResult();
-        if ($result === null) {
-            throw new RuntimeException('The validating hydrator stored no verdict.');
-        }
 
-        return $result;
+        return $input;
     }
 
     /**

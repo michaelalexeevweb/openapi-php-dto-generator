@@ -555,6 +555,21 @@ trait RendersYii3Dto
         $getterDocType = $docType;
         $createValue = '$' . $property['name'];
 
+        // A list in a query string, a path or a header holds TEXT: `?ids[]=11` is `"11"`, and the strict
+        // check refused it as not an integer, where a lone `?id=11` is cast by the hydrator. Nothing casts
+        // the items, so they are held as sent and read as the schema types them — the getter and the
+        // interpreter alike; an item that does not read as one stays as it came, for the check to refuse.
+        $itemCast = $this->yii3WireItemCast($property);
+        $wireItems = null;
+        if ($itemCast !== null) {
+            $wireItems = sprintf('array_map(%s, $this->%s)', $itemCast['cast'], $property['name']);
+            if (str_starts_with($propertyType, '?')) {
+                $wireItems = sprintf('($this->%s === null ? null : %s)', $property['name'], $wireItems);
+            }
+            $getterValue = $wireItems;
+            $docType = 'array<' . $itemCast['held'] . '>';
+        }
+
         // A union of an enum and a scalar (`oneOf: [{enum: [all, team]}, {type: integer}]`): the hydrator
         // casts to the first builtin member the value matches, so `"all"` stayed the STRING and code
         // comparing against the case took the other branch. The getter hands out the case — a value the
@@ -602,7 +617,12 @@ trait RendersYii3Dto
             // one unparenthesised. `create()` needs no guard — it stores an optional argument only when
             // it is not null.
             if (str_starts_with($propertyType, '?')) {
-                $getterValue = sprintf('($this->%s === null ? null : %s)', $property['name'], $getterValue);
+                $getterValue = sprintf(
+                    '($this->%s === null ? %s : %s)',
+                    $property['name'],
+                    $default !== null && !$schemaNullable ? $default : 'null',
+                    $getterValue,
+                );
             }
         }
 
@@ -613,7 +633,7 @@ trait RendersYii3Dto
         // anything else stays as it came, for the interpreter to refuse.
         $payloadValue = $wireBoolean
             ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
-            : '$this->' . $property['name'];
+            : $wireItems ?? '$this->' . $property['name'];
         $held = $this->yii3HoldsUnbuiltObjects($property['type']);
         $dataSet = $this->yii3Lib('DataSetInterface');
         if ($held === 'value') {
@@ -1150,7 +1170,11 @@ trait RendersYii3Dto
                 $imports[] = $fqcn;
             }
         }
-        $interfaceGetters = $this->yii3SharedGetters(members: $members, namespace: $namespace, imports: $imports);
+        $interfaceGetters = $this->yii3SharedGetters(
+            members: array_values(array_unique([...$members, ...$this->yii3ClassesImplementing($className)])),
+            namespace: $namespace,
+            imports: $imports,
+        );
         sort($imports);
 
         return $this->renderPhpTemplate('dto.yii3.php.twig', [
@@ -1181,6 +1205,8 @@ trait RendersYii3Dto
      * Worked out from the MEMBERS, each rendered the way its own class is: an interface method whose
      * signature differs from the member's is a fatal at load time, so a getter is declared only where
      * all of them agree. A member that is itself a union declares no getters, and then neither does this.
+     * "Members" are every class implementing the interface: a discriminator base is implemented by an
+     * `allOf` child the mapping never names too, and a getter it declares otherwise was a fatal there.
      *
      * @param array<int, string> $members
      * @param array<int, string> $imports
@@ -1213,7 +1239,7 @@ trait RendersYii3Dto
                 }
                 $docType = $parameter['getterDocType'] === null
                     ? null
-                    : (str_starts_with($parameter['propertyType'], '?') && !str_starts_with($parameter['getterDocType'], '?') ? '?' : '')
+                    : (str_starts_with($parameter['getterType'], '?') && !str_starts_with($parameter['getterDocType'], '?') ? '?' : '')
                         . $parameter['getterDocType'];
                 $getters[$parameter['getter']] = [
                     'getter' => $parameter['getter'],
@@ -1242,6 +1268,35 @@ trait RendersYii3Dto
         }
 
         return array_values($shared ?? []);
+    }
+
+    /**
+     * Every generated class that implements the union interface `$interface`, as its own class
+     * declaration works it out — by the parent `analyzeSchema()` gives it, the same rule repeated here.
+     *
+     * @return array<int, string>
+     */
+    private function yii3ClassesImplementing(string $interface): array
+    {
+        $implementing = [];
+        foreach ($this->dtoSchemas as $className => $schema) {
+            $refClassNames = [];
+            foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $allOfItem) {
+                if (is_array($allOfItem) && is_string($allOfItem['$ref'] ?? null)) {
+                    $refClassNames[] = $this->schemaRefToClassName(
+                        ref: $allOfItem['$ref'],
+                        currentSourceFile: $this->getSchemaSourceFile($className),
+                    );
+                }
+            }
+            $parent = $this->findDiscriminatorBaseAmongRefs($className, $refClassNames)
+                ?? (count($refClassNames) === 1 ? $refClassNames[0] : null);
+            if (in_array($interface, $this->implementedUnionInterfaces($className, $parent), true)) {
+                $implementing[] = $className;
+            }
+        }
+
+        return $implementing;
     }
 
     /**
@@ -2223,15 +2278,18 @@ PHP;
 
     /**
      * The schema `default` of an optional property as a PHP expression, or null when there is none to
-     * give. A container is left out: its value is held in wire form, and `renderDefaultValue()` writes
-     * every array default as `[]`.
+     * give. A container's is written as it is held: `[]`, or a list of scalars as listed — a default
+     * naming objects, enum members or dates is not, since the property holds those in another form.
      *
      * @param SchemaProperty $property
      */
     private function yii3DefaultExpression(array $property, string $type, ?string $docType): ?string
     {
-        if ($property['default'] === null || $docType !== null || $this->propertyIsRequiredOnInput($property)) {
+        if ($property['default'] === null || $this->propertyIsRequiredOnInput($property)) {
             return null;
+        }
+        if ($docType !== null) {
+            return str_contains($property['type'], '<') ? $this->yii3ContainerDefault($property) : null;
         }
 
         $raw = ltrim($property['type'], '?\\');
@@ -2245,6 +2303,73 @@ PHP;
         return array_key_exists($raw, $this->enumSchemas) && str_starts_with($expression, $raw . '::')
             ? $type . substr($expression, strlen($raw))
             : $expression;
+    }
+
+    /**
+     * A container default as the property holds it: `[]` always, a list of scalars when the items are
+     * plain scalars too; null for anything held in another form than the document writes it.
+     *
+     * @param SchemaProperty $property
+     */
+    private function yii3ContainerDefault(array $property): ?string
+    {
+        $default = $property['default'];
+        if (!is_array($default)) {
+            return null;
+        }
+        if ($default === []) {
+            return '[]';
+        }
+
+        $item = ltrim($this->yii3ListItemTypeOf($property['type']) ?? '', '?');
+        if (!array_is_list($default) || !in_array($item, ['int', 'float', 'string', 'bool'], true)) {
+            return null;
+        }
+        $values = [];
+        foreach ($default as $value) {
+            if (!is_scalar($value)) {
+                return null;
+            }
+            $values[] = var_export($value, true);
+        }
+
+        return '[' . implode(', ', $values) . ']';
+    }
+
+    /**
+     * How one item of a list held as TEXT — in a query string, a path, a header or a cookie — reads as
+     * the type its schema gives it, as a closure; `held` is the item type the property really holds.
+     * Null for a body, and for items that are text anyway.
+     *
+     * @param SchemaProperty $property
+     * @return array{cast: string, held: string}|null
+     */
+    private function yii3WireItemCast(array $property): ?array
+    {
+        $fromText = ($property['inQuery'] ?? false) === true
+            || ($property['inPath'] ?? false) === true
+            || ($property['inHeader'] ?? false) === true
+            || ($property['inCookie'] ?? false) === true;
+        $item = $this->yii3ListItemTypeOf($property['type']);
+        if (!$fromText || $item === null) {
+            return null;
+        }
+
+        $nullableItem = str_starts_with($item, '?');
+        $cast = match (ltrim($item, '?')) {
+            'int' => "is_string(\$item) && preg_match('/^-?\\d+$/', \$item) === 1 ? (int)\$item : \$item",
+            'float' => 'is_string($item) && is_numeric($item) ? (float)$item : $item',
+            'bool' => "match (\$item) { 'true', '1' => true, 'false', '0' => false, default => \$item }",
+            default => null,
+        };
+        if ($cast === null) {
+            return null;
+        }
+
+        return [
+            'cast' => 'static fn(mixed $item): mixed => ' . $cast,
+            'held' => ltrim($item, '?') . '|string' . ($nullableItem ? '|null' : ''),
+        ];
     }
 
     private function isGeneratedDtoType(string $type): bool

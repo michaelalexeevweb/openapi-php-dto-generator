@@ -438,8 +438,10 @@ gives the same answer using only what the framework and PHP already provide.
 An optional property with a schema `default` reads as that default when the key is absent:
 `getSize()` answers `10` while `isSizeProvided()` stays false. The property itself stays uninitialised
 — it records what was sent — so `getData()` leaves the key out, as runtime and Laravel mode do. A list or
-map default is not applied. Where the schema does not let the property be null, the getter cannot answer
-null either, and its return type says so: `getSize(): int`.
+map default applies too when it is `[]`, or a list of plain scalars (`default: [1, 2]`); one naming
+objects, enum members or dates is not, since the property holds those in another form. Where the schema
+does not let the property be null, the getter cannot answer null either, and its return type says so:
+`getSize(): int`, `getIds(): array`.
 
 A `required` property with a `default` is the same: the key may be left out and the getter answers the
 default, as in every other mode. OpenAPI applies a default only to an absent key, which `required`
@@ -627,6 +629,10 @@ takes only `"1"` and `"0"`. Such a property is declared `bool|string`, which the
 getter returns the boolean the string names (`true`/`1` and `false`/`0`), and anything else is refused as
 `field "force" must be of type boolean.` Read it through `getForce()` — the property itself holds what
 was sent.
+
+A list of integers, numbers or booleans in a parameter — `?ids[]=11&ids[]=22` — is the same: nothing
+casts the items, so the property holds the strings and the getter hands out `[11, 22]`. The check reads
+the items the same way, and one that does not read as its type is refused under its index (`ids.1`).
 
 ## Divergences from the other modes
 

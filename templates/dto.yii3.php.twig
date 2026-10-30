@@ -137,7 +137,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
 {% for param in params %}
 
 {% if param.getterDocType is not null %}
-    /** @return {{ param.propertyType starts with '?' and not (param.getterDocType starts with '?') ? '?' : '' }}{{ param.getterDocType }} */
+    /** @return {{ param.getterType starts with '?' and not (param.getterDocType starts with '?') ? '?' : '' }}{{ param.getterDocType }} */
 {% endif %}
     public function {{ param.getter }}(): {{ param.getterType }}
     {

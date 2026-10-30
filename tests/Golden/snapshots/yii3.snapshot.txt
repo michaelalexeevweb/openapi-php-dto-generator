@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 35443 lines
+# yii3 mode — 80 files, 35444 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10640,6 +10640,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
@@ -10694,7 +10695,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
-    /** @var array<int> */
+    /** @var array<int|string> */
     #[Request('matrixIds')]
     public readonly array $matrixIds;
 
@@ -10705,7 +10706,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
     /** @return array<int> */
     public function getMatrixIds(): array
     {
-        return $this->matrixIds;
+        return array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->matrixIds);
     }
 
     /** @return array<string> */
@@ -10872,7 +10873,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
     {
         $payload = [];
         if ($this->hasProperty('matrixIds')) {
-            $payload['matrixIds'] = $this->matrixIds;
+            $payload['matrixIds'] = array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->matrixIds);
         }
         if ($this->hasProperty('labelIds')) {
             $payload['labelIds'] = $this->labelIds;
@@ -11209,7 +11210,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
-    /** @var ?array<int> */
+    /** @var ?array<int|string> */
     #[Query('exploded')]
     public readonly ?array $exploded;
 
@@ -11217,7 +11218,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     #[Query('joined')]
     public readonly ?array $joined;
 
-    /** @var ?array<int> */
+    /** @var ?array<int|string> */
     #[Query('spaced')]
     public readonly ?array $spaced;
 
@@ -11257,7 +11258,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     /** @return ?array<int> */
     public function getExploded(): ?array
     {
-        return $this->hasProperty('exploded') ? $this->exploded : null;
+        return $this->hasProperty('exploded') ? ($this->exploded === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->exploded)) : null;
     }
 
     /** Whether the payload carried `exploded` at all. */
@@ -11281,7 +11282,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     /** @return ?array<int> */
     public function getSpaced(): ?array
     {
-        return $this->hasProperty('spaced') ? $this->spaced : null;
+        return $this->hasProperty('spaced') ? ($this->spaced === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->spaced)) : null;
     }
 
     /** Whether the payload carried `spaced` at all. */
@@ -11616,13 +11617,13 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     {
         $payload = [];
         if ($this->hasProperty('exploded')) {
-            $payload['exploded'] = $this->exploded;
+            $payload['exploded'] = ($this->exploded === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->exploded));
         }
         if ($this->hasProperty('joined')) {
             $payload['joined'] = $this->joined;
         }
         if ($this->hasProperty('spaced')) {
-            $payload['spaced'] = $this->spaced;
+            $payload['spaced'] = ($this->spaced === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->spaced));
         }
         if ($this->hasProperty('piped')) {
             $payload['piped'] = $this->piped;
