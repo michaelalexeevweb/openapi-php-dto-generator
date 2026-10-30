@@ -934,6 +934,27 @@ trait RendersYii3Dto
                 );
         }
 
+        // And for a container or an object: nothing casts `"not-an-array"` to either, so the property was
+        // skipped and an optional one read as "not sent". A body only — a query string spells a one-item
+        // list `?ids=1`, which arrives as a string and is still a list to the document.
+        $heldType = ltrim($property['type'], '?');
+        // Not for a union of types (`string|array<int>`): a scalar is one of its members.
+        $holdsArray = !str_contains($heldType, '|') && (
+            str_contains($heldType, '<')
+            || $heldType === 'array'
+            || array_key_exists($heldType, $this->dtoSchemas)
+            || $this->yii3IsUnionInterface($heldType)
+        );
+        if ($holdsArray && !$isParameter) {
+            $isList = str_contains($heldType, '<') && !$this->isMapType($heldType);
+            $attributes[] = $this->yii3RawRule(
+                rule: 'Each',
+                arguments: ['[]', sprintf("incorrectInputMessage: '{Property} must be %s. {type} given.'", $isList ? 'an array' : 'an object')],
+                skip: $skip,
+                ruleImports: $ruleImports,
+            );
+        }
+
         return $attributes;
     }
 

@@ -3,6 +3,17 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.114 — 2026-10-30
+
+- yii3 scalar for container refused
+
+yii3 mode:
+
+- a list, map or object sent as a scalar in a body — `{"ids": "not-an-array"}` — was cast by nothing,
+  so the property was skipped and an optional one read as "not sent". A raw check refuses it now with
+  "must be an array" / "must be an object". Parameters are left alone: `?ids=1` is a one-item list
+  that arrives as a string.
+
 ## 2.15.113 — 2026-10-30
 
 - yii3 required default takes default

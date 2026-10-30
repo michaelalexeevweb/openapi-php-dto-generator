@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 35366 lines
+# yii3 mode — 80 files, 35443 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -13834,10 +13834,12 @@ use ReflectionProperty;
 use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
@@ -14067,12 +14069,16 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<array<string, mixed>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $mustContain;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $positions;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $rest;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $closedPair;
 
     public readonly string|int|float|bool|array|null $impossible;
@@ -14091,15 +14097,19 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     public readonly string|int|float|bool|array|null $neverMatches;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $closedFirstSlot;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?ApplicatorRefsPoisonedKey $poisonedKey;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?ApplicatorRefsConditional $conditional;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?ApplicatorRefsKeyed $keyed;
 
     /** @return array<array<string, mixed>> */
@@ -18184,6 +18194,7 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
     /** @var ?array<ChainTag> */
     #[Collection(ChainTag::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $tags;
 
     public function getCode(): string
@@ -18572,8 +18583,10 @@ use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Collection;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
@@ -18636,6 +18649,7 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
     /** @var array<ChainLink> */
     #[Collection(ChainLink::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $links;
 
     /** @return array<ChainLink> */
@@ -19774,11 +19788,15 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
+use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -19878,15 +19896,19 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<array<string>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $listOfLists;
 
     /** @var ?array<array<string, mixed>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $listOfMaps;
 
     /** @var ?array<string, array<string>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $mapOfLists;
 
     /** @var ?array<string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $plain;
 
     /** @return array<array<string>> */
@@ -20422,11 +20444,15 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
+use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -20614,18 +20640,23 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $dates;
 
     /** @var ?array<string, string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $datesByDay;
 
     /** @var ?array<string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $timestamps;
 
     /** @var array<Shape|array<string, mixed>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $shapes;
 
     /** @var ?array<string, Tag|array<string, mixed>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $tagsByKey;
 
     /** @return array<string> */
@@ -23935,11 +23966,15 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
+use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -24028,12 +24063,15 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<int> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $scores;
 
     /** @var ?array<string, int> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $scoresByKey;
 
     /** @var ?array<string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $codes;
 
     /** @return array<int> */
@@ -24632,11 +24670,15 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
+use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -24800,27 +24842,34 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<array<int>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $matrix;
 
     /** @var array<array<string, string>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $rowsOfMaps;
 
     /** @var ?array<string, array<string>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $listsByKey;
 
     /** @var ?array<string, array<string, int>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $mapsByKey;
 
     /** @var ?array<array<string>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $dateRows;
 
     /** @var ?array<array<float|int>> */
     public readonly ?array $numRows;
 
     /** @var ?array<array<string>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $enumRows;
 
     /** @var ?array<array<Tag|array<string, mixed>>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $tagRows;
 
     /** @return array<array<int>> */
@@ -25500,11 +25549,15 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
+use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -25597,15 +25650,19 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<?string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $listOfNullable;
 
     /** @var ?array<string, ?int> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $mapOfNullable;
 
     /** @var ?array<?string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $listOfNullable31;
 
     /** @var ?array<string, ?int> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $mapOfNullable31;
 
     /** @return array<?string> */
@@ -29439,12 +29496,15 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     /** @var array<Tag> */
     #[Collection(Tag::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $tags;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?User $user;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?Test2UserType $userType;
 
     #[Validate(new In(['cat', 'dog'], strict: true, skipOnEmpty: new WhenMissing()))]
@@ -31560,6 +31620,7 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\Rule\Length;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
@@ -31714,6 +31775,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
     public readonly string $label;
 
     /** @var array<string, mixed> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $children;
 
     public function getLabel(): string
@@ -32276,12 +32338,15 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
@@ -32466,13 +32531,17 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $chain;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $chainAllOf;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly TreeNode $tree;
 
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $listOfUnions;
 
     public function getChain(): ?array
@@ -33121,11 +33190,14 @@ use DateTimeInterface;
 use JsonSerializable;
 use OverflowException;
 use ReflectionProperty;
+use Yiisoft\Hydrator\Validator\Attribute\Validate;
 use Yiisoft\Input\Http\AbstractInput;
 use Yiisoft\Validator\DataSetInterface;
+use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -33194,6 +33266,7 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<string> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $tags;
 
     /** @return array<string> */
@@ -33675,6 +33748,7 @@ use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\AnyRule;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Date\DateTime;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
@@ -33824,6 +33898,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     public readonly string $name;
 
     /** @var Animal2|array<string, mixed> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly Animal2|array|null $pet;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
@@ -34312,6 +34387,7 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Date\Date;
+use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\Nested;
 use Yiisoft\Validator\Rule\StringValue;
@@ -34392,6 +34468,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly string $name;
 
     #[Nested(skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?User2Pet $pet;
 
     #[Date(skipOnEmpty: new WhenNull())]

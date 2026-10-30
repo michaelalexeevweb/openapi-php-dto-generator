@@ -641,7 +641,10 @@ was sent.
   therefore carries `#[Validate(new In([...]))]`, a check of the RAW value before the cast: strict in a
   body, which is JSON, lenient for a parameter, which arrives as text (`?level=1`). A date the
   hydrator cannot parse was lost the same way, and is checked the same way — against the formats
-  `#[ToDateTime]` is given, with Yii's "must be a date" message;
+  `#[ToDateTime]` is given, with Yii's "must be a date" message. So is a list, a map or an object sent
+  as a scalar in a BODY — `{"ids": "x"}` — with `#[Validate(new Each([]))]` and "must be an array" /
+  "must be an object". Not for a parameter: a query string writes a one-item list `?ids=1`, which
+  arrives as a string;
 - **a raw-check error in a nested object has only the property's own path** unless the application
   wires the recipe in [Raw checks in a nested object](#raw-checks-in-a-nested-object);
 - **a map of objects in a PAYLOAD is held as the decoded arrays** — `#[Collection]` would renumber

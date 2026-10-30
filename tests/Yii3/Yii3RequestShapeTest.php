@@ -754,6 +754,32 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame(['begin'], array_keys($verdict(['ranges' => [['begin' => 'nonsense']]], nestedPaths: true)));
     }
 
+    public function testAContainerSentAsAScalarIsRefused(): void
+    {
+        // Nothing casts a string to an array or an object, so the property was skipped and an optional
+        // one read as "not sent": `{"ids": "not-an-array"}` answered as if there were no filter.
+        $namespace = $this->generate([
+            'Filters' => [
+                'type' => 'object',
+                'properties' => [
+                    'ids' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                    'byName' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                    'free' => ['type' => 'object'],
+                    'owner' => ['$ref' => '#/components/schemas/Owner'],
+                    'note' => ['type' => 'array', 'items' => ['type' => 'string'], 'nullable' => true],
+                ],
+            ],
+            'Owner' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+        ]);
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($namespace . '\Filters', $payload));
+
+        self::assertSame([], $verdict([]));
+        self::assertSame([], $verdict(['ids' => [1, 2], 'byName' => ['a' => 1], 'free' => ['k' => 'v'], 'owner' => ['name' => 'n'], 'note' => null]));
+        foreach (['ids', 'byName', 'free', 'owner', 'note'] as $name) {
+            self::assertArrayHasKey($name, $verdict([$name => 'not-an-array']), $name);
+        }
+    }
+
     public function testAQueryEnumValueOutsideTheListIsRefused(): void
     {
         $namespace = $this->generateSpec([
