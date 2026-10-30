@@ -6,7 +6,8 @@ installed and run**; the four that read an OpenAPI document got the same one, an
 config and never saw the spec, so it holds no cell in the vocabulary or verdict tables. Nothing here is
 quoted from anyone's documentation — where a table says a tool accepts something, it accepted it.
 
-Measured 2026-08-19/20. Spec: `OpenApiExamples/test.yaml` (19 schemas, 589 lines — a discriminated union,
+Measured 2026-08-19/20. Spec: `OpenApiExamples/test.yaml` as it stood that day (19 schemas, 589 lines; the file
+has grown since — a discriminated union,
 an undiscriminated `anyOf`, a scalar `oneOf`, recursion, `format`). Machine: Apple M3 Pro.
 
 ## What ran
@@ -37,7 +38,7 @@ Checked on a schema carrying `minimum: 10`, `maximum: 100`, plus `pattern`, `for
 | OpenAPI Generator `php-nextgen` | ❌ | ❌ | ❌ | ❌ |
 | `maxbeckers/php-openapi-generator` | ❌ | ❌ | ❌ | ❌ |
 | `league/openapi-psr7-validator` | ✅ | ✅ | ✅ except `uri-template` | ✅ |
-| **this library**, all five modes | ✅ | ✅ | ✅ incl. `uri-template` | ✅ |
+| **this library**, all five modes | ✅ | ✅ | ✅ incl. `uri-template`; symfony accepts a loose `date-time` | ✅ |
 
 **Every generator in the set checks the type and whether the key is present, and stops there.** The only
 tool that holds the vocabulary is the runtime validator, and it produces no classes.
@@ -147,7 +148,7 @@ fails if the wording drifts apart between modes.
 | OG `php-symfony` | `protected ?int $id = null` | setters | `#[Assert\…]` attributes |
 | `php-collective/dto` | `protected int\|string $code` | configurable | `_metadata` arrays |
 | maxbeckers | `public int $id` in a `readonly class` | immutable | — |
-| **this library** | `public readonly int $id` | immutable | PHP 8 attributes |
+| **this library** | `private readonly int $id` + `getId()` (runtime, laravel); `public readonly int $id` (laravel-data, yii3) | immutable, except symfony's optional properties, which have setters | PHP 8 attributes |
 
 ## Startup cost
 
@@ -163,7 +164,8 @@ fails if the wording drifts apart between modes.
 
 The unit of work differs — `league` does not build an object and we do. What is not a matter of
 interpretation is the 21.8 ms: it is paid on every process start because the document is read at runtime.
-Here the document is compiled into a literal `const` in the generated class, so the cost does not exist.
+Here the document is compiled into PHP array literals in the generated class (`getConstraints()` in
+runtime, a `private const` in the framework modes), so the cost does not exist.
 
 Current per-step numbers for all five modes are in [README.performance.md](README.performance.md); the
 figures above are kept as measured on the day, beside the competitors, rather than refreshed.

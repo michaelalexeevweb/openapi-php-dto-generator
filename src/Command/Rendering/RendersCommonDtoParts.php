@@ -303,6 +303,27 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * The class a schema's `allOf` makes its parent — the rule `analyzeSchema()` applies: the
+     * discriminator base among the refs, else the single ref; null when the refs are merged.
+     */
+    private function allOfParentOf(string $className): ?string
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $refClassNames = [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $allOfItem) {
+            if (is_array($allOfItem) && is_string($allOfItem['$ref'] ?? null)) {
+                $refClassNames[] = $this->schemaRefToClassName(
+                    ref: $allOfItem['$ref'],
+                    currentSourceFile: $this->getSchemaSourceFile($className),
+                );
+            }
+        }
+
+        return $this->findDiscriminatorBaseAmongRefs($className, $refClassNames)
+            ?? (count($refClassNames) === 1 ? $refClassNames[0] : null);
+    }
+
+    /**
      * Returns the full, flattened property list for a Symfony DTO: inherited properties (resolved
      * recursively through allOf parents) followed by own ones, deduplicated by name so a child
      * override wins. Falls back to the pre-resolved own properties when the schema is not

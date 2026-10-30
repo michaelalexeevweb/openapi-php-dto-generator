@@ -642,6 +642,38 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A class closed beside an `allOf` whose parent closes nothing: the parent has no
+     * `getObjectConstraints()`, and calling it through `parent::` was a fatal on every request.
+     */
+    public function testAClosedAllOfChildOfAnOpenParentRefusesAnUndeclaredKey(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Base' => ['type' => 'object', 'properties' => ['id' => ['type' => 'integer']]],
+                    'Item' => [
+                        'allOf' => [
+                            ['$ref' => '#/components/schemas/Base'],
+                            ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+                        ],
+                        'unevaluatedProperties' => false,
+                    ],
+                ],
+            ],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'ClosedChildNs', 'Item');
+
+        $accepted = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"id":1,"name":"a"}'), $fqcn);
+        self::assertSame('a', $accepted->getName());
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unknown property "extra" is not allowed by the schema.');
+        (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"id":1,"name":"a","extra":2}'), $fqcn);
+    }
+
+    /**
      * The edge that a naive implementation gets wrong: a property whose WIRE name differs from its
      * PHP name. Comparing against PHP names would refuse `first_name` — a key the schema declares.
      */

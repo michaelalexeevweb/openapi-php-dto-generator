@@ -20,10 +20,10 @@ composer openapi:generate-dto -- \
 ```
 
 ```php
-// generated in runtime mode (excerpt)
+// generated in runtime mode (illustrative excerpt, not a class from test.yaml)
 final class User implements GeneratedDtoInterface, Stringable
 {
-    // presence flags per property: $nameInRequest, $emailInRequest, … (what was actually sent)
+    // presence flags per property and source: $emailInRequest, $emailInQuery, $emailInPath, … (what was actually sent)
 
     /**
      * @param string $name
@@ -61,7 +61,7 @@ final class User implements GeneratedDtoInterface, Stringable
 $deserializer = new DtoDeserializer();
 $normalizer   = new DtoNormalizer();
 
-// request: deserialize + validate in one step (throws on the first schema violation)
+// request: deserialize + validate in one step (throws one exception listing every schema violation)
 $dto = $deserializer->deserialize($request, UserPostRequest::class);
 
 // a top-level JSON array body (bulk endpoints)
@@ -80,7 +80,9 @@ $errors = $normalizer->validate($dto);
 ```
 
 Errors are thrown as a `RuntimeException` whose message aggregates every violation, each naming the
-OpenAPI rule that failed (`field "tags"[0] length must be at least 3 characters`).
+OpenAPI rule that failed. The deserializer writes one per line — `param "tags".0 length must be at least
+3 characters.` — and `DtoNormalizer` prefixes `DTO validation failed: ` and separates them with commas,
+naming the subject `field "tags".0`.
 
 ### Batch endpoints: accepting the good elements, reporting the bad ones
 
@@ -165,6 +167,9 @@ if ($dto->isEmailInRequest()) {
     $user->setEmail($dto->getEmail()); // only touch what was actually sent
 }
 ```
+
+A parameter records where it came from instead: ask `isPageInQuery()` (or `…InPath()`, `…InHeader()`,
+`…InCookie()`) for a parameter, `isXInRequest()` for a body field.
 
 Symfony mode answers the same question with
 [`isXxxProvided()`](README.symfony.md#presence-tracking-patch--partial-updates), recorded by the
@@ -359,8 +364,8 @@ class UserController
   `--dto-generator-directory`).
 - Validation failures are one aggregated exception, not a `ConstraintViolationList`. A Symfony
   application that wants violations should use [Symfony mode](README.symfony.md).
-- A map normalizes to `stdClass` so it always encodes as a JSON object — except a map nested inside
-  a list, which stays a PHP array and therefore encodes as `[]` when empty.
+- A map normalizes to `stdClass` so it always encodes as a JSON object — an empty one as `{}`,
+  inside a list included.
 - A JSON body is read under `application/json` and any structured-suffix type built on it —
   `application/merge-patch+json`, `application/hal+json`, `application/vnd.acme.v1+json`.
 - An uploaded file beats a query string of the same name; everywhere else the source order is

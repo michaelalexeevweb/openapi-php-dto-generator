@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.116 — 2026-10-30
+
+- runtime closed allOf child fixed
+- yii3 list item path recipe
+- docs audited against 2.15.115
+- benchmark re-measured
+
+runtime mode:
+
+- a class closed with `unevaluatedProperties: false` (or `additionalProperties: false`) beside an `allOf`
+  whose parent closes nothing called `parent::getObjectConstraints()`, which the parent does not declare:
+  every request for it failed with "Call to undefined method". The parent's constraints are merged only
+  where an ancestor declares them.
+
+yii3 mode:
+
+- README.yii3 "Raw checks in a nested object" covers the items of a list: a third recipe class,
+  `PathAwareCollectionResolver`, builds each `#[Collection]` item under the list's key and its index —
+  `tags.1.id`, not `id`. `NestedPathTypeCaster` gained `collectUnder()`; replace a copied one.
+- `bin/benchmark` times yii3's action path through `ValidatingHydrator`, which runs the raw checks.
+
+Docs:
+
+- every README checked against the generated code and the tests; stale statements fixed — among them the
+  Symfony setter and required-nullable sections, Laravel's `list` / nested-presence rules, parameter
+  binding cells in the overview and the support matrix, yii3's generated-class example, and non-Latin
+  property names (kept since 2.15.41).
+- `--attributes` help lists `yii3`.
+
 ## 2.15.115 — 2026-10-30
 
 - yii3 container default applied

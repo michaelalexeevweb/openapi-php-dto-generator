@@ -18,15 +18,15 @@ validate incoming HTTP requests against the OpenAPI schema, and normalize back t
 package, and no spec parsing at runtime.
 
 - **In:** an OpenAPI 3.0 / 3.1 document, YAML or JSON.
-- **Out:** one PHP class per schema — from `components.schemas` **and** from each operation's body,
-  query and path parameters.
+- **Out:** one PHP class per schema — from `components.schemas` **and** from each operation's request
+  body, parameters (path, query, header, cookie) and inline response bodies.
 - **Use it for:** server-side request DTOs, PATCH-safe presence, response normalization.
 - **Not for:** generating an API client or SDK — see [what it does not do](#what-it-does-not-do).
 - **Start with:** `runtime` mode, the default. Reach for a framework mode only when you want that
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.115
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.116
 ```
 
 ---
@@ -116,13 +116,11 @@ reported together rather than one at a time.
 
 <sub>The presence accessor is named for its mode: `isNicknameInRequest()` in runtime, `isNicknameProvided()`
 in symfony, laravel and yii3. laravel-data needs neither — there the property's own type is
-`string|Optional`.</sub>
+`string|null|Optional`.</sub>
 
 Add `--attributes=symfony|laravel|laravel-data|yii3` to get the same enforcement in your framework's own
 shape instead.
 [Every CLI option, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
-
----
 
 ---
 
@@ -157,7 +155,8 @@ malformed `uri-template` is refused here and accepted by both Jane and league; a
 
 ### Three things that only fall out of generating the checks
 
-- **Nothing is parsed at boot.** The spec is compiled into a literal `const` inside the generated class.
+- **Nothing is parsed at boot.** The spec is compiled into PHP array literals inside the generated
+  class — `getConstraints()` in runtime, a `private const` in the framework modes.
   `league` re-reads the YAML in every PHP process — **21.8 ms** before it answers the first request. Here
   that cost does not exist.
   [Performance →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md)
@@ -170,22 +169,26 @@ malformed `uri-template` is refused here and accepted by both Jane and league; a
 
 ### Fast, because the checks are emitted code
 
-`bin/benchmark`, PHP 8.5 in the project container, opcache off, 20 000 iterations, mean of two runs:
+`bin/benchmark`, PHP 8.4, opcache off, 20 000 iterations, mean of two runs:
 
 | | bind | validate | normalize | round trip |
 |---|---:|---:|---:|---:|
-| runtime | 0.1232 ms | 0.1177 ms | 0.0178 ms | **0.2588 ms** |
-| laravel (`FormRequest`) | **0.0037 ms** | 1.7163 ms | **0.0032 ms** | 1.7233 ms |
+| runtime | 0.1459 ms | 0.1353 ms | 0.0123 ms | **0.2935 ms** |
+| laravel (`FormRequest`) | **0.0033 ms** | 1.4672 ms | **0.0019 ms** | 1.4724 ms |
 
-The generated Laravel interpreter — the part this library actually writes — is **1.9%** of that Laravel
-validate step; the millisecond is `illuminate/validation` walking the rule array.
+The generated Laravel interpreter — the part this library actually writes — is **2.6%** of that Laravel
+validate step; the millisecond is `illuminate/validation` walking the rule array. The same ordering holds
+on seven request bodies of a production application.
 [Full numbers, and the benchmark to re-run them →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md)
 
 ---
 
 ## Five modes
 
-All five enforce the same **schema validation** vocabulary — the keywords above hold in every one of them.
+All five enforce the same **schema validation** vocabulary, except where a framework's serializer or
+hydrator decides first — a closed object in symfony and yii3, a loose `date-time` in symfony; the
+[support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md)
+lists each one.
 What differs is everything around it: who validates, what the errors look like, what you install, and
 **how much of the REQUEST the document still governs**.
 
@@ -195,7 +198,7 @@ What differs is everything around it: who validates, what the errors look like, 
 | **[symfony](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.symfony.md)** | plain DTO with `#[Assert\*]`, `#[SerializedName]`, `#[Groups]` | `symfony/validator` + `symfony/serializer` | `ConstraintViolationList`, 422 via `#[MapRequestPayload]` |
 | **[laravel](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel.md)** | plain DTO + a `FormRequest` carrying `rules()` | nothing beyond the framework | the framework's own 422 error bag |
 | **[laravel-data](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.laravel-data.md)** | one `Data` class per schema, `Optional` for presence | `spatie/laravel-data` | the framework's own 422 error bag |
-| **[yii3](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.yii3.md)** | one `AbstractInput` per schema, `yiisoft/validator` attributes | `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/input-http` | a `Result` your action reads |
+| **[yii3](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.yii3.md)** | one `AbstractInput` per schema, `yiisoft/validator` attributes | `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/hydrator-validator` + `yiisoft/input-http` | a `Result` your action reads |
 
 **Request binding is not the same in every mode, and that is the one difference worth knowing before you
 choose.** A framework mode hands binding to its own serializer or hydrator, which has already decided what
@@ -203,8 +206,8 @@ the payload is before any generated code runs:
 
 | | runtime | symfony | laravel | laravel-data | yii3 |
 |---|:--:|:--:|:--:|:--:|:--:|
-| parameter sources — `path` / `query` / `header` / `cookie` | ✅ | ❌ | ❌ | ❌ | body, query, path only |
-| `style` / `explode` / `allowReserved` / `allowEmptyValue` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| parameter sources — `path` / `query` / `header` / `cookie` | ✅ | ➖ query; path via `--symfony-path-params` | ➖ query, path, header, cookie via the FormRequest | ➖ query; path via `#[FromRouteParameter]` | ➖ body, query, path only |
+| `style` / `explode` / `allowReserved` / `allowEmptyValue` | ✅ | ➖ a query list's `style` / `explode`; not a repeated key | ➖ form, pipe, space delimiters for query and path | ➖ form, pipe, space delimiters for query | ❌ |
 | multipart `encoding` | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 **Rule of thumb.** Not sure? Take **runtime** — it is the default, it needs no framework, and it is the
@@ -212,7 +215,8 @@ only mode where the REQUEST itself follows the document. Take **symfony** or **l
 plain DTOs your framework owns and errors in the shape it already speaks. Take **laravel-data** or
 **yii3** when your application already runs that package.
 
-There are **thirteen** further divergences, all deliberate and each pinned by a test that names its cause.
+There are further divergences, most deliberate and a few limits of the framework component that owns the
+step, each pinned by a test that names its cause.
 They are written down rather than left to be discovered:
 **[the support matrix](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.support-matrix.md)**
 gives the keyword-by-keyword answer per mode and lists what is not generated in any of them. It is derived
@@ -246,15 +250,8 @@ It generates the **server** side: the classes an incoming request becomes, and t
 pass. It does not generate an HTTP client or an SDK for calling someone else's API — if that is what you
 need, JanePHP and OpenAPI Generator do it and this does not.
 
-**Property names outside the Latin alphabet do not survive the trip to PHP.** A name is normalised into a
-PHP identifier, and one written in Cyrillic, Greek or CJK has nothing to normalise into, so it collapses to
-`value` — `юникод` becomes `$value` with `$aliases['value'] = 'юникод'` carrying the wire name. One such
-property per schema works; two collide, and generation stops rather than emitting a class that silently
-holds one of them:
-
-```
-[ERROR] Property name collision in TwoUnicode: "имя" and "фамилия" normalize to "$value".
-```
+Property names in any script survive: PHP identifiers accept non-ASCII letters, so `юникод` becomes
+`$юникод`, and the wire name is carried as written. Before 2.15.41 such a name collapsed to `$value`.
 
 Punctuation and casing ARE handled — `kebab-case`, `dot.name`, `UPPER`, `123numeric`, `with space`,
 `$dollar` and PHP's own reserved words all become clean identifiers with an alias back to the original.
@@ -269,8 +266,16 @@ rename the property or use Laravel mode for that document. Other modes keep such
 `composer update`, then regenerate. Every release says what changed in the emitted code, what breaks and
 what to do about it: **[CHANGELOG.md](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/CHANGELOG.md)**.
 
-The one signature change to watch for is 2.12.0 → 2.13.0, and only if a class of **your own** implements
-`DtoDeserializerInterface` — two methods gained optional parameters there.
+Changes that touch your own code:
+
+- a class of **your own** implementing `DtoDeserializerInterface` — 2.12.0 added `deserializeValue()`,
+  2.13.0 gave two methods optional parameters;
+- positional construction of a class with a `readOnly` property — 2.15.29 moved it behind the required
+  ones; use named arguments;
+- a reference to an alias class (`X: {$ref: Y}`) — 2.15.63 stopped generating it;
+- a property named in `required` beside an `allOf` — 2.15.115 made it required and non-nullable.
+
+Each entry has its migration note.
 
 ## License
 

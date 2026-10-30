@@ -452,7 +452,7 @@ final class GenerateDtoCommand extends Command
         $this->addOption(
             name: 'attributes',
             mode: InputOption::VALUE_REQUIRED,
-            description: 'Generation mode: "runtime" (default, library runtime), "symfony" (Symfony Validator/Serializer attributes), "laravel" (plain DTO + Laravel validation rules) or "laravel-data" (spatie/laravel-data Data classes)',
+            description: 'Generation mode: "runtime" (default, library runtime), "symfony" (Symfony Validator/Serializer attributes), "laravel" (plain DTO + Laravel validation rules), "laravel-data" (spatie/laravel-data Data classes) or "yii3" (yiisoft/validator attributes + hydrator input)',
             default: self::ATTRIBUTE_MODE_RUNTIME,
         );
         $this->addOption(

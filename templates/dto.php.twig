@@ -593,7 +593,7 @@ interface {{ className }}
      */
     public static function getObjectConstraints(): array
     {
-{% if extends is not null %}
+{% if parentHasObjectConstraints %}
         $constraints = parent::getObjectConstraints();
 {% else %}
         $constraints = [];

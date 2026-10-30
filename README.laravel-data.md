@@ -1,6 +1,6 @@
 # laravel-data mode
 
-[← back to the main README](README.md) · [support matrix](README.support-matrix.md) · other mode guides: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel](README.laravel.md) · [yii3](README.yii3.md)
+[← back to the main README](README.md) · [support matrix](README.support-matrix.md) · other mode guides: [runtime](README.runtime.md) · [symfony](README.symfony.md) · [laravel](README.laravel.md) · [yii3](README.yii3.md) · [performance](README.performance.md)
 
 ```bash
 vendor/bin/console openapi:generate-dto \
@@ -367,10 +367,16 @@ All measured and pinned; the full table with reasons is in
   otherwise — as Laravel mode's hydrator does;
 - normalizes a member of a `oneOf` discriminated union with the discriminator LAST, because it is
   inherited from the abstract base and PHP lists a class's own properties first. Same keys, same values.
-  An `allOf` union keeps the schema's order — its members redeclare the base's properties.
+  An `allOf` union keeps the schema's order — its members redeclare the base's properties;
+- accepts a numeric string for `integer` / `number`, and `0`, `1`, `"0"`, `"1"` for `boolean`, in a
+  JSON body. Laravel's own rules are lenient there, and Laravel mode refuses them only by reading the
+  raw body in its `withValidator()`, a check this mode does not make;
+- refuses a `null` item in a nullable list of DTOs: `#[DataCollectionOf]` builds a class out of every
+  element and has no null case.
 
-Everything in the validation vocabulary is identical to the other four modes, including
-`additionalProperties: false` on a DTO-shaped schema, which the two hydrating modes cannot see at all.
+Apart from the verdicts listed above, the validation vocabulary is identical to the other four modes,
+including `additionalProperties: false` on a DTO-shaped schema, which the two hydrating modes cannot
+see at all.
 
 
 ## Testing generated classes without a Laravel application
@@ -379,8 +385,9 @@ laravel-data resolves `DataConfig`, its resolvers and its pipeline out of the co
 `from()` / `validate()` paths need one. This package is framework-agnostic and does **not** pull
 `orchestra/testbench` to get it: `tests/LaravelData/LaravelDataContainer` builds what is actually needed —
 a plain `Illuminate\Container\Container`, a config repository, the two singletons
-`LaravelDataServiceProvider::packageRegistered()` binds, and four global helpers
-(`app()`, `resolve()`, `config()`, `rescue()`) that `illuminate/foundation` would otherwise define.
+`LaravelDataServiceProvider::packageRegistered()` binds, and six global helpers
+(`app()`, `resolve()`, `config()`, `rescue()`, plus the `request()` and `app_path()` shims) that
+`illuminate/foundation` would otherwise define.
 
 Copy it if you want the same in your own package's tests; in a real application none of it applies, since
 the framework provides all of it.

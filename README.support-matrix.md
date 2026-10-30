@@ -86,7 +86,7 @@ needs more than one schema:
 
 | Keyword | Measured in |
 |---|---|
-| `discriminator` (mapping, `allOf` variants, hydration to the mapped class) | `tests/Runtime/GenerateDtoCommandTest`, `tests/Symfony/SymfonyConstraintMatrixTest`, `tests/Symfony/SymfonyAllOfDiscriminatorTest`, `tests/Parity/NormalizationParityTest`, and per mode: `tests/Laravel/GenerateLaravelDtoTest`, `tests/LaravelData/MorphDiscriminatorTest`, `tests/Yii3/Yii3RequestShapeTest` (typing only — see the divergences) |
+| `discriminator` (mapping, `allOf` variants, hydration to the mapped class) | `tests/Runtime/GenerateDtoCommandTest`, `tests/Symfony/SymfonyConstraintMatrixTest`, `tests/Symfony/SymfonyAllOfDiscriminatorTest`, `tests/Parity/NormalizationParityTest`, and per mode: `tests/Laravel/GenerateLaravelDtoTest`, `tests/LaravelData/MorphDiscriminatorTest`, `tests/Yii3/Yii3RequestShapeTest` (validated as the held array; the member is not hydrated — see the divergences) |
 | `required` / `properties` on a schema that becomes a DTO | the class itself: in four modes a required property is a constructor parameter with no default, so no payload can omit it; yii3 has no constructor, so absence is a property left uninitialised and the interpreter reports it — `tests/Yii3/Yii3RuleCoverageTest`. Nested `required` is measured by the recursion cases above and `tests/Laravel/LaravelRulesEnforcementTest` |
 
 ### Which layer does it
@@ -99,7 +99,7 @@ Same vocabulary, five deliveries — and this is what the modes are actually cho
 | symfony | `#[Assert\*]` attributes for what the constraint set can express, one generated `#[Assert\Callback]` for the rest |
 | laravel | `rules()` for what Laravel's rule vocabulary can express, a generated `withValidator()` for the rest — the per-keyword split is the table in [README.laravel.md](README.laravel.md#two-layers-one-vocabulary) |
 | laravel-data | the same `rules()` array and the same `withValidator()` interpreter, emitted onto a `Data` class and run by laravel-data's own pipeline. Identical messages, because it is literally the same emitter |
-| yii3 | `yiisoft/validator` attributes for what its rule set can express, one class-level `#[Callback]` for the rest — the same interpreter again, packaged as a method returning a `Result` |
+| yii3 | `yiisoft/validator` attributes for what its rule set can express, one class-level `#[Callback]` for the rest — the same interpreter again, packaged as a method returning a `Result` — plus hydrator-validator `#[Validate]` checks of the RAW value before the hydrator's cast |
 
 A keyword the framework has a native rule for keeps the FRAMEWORK's message, so your own translations
 still apply. Everything the generated interpreter owns produces the same sentence in every mode, differing
@@ -108,7 +108,7 @@ only in how the subject is named — pinned by `tests/Parity/InterpreterMessageP
 
 ## Divergences
 
-Nineteen, all pinned by a test that names the cause. Fifteen are deliberate; the four rows on null and non-object ITEMS and on fraction digits are limits of the framework component that owns the step, which generated code — DTOs and nothing else — cannot get past. Each is one of eight things: Symfony
+Twenty-one, all pinned by a test that names the cause. Seventeen are deliberate; the four rows on null and non-object ITEMS and on fraction digits are limits of the framework component that owns the step, which generated code — DTOs and nothing else — cannot get past. Each is one of seven things: Symfony
 mode's serializer or the yii3 hydrator deciding before generated code gets a say, that serializer having no
 way to say ABSENT on the way out, a mode not holding the raw body, laravel-data's own normalizer having no
 notion of the wire shape, the yii3 hydrator casting only to DECLARED types, a mode having no per-ITEM cast to
@@ -121,18 +121,17 @@ not — not "accepted" versus "refused". `42.0` for `type: integer` is a conform
 | Behaviour | runtime | symfony | laravel | laravel-data | yii3 | Why |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | `42.0` for `type: integer` (JSON Schema 2020-12 §6.1.1) | ✅ accepted | ❌ 422 | ✅ accepted | ✅ accepted | ✅ accepted | A number with a ZERO fractional part IS an integer, so accepting it is the conformant answer. Symfony's serializer type-checks the `int` property before any generated constraint runs, so it refuses the one value the spec calls an integer — a gap it cannot close from generated code — `ValidationParityTest::testAnIntegralFloatIsAnIntegerWhereverTheGeneratorOwnsTheCheck`. It is the PROPERTY that is refused: inside a container the value goes to the callback, which reads the spec's answer, so a list AND a map of `type: integer` both accept `42.0` |
-| `42.5` for `type: integer` | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ❌ accepted as `42` | The mirror of the row above, and the reason it is two rows: `yiisoft/hydrator` casts to the DECLARED type before the validator sees the object, so a fractional number arrives as an `int` and clears every rule. Symfony refuses it for the same reason it refuses `42.0` — the serializer, not the document — which happens to be right here. Same test |
-| a numeric string for `type: integer` / `number`, or `0`, `1`, `"0"`, `"1"` for `boolean` | ✅ refused | ✅ refused | ✅ refused in a JSON body | ❌ accepted | ❌ accepted | The JSON type is checked by runtime, the Symfony serializer, and Laravel mode's `withValidator()`, which reads the raw JSON body: Laravel's own `integer`, `numeric` and `boolean` rules accept these (the `:strict` variants arrived in 12.22, above the floor, and `integer:strict` would also refuse `42.0`). A query string or form body has no JSON types and stays lenient. laravel-data uses the same rules without that check, and the yii3 hydrator casts first — `ValidationParityTest::testLenientScalarsArePinnedPerMode` |
-| `null` for a required non-nullable `type: string`, or a `oneOf` / `anyOf` with a string member | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ❌ accepted as `""` | The same cast: `yiisoft/hydrator` turns `null` into the declared `string` (or `string\|int`) before any rule runs, so the validator sees an empty string, which the schema allows. Not fixable from the emitted class — the raw value is gone by then — `ValidationParityTest::testNullIsJudgedByTheSchemaNotTheMode`, `testModeDivergencesFoundByTheAudit` |
+| `42.5` for `type: integer` | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ✅ refused with `ValidatingHydrator`; ❌ accepted as `42` with a plain `Hydrator` | The mirror of the row above, and the reason it is two rows: `yiisoft/hydrator` casts to the DECLARED type before the validator sees the object, so a fractional number arrives as an `int` and clears every rule. Since 2.15.104 the raw `#[Validate]` check refuses it first — it runs only under `ValidatingHydrator`, the setup [README.yii3](README.yii3.md#setup-you-must-not-skip-part-three-the-validating-hydrator) requires; the parity test drives a plain `Hydrator` — `Yii3RequestShapeTest::testAValueTheCastWouldCorruptIsRefused`. Symfony refuses it for the same reason it refuses `42.0` — the serializer, not the document — which happens to be right here. Same test |
+| a numeric string for `type: integer` / `number`, or `0`, `1`, `"0"`, `"1"` for `boolean` | ✅ refused | ✅ refused | ✅ refused in a JSON body | ❌ accepted | ❌ accepted | The JSON type is checked by runtime, the Symfony serializer, and Laravel mode's `withValidator()`, which reads the raw JSON body: Laravel's own `integer`, `numeric` and `boolean` rules accept these (the `:strict` variants arrived in 12.22, above the floor, and `integer:strict` would also refuse `42.0`). A query string or form body has no JSON types and stays lenient. laravel-data uses the same rules without that check, and yii3's raw `#[Validate]` uses the same lenient rule as the property — `ValidationParityTest::testLenientScalarsArePinnedPerMode` |
+| `null` for a required non-nullable `type: string` | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ✅ refused with `ValidatingHydrator`; ❌ accepted as `""` with a plain `Hydrator` | `yiisoft/hydrator` turns `null` into the declared `string` before any rule runs. Since 2.15.110 the raw `#[Validate]` check skips only a MISSING key and refuses the null first, under `ValidatingHydrator` — `Yii3RequestShapeTest::testARequiredValueSentAsNullIsRefused`; the parity test drives a plain `Hydrator` — `ValidationParityTest::testNullIsJudgedByTheSchemaNotTheMode` |
+| `null` for a `oneOf` / `anyOf` with a string member | ✅ refused | ✅ refused | ✅ refused | ✅ refused | ❌ accepted as `""` | The same cast to `string\|int`, and a union carries no raw `#[Validate]`: the validator sees an empty string, which the schema allows — `ValidationParityTest::testModeDivergencesFoundByTheAudit` |
 | a loose `format: date-time` string (`"yesterday"`) | ✅ refused | ❌ accepted | ✅ refused | ✅ refused | ✅ refused | The property is a `DateTimeImmutable`, so the serializer parses the string first, and PHP's parser is generous. Runtime and laravel accept only the four patterns every mode agrees on (`GeneratedDtoInterface::DATE_TIME_FORMATS`) — `testALooseDateTimeStringIsRefusedWhereverTheGeneratorOwnsTheCheck` |
 | a JSON array for a `type: object` property | ✅ refused | ❌ accepted | ✅ refused | ✅ refused¹ | ❌ accepted | The distinction lives in the RAW body: once decoded, `{"0":1,"1":2}` and `[1,2]` are the same PHP value. Runtime decodes the body itself, the generated Laravel FormRequest hands `withValidator()` the undecoded body; `#[MapRequestPayload]` denormalizes first, and the yii3 hydrator likewise builds the object before the validator runs — `testAJsonArrayIsRefusedForATypeObjectPropertyWhereverTheRawBodyIsReachable` |
-| an OPTIONAL property sent as `null` when the schema is not `nullable` | ✅ refused | ❌ accepted | ✅ refused | ✅ refused | ✅ refused | An optional property's PHP type is nullable so it can default to `null`, and no `#[Assert\NotNull]` is emitted — `testAnOptionalPropertyIsNotNullable` |
-| omitted required nullable field | ✅ refused | ❌ accepted by default | ✅ refused | ✅ refused | ✅ refused | Symfony requires `require_all_properties: true` in serializer context; explicit null remains valid. See [Symfony configuration](README.symfony.md) and `testSymfonyStrictContextRequiresNullableKeys` |
 | `additionalProperties: false` / `unevaluatedProperties: false` on a **DTO-shaped** schema | ✅ | ❌ | ✅ | ✅ | ❌ | Enforceable only where the RAW body is still reachable. Runtime holds it, and the two rule-based modes run their interpreter over it. Symfony's serializer and the yii3 hydrator both fill a typed object first, and a key the schema never declared is gone before generated code runs — `testAClosedObjectRefusesAnUndeclaredKeyWhereverTheRawBodyIsReachable` |
 | an empty map on the wire | `{}` | `[]` | `{}` | `[]` | `[]` | `type: object` says object. Runtime and laravel cast maps to `stdClass`; the Symfony serializer, laravel-data and the yii3 hydrator all keep the PHP array — `NormalizationParityTest` |
 | a map whose keys are dense integers from 0 (`{"0":"a","1":"b"}`) | `{"0":"a","1":"b"}` | `["a","b"]` | `{"0":"a","1":"b"}` | `["a","b"]` | `["a","b"]` | The row above with the KEYS at stake rather than the braces: such a PHP array IS a list, so the three modes that hand their array straight to `json_encode` lose the names. Sparse numeric keys (`{"2":…,"7":…}`) survive everywhere — only the 0-based dense case is ambiguous with an array to begin with — `NormalizationParityTest`, case "map with dense numeric keys" |
 | sub-second precision in a `format: date-time` RESPONSE | kept | kept | kept | dropped | kept | A laravel-data transformer takes ONE format string, so it cannot say "keep the precision the payload carried". The emitted `#[WithCast]` accepts all four patterns on the way IN; the way out is ATOM. yii3 writes the wire value itself, so it keeps the precision the payload carried, like runtime — `NormalizationParityTest`, case "date-time with microseconds" |
-| a `readOnly` property sent BY the client | ignored | echoed² | ignored | echoed | ignored | `#[Hidden]` is laravel-data's exact counterpart to `writeOnly`, and it has none for `readOnly`: nothing says "hydrate everything except this key". yii3 keeps its own list of names to leave out, so it drops both — `NormalizationParityTest`, case "readOnly property sent by the client" |
+| a `readOnly` property sent BY the client | ignored | echoed² | ignored | echoed | ignored on output | `#[Hidden]` is laravel-data's exact counterpart to `writeOnly`, and it has none for `readOnly`: nothing says "hydrate everything except this key". yii3 keeps its own list of names `getData()` leaves out, so it drops both on the way out; the property is still hydrated and its getter answers the client's value — `NormalizationParityTest`, case "readOnly property sent by the client" |
 | an unprovided optional property in `toArray()`, with or without a schema `default` | omitted | omitted; `null` when the schema allows null; the `default` when it has one | omitted | omitted | omitted | The four modes that carry presence in the property itself leave the key out. Symfony mode tells the stock serializer per property, through `#[Context]`, to drop a null the schema does not allow — that null can only mean "never set". A null the schema allows is written, and the constructor default IS the property's value, so an absent key and a `default` the document declared come back the same way. `isXxxProvided()` still answers the question on the object — `NormalizationParityTest`, `SymfonyWireShapeTest` |
 | an unprovided optional property with NO type in its schema | omitted | echoed as `null`² | omitted | echoed as `null` | omitted | `mixed` cannot take part in a union type, so this is the one property shape with no `\|Optional` (laravel-data) and no sentinel union (runtime) to mark absence with. laravel-data fills the missing key with `null` and echoes it; yii3 leaves the property uninitialised, which is absence without a type to express it — `NormalizationParityTest`, case "untyped optional property missing" |
 | a discriminated union arriving in a PAYLOAD | ✅ built | ✅ built | ✅ built | ✅ built | ➖ held as the array | `yiisoft/hydrator` casts to a DECLARED type, an interface it cannot build, so the property is `Union|array`: it keeps the decoded array, the interpreter checks it against the member the discriminator names, and the reader builds the member — see [A union](README.yii3.md#a-union-oneof-anyof-and-a-discriminated-allof-base). Until 2.15.113 a discriminated `oneOf` was missed by this and the property was left unset |
@@ -153,6 +152,12 @@ laravel-data enforces `writeOnly` unconditionally via `#[Hidden]`.
 ³ yii3 accepts the null item, but also does not check the OBJECT items of such a list: `[{}]` passes a
 required property. Same cause as the dropped non-object item — the hydrator builds the collection before
 any rule runs.
+
+No longer divergences, since 2.15.71: Symfony refuses an OPTIONAL property sent as `null` where the schema
+is not `nullable` (the setter takes null only where the schema allows it), and an omitted REQUIRED
+nullable key (the constructor parameter is untyped, so the serializer throws
+`MissingConstructorArgumentsException` instead of passing null) — `ValidationParityTest::testAnOptionalPropertyIsNotNullable`,
+`testNullOnlyPresenceAcrossModes`, `SymfonyWireShapeTest::testNullIsTakenOnlyWhereTheSchemaAllowsIt`.
 
 Everything else about the response shape is identical in all five.
 
@@ -190,15 +195,15 @@ value. All five modes declare that rather than promising otherwise:
 | `type: number` | `array<array<float\|int>>` |
 | a `$ref` to a scalar or enum component | that component's backing type |
 | a `$ref` to a CONTAINER component | the container it aliases — `array<array<string>>` |
-| a `$ref` to an OBJECT component | that component's DTO — `array<array<Tag>>` (yii3: `array<array<array<string, mixed>>>`) |
+| a `$ref` to an OBJECT component | that component's DTO — `array<array<Tag>>` (yii3: `array<array<Tag\|array<string, mixed>>>`) |
 
 yii3 is the exception in that last row, and one level up as well: its hydrator builds objects only
 for the items of a list of DTOs (`#[Collection]`). An enum member anywhere in a container, and a DTO in a
 map or two containers deep, stay the decoded JSON — so yii3 declares `array<string>` for a list of a
-string enum and `array<string, array<string, mixed>>` for a map of DTOs, which is what the object holds.
-`#[Collection]` is not used for those on purpose: for an enum it drops a member the enum lacks before any
-rule can report it, and it renumbers a map's keys. Since 2.15.65; before, the class was declared and
-`getKinds()[0]->value` passed PHPStan and failed at runtime.
+string enum and `array<string, Tag|array<string, mixed>>` for a map of DTOs: the decoded arrays from a
+payload, `Tag` from `create()` (since 2.15.106). `#[Collection]` is not used for those on purpose: for an
+enum it drops a member the enum lacks before any rule can report it, and it renumbers a map's keys. The
+enum property holds the backing values; since 2.15.105 `getKinds()` maps them to cases.
 
 Runtime mode stops casting objects two containers deep: from the third container on, an object or map is
 the `stdClass` `json_decode()` produced (so an empty one still writes back as `{}`), and the declaration
@@ -273,20 +278,20 @@ validator: it is already the value it claims to be, and casting it would only re
 | Nested DTOs, lists of DTOs, maps | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Discriminated unions | ✅ interface + members | ✅ interface + members | ✅ interface + members | ✅ abstract `Data` + `morph()` | ➖ interface + members, held as the array |
 | PATCH / partial updates | ✅ `UnsetValue` | ✅ `isXxxProvided()` via the setter | ✅ `isXxxProvided()` from the validated keys | ✅ `Optional` — the property's own type | ✅ `isXxxProvided()` from `hasProperty()` |
-| `toArray()` / response shape | ✅ | serializer | ✅ | laravel-data's own | `getData()` |
+| `toArray()` / response shape | ✅ | serializer | ✅ | laravel-data's own | `getData()`, `jsonSerialize()` |
 | Uploaded files (`format: binary`) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Validated before the controller body runs | you call the deserializer | ✅ `#[MapRequestPayload]` | ✅ the FormRequest is resolved first | ✅ the container resolves `Data::from($request)` | ✅ hydrated and validated; the action reads the verdict |
 | Framework-native error envelope | aggregated exception | `ConstraintViolationList` → 422 | the framework's own 422 + error bag | the framework's own 422 + error bag | a `Result` you turn into a response |
-| Request binding: parameter sources (`path`/`query`/`header`/`cookie`) | ✅ | ➖ query through `#[MapQueryString]`; path through `--symfony-path-params` and a resolver of yours | ❌ | ➖ query; path through `#[FromRouteParameter]` | ➖ body/query/path only |
+| Request binding: parameter sources (`path`/`query`/`header`/`cookie`) | ✅ | ➖ query through `#[MapQueryString]`; path through `--symfony-path-params` and a resolver of yours | ➖ the FormRequest adds `path`, `header` and `cookie` to its validation data (2.15.55) | ➖ query; path through `#[FromRouteParameter]` (2.15.93) | ➖ body/query/path only |
 | A property name containing `.` (`"invoice.note"`) | ✅ | ✅ | ✅ escaped as `invoice\.note` in the rules | ❌ generation fails — `#[MapName]` reads the dot as a path | ✅ |
-| Request binding: `style` / `explode` / `allowReserved` / `allowEmptyValue` | ✅ | ➖ a query list's `style` and `explode`; not a repeated key | ❌ | ❌ | ❌ |
+| Request binding: `style` / `explode` / `allowReserved` / `allowEmptyValue` | ✅ | ➖ a query list's `style` and `explode`; not a repeated key | ➖ a query list's form `explode: false`, `pipeDelimited`, `spaceDelimited` — `normalizeOpenApiParameters()` (2.15.101) | ➖ the same split in `prepareForPipeline()` (2.15.101) | ❌ |
 | Request binding: multipart `encoding` | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Runtime dependency of the generated code | this package (or a vendored copy) | `symfony/validator` + `symfony/serializer` | none — ships with the framework | `spatie/laravel-data` | `yiisoft/input-http` + `yiisoft/validator` |
+| Runtime dependency of the generated code | this package (or a vendored copy) | `symfony/validator` + `symfony/serializer` | none — ships with the framework | `spatie/laravel-data` | `yiisoft/input-http` + `yiisoft/validator` + `yiisoft/hydrator` + `yiisoft/hydrator-validator` |
 
 The ❌ rows on the request-binding lines have one cause: by the time a `#[MapRequestPayload]` argument, a
 `FormRequest`, a `Data` object or a yii3 input exists, the framework has already parsed the request its own
 way. Those OpenAPI rules are about the request itself, so **use runtime mode when the request must follow
-the spec**. yii3 is the only framework mode that reaches part of the way: `in: query` and `in: path` bind
+the spec**. The ➖ cells are the part each framework mode reaches. In yii3, `in: query` and `in: path` bind
 through `#[Query]` and `#[Request]`, but `in: header` and `in: cookie` have no attribute in `input-http`
 at all, so a property declaring either is emitted with no source rather than a wrong one.
 

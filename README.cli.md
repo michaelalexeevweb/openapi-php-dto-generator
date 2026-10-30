@@ -48,12 +48,12 @@ Parameters:
 | `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON) |
 | `--directory` | `-d` | ✅ | Output directory for generated DTOs |
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
-| `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. |
+| `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. `Common` is created inside `--directory`; any other relative path is resolved from the current working directory, an absolute one is used as is. |
 | `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
 | `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime), `symfony` (DTOs decorated with Symfony Validator/Serializer attributes), `laravel` (a plain DTO plus a `FormRequest` with `rules()`), `laravel-data` (one `spatie/laravel-data` class per schema) or `yii3` (a `yiisoft/input-http` class per schema). See [Five modes](README.md#five-modes). |
 | `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
 | `--symfony-path-params` | | | With `--attributes=symfony`: also generate `<Operation>PathParams`, a DTO of the operation's path parameters, for a value resolver of your own. See [Path parameters as a DTO](README.symfony.md#path-parameters-as-a-dto). Ignored with a warning in other modes. |
-| `--no-laravel-form-request` | | | With `--attributes=laravel`: write the DTOs without their `<Dto>FormRequest`, for a project with `illuminate/validation` but no `laravel/framework`. See [Without `laravel/framework`](README.laravel.md#without-laravelframework). Ignored with a warning in other modes. |
+| `--laravel-form-request` / `--no-laravel-form-request` | | | With `--attributes=laravel`: on by default. `--no-laravel-form-request` writes the DTOs without their `<Dto>FormRequest`, for a project with `illuminate/validation` but no `laravel/framework`. See [Without `laravel/framework`](README.laravel.md#without-laravelframework). Ignored with a warning in other modes. |
 | `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
 | `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
 

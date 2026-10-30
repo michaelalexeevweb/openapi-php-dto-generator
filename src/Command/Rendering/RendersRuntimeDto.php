@@ -284,6 +284,14 @@ trait RendersRuntimeDto
         // Schema-LEVEL keywords, as opposed to the per-property map above. Only the ones the
         // runtime deserializer can act on are carried, and only when the document sets them.
         $objectConstraints = $this->resolveObjectConstraints($className);
+        // `parent::getObjectConstraints()` only where an ancestor declares it: a parent with no
+        // schema-level keyword of its own emits no such method, and the call was a fatal.
+        $parentHasObjectConstraints = false;
+        $ancestor = $extends;
+        for ($guard = 0; $ancestor !== null && !$parentHasObjectConstraints && $guard < 20; $guard++) {
+            $parentHasObjectConstraints = $this->resolveObjectConstraints($ancestor) !== [];
+            $ancestor = $this->allOfParentOf($ancestor);
+        }
         $fastHydrator = $this->resolveFastHydratorPlan($ownProperties, $constructorParams, $extends, $discriminator);
         $aliasAssignments = $this->resolveAliasAssignments($ownProperties);
         $parameterSourceAssignments = $this->resolveParameterSourceAssignments($ownProperties);
@@ -333,6 +341,7 @@ trait RendersRuntimeDto
             'methodProperties' => $methodProperties,
             'discriminator' => $discriminatorData,
             'extends' => $extends,
+            'parentHasObjectConstraints' => $parentHasObjectConstraints,
             'constraintAssignments' => $constraintAssignments,
             'objectConstraints' => array_map(
                 fn(string $name, mixed $value): array => [

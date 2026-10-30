@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Yii3\Recipe;
 
+use ReflectionParameter;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Hydrator\Result;
@@ -36,27 +37,46 @@ final class NestedPathTypeCaster implements TypeCasterInterface
 
     public function cast(mixed $value, TypeCastContext $context): Result
     {
-        $outer = $this->result;
-        if ($outer === null || !is_array($value)) {
+        if (!is_array($value)) {
             return $this->caster->cast($value, $context);
+        }
+
+        return $this->collectUnder(
+            path: [self::wireName($context->getReflection())],
+            build: fn(): Result => $this->caster->cast($value, $context),
+        );
+    }
+
+    /**
+     * Runs `$build` with the raw errors it causes collected apart, then reports them under `$path`.
+     *
+     * @template T
+     * @param list<string|int> $path
+     * @param callable(): T $build
+     * @return T
+     */
+    public function collectUnder(array $path, callable $build): mixed
+    {
+        $outer = $this->result;
+        if ($outer === null) {
+            return $build();
         }
 
         $inner = new ValidationResult();
         $this->collectInto($inner);
         try {
-            return $this->caster->cast($value, $context);
+            return $build();
         } finally {
             $this->collectInto($outer);
-            $key = $this->wireName($context);
             foreach ($inner->getErrors() as $error) {
-                $outer->addError($error->getMessage(), $error->getParameters(), [$key, ...$error->getValuePath()]);
+                $outer->addError($error->getMessage(), $error->getParameters(), [...$path, ...$error->getValuePath()]);
             }
         }
     }
 
-    private function wireName(TypeCastContext $context): string
+    /** The key the payload carries the property under. */
+    public static function wireName(ReflectionParameter|ReflectionProperty $reflection): string
     {
-        $reflection = $context->getReflection();
         $data = $reflection instanceof ReflectionProperty ? $reflection->getAttributes(Data::class) : [];
         $name = $data === [] ? null : ($data[0]->getArguments()[0] ?? null);
 

@@ -195,6 +195,7 @@ collects the errors of each object it builds separately, and puts the key it bui
 front of their paths.
 
 ```php
+use ReflectionParameter;
 use ReflectionProperty;
 use Yiisoft\Hydrator\Attribute\Parameter\Data;
 use Yiisoft\Hydrator\Result;
@@ -223,27 +224,46 @@ final class NestedPathTypeCaster implements TypeCasterInterface
 
     public function cast(mixed $value, TypeCastContext $context): Result
     {
-        $outer = $this->result;
-        if ($outer === null || !is_array($value)) {
+        if (!is_array($value)) {
             return $this->caster->cast($value, $context);
+        }
+
+        return $this->collectUnder(
+            path: [self::wireName($context->getReflection())],
+            build: fn(): Result => $this->caster->cast($value, $context),
+        );
+    }
+
+    /**
+     * Runs `$build` with the raw errors it causes collected apart, then reports them under `$path`.
+     *
+     * @template T
+     * @param list<string|int> $path
+     * @param callable(): T $build
+     * @return T
+     */
+    public function collectUnder(array $path, callable $build): mixed
+    {
+        $outer = $this->result;
+        if ($outer === null) {
+            return $build();
         }
 
         $inner = new ValidationResult();
         $this->collectInto($inner);
         try {
-            return $this->caster->cast($value, $context);
+            return $build();
         } finally {
             $this->collectInto($outer);
-            $key = $this->wireName($context);
             foreach ($inner->getErrors() as $error) {
-                $outer->addError($error->getMessage(), $error->getParameters(), [$key, ...$error->getValuePath()]);
+                $outer->addError($error->getMessage(), $error->getParameters(), [...$path, ...$error->getValuePath()]);
             }
         }
     }
 
-    private function wireName(TypeCastContext $context): string
+    /** The key the payload carries the property under. */
+    public static function wireName(ReflectionParameter|ReflectionProperty $reflection): string
     {
-        $reflection = $context->getReflection();
         $data = $reflection instanceof ReflectionProperty ? $reflection->getAttributes(Data::class) : [];
         $name = $data === [] ? null : ($data[0]->getArguments()[0] ?? null);
 
@@ -318,11 +338,66 @@ $hydrator = new PathAwareValidatingHydrator(
     validator: $validator,
     paths: $paths,
 );
+// `#[Collection]` names its resolver by class; the container answers that id with this one.
+$container->set(CollectionResolver::class, new PathAwareCollectionResolver($paths));
 ```
 
-`range.begin` and `range.inner.begin` come out whole. An item of a LIST is not covered: `#[Collection]`
-builds items through the hydrator rather than a type caster, so a raw error in one keeps the property
-path without the list and its index.
+`range.begin` and `range.inner.begin` come out whole. An item of a LIST is built by `#[Collection]`
+through the hydrator rather than a type caster, so a third class replaces its resolver and builds each
+item under the list's key and the item's index — `tags.1.id`, `ranges.0.inner.begin`:
+
+```php
+use BackedEnum;
+use Yiisoft\Hydrator\Attribute\Parameter\Collection;
+use Yiisoft\Hydrator\Attribute\Parameter\CollectionResolver;
+use Yiisoft\Hydrator\Attribute\Parameter\ParameterAttributeInterface;
+use Yiisoft\Hydrator\Attribute\Parameter\ParameterAttributeResolverInterface;
+use Yiisoft\Hydrator\AttributeHandling\ParameterAttributeResolveContext;
+use Yiisoft\Hydrator\DataInterface;
+use Yiisoft\Hydrator\Exception\NonInstantiableException;
+use Yiisoft\Hydrator\Result;
+
+final class PathAwareCollectionResolver implements ParameterAttributeResolverInterface
+{
+    public function __construct(
+        private readonly NestedPathTypeCaster $paths,
+        private readonly CollectionResolver $collections = new CollectionResolver(),
+    ) {
+    }
+
+    public function getParameterValue(
+        ParameterAttributeInterface $attribute,
+        ParameterAttributeResolveContext $context,
+    ): Result {
+        if (
+            !$attribute instanceof Collection
+            || is_a($attribute->className, BackedEnum::class, true)
+            || !$context->isResolved()
+            || !is_iterable($context->getResolvedValue())
+        ) {
+            return $this->collections->getParameterValue($attribute, $context);
+        }
+
+        $key = NestedPathTypeCaster::wireName($context->getParameter());
+        $collection = [];
+        foreach ($context->getResolvedValue() as $index => $item) {
+            if (!is_array($item) && !$item instanceof DataInterface) {
+                continue;
+            }
+            try {
+                $collection[] = $this->paths->collectUnder(
+                    path: [$key, $index],
+                    build: static fn(): object => $context->getHydrator()->create($attribute->className, $item),
+                );
+            } catch (NonInstantiableException) {
+                continue;
+            }
+        }
+
+        return Result::success($collection);
+    }
+}
+```
 
 ## What the generated class looks like
 
@@ -333,24 +408,33 @@ final class UpdatePost extends AbstractInput implements DataSetInterface, RulesP
 {
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 3, max: 120, skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $title;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Email(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $email;
 
     /** @var array<Tag> */
     #[Collection(Tag::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly array $tags;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 3, skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $subtitle;
 
     public function getTitle(): string { … }
     public function getSubtitle(): ?string { … }
     public function isSubtitleProvided(): bool { … }
+
+    // Building in code: required arguments first, an optional one left out is "not sent".
+    public static function create(string $title, string $email, array $tags, ?string $subtitle = null): self { … }
+    public function withProvided(string $property): self { … }
+    public function withoutProperty(string $property): self { … }
 
     // The framework's own data-set contract: this is what makes presence idiomatic.
     public function getRules(): iterable { return (new ObjectParser($this))->getRules(); }
@@ -363,9 +447,11 @@ final class UpdatePost extends AbstractInput implements DataSetInterface, RulesP
 }
 ```
 
-`skipOnEmpty: new WhenNull()` is on EVERY rule, required and nullable properties included. It is the
-framework's own condition, and `getPropertyValue()` answers null for a key the payload never carried,
-so this one condition covers absence and an explicit null alike.
+`skipOnEmpty: new WhenNull()` is on EVERY validator rule, required and nullable properties included. It
+is the framework's own condition, and `getPropertyValue()` answers null for a key the payload never
+carried, so this one condition covers absence and an explicit null alike. The raw `#[Validate]` check is
+the exception: on a required property the schema does not let be null it skips only a MISSING key
+(`WhenMissing`), so `{"title": null}` is refused instead of being cast to `''`.
 
 That leaves the interpreter as the single judge of both, which is the point. Without it an absent
 required key produced a message from every rule the property carries — five lines for one missing key —
@@ -461,10 +547,11 @@ Natively expressed by `yiisoft/validator`:
 | `pattern` | `#[Regex]` |
 | `minItems` / `maxItems` | `#[Count(min:, max:)]` |
 | `format: email` / `uuid` / `uri` / `ipv4` / `ipv6` | `#[Email]`, `#[Uuid]`, `#[Url]`, `#[Ip]` |
-| `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration |
+| `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration and a raw `#[Validate]` against the same formats (`Date`, or `AnyRule` of `DateTime`s — "must be a date") |
 | nested object | `#[Nested]` — argument-free; it cascades into the nested class's own attributes |
 | list of nested objects | `#[Each(new Nested())]` plus `#[Collection(…)]` for hydration |
-| `enum` | backed enums become the property TYPE; inline enums use JSON equality in the interpreter |
+| `enum` | backed enums become the property TYPE, with a raw `#[Validate(new In([...]))]` of the cases (strict in a body); inline enums use JSON equality in the interpreter |
+| raw value, before the hydrator's cast | `#[Validate(<type rule>)]` on a scalar, `#[Validate(new Each([]))]` on a list, map or object in a body — "must be an array" / "must be an object" |
 
 Everything else reaches the emitted interpreter through the class-level `#[Callback]`: `oneOf`, `not`,
 `if`/`then`/`else`, `contains`, `prefixItems`, `unevaluated*`, `propertyNames`, `patternProperties`,
@@ -478,8 +565,9 @@ keyword asks for and was dropped.
 
 ## `readOnly` inside `required`
 
-A `readOnly` property is server-owned: it is already in `OPENAPI_WRITE_ONLY`, the list of names the
-hydrator leaves out of the input. Listing it under `required` puts that requirement on the RESPONSE
+A `readOnly` property is server-owned: it is already in `OPENAPI_WRITE_ONLY`, the list of names
+`getData()` does not write out. The hydrator still fills it from a request, so do not trust its getter on
+input. Listing it under `required` puts that requirement on the RESPONSE
 alone — OpenAPI is explicit — so the property is typed nullable and its name is taken out of the
 interpreter's `required` list. Until 2.15.36 the emitted class contradicted itself: it refused to read
 the field from a request and then demanded the field be there.
@@ -558,7 +646,8 @@ property typed by one is declared `Report|array`:
 
 The interface declares the getters its members share — same name, same type in every one — so code
 typed by it reads `$event->getUuid()` directly. A property whose type differs between members is left
-to the member.
+to the member. "Members" means every class implementing the interface, an `allOf` child the mapping does
+not name included.
 
 The same holds for the items of a list or map of a union.
 
@@ -651,6 +740,9 @@ the items the same way, and one that does not read as its type is refused under 
   as a scalar in a BODY — `{"ids": "x"}` — with `#[Validate(new Each([]))]` and "must be an array" /
   "must be an object". Not for a parameter: a query string writes a one-item list `?ids=1`, which
   arrives as a string;
+- **what the hydrator decides before any check runs stays decided**: a JSON array for a `type: object`
+  property, a key `additionalProperties: false` forbids, `null` for a `oneOf` / `anyOf` with a string
+  member (cast to `""`) — see the [support matrix](README.support-matrix.md#divergences);
 - **a raw-check error in a nested object has only the property's own path** unless the application
   wires the recipe in [Raw checks in a nested object](#raw-checks-in-a-nested-object);
 - **a map of objects in a PAYLOAD is held as the decoded arrays** — `#[Collection]` would renumber

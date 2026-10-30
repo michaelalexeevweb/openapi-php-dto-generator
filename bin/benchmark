@@ -410,13 +410,10 @@ if ($yii3Available) {
     );
     $results['yii3']['normalize+validate'] = $results['yii3']['normalize'] + $results['yii3']['validate'];
 
-    // What an action actually does: hydrate, then read the verdict itself.
-    $results['yii3']['— hydrate + read getValidationResult()'] = $time(
-        static function () use ($yii3, $yii3Class, $payload): mixed {
-            $input = $yii3->hydrate($yii3Class, $payload);
-
-            return $yii3->validate($input)->isValid();
-        },
+    // What an action actually does: `ValidatingHydrator` — the raw `#[Validate]` checks before the cast,
+    // then the object's own rules — and the verdict it leaves on the input.
+    $results['yii3']['— validating hydrator + read getValidationResult()'] = $time(
+        static fn(): mixed => $yii3->hydrateValidatedInput(class: $yii3Class, payload: $payload)->getValidationResult()?->isValid(),
         $iterations,
     );
 }
@@ -433,7 +430,7 @@ if ($laravelDataAvailable) {
     $extras['laravel-data'] = ['— from(request): validate + hydrate'];
 }
 if ($yii3Available) {
-    $extras['yii3'] = ['— hydrate + read getValidationResult()'];
+    $extras['yii3'] = ['— validating hydrator + read getValidationResult()'];
 }
 
 if ($asMarkdown) {

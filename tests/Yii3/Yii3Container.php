@@ -6,11 +6,13 @@ namespace OpenapiPhpDtoGenerator\Tests\Yii3;
 
 use Nyholm\Psr7\ServerRequest;
 use OpenapiPhpDtoGenerator\Tests\Yii3\Recipe\NestedPathTypeCaster;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Recipe\PathAwareCollectionResolver;
 use OpenapiPhpDtoGenerator\Tests\Yii3\Recipe\PathAwareValidatingHydrator;
 use Psr\Container\ContainerInterface;
 use ReflectionClass;
 use ReflectionNamedType;
 use RuntimeException;
+use Yiisoft\Hydrator\Attribute\Parameter\CollectionResolver;
 use Yiisoft\Hydrator\AttributeHandling\ResolverFactory\ContainerAttributeResolverFactory;
 use Yiisoft\Hydrator\Hydrator;
 use Yiisoft\Hydrator\TypeCaster\CompositeTypeCaster;
@@ -119,6 +121,7 @@ final class Yii3Container implements ContainerInterface
 
         if ($nestedPaths) {
             $paths = new NestedPathTypeCaster($resolver);
+            $this->instances[CollectionResolver::class] = new PathAwareCollectionResolver($paths);
             $hydrator = new PathAwareValidatingHydrator(
                 hydrator: new Hydrator(
                     typeCaster: new CompositeTypeCaster(new PhpNativeTypeCaster(), new EnumTypeCaster(), $paths),

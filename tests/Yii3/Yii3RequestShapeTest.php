@@ -790,8 +790,10 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame(['range.inner.begin'], array_keys($verdict(['range' => ['inner' => ['begin' => 'nonsense']]], nestedPaths: true)));
         self::assertSame(['begin'], array_keys($verdict(['begin' => 'nonsense'], nestedPaths: true)));
         self::assertSame([], $verdict(['range' => ['begin' => '2026-03-10'], 'begin' => '2026-03-10'], nestedPaths: true));
-        // What the README says the recipe does NOT reach: `#[Collection]` builds items without a caster.
-        self::assertSame(['begin'], array_keys($verdict(['ranges' => [['begin' => 'nonsense']]], nestedPaths: true)));
+        // An item of a list keeps the list and its index, nested objects inside it their keys too.
+        self::assertSame(['ranges.1.begin'], array_keys($verdict(['ranges' => [['begin' => '2026-03-10'], ['begin' => 'nonsense']]], nestedPaths: true)));
+        self::assertSame(['ranges.0.inner.begin'], array_keys($verdict(['ranges' => [['inner' => ['begin' => 'nonsense']]]], nestedPaths: true)));
+        self::assertSame([], $verdict(['ranges' => [['begin' => '2026-03-10']]], nestedPaths: true));
     }
 
     public function testAContainerSentAsAScalarIsRefused(): void

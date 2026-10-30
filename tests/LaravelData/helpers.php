@@ -7,7 +7,7 @@ declare(strict_types=1);
  * defines: `app()` (35 call sites in the package), `resolve()` (41), `config()` (29).
  *
  * This package is framework-agnostic and depends on no Laravel skeleton, so the tests that drive
- * laravel-data build their own container (see `LaravelDataContainer`) and supply these four functions.
+ * laravel-data build their own container (see `LaravelDataContainer`) and supply these six functions.
  * The alternative was `orchestra/testbench` — a whole framework installation as a dev dependency, to
  * reach a pipeline that turns out to need nothing more than what is below.
  *

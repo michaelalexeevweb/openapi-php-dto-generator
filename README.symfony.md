@@ -59,7 +59,7 @@ final class User
         return $this->name;
     }
 
-    public function setName(?string $name): void
+    public function setName(string $name): void
     {
         $this->name = $name;
         $this->nameProvided = true;
@@ -73,13 +73,15 @@ final class User
 }
 ```
 
-Building one by hand: `create()` takes every field in one expression — required ones as in the
-constructor, optional ones by name. An optional argument left out or passed as `null` is not set;
-to send an explicit `null`, call the setter.
+Building one by hand: a class with an optional field, or a required one with a schema `default`, also
+gets `create()`, which takes every field in one expression — required ones as in the constructor,
+optional ones by name. An optional argument left out or passed as `null` is not set; to send an
+explicit `null`, call the setter. A class whose fields are all required is built with `new`.
 
 A required property with a schema `default` may be left out of `create()`, which fills the default.
 The constructor still demands it: that is what the serializer calls, so a request that omits the
-field is refused as before.
+field is refused as before. The generator warns about such a property: `required` and `default`
+contradict each other.
 
 ```php
 $receipt = Receipt::create(id: 7);   // status: 'done' from the schema
@@ -98,40 +100,29 @@ In a Symfony controller the DTO is validated and populated automatically:
 public function create(#[MapRequestPayload] User $user): Response { /* ... */ }
 ```
 
-For required nullable fields (including `type: null`), enable `require_all_properties` in the
-serializer context. Symfony otherwise supplies `null` for an omitted nullable constructor argument,
-so validation cannot distinguish a missing key from an explicit null. Optional fields remain optional:
-they are populated through setters.
-
-```php
-public function create(
-    #[MapRequestPayload(serializationContext: ['require_all_properties' => true])] User $user,
-): Response { /* ... */ }
-```
-
-For direct Serializer calls, pass `['require_all_properties' => true]` as the fourth argument to
-`deserialize()`, or configure it in the normalizer's default context.
+A required nullable field (including `type: null`) is an untyped constructor argument, its type kept
+in the docblock. So an omitted key is refused — `MissingConstructorArgumentsException`, a 422 under
+`#[MapRequestPayload]` — and an explicit `null` is accepted, with no serializer context needed.
+Optional fields remain optional: they are populated through setters.
 
 ## OpenAPI → Symfony attribute mapping
 
 | OpenAPI | Symfony attribute |
 |---|---|
-| `required` (non-nullable) | a non-nullable PHP type; `#[Assert\NotNull]` only where the type admits null (an untyped property) |
+| `required` (non-nullable) | a non-nullable PHP type; `#[Assert\NotNull]` only where the PHP type still admits null (a multi-type property rendered `mixed`). An untyped property takes null, as in every mode |
 | `minLength` / `maxLength` | `#[Assert\Length(min:, max:)]` |
 | `minimum` / `maximum` | `#[Assert\Range(min:, max:)]` |
 | `exclusiveMinimum` / `exclusiveMaximum` | `#[Assert\GreaterThan]` / `#[Assert\LessThan]` |
 | `multipleOf` | `#[Assert\DivisibleBy]` |
 | `pattern` | `#[Assert\Regex]` |
 | `minItems` / `maxItems`, `minProperties` / `maxProperties` | `#[Assert\Count]` |
-| `uniqueItems` | callback with JSON equality |
-| `const` | callback with JSON equality |
 | `enum` | generated PHP backed enum when representable; inline Choice for non-nullable string/bool members; callback for numeric, structural and nullable enums |
 | `format: url` | `#[Assert\Url]` |
 | `format: int32` / `uint32` | `#[Assert\Range]` (bounds) |
 | `format: date` / `date-time` | `DateTimeImmutable` property and getter; written as the schema says through a `#[Context]` callback (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `items` / `additionalProperties` with `format: date` / `date-time` | `array<DateTimeImmutable>`; written per item the same way (see [dates](#dates-are-formatted-by-the-dto-not-the-normalizer)) |
 | `format: binary` | `UploadedFile` type |
-| `items` / `additionalProperties` of an enum, a date or a DTO | `#[Assert\All([new Assert\Type(X::class)])]` |
+| `items` of an enum or a date; `additionalProperties` of an enum, a date or a DTO | `#[Assert\All([new Assert\Type(X::class)])]` |
 | `anyOf` | `#[Assert\AtLeastOneOf([...])]` |
 | nested DTO / array of DTOs | `#[Assert\Valid]` (cascade) |
 | property name ≠ OpenAPI name | `#[SerializedName('…')]` |
@@ -147,7 +138,7 @@ own callback and are reached via the `#[Assert\Valid]` cascade.
 | OpenAPI | Callback check |
 |---|---|
 | `required` (inside a subschema) | property presence |
-| `const` | callback with JSON equality |
+| `const`, `uniqueItems` | callback with JSON equality |
 | `properties`, `patternProperties`, `propertyNames` | recursion into matching properties / key names |
 | `additionalProperties: false` / schema | extra keys rejected / validated |
 | `unevaluatedProperties: false`, `unevaluatedItems: false` | keys / indices not covered above rejected |
@@ -315,15 +306,18 @@ To apply the `write` group described above in a controller:
 
 An optional property is `?T = null`, so its value alone cannot tell "the client omitted this key"
 from "the client sent `null`" — the distinction a PATCH endpoint lives on. The generated setter
-records it:
+records it. With `note` an optional property the schema lets be null (`type: [string, "null"]`):
 
 ```php
-$dto = $serializer->deserialize('{"id":1,"name":null}', User::class, 'json');
+$dto = $serializer->deserialize('{"id":1,"note":null}', User::class, 'json');
 
-$dto->getName();            // null
-$dto->isNameProvided();     // true  — sent, explicitly as null
-$dto->isEmailProvided();    // false — never sent
+$dto->getNote();            // null
+$dto->isNoteProvided();     // true  — sent, explicitly as null
+$dto->isNameProvided();     // false — never sent
 ```
+
+A `null` for an optional property the schema does not let be null (`{"name":null}`) is refused by the
+serializer at the field: its setter takes no null.
 
 Nothing to register: the flag is part of the DTO, so it works through `#[MapRequestPayload]`, on
 nested DTOs and on arrays of DTOs alike. `#[Ignore]` keeps the flags out of the serialized output.
@@ -542,7 +536,7 @@ note on a request that already fails elsewhere applies to it as well. A failure 
 Symfony would fill it. An inline `enum` on a path parameter is generated either way, as
 `<Operation>PathParams<Name>`, for a route argument typed with it.
 
-### Dates are formatted by the DTO, not the normalizer
+## Dates are formatted by the DTO, not the normalizer
 
 Symfony's `DateTimeNormalizer` has one fixed pattern per context, which cannot express what OpenAPI
 asks for: `format: date` must stay a date, and a `date-time` must keep the sub-second precision the
@@ -571,7 +565,7 @@ A CONTAINER of dates is written item by item, and a map keeps its keys:
 Where the items are really dates and where they are strings differs by mode — see
 [Temporal container items](README.support-matrix.md#temporal-container-items) in the support matrix.
 
-### An empty map serializes as `[]`
+## An empty map serializes as `[]`
 
 A property declared `type: object` with `additionalProperties` becomes a PHP `array`, and PHP cannot
 tell an empty map from an empty list — so an empty one encodes as `[]` where the schema says an
@@ -603,10 +597,10 @@ $payload['tags'] = (object)$payload['tags'];
 | | |
 |---|---|
 | **Immutability** | only required properties are `readonly`; the optional ones have setters, which is what makes presence tracking possible. Runtime-mode DTOs are immutable throughout |
-| **Parameter binding** | `matrix`, `label`, `deepObject`, `spaceDelimited`, `pipeDelimited`, `allowReserved` and multipart Encoding parts are not applied — Symfony parses the query string and the body its own way, before any DTO exists. `allowEmptyValue: false` is the one that survives, as `#[Assert\NotBlank(allowNull: true)]` |
+| **Parameter binding** | `matrix`, `label`, `deepObject`, `allowReserved` and multipart Encoding parts are not applied — Symfony parses the query string and the body its own way, before any DTO exists. What survives: a query list's `style` and `explode` (and a path list's, with `--symfony-path-params`) — see [above](#a-query-list-binds-in-the-form-its-style-names), a repeated key aside — and `allowEmptyValue: false`, as `#[Assert\NotBlank(allowNull: true)]` |
 | **readOnly / writeOnly** | advisory unless you pass serialization groups (above); runtime enforces them itself |
 | **`additionalProperties: false`** | near a no-op through the serializer, which drops unknown keys before validation |
-| **An empty map** | serializes as `[]`, not `{}` — see [below](#an-empty-map-serializes-as-) |
+| **An empty map** | serializes as `[]`, not `{}` — see [above](#an-empty-map-serializes-as-) |
 | **A whole `type: number`** | serializes as `30000.0`, not `30000` — the serializer's `JsonEncode` defaults to `JSON_PRESERVE_ZERO_FRACTION`. Both are the same JSON number; a client or a snapshot comparing text sees a difference. It is an encoder option, out of a DTO's reach: pass `[JsonEncode::OPTIONS => 0]` (plus whatever flags you use) to `serialize()` to match runtime mode |
 | **`(string)$dto`, `toJson()`, `jsonSerialize()`** | not generated — the Symfony serializer is the way out. Code that leaned on them breaks loudly, but some only implicitly: `array_unique()` over DTOs compares them as strings, which is a fatal error without `__toString()`. Compare by the fields that make two items the same instead |
 
@@ -630,4 +624,5 @@ The schema semantics every mode shares (list vs object, branch order in `oneOf`/
 `unevaluated*`, `content*`, `$defs`, extended formats) are in
 [Validation Notes](README.validation.md).
 
-> Requires `symfony/validator` and `symfony/serializer` in the consuming project.
+> Requires `symfony/validator`, `symfony/serializer` and `symfony/property-info` in the consuming
+> project — see the version floor at the top.

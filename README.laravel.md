@@ -88,9 +88,8 @@ final class StoreUser extends FormRequest
 }
 ```
 
-Drop the `withValidator()` method if the generated DTO has none — `method_exists($dto, 'withValidator')`
-answers it, and so does reading the DTO: no `withValidator()` there means the rules already say
-everything the schema does.
+Always forward `withValidator()`: every generated DTO has one, because besides the interpreter it keeps
+the containers `validated()` returns whole.
 
 **Authorization is never generated.** An OpenAPI document describes payload shape, not policy, so the
 generated FormRequest defines no `authorize()`. Add one where the route needs it.
@@ -98,18 +97,26 @@ generated FormRequest defines no `authorize()`. Add one where the route needs it
 ### A body that is one of several variants
 
 A schema with a `discriminator` — a `oneOf`/`anyOf` of objects, or an object base its variants `allOf`
-— is an interface the variants implement. The base of the allOf pattern declares the getters of its
-own properties, so code that only reads the shared fields needs no `instanceof`:
+— is an interface the variants implement:
 
 ```php
-interface Shape
+interface Shape extends JsonSerializable
 {
-    public function getKind(): ShapeKind;
+    public const string DISCRIMINATOR_PROPERTY = 'kind';
+
+    public const array VARIANTS = [
+        'circle' => Circle::class,
+        'square' => Square::class,
+    ];
+
     public function toArray(): array;
 }
 
 final class Circle implements Shape { /* kind, radius */ }
 ```
+
+The base of the allOf pattern also declares the getters of its own properties (`getKind()`, …), so
+code that only reads the shared fields needs no `instanceof`.
 
 A property typed with it holds the variant its discriminator names, and every field of that variant is
 checked — the fields of THAT variant only, also for a `oneOf` of `$ref`s with a discriminator written on
@@ -179,10 +186,10 @@ public static function rules(): array
         'id' => ['present', 'integer', 'min:1'],
         'title' => ['present', 'string', 'min:3', 'max:80'],
         'status' => ['present', Rule::enum(Status::class)],
-        'slug' => ['sometimes', 'string', 'regex:/^[a-z|0-9-]+$/'],
+        'slug' => ['sometimes', 'string', 'regex:#^[a-z|0-9-]+$#u'],
         'summary' => ['sometimes', 'nullable', 'string'],
-        'tags' => ['sometimes', 'array', 'list'],
-        'tags.*.name' => ['required_with:tags', 'string', 'min:2'],
+        'tags' => ['sometimes', 'list'],
+        'tags.*.name' => ['string', 'min:2'],
         'scores.*' => ['integer', 'min:0'],
     ];
 }
@@ -196,11 +203,11 @@ easy to get wrong and are therefore worth knowing:
 | `present`, not `required` | Laravel's `required` means "present and NOT empty": it rejects `""`, `[]`, `{}` and `null`, all of which are legal values for a required property. `present` asserts the key exists and leaves the value to the type rules |
 | `sometimes` for an optional property | "validate only if the key is there", which is also where presence tracking comes from |
 | `nullable` ONLY when the schema says so | optional is not nullable. `sometimes` already covers the absent key; a key that IS there carrying `null` is a value the schema never allowed, so `slug` above rejects it and `summary` (declared `nullable`) accepts it |
-| `required_with:<parent>` for a nested required property | a dotted rule is evaluated even when the parent is null, so it must ask its question only when the parent has a value |
+| no presence rule on a nested property | `present`, `required` and `required_with` all fire when the parent is null, and `required_with` also refuses a legal `null`. Nested presence is the interpreter's job; the remaining rules are skipped for an absent key |
 | the ARRAY form, never a pipe string | a `\|` inside a `regex` pattern would split the rule list |
 | `const` and inline `enum` use the interpreter | JSON equality preserves scalar types and structures; `Rule::in` coerces values |
 | `Rule::enum(Status::class)` | pins the backing type and the members in one rule, with the generated enum as the single source of the values |
-| `array` **and** `list` | `array` alone accepts an associative array; `list` is what says "JSON array" |
+| `list`, not `array` | `list` is `is_array() && array_is_list()`, so `array` beside it only doubled the message for a scalar. `array` is the rule for `type: object` |
 | `min:` / `max:` for integer bounds, lengths and counts | the same rule means length, value or count depending on the type rule beside it, so an unpinned `oneOf` gets no bounds — the interpreter takes them instead. Numeric bounds on `number` also use the interpreter because Laravel rounds floats when converting them to strings |
 | …and never for an EXCLUSIVE bound | `min:` is inclusive and Laravel has no exclusive spelling. A `minimum: 3` carrying `exclusiveMinimum: true` (the OpenAPI 3.0 form) therefore goes to the interpreter WHOLE. Emitting `min:3` for it also took the keyword away from the interpreter, and the boundary value was accepted where every other mode refused it |
 | no `distinct` for `uniqueItems` | the rule is right about WHETHER and wrong about HOW MANY: it reports once per offending ELEMENT, so one duplicated pair produced two `validation.distinct` messages where every other mode reports the array's single violation once. `uniqueItems` belongs to the interpreter in every mode — which already owned it for object items, since `distinct` cannot compare those |
@@ -215,14 +222,15 @@ These keywords are checked by `withValidator()` against the payload the validato
 `prefixItems`, `unevaluatedProperties`, `unevaluatedItems`, `propertyNames`, `patternProperties`,
 `dependentSchemas`, `discriminator`, `exclusiveMinimum`/`exclusiveMaximum`, `dependentRequired`,
 `uniqueItems` (over any member type, see the note above), and every string format Laravel has no rule for (`hostname`,
-`duration`, `json-pointer`, `uri-template`, `idn-*`, `byte`, …).
+`duration`, `json-pointer`, `uri-template`, `idn-hostname`, `byte`, …).
 
-Two consequences worth stating plainly:
+Three consequences worth stating plainly:
 
 - **a violation is reported once.** The interpreter only carries what the rules did not take, so a
   payload breaking `minLength` gets Laravel's message, not two messages;
-- **a schema that needs nothing beyond rules gets no interpreter at all** — no constants, no
-  `withValidator()`, nothing to forward. 6 of the 47 files in the demo corpus carry one;
+- **a schema that needs nothing beyond rules gets no interpreter constants** — its `withValidator()`
+  only keeps containers whole and refuses a root JSON array. 17 of the 72 DTOs in the demo corpus
+  carry an interpreter;
 - **an error sits under the field it is about**, as a rule's error does: a key missing inside a
   variant is `shape.radius`, a list item `levels.0`. A claim a rule also makes — a missing key, a
   wrong type, a value outside an enum — is reported as that rule (`The shape.radius field must be
@@ -500,10 +508,10 @@ use a FormRequest of your own with `authorize()` that delegates to the DTO's `ru
 
 | | Why |
 |---|---|
-| parameter `style` / `explode` / `allowReserved` | Laravel has already parsed the request by the time a FormRequest exists. Use [runtime mode](README.runtime.md) when the request itself must follow the spec |
+| `deepObject`, path `matrix` / `label`, `allowReserved` | the query delimiters and `explode` are read (see [Query parameters as the document serializes them](#query-parameters-as-the-document-serializes-them)); these styles are not. Use [runtime mode](README.runtime.md) when the request itself must follow the spec |
 | multipart `encoding` parts | same reason |
 | generating `authorize()` | policy is not in the document |
-| a `spatie/laravel-data` class | possible as an opt-in target later; the default stays first-party |
+| a `spatie/laravel-data` class | that is the separate [laravel-data mode](README.laravel-data.md); this mode stays first-party |
 | a top-level array request body | `type: array` at the root of a body is a list, not a class: its ITEM gets a DTO, the list gets no FormRequest. Validate each item with that DTO's `rules()`, `withValidator()` and `fromValidated()` — the generator emits DTOs only, the framework does the rest |
 | one FormRequest per operation | the parameters and the body are separate DTOs, so an operation with both gets `<Operation>QueryParamsFormRequest` and `<Operation>RequestFormRequest`, and the action takes two arguments. The `QueryParams` class also carries the path parameters; its name is shared by every mode and stays until a major version |
 
@@ -512,7 +520,7 @@ use a FormRequest of your own with `authorize()` that delegates to the DTO's `ru
 Every claim above is measured, not reasoned:
 
 - the emitted `rules()` are fed to a real `illuminate/validation` validator in
-  `tests/Laravel/LaravelRulesEnforcementTest` — 27 keyword cases, 9 interpreter cases and 7 that assert one
+  `tests/Laravel/LaravelRulesEnforcementTest` — 27 keyword cases, 11 interpreter cases and 9 that assert one
   message per mistake, each feeding a valid payload AND an invalid one so a rule that accepts everything
   cannot pass unnoticed;
 - the mode is a column in every parity suite (validation verdicts, response shape, presence, message

@@ -1272,26 +1272,15 @@ trait RendersYii3Dto
 
     /**
      * Every generated class that implements the union interface `$interface`, as its own class
-     * declaration works it out — by the parent `analyzeSchema()` gives it, the same rule repeated here.
+     * declaration works it out — by the parent `analyzeSchema()` gives it.
      *
      * @return array<int, string>
      */
     private function yii3ClassesImplementing(string $interface): array
     {
         $implementing = [];
-        foreach ($this->dtoSchemas as $className => $schema) {
-            $refClassNames = [];
-            foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $allOfItem) {
-                if (is_array($allOfItem) && is_string($allOfItem['$ref'] ?? null)) {
-                    $refClassNames[] = $this->schemaRefToClassName(
-                        ref: $allOfItem['$ref'],
-                        currentSourceFile: $this->getSchemaSourceFile($className),
-                    );
-                }
-            }
-            $parent = $this->findDiscriminatorBaseAmongRefs($className, $refClassNames)
-                ?? (count($refClassNames) === 1 ? $refClassNames[0] : null);
-            if (in_array($interface, $this->implementedUnionInterfaces($className, $parent), true)) {
+        foreach (array_keys($this->dtoSchemas) as $className) {
+            if (in_array($interface, $this->implementedUnionInterfaces($className, $this->allOfParentOf($className)), true)) {
                 $implementing[] = $className;
             }
         }
