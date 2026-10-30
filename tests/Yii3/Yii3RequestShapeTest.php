@@ -501,6 +501,34 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame('b7c4f0e2-6a1d-4c3e-9f2a-1d2e3f4a5b6c', $ping->getUuid());
     }
 
+    public function testANullableReferenceToAUnionTakesNull(): void
+    {
+        $namespace = $this->generate([
+            'Settings' => [
+                'type' => 'object',
+                'required' => ['edge'],
+                'properties' => [
+                    'edge' => ['nullable' => true, 'allOf' => [['$ref' => '#/components/schemas/Edge']]],
+                ],
+            ],
+            'Edge' => [
+                'oneOf' => [['$ref' => '#/components/schemas/SharpEdge'], ['$ref' => '#/components/schemas/RoundEdge']],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'sharp' => '#/components/schemas/SharpEdge',
+                    'round' => '#/components/schemas/RoundEdge',
+                ]],
+            ],
+            'SharpEdge' => ['type' => 'object', 'required' => ['kind', 'angle'], 'properties' => ['kind' => ['type' => 'string'], 'angle' => ['type' => 'integer']]],
+            'RoundEdge' => ['type' => 'object', 'required' => ['kind', 'radius'], 'properties' => ['kind' => ['type' => 'string'], 'radius' => ['type' => 'integer']]],
+        ], openApiVersion: '3.0.3');
+        $verdict = fn(array $payload): array => $this->messages((new Yii3Container())->hydrateValidated($namespace . '\Settings', $payload));
+
+        self::assertSame([], $verdict(['edge' => null]));
+        self::assertSame([], $verdict(['edge' => ['kind' => 'sharp', 'angle' => 30]]));
+        self::assertNotSame([], $verdict(['edge' => ['kind' => 'sharp']]));
+        self::assertArrayHasKey('edge', $verdict([]));
+    }
+
     public function testAValueTypedByAUnionIsReadAndChecked(): void
     {
         // A union is an interface, which the hydrator cannot build: a request carrying one was refused
@@ -692,6 +720,40 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertArrayHasKey('at', $verdict(['at' => 'tomorrow']));
     }
 
+    public function testARawCheckInANestedObjectKeepsItsPathWithTheReadmeRecipe(): void
+    {
+        // `ValidateResolver` writes only the property name: `{"range": {"begin": "nonsense"}}` came back
+        // as `begin`, the same path a top-level `begin` would have.
+        $namespace = $this->generate([
+            'Filter' => [
+                'type' => 'object',
+                'properties' => [
+                    'range' => ['$ref' => '#/components/schemas/Range'],
+                    'begin' => ['type' => 'string', 'format' => 'date'],
+                    'ranges' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Range']],
+                ],
+            ],
+            'Range' => [
+                'type' => 'object',
+                'properties' => [
+                    'begin' => ['type' => 'string', 'format' => 'date'],
+                    'inner' => ['$ref' => '#/components/schemas/Range'],
+                ],
+            ],
+        ]);
+        $verdict = fn(array $payload, bool $nestedPaths): array => $this->messages(
+            (new Yii3Container())->hydrateValidated(class: $namespace . '\Filter', payload: $payload, nestedPaths: $nestedPaths),
+        );
+
+        self::assertSame(['begin'], array_keys($verdict(['range' => ['begin' => 'nonsense']], nestedPaths: false)));
+        self::assertSame(['range.begin'], array_keys($verdict(['range' => ['begin' => 'nonsense']], nestedPaths: true)));
+        self::assertSame(['range.inner.begin'], array_keys($verdict(['range' => ['inner' => ['begin' => 'nonsense']]], nestedPaths: true)));
+        self::assertSame(['begin'], array_keys($verdict(['begin' => 'nonsense'], nestedPaths: true)));
+        self::assertSame([], $verdict(['range' => ['begin' => '2026-03-10'], 'begin' => '2026-03-10'], nestedPaths: true));
+        // What the README says the recipe does NOT reach: `#[Collection]` builds items without a caster.
+        self::assertSame(['begin'], array_keys($verdict(['ranges' => [['begin' => 'nonsense']]], nestedPaths: true)));
+    }
+
     public function testAQueryEnumValueOutsideTheListIsRefused(): void
     {
         $namespace = $this->generateSpec([
@@ -724,6 +786,49 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame([], $verdict([]));
         self::assertArrayHasKey('withAll', $verdict(['withAll' => 'nonsense']));
         self::assertArrayHasKey('withAll', $verdict(['withAll' => '7']));
+    }
+
+    public function testARequiredValueWithADefaultMayBeLeftOut(): void
+    {
+        // The default wins, as in every other mode: a body without `perPage` was refused as missing it.
+        $namespace = $this->generate([
+            'Paging' => [
+                'type' => 'object',
+                'required' => ['page', 'perPage'],
+                'properties' => [
+                    'page' => ['type' => 'integer', 'default' => 1],
+                    'perPage' => ['type' => 'integer', 'default' => 50],
+                ],
+            ],
+        ]);
+        $container = new Yii3Container();
+
+        self::assertSame([], $this->messages($container->hydrateValidated($namespace . '\Paging', ['page' => 2])));
+        $paging = $container->hydrate($namespace . '\Paging', ['page' => 2]);
+        self::assertSame(2, $paging->getPage());
+        self::assertSame(50, $paging->getPerPage());
+        self::assertArrayHasKey('perPage', $this->messages($container->hydrateValidated($namespace . '\Paging', ['perPage' => 'many'])));
+    }
+
+    public function testJsonEncodeWritesTheWireForm(): void
+    {
+        // A list of these handed to `json_encode()` came out as PHP objects: a date with its timezone
+        // type, an enum as `{}`.
+        $namespace = $this->generate([
+            'Note' => [
+                'type' => 'object',
+                'required' => ['at', 'tone'],
+                'properties' => [
+                    'at' => ['type' => 'string', 'format' => 'date'],
+                    'tone' => ['type' => 'string', 'enum' => ['calm', 'loud']],
+                ],
+            ],
+            'Blank' => ['type' => 'object', 'properties' => ['label' => ['type' => 'string']]],
+        ]);
+        $note = (new Yii3Container())->hydrate($namespace . '\Note', ['at' => '2026-03-10', 'tone' => 'calm']);
+        $blank = (new Yii3Container())->hydrate($namespace . '\Blank', []);
+
+        self::assertSame('[{"at":"2026-03-10","tone":"calm"},{}]', json_encode([$note, $blank]));
     }
 
     public function testKeysAreWrittenInTheSchemasOrder(): void

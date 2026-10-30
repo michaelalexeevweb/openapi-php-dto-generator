@@ -183,12 +183,153 @@ $result = $input->getValidationResult();   // the raw checks' verdict when one f
 Without the resolver registered, hydration fails loudly — the attribute factory cannot build it. With a
 plain `Hydrator`, the raw checks are skipped silently and a corrupted value is stored, as before 2.15.104.
 
+### Raw checks in a nested object
+
+`ValidateResolver` writes an error under the PROPERTY name and nothing else — it is not told where the
+object sits. So `{"range": {"begin": "nonsense"}}` is reported at `begin`, the same path a top-level
+`begin` has, and `ValidatingHydrator` then skips the object's own validation, whose paths are complete.
+A generated class cannot know the path either: one schema may be nested in several places.
+
+The application can. Two classes replace `HydratorTypeCaster` and `ValidatingHydrator`: the caster
+collects the errors of each object it builds separately, and puts the key it built the object for in
+front of their paths.
+
+```php
+use ReflectionProperty;
+use Yiisoft\Hydrator\Attribute\Parameter\Data;
+use Yiisoft\Hydrator\Result;
+use Yiisoft\Hydrator\TypeCaster\HydratorTypeCaster;
+use Yiisoft\Hydrator\TypeCaster\TypeCastContext;
+use Yiisoft\Hydrator\TypeCaster\TypeCasterInterface;
+use Yiisoft\Hydrator\Validator\Attribute\ValidateResolver;
+use Yiisoft\Validator\Result as ValidationResult;
+
+final class NestedPathTypeCaster implements TypeCasterInterface
+{
+    private ?ValidationResult $result = null;
+
+    public function __construct(
+        private readonly ValidateResolver $validateResolver,
+        private readonly TypeCasterInterface $caster = new HydratorTypeCaster(),
+    ) {
+    }
+
+    /** Where `ValidateResolver` writes; `null` when nothing collects raw errors. */
+    public function collectInto(?ValidationResult $result): void
+    {
+        $this->result = $result;
+        $this->validateResolver->setResult($result);
+    }
+
+    public function cast(mixed $value, TypeCastContext $context): Result
+    {
+        $outer = $this->result;
+        if ($outer === null || !is_array($value)) {
+            return $this->caster->cast($value, $context);
+        }
+
+        $inner = new ValidationResult();
+        $this->collectInto($inner);
+        try {
+            return $this->caster->cast($value, $context);
+        } finally {
+            $this->collectInto($outer);
+            $key = $this->wireName($context);
+            foreach ($inner->getErrors() as $error) {
+                $outer->addError($error->getMessage(), $error->getParameters(), [$key, ...$error->getValuePath()]);
+            }
+        }
+    }
+
+    private function wireName(TypeCastContext $context): string
+    {
+        $reflection = $context->getReflection();
+        $data = $reflection instanceof ReflectionProperty ? $reflection->getAttributes(Data::class) : [];
+        $name = $data === [] ? null : ($data[0]->getArguments()[0] ?? null);
+
+        return is_string($name) ? str_replace('\.', '.', $name) : $reflection->getName();
+    }
+}
+```
+
+```php
+use Yiisoft\Hydrator\DataInterface;
+use Yiisoft\Hydrator\HydratorInterface;
+use Yiisoft\Hydrator\Validator\ValidatedInputInterface;
+use Yiisoft\Validator\Result;
+use Yiisoft\Validator\ValidatorInterface;
+
+final class PathAwareValidatingHydrator implements HydratorInterface
+{
+    public function __construct(
+        private readonly HydratorInterface $hydrator,
+        private readonly ValidatorInterface $validator,
+        private readonly NestedPathTypeCaster $paths,
+    ) {
+    }
+
+    public function hydrate(object $object, array|DataInterface $data = []): void
+    {
+        $result = new Result();
+        $this->paths->collectInto($result);
+        try {
+            $this->hydrator->hydrate($object, $data);
+        } finally {
+            $this->paths->collectInto(null);
+        }
+        $this->validated($object, $result);
+    }
+
+    public function create(string $class, array|DataInterface $data = []): object
+    {
+        $result = new Result();
+        $this->paths->collectInto($result);
+        try {
+            $object = $this->hydrator->create($class, $data);
+        } finally {
+            $this->paths->collectInto(null);
+        }
+        $this->validated($object, $result);
+
+        return $object;
+    }
+
+    private function validated(object $object, Result $result): void
+    {
+        if (!$object instanceof ValidatedInputInterface) {
+            return;
+        }
+
+        $result->isValid()
+            ? $this->validator->validate($object)
+            : $object->processValidationResult($result);
+    }
+}
+```
+
+```php
+$validator = new Validator();
+$paths = new NestedPathTypeCaster(new ValidateResolver($validator));   // that resolver in the container too
+$hydrator = new PathAwareValidatingHydrator(
+    hydrator: new Hydrator(
+        new CompositeTypeCaster(new PhpNativeTypeCaster(), new EnumTypeCaster(), $paths),
+        new ContainerAttributeResolverFactory($container),
+    ),
+    validator: $validator,
+    paths: $paths,
+);
+```
+
+`range.begin` and `range.inner.begin` come out whole. An item of a LIST is not covered: `#[Collection]`
+builds items through the hydrator rather than a type caster, so a raw error in one keeps the property
+path without the list and its index.
+
 ## What the generated class looks like
 
 ```php
 #[FromBody]
 #[Callback(method: 'validateOpenApiConstraints')]
-final class UpdatePost extends AbstractInput implements DataSetInterface, RulesProviderInterface
+final class UpdatePost extends AbstractInput implements DataSetInterface, RulesProviderInterface, JsonSerializable
 {
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Length(min: 3, max: 120, skipOnEmpty: new WhenNull())]
@@ -216,6 +357,9 @@ final class UpdatePost extends AbstractInput implements DataSetInterface, RulesP
     public function hasProperty(string $property): bool { … }
     public function getPropertyValue(string $property): mixed { … }
     public function getData(): ?array { … }
+
+    // `json_encode()` writes what `getData()` returns: dates and enums in wire form, `{}` when empty.
+    public function jsonSerialize(): mixed { … }
 }
 ```
 
@@ -296,6 +440,10 @@ An optional property with a schema `default` reads as that default when the key 
 — it records what was sent — so `getData()` leaves the key out, as runtime and Laravel mode do. A list or
 map default is not applied. Where the schema does not let the property be null, the getter cannot answer
 null either, and its return type says so: `getSize(): int`.
+
+A `required` property with a `default` is the same: the key may be left out and the getter answers the
+default, as in every other mode. OpenAPI applies a default only to an absent key, which `required`
+forbids, so the generator warns about the pair.
 
 ## Rule mapping
 
@@ -494,6 +642,8 @@ was sent.
   body, which is JSON, lenient for a parameter, which arrives as text (`?level=1`). A date the
   hydrator cannot parse was lost the same way, and is checked the same way — against the formats
   `#[ToDateTime]` is given, with Yii's "must be a date" message;
+- **a raw-check error in a nested object has only the property's own path** unless the application
+  wires the recipe in [Raw checks in a nested object](#raw-checks-in-a-nested-object);
 - **a map of objects in a PAYLOAD is held as the decoded arrays** — `#[Collection]` would renumber
   the keys; see [A map of objects](#a-map-of-objects) for building them;
 - **a union in a PAYLOAD is held as the decoded array**, not built — a `oneOf`/`anyOf` and an `allOf`

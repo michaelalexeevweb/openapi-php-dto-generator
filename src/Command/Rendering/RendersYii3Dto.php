@@ -143,6 +143,7 @@ trait RendersYii3Dto
         'DataSetInterface' => 'Yiisoft\Validator\DataSetInterface',
         'DateTimeImmutable' => 'DateTimeImmutable',
         'DateTimeInterface' => 'DateTimeInterface',
+        'JsonSerializable' => 'JsonSerializable',
         'ObjectParser' => 'Yiisoft\Validator\Helper\ObjectParser',
         'Query' => 'Yiisoft\Input\Http\Attribute\Parameter\Query',
         'ReflectionProperty' => 'ReflectionProperty',
@@ -335,6 +336,11 @@ trait RendersYii3Dto
         $useStatements[] = 'Yiisoft\Validator\Helper\ObjectParser';
         $implements[] = $this->yii3Lib('DataSetInterface');
         $implements[] = $this->yii3Lib('RulesProviderInterface');
+        // `json_encode()` of a list holding these wrote the PHP objects — a date as
+        // `{"date": …, "timezone_type": 3}`, an enum as `{}` — where every other mode writes the wire form.
+        $useStatements[] = 'JsonSerializable';
+        $useStatements[] = 'stdClass';
+        $implements[] = $this->yii3Lib('JsonSerializable');
 
         // Every DECISION is above this line; what follows is the shape of the file, and the shape
         // lives in the template — the same border the other four modes draw. It was the odd one out
@@ -1114,10 +1120,10 @@ trait RendersYii3Dto
                 $mapping[$value] = $this->shortClassName($member);
             }
         }
-        // Every member is a data set and a rules provider, so the interface says so: code taking "any
+        // Every member is a data set, a rules provider and JSON-serializable, so the interface says so: code taking "any
         // generated object" by `DataSetInterface` refused a union-typed response, which is one of them.
         $extends = [];
-        foreach (['DataSetInterface' => 'Yiisoft\Validator\DataSetInterface', 'RulesProviderInterface' => 'Yiisoft\Validator\RulesProviderInterface'] as $short => $fqcn) {
+        foreach (['DataSetInterface' => 'Yiisoft\Validator\DataSetInterface', 'RulesProviderInterface' => 'Yiisoft\Validator\RulesProviderInterface', 'JsonSerializable' => 'JsonSerializable'] as $short => $fqcn) {
             $extends[] = $this->yii3Lib($short);
             if (!$this->namespaceDeclaresClass($short, $this->yii3RenderNamespace)) {
                 $imports[] = $fqcn;
@@ -1588,7 +1594,8 @@ PHP;
     }
 
     /**
-     * Takes a `readOnly` property name out of the schema-level `required` list.
+     * Takes a `readOnly` property name — and one with a schema `default` — out of the schema-level
+     * `required` list.
      *
      * The interpreter runs over `toOpenApiValidationPayload()`, which is what the object HOLDS after
      * hydration — and a readOnly property is excluded from the input by `OPENAPI_WRITE_ONLY`, so that
@@ -1616,12 +1623,14 @@ PHP;
             return $constraints;
         }
 
-        $readOnlyNames = [];
+        $waivedNames = [];
         $declaredNames = [];
         foreach ($properties as $property) {
             $declaredNames[] = $property['openApiName'];
-            if (($property['readOnly'] ?? false) === true) {
-                $readOnlyNames[] = $property['openApiName'];
+            // A required property with a `default` is waived the same way: the default answers for an
+            // absent key, as in every other mode — a body without `perPage` was refused as missing it.
+            if (($property['readOnly'] ?? false) === true || ($property['default'] ?? null) !== null) {
+                $waivedNames[] = $property['openApiName'];
             }
         }
         $opensTheObject = ($constraints['additionalProperties'] ?? false) !== false
@@ -1630,11 +1639,11 @@ PHP;
             ? []
             : array_filter($required, static fn(mixed $name): bool => !in_array($name, $declaredNames, true));
 
-        if ($readOnlyNames === [] && $undeclaredNames === []) {
+        if ($waivedNames === [] && $undeclaredNames === []) {
             return $constraints;
         }
 
-        $kept = array_values(array_diff($required, $readOnlyNames, $undeclaredNames));
+        $kept = array_values(array_diff($required, $waivedNames, $undeclaredNames));
 
         // Rebuilt rather than unset: the result says what the constraints ARE, and "nothing is
         // required any more" is expressed by not writing the key. Walked in place so `required`
@@ -1967,7 +1976,7 @@ PHP;
                     }
                     $union = $this->yii3UnionValueSchema($property[$container]);
                     if ($union !== null) {
-                        $property[$container] = $union;
+                        $property[$container] = $union + (($property[$container]['nullable'] ?? false) === true ? ['nullable' => true] : []);
                         continue;
                     }
                     $ref = $this->referenceOrSingleRefAllOf($property[$container]);
@@ -2048,8 +2057,12 @@ PHP;
         if (is_string($property) && $mapping !== []) {
             $chain = null;
             foreach (array_reverse($mapping, true) as $value => $memberRef) {
+                // `type` and `required` in the condition, not only the value: `properties` asserts
+                // nothing about a value that is not an object, so a null — or an object without the
+                // property — matched the first member and was checked as it. Now neither matches any
+                // member, and the keywords around the chain report what is wrong.
                 $link = [
-                    'if' => ['properties' => [$property => ['const' => (string)$value]]],
+                    'if' => ['type' => 'object', 'required' => [$property], 'properties' => [$property => ['const' => (string)$value]]],
                     'then' => is_string($memberRef) ? $this->yii3MemberSchema($memberRef) : [],
                 ];
                 if ($chain !== null) {
@@ -2072,6 +2085,11 @@ PHP;
                 foreach ($union[$keyword] as $member) {
                     $memberRef = is_array($member) ? $this->referenceOrSingleRefAllOf($member) : null;
                     $members[] = $memberRef !== null ? $this->yii3MemberSchema($memberRef) : (is_array($member) ? $member : []);
+                }
+                // `nullable` beside the reference is lost on a list of member schemas, every one of which
+                // refuses null — so null is a member of its own.
+                if (($schema['nullable'] ?? false) === true) {
+                    $members[] = ['type' => 'null'];
                 }
 
                 return [$keyword => $members];
@@ -2137,7 +2155,9 @@ PHP;
             }
         }
 
-        return $this->isAllOfDiscriminatorBase($className);
+        // A DISCRIMINATED oneOf is not in that map — its members are linked through the discriminator —
+        // yet it is rendered as an interface all the same, and a property typed by it was never filled.
+        return $this->isOneOfDiscriminatorBase($className) || $this->isAllOfDiscriminatorBase($className);
     }
 
     /**

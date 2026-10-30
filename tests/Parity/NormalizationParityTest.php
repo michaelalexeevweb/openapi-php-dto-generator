@@ -836,14 +836,6 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['shape' => ['kind' => 'circle', 'r' => 3]],
                 'symfony' => ['shape' => ['kind' => 'circle', 'r' => 3]],
                 'diverges' => [
-                    'yii3' => [
-                        'expected' => [],
-                        'reason' => 'the hydrator cannot pick a branch: a property typed by the union '
-                            . 'interface has no rule telling it which member to build, and yiisoft has '
-                            . 'no discriminator mapping of its own. The object comes back with the '
-                            . 'property unset, which is what an empty array here means. Validation of '
-                            . 'a member built by hand still works — see Yii3RequestShapeTest.',
-                    ],
                     'laravel-data' => [
                         'expected' => ['shape' => ['r' => 3, 'kind' => 'circle']],
                         'reason' => 'the discriminated base is an abstract Data class here, not an '
@@ -875,14 +867,6 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['shapes' => [['kind' => 'circle', 'r' => 3], ['kind' => 'square', 'a' => 4]]],
                 'symfony' => ['shapes' => [['kind' => 'circle', 'r' => 3], ['kind' => 'square', 'a' => 4]]],
                 'diverges' => [
-                    'yii3' => [
-                        'expected' => ['shapes' => []],
-                        'reason' => 'the same limit as the scalar union case: nothing tells the hydrator '
-                            . 'which member an element is, and yiisoft has no discriminator mapping of '
-                            . 'its own. The list survives as a PROPERTY — unlike the scalar case, where '
-                            . 'the property itself stays unset — but not one element of it can be built, '
-                            . 'so it arrives empty.',
-                    ],
                     'laravel-data' => [
                         'expected' => ['shapes' => [['r' => 3, 'kind' => 'circle'], ['a' => 4, 'kind' => 'square']]],
                         'reason' => 'the same inherited-discriminator key order as the scalar union case, '
@@ -913,14 +897,6 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['shape' => ['pet_type' => 'circle', 'r' => 3]],
                 'symfony' => ['shape' => ['pet_type' => 'circle', 'r' => 3]],
                 'diverges' => [
-                    'yii3' => [
-                        'expected' => [],
-                        'reason' => 'the hydrator cannot pick a branch: a property typed by the union '
-                            . 'interface has no rule telling it which member to build, and yiisoft has '
-                            . 'no discriminator mapping of its own. The object comes back with the '
-                            . 'property unset, which is what an empty array here means. Validation of '
-                            . 'a member built by hand still works — see Yii3RequestShapeTest.',
-                    ],
                     'laravel-data' => [
                         'expected' => ['shape' => ['r' => 3, 'pet_type' => 'circle']],
                         'reason' => 'the inherited-discriminator key order of the case above, unchanged '

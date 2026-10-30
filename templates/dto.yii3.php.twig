@@ -299,6 +299,16 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     }
 
     /**
+     * The same wire form, for `json_encode()` — `{}` for an object with nothing to write, not `[]`.
+     */
+    public function jsonSerialize(): mixed
+    {
+        $data = $this->getData();
+
+        return $data === [] ? new {{ libStdClass }}() : $data;
+    }
+
+    /**
      * One value in wire form. Recurses, because a nested DTO and a list of them are values
      * too — without it `getData()` handed back objects where every other mode gives arrays.
      */

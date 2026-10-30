@@ -3194,11 +3194,11 @@ final class GenerateDtoCommand extends Command
      */
     private function propertyIsRequiredOnInput(array $property): bool
     {
-        // Laravel and laravel-data mode: a required property with a schema default takes the default when
-        // the key is absent, as runtime and Symfony mode do — `present` refused a body without `perPage`
-        // there and nowhere else. The generation warning names the schema.
+        // Laravel, laravel-data and yii3 mode: a required property with a schema default takes the default
+        // when the key is absent, as runtime and Symfony mode do — `present` refused a body without
+        // `perPage` there and nowhere else. The generation warning names the schema.
         if (
-            in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)
+            in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA, self::ATTRIBUTE_MODE_YII3], true)
             && ($property['default'] ?? null) !== null
         ) {
             return false;
@@ -9146,9 +9146,8 @@ final class GenerateDtoCommand extends Command
             if (is_array($property) && array_key_exists('default', $property) && $property['default'] !== null) {
                 $this->addGenerationWarning(sprintf(
                     'Schema "%s" lists "%s" in `required` and gives it a `default`. A default applies only '
-                    . 'to an absent key, which `required` forbids. Runtime, Symfony, Laravel and laravel-data mode '
-                    . 'let the default win and accept the key left out; yii3 requires it — remove one '
-                    . 'of the two.',
+                    . 'to an absent key, which `required` forbids. Every mode lets the default win and accepts '
+                    . 'the key left out — remove one of the two.',
                     $className,
                     $name,
                 ));

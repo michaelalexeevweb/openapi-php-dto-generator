@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.113 — 2026-10-30
+
+- yii3 required default takes default
+- yii3 discriminated oneOf held
+- yii3 nullable union reference
+- yii3 JsonSerializable
+- yii3 nested raw path recipe
+
+yii3 mode:
+
+- a `required` property with a `default` demanded the key; a body without `perPage` was refused. The
+  default wins, as in every other mode.
+- a property typed by a discriminated `oneOf` was never filled: that union is an interface here, but it
+  was not recognized as one, so the property stayed `?Union`, which the hydrator cannot build, and a
+  valid payload read as missing it. It is `Union|array` and checked against the member, as `anyOf` and
+  the `allOf` base already were.
+- `nullable: true` beside `allOf: [$ref Union]` refused `null`: the discriminator's `if` matched a null
+  and sent it to the first member's `type: object`. The `if` asks for an object carrying the
+  discriminator now — which also stops an object without it from being checked as the first member —
+  and an undiscriminated union takes null as a member of its own.
+- the classes are `JsonSerializable`, writing `getData()`: `json_encode()` of a list of them wrote a
+  date as `{"date": …, "timezone_type": 3}` and an enum as `{}`.
+- a raw-check error in a nested object came back under the property's own name — `begin`, not
+  `range.begin` — because `ValidateResolver` is not told where the object sits. README.yii3 "Raw checks
+  in a nested object" gives the application two classes that keep the path; list items stay uncovered.
+
 ## 2.15.112 — 2026-10-30
 
 - yii3 unparsable date refused

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Yii3;
 
 use Nyholm\Psr7\ServerRequest;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Recipe\NestedPathTypeCaster;
+use OpenapiPhpDtoGenerator\Tests\Yii3\Recipe\PathAwareValidatingHydrator;
 use Psr\Container\ContainerInterface;
 use ReflectionClass;
 use ReflectionNamedType;
@@ -64,7 +66,7 @@ final class Yii3Container implements ContainerInterface
     /**
      * Hydrates through `ValidatingHydrator`, as an application must for the RAW-value checks, and
      * returns the verdict it stored on the input — the raw checks' when one failed, the object's
-     * otherwise.
+     * otherwise. `$nestedPaths` wires README.yii3's recipe for raw checks in a nested object instead.
      *
      * @param array<string, mixed> $payload
      * @param array<string, mixed> $query
@@ -75,6 +77,7 @@ final class Yii3Container implements ContainerInterface
         string $method = 'POST',
         string $uri = '/',
         array $query = [],
+        bool $nestedPaths = false,
     ): Result {
         $this->requestProvider->set(
             (new ServerRequest($method, $uri))->withParsedBody($payload)->withQueryParams($query),
@@ -85,7 +88,20 @@ final class Yii3Container implements ContainerInterface
             throw new RuntimeException('The validator is wired in the constructor.');
         }
 
-        $input = (new ValidatingHydrator($this->hydrator(), $validator, $resolver))->create($class, $payload);
+        if ($nestedPaths) {
+            $paths = new NestedPathTypeCaster($resolver);
+            $hydrator = new PathAwareValidatingHydrator(
+                hydrator: new Hydrator(
+                    typeCaster: new CompositeTypeCaster(new PhpNativeTypeCaster(), new EnumTypeCaster(), $paths),
+                    attributeResolverFactory: new ContainerAttributeResolverFactory($this),
+                ),
+                validator: $validator,
+                paths: $paths,
+            );
+        } else {
+            $hydrator = new ValidatingHydrator($this->hydrator(), $validator, $resolver);
+        }
+        $input = $hydrator->create($class, $payload);
         if (!$input instanceof AbstractInput) {
             throw new RuntimeException(sprintf('%s is not an input class.', $class));
         }
