@@ -1,7 +1,7 @@
 # How this compares, and how that was measured
 
 The claims on the [README](README.md) are verdicts, not readings. Every tool below was **downloaded,
-installed and run**; the four that read an OpenAPI document got the same one, and the same payloads.
+installed and run**; every tool that reads an OpenAPI document got the same one, and the same payloads.
 `php-collective/dto` is the exception and is counted apart throughout — it generates from its own XML
 config and never saw the spec, so it holds no cell in the vocabulary or verdict tables. Nothing here is
 quoted from anyone's documentation — where a table says a tool accepts something, it accepted it.
@@ -26,6 +26,24 @@ of this research recorded it as unusable, which was wrong: `composer require sym
 downgrades cleanly and the tool then runs. No patched vendor code was needed, and the results below are
 from a normal run.</sub>
 
+Three more were added on 2026-11-01 and run on the reduced schema quoted under
+[Verdicts on real payloads](#verdicts-on-real-payloads):
+
+| Tool | Version | Ran | What it produced on that schema |
+|---|---|:--:|---|
+| `wol-soft/php-json-schema-model-generator` | 0.26.2 | ✅² | 1 class / 641 lines: an immutable model whose constructor runs the checks as emitted PHP |
+| `onmoon/openapi-server-bundle` | 6.0.0 | ✅³ | DTOs + handler interfaces; the request itself is validated by `league/openapi-psr7-validator` 0.22 |
+| `ensi/laravel-openapi-server-generator` | 4.0.5 | ✅ | a `FormRequest` whose `rules()` is filled from the spec, plus routes, controllers and resources |
+
+<sub>² out of the box it does NOT generate this schema: it ships no format validator at all
+(`GeneratorConfiguration::initFormatValidator()` is empty) and throws `Unsupported format uuid for property
+code` on the first `format` it meets. Every format has to be supplied by the user as a
+`FormatValidatorInterface`. It was therefore run on the same schema with the three `format` keywords
+removed — which is why it accepts `"nope"` and the two malformed URIs below.<br>
+³ onmoon's `LeaguePSR7RequestSchemaValidator` builds a PSR-7 request and calls league's
+`getRoutedRequestValidator()`; the payloads were run through exactly that call. The DTOs were not
+generated here — that needs a booted Symfony kernel — so nothing below is claimed about them.</sub>
+
 ## The OpenAPI vocabulary
 
 Checked on a schema carrying `minimum: 10`, `maximum: 100`, plus `pattern`, `format` and `enum` elsewhere.
@@ -37,11 +55,20 @@ Checked on a schema carrying `minimum: 10`, `maximum: 100`, plus `pattern`, `for
 | OpenAPI Generator `php-dt` | ❌ | ❌ | ❌ | ❌ |
 | OpenAPI Generator `php-nextgen` | ❌ | ❌ | ❌ | ❌ |
 | `maxbeckers/php-openapi-generator` | ❌ | ❌ | ❌ | ❌ |
+| `ensi/laravel-openapi-server-generator` | ❌ | ❌ | partly: `uuid`, `email`, `date`, `ipv4`…; not `uri` | ❌ |
+| `wol-soft/php-json-schema-model-generator` | ✅ | ✅ | ❌ none built in — generation **fails** on one | ✅ |
+| `onmoon/openapi-server-bundle` | ✅ | ✅ | ✅ except `uri-template` | ✅ |
 | `league/openapi-psr7-validator` | ✅ | ✅ | ✅ except `uri-template` | ✅ |
 | **this library**, all five modes | ✅ | ✅ | ✅ incl. `uri-template`; symfony accepts a loose `date-time` | ✅ |
 
-**Every generator in the set checks the type and whether the key is present, and stops there.** The only
-tool that holds the vocabulary is the runtime validator, and it produces no classes.
+**Most generators in the set check the type at most, and stop there** — and two do not even hold
+presence: maxbeckers invents `''` or `0` for a missing required key (footnote ⁴ below), and OG
+`php-symfony` cannot tell an absent key from `null` (footnote ³). Two go further. wol-soft emits bounds,
+`pattern` and `oneOf` as PHP, as this library does, but has no `format` of its own. onmoon holds everything
+league holds, because it is league: the generated server hands each request to the runtime validator, so
+it inherits league's `uri-template` gap and its messages. Unlike plain league it does not re-parse the
+YAML per process — `SpecificationLoader` keeps the parsed document in Symfony's `cache.app` — so the
+21.8 ms in [Startup cost](#startup-cost) is not its number.
 
 Worth stating plainly because it is easy to overclaim: Jane's validation is **off by default** — the table
 above already gives it `'validation' => true`.
@@ -95,6 +122,38 @@ source, not a reading: `Schema/Keywords/Type.php`.</sub>
 
 **Jane catches exactly three things:** a missing required key, `null`, and a wrong scalar type. All of
 `oneOf`, every `format`, every bound — through.
+
+The three added on 2026-11-01, same schema, same payloads:
+
+| payload | wol-soft 0.26.2⁷ | onmoon 6.0.0 | ensi 4.0.5 |
+|---|---|---|---|
+| baseline `{id:1, name:"n", code:42}` | ✅ accepted | ✅ accepted | ✅ accepted |
+| `code = 42.0` — an integer per §6.1.1 | ❌ **refused** | ❌ **refused** | ✅ accepted⁸ |
+| `code = 42.5` — not an integer | ✅ refused | ✅ refused | ❌ **accepted** |
+| `code = 5` — breaks `minimum: 10` | ✅ refused | ✅ refused | ❌ **accepted** |
+| `code = <uuid>` — second `oneOf` branch | ✅ accepted | ✅ accepted | ✅ accepted |
+| `code = "nope"` — no branch matches | ❌ **accepted**⁷ | ✅ refused | ❌ **accepted** |
+| required `name` missing | ✅ refused | ✅ refused | ✅ refused |
+| `name = null` | ✅ refused | ✅ refused | ✅ refused |
+| `id = "1"` — string for an integer | ✅ refused | ✅ refused | ❌ **accepted**⁹ |
+| an undeclared key (schema allows it) | ✅ accepted | ✅ accepted | ✅ accepted |
+| `homepage` not a URI (`format: uri`) | ❌ **accepted**⁷ | ✅ refused | ❌ **accepted** |
+| `endpoint` a malformed `uri-template` | ❌ **accepted**⁷ | ❌ **accepted** | ❌ **accepted** |
+
+<sub>⁷ run without the `format` keywords, because with them it does not generate at all (footnote ² of
+[What ran](#what-ran)). The three `format` rows are what a user gets until they write those validators
+themselves.<br>
+⁸ accepted, but not because it was checked: ensi emits `'code' => ['required']` and nothing else for a
+`oneOf` property.<br>
+⁹ the rule ensi emits is Laravel's `integer`, which accepts a numeric string. The whole `rules()` it
+generated for this schema is `id: [required, integer]`, `name: [required, string]`, `code: [required]`,
+`homepage: [string]`, `endpoint: [string]` — no bound, no `pattern` (the mapping has no case for either),
+and `format: uri` is not recognised because ensi maps only its own spelling, `url`.</sub>
+
+onmoon's column is league's column, verdict for verdict, and its messages are league's too:
+`Keyword validation failed: Data must match exactly one schema, but matched none`. wol-soft's are its own
+and do name the property and the reason — `Value for code must not be smaller than 10`, nested under the
+`oneOf` branch that produced it.
 
 ### The message the client gets
 
@@ -175,7 +234,7 @@ figures above are kept as measured on the day, beside the competitors, rather th
 - **No HTTP client generation.** Jane emits `Endpoint/` plus a `Client.php` — 96 files on our spec — and
   OpenAPI Generator is what most published PHP SDKs come out of. This library generates the server side
   only. That is the largest gap in the set.
-- **No TypeScript output.** None of the four OpenAPI competitors generates it either, so it is not a gap
+- **No TypeScript output.** None of the seven OpenAPI competitors generates it either, so it is not a gap
   against them — but it is a thing this does not do.
 - **Several generation modes is not unique.** OpenAPI Generator ships nine PHP generators. What differs is
   what the emitted code enforces, not the number of choices.
@@ -210,6 +269,19 @@ figures above are kept as measured on the day, beside the competitors, rather th
   `OpenApiExamples/test.yaml` no longer loads in a fresh league install at all: composer now resolves its
   parser to `devizzent/cebe-php-openapi`, which refuses a boolean subschema our corpus carries on purpose.
   That is why league was re-measured on the reduced schema.
+
+  **Re-measured 2026-11-01**, after three of the tools shipped new releases — installed fresh and run on
+  the same schema and the same twelve payloads:
+
+  | | rows reproduced | notes |
+  |---|---|---|
+  | Jane 8.1.1 | 12 / 12 | the generated constraint is unchanged: `'code' => Required([NotNull])`, no `Type`, no bound, no format |
+  | maxbeckers 1.0.0 | 12 / 12 | `fromArray()` still reads `$data['name'] ?? ''` and `$data['id'] ?? 0`; the new `--framework=symfony` and `--framework=laravel` targets emit no validation either |
+  | OG 7.26.0 `php-symfony` | source-level | unchanged: `TestPostRequestCode` has zero properties, required properties are `?T $x = null`; no bound, format or composition assertion in `php-symfony`, `php-dt` or `php-nextgen` |
+
+  `league` (0.24) and `php-collective/dto` (0.1.20) had no new release. maxbeckers 1.0.0 now declares
+  `symfony/console: ^7.0|^8.0`, yet still calls `Application::add()`, so out of the box it still dies on v8
+  and still needs `symfony/console:^7.0` pinned — footnote ¹ holds for 1.0.0 as well.
 - **Nothing here is reproducible from this repository.** The competitors are not vendored and there is no
   harness: the tables are a record of a run, not a test that fails when a verdict changes. Treat them as
   dated evidence, and re-measure rather than trust them.
