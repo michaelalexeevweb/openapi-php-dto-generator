@@ -3,6 +3,56 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.117 — 2026-11-02
+
+- date-or-date-time union accepted
+- symfony impossible date pinned
+- comparison re-run, three tools added
+
+A `oneOf` (or `anyOf`) of a `format: date` string and a `format: date-time` string is one
+`?DateTimeImmutable` property with two wire shapes. No mode accepted both.
+
+runtime mode:
+
+- `"2026-12-01"` was refused with "expects a valid date-time": the deserializer read only a top-level
+  `format`, found none and parsed as a strict date-time before the `oneOf` was consulted. A date-only
+  value is now the date branch (midnight, as for `format: date`), anything else must be a date-time — in
+  the body and in a query parameter, whatever the branch order. A value that is
+  neither says so: `expects a date in Y-m-d format or a valid date-time (e.g. 2026-03-10 or
+  2026-03-10T12:00:00+00:00)`.
+- the ITEMS of such a union in an array are unchanged: they stay strings, and the `oneOf` already checked
+  them.
+
+symfony mode:
+
+- every value was refused with "matches more than one allowed oneOf branch": a hydrated date is rendered
+  in each branch's own format, so it matched both. The emitted interpreter counts the temporal branches of
+  a `oneOf` as one match for a date; non-temporal branches count as before.
+- an impossible calendar date (`"2026-02-30"`) is accepted as 2 March — for this union and for a plain
+  `format: date` alike. The serializer parses the date before any generated constraint runs. Not new;
+  now pinned in the support matrix beside the loose date-time row.
+
+laravel mode:
+
+- `fromValidated()` handed the validated string to the `?DateTimeImmutable` constructor parameter: a
+  TypeError, a 500 after the validator had accepted the payload. It builds the date.
+
+laravel-data mode:
+
+- `"2026-12-01"` failed in laravel-data's default ATOM cast. The property gets a `#[WithCast]` listing the
+  date patterns before the date-time ones.
+
+yii3 mode:
+
+- `"2026-12-01"` was not parsed by the date-time `#[ToDateTime]` attributes, so the property read as not
+  sent. The date pattern is stacked ahead of them.
+
+Docs:
+
+- README.comparison re-run on 2026-11-01: Jane 8.1.1, OpenAPI Generator 7.26.0 and maxbeckers 1.0.0
+  reproduce every verdict; `wol-soft/php-json-schema-model-generator`, `onmoon/openapi-server-bundle` and
+  `ensi/laravel-openapi-server-generator` added. The README's claim narrowed accordingly.
+
 ## 2.15.116 — 2026-10-30
 
 - runtime closed allOf child fixed

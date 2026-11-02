@@ -186,6 +186,38 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * Whether a `oneOf`/`anyOf` is made of a `format: date` string and a `format: date-time` string, with
+     * at most a null branch beside them — one `DateTimeImmutable` property with two wire shapes, and no
+     * single `format` to parse it by.
+     *
+     * @param array<string, mixed> $constraints
+     */
+    private function isDateOrDateTimeUnion(array $constraints): bool
+    {
+        $branches = $constraints['oneOf'] ?? $constraints['anyOf'] ?? null;
+        if (!is_array($branches)) {
+            return false;
+        }
+
+        $formats = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                return false;
+            }
+            if (($branch['type'] ?? null) === 'null') {
+                continue;
+            }
+            $format = $branch['format'] ?? null;
+            if (($branch['type'] ?? null) !== 'string' || !in_array($format, ['date', 'date-time'], true)) {
+                return false;
+            }
+            $formats[$format] = true;
+        }
+
+        return count($formats) === 2;
+    }
+
+    /**
      * The body of a temporal getter, or null when the property is not a date/date-time.
      *
      * @param SchemaProperty $property

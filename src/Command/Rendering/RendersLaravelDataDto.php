@@ -844,11 +844,6 @@ trait RendersLaravelDataDto
      */
     private function laravelDataTemporalAttributes(array $property, string $namespace): array
     {
-        $temporalFormat = $property['temporalFormat'] ?? null;
-        if (!is_string($temporalFormat)) {
-            return [];
-        }
-
         if ($this->shortClassName(ltrim($property['type'], '?')) !== 'DateTimeImmutable') {
             return [];
         }
@@ -858,24 +853,35 @@ trait RendersLaravelDataDto
         // interval filter then dropped the rows dated exactly on its bound. The cast formats a mutable
         // `DateTime` value with the same pattern before parsing it, which `!` cannot round-trip, so the plain
         // pattern stays behind it for that path alone.
-        $castFormats = $temporalFormat === 'Y-m-d'
-            ? ["'!Y-m-d'", "'Y-m-d'"]
-            // The same patterns every other mode accepts (`GeneratedDtoInterface::DATE_TIME_FORMATS`,
-            // and the `date_format:` rule this same schema emits). laravel-data's default is the single
-            // `config('data.date_format')`, which cannot parse a value carrying microseconds — a payload
-            // its own rule had just accepted then died in the cast with `CannotCastDate`.
-            //
-            // Both offset letters, to stay identical to the rule beside it. The cast only PARSES, where
-            // `P` already reads `Z`, so this half was never wrong on its own — but a cast list and a
-            // rule list that disagree is exactly how the `Z` refusal survived unnoticed.
-            : [
-                "'Y-m-d\\TH:i:sP'",
-                "'Y-m-d\\TH:i:s.uP'",
-                "'Y-m-d\\TH:i:sp'",
-                "'Y-m-d\\TH:i:s.up'",
-                "'Y-m-d H:i:s'",
-                "'Y-m-d\\TH:i:s'",
-            ];
+        $dateCastFormats = ["'!Y-m-d'", "'Y-m-d'"];
+        // The same patterns every other mode accepts (`GeneratedDtoInterface::DATE_TIME_FORMATS`, and the
+        // `date_format:` rule this same schema emits). laravel-data's default is the single
+        // `config('data.date_format')`, which cannot parse a value carrying microseconds — a payload its own
+        // rule had just accepted then died in the cast with `CannotCastDate`.
+        //
+        // Both offset letters, to stay identical to the rule beside it. The cast only PARSES, where `P`
+        // already reads `Z`, so this half was never wrong on its own — but a cast list and a rule list that
+        // disagree is exactly how the `Z` refusal survived unnoticed.
+        $dateTimeCastFormats = [
+            "'Y-m-d\\TH:i:sP'",
+            "'Y-m-d\\TH:i:s.uP'",
+            "'Y-m-d\\TH:i:sp'",
+            "'Y-m-d\\TH:i:s.up'",
+            "'Y-m-d H:i:s'",
+            "'Y-m-d\\TH:i:s'",
+        ];
+
+        $temporalFormat = $property['temporalFormat'] ?? null;
+        if (is_string($temporalFormat)) {
+            $castFormats = $temporalFormat === 'Y-m-d' ? $dateCastFormats : $dateTimeCastFormats;
+        } elseif ($this->isDateOrDateTimeUnion($property['constraints'] ?? [])) {
+            // A `oneOf` of a `format: date` and a `format: date-time` string: both shapes are this one
+            // property, and the global ATOM cast refused `2026-12-01` after its own rule had accepted it.
+            // The cast takes the first pattern that parses, and a date never parses as a date-time.
+            $castFormats = [...$dateCastFormats, ...$dateTimeCastFormats];
+        } else {
+            return [];
+        }
 
         $castImports = [];
         $withCastRef = $this->libraryClassRef('Spatie\LaravelData\Attributes\WithCast', $namespace, $castImports);

@@ -855,6 +855,15 @@ trait RendersYii3Dto
             // ISO-8601 shapes a document writes, so it is not an option either way.
             $wireFormats = self::YII3_TEMPORAL_WIRE_FORMATS[is_string($format) ? $format : '']
                 ?? self::YII3_TEMPORAL_WIRE_FORMATS['date-time'];
+            // A `oneOf` of a `format: date` and a `format: date-time` string has no `format` of its own, and
+            // the date-time patterns alone left `2026-12-01` unparsed — the property then read as not sent.
+            // The attributes are tried in order, and a date never parses as a date-time.
+            if (!is_string($format) && $this->isDateOrDateTimeUnion($constraints)) {
+                $wireFormats = [
+                    ...self::YII3_TEMPORAL_WIRE_FORMATS['date'],
+                    ...self::YII3_TEMPORAL_WIRE_FORMATS['date-time'],
+                ];
+            }
             foreach ($wireFormats as $wireFormat) {
                 $attributes[] = sprintf(
                     "#[%s(format: 'php:%s')]",

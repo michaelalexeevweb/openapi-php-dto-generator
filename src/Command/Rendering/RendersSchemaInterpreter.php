@@ -485,9 +485,25 @@ PHP;
 
 PHP
                 : '';
+            // A hydrated date has lost its wire shape, and each branch renders it in that branch's own
+            // format — so `format: date` and `format: date-time` both matched it. On the wire the two
+            // never overlap, so among the temporal branches one match is all a date can have.
+            $temporalMatchCount = $canHoldTemporal
+                ? <<<'PHP'
+                    if ($value instanceof DateTimeInterface && in_array($branch['format'] ?? null, ['date', 'date-time'], true)) {
+                        $temporalBranchMatched = true;
+                        continue;
+                    }
+
+PHP
+                : '';
+            $temporalMatchInit = $canHoldTemporal ? "\n            \$temporalBranchMatched = false;" : '';
+            $temporalMatchFold = $canHoldTemporal
+                ? "\n\n            if (\$temporalBranchMatched) {\n                \$matchingBranches++;\n            }"
+                : '';
             $sections[] = <<<PHP
         if (is_array(\$schema['oneOf'] ?? null)) {
-            \$matchingBranches = 0;
+            \$matchingBranches = 0;{$temporalMatchInit}
             \$branchErrors = [];
             foreach (\$schema['oneOf'] as \$branch) {
                 if (!is_array(\$branch)) {
@@ -506,12 +522,12 @@ PHP
                 // useful than "does not match any oneOf branch".
                 \$errorsForBranch = \$this->validateOpenApiNode(\$value, \$branch, \$path, \$depth + 1);
                 if (\$errorsForBranch === []) {
-                    \$matchingBranches++;
+{$temporalMatchCount}                    \$matchingBranches++;
                     continue;
                 }
 
                 \$branchErrors = [...\$branchErrors, ...\$errorsForBranch];
-            }
+            }{$temporalMatchFold}
 
             if (\$matchingBranches > 1) {
                 \$errors[] = sprintf('%s matches more than one allowed oneOf branch', \$path);

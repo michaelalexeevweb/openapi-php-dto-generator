@@ -425,6 +425,13 @@ trait RendersLaravelDto
         $nestedDtoContainer = $this->laravelNestedDtoContainerExpression($property['type'], $containerRaw, $property['openApiName']);
         $value = match (true) {
             $param['isTemporal'] === true => sprintf('new DateTimeImmutable(%s)', $raw),
+            // A `oneOf` of a `format: date` and a `format: date-time` string has no single format to
+            // read back, but its type is still a date — and `validated()` hands over the string. The
+            // constructor threw a TypeError on it, a 500 after the validator had accepted the payload.
+            $this->shortClassName(ltrim($property['type'], '?')) === 'DateTimeImmutable' => sprintf(
+                'new DateTimeImmutable(%s)',
+                $raw,
+            ),
             // The ITEMS of a temporal container, cast the same way the scalar above is. Without this
             // the property held the strings `validated()` handed over while its docblock promised
             // `array<DateTimeImmutable>` — a lie PHPStan downstream was already believing. `array_map`

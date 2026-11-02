@@ -2690,6 +2690,132 @@ final class ValidationParityTest extends TestCase
         );
     }
 
+    #[DataProvider('dateOrDateTimeUnionCases')]
+    public function testADateOrDateTimeUnionAcceptsBothShapesInEveryMode(
+        string $firstFormat,
+        string $secondFormat,
+        string $values,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        [$validValue, $invalidValue] = explode('|', $values);
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => [
+                            'f' => [
+                                'nullable' => true,
+                                'oneOf' => [
+                                    ['type' => 'string', 'format' => $firstFormat],
+                                    ['type' => 'string', 'format' => $secondFormat],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $key = "date|date-time {$firstFormat} first, {$validValue} / {$invalidValue}";
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict(
+                $mode,
+                $spec,
+                $key,
+                '{"f":' . $validValue . '}',
+                '{"f":' . $invalidValue . '}',
+            ),
+            $invalidValue === '"2026-02-30"'
+                ? self::diverges(
+                    GenerationMode::Symfony,
+                    ['valid' => true, 'invalid' => true],
+                    'the serializer parses the date before any generated constraint runs, and PHP rolls '
+                        . '2026-02-30 over to 2 March — as for a plain `format: date`',
+                )
+                : [],
+            $key,
+        );
+    }
+
+    /**
+     * A `oneOf` of a `format: date` string and a `format: date-time` string is ONE getter returning
+     * `?DateTimeImmutable`, and both wire shapes belong to it. Runtime used to read only a top-level
+     * `format`, found none, fell back to strict date-time and refused `"2026-12-01"` before the `oneOf`
+     * was ever consulted — whichever order the branches came in.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function dateOrDateTimeUnionCases(): array
+    {
+        $provided = [];
+        foreach (['date first' => ['date', 'date-time'], 'date-time first' => ['date-time', 'date']] as $order => $formats) {
+            foreach ([
+                'date' => '"2026-12-01"',
+                'date-time' => '"2026-12-01T10:00:00+00:00"',
+                'Z date-time' => '"2026-12-01T10:00:00Z"',
+                'midnight date-time' => '"2026-12-01T00:00:00Z"',
+            ] as $shape => $validValue) {
+                foreach ([
+                    'impossible date' => '"2026-02-30"',
+                    'garbage' => '"not a date"',
+                    'empty' => '""',
+                ] as $invalidShape => $invalidValue) {
+                    $provided["{$order}, {$shape} / {$invalidShape}"] = [$formats[0], $formats[1], $validValue . '|' . $invalidValue];
+                }
+            }
+        }
+
+        return $provided;
+    }
+
+    /**
+     * An impossible calendar date under a plain `format: date`. Symfony mode's serializer parses the string
+     * before any generated constraint runs, and PHP's date parsing rolls an overflowing day forward instead
+     * of failing — the same serializer-decides-first gap as the loose date-time above, found while pinning
+     * the date-or-date-time union.
+     */
+    public function testAnImpossibleCalendarDateIsRefusedWhereverTheGeneratorOwnsTheCheck(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => ['f' => ['type' => 'string', 'format' => 'date']],
+                    ],
+                ],
+            ],
+        ];
+
+        $key = 'impossible calendar date';
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":"2026-12-01"}', '{"f":"2026-02-30"}'),
+            self::diverges(
+                GenerationMode::Symfony,
+                ['valid' => true, 'invalid' => true],
+                'the serializer parses the date before any generated constraint runs, and PHP rolls '
+                    . '2026-02-30 over to 2 March',
+            ),
+            $key,
+        );
+    }
+
     /**
      * MUTUAL recursion — `A.b` is a `B` and `B.a` is an `A` — which is where a per-class fold could have
      * looped forever while being built. It terminates because the fold is registered under its class name

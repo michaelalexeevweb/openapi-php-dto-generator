@@ -2495,6 +2495,62 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
+     * A `oneOf` of a `format: date` and a `format: date-time` string is one `?DateTimeImmutable`, and a
+     * date-only value is its own branch. The deserializer read only a top-level `format`, found none here,
+     * parsed as a strict date-time and refused `"2026-12-01"` before the `oneOf` was consulted.
+     *
+     * The parity suite covers the body in every mode; this pins what only runtime can show — the query
+     * string, `null`, the time a date-only value lands on, and the message naming both shapes.
+     */
+    public function testADateOrDateTimeUnionHydratesBothShapesInBodyAndQuery(): void
+    {
+        $union = ['oneOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'string', 'format' => 'date']]];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => ['/w' => ['get' => [
+                'parameters' => [['in' => 'query', 'name' => 'since', 'schema' => $union]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => ['f' => ['nullable' => true] + $union]],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'DateOrDateTimeUnionNs', 'Probe');
+        $deserializer = new DtoDeserializer();
+
+        $parse = fn(string $json): mixed => $deserializer->deserialize($this->jsonPostRequest($json), $fqcn)->getF();
+
+        $date = $parse('{"f":"2026-12-01"}');
+        $this->assertInstanceOf(DateTimeImmutable::class, $date);
+        $this->assertSame('2026-12-01T00:00:00', $date->format('Y-m-d\TH:i:s'), 'a date is midnight, as `format: date` is');
+        $this->assertSame('2026-12-01T10:00:00+00:00', $parse('{"f":"2026-12-01T10:00:00Z"}')->format(DATE_ATOM));
+        // Midnight is where a hydrated date could have matched both branches; it must stay one value.
+        $this->assertSame('2026-12-01T00:00:00+00:00', $parse('{"f":"2026-12-01T00:00:00+00:00"}')->format(DATE_ATOM));
+        $this->assertNull($parse('{"f":null}'));
+
+        foreach (['"2026-02-30"', '"not a date"', '"2026-12-01junk"'] as $invalid) {
+            try {
+                $parse('{"f":' . $invalid . '}');
+                $this->fail("Expected {$invalid} to be refused.");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString(
+                    'param "f" expects a date in Y-m-d format or a valid date-time',
+                    $e->getMessage(),
+                );
+            }
+        }
+
+        /** @var class-string<GeneratedDtoInterface> $queryFqcn */
+        $queryFqcn = '\DateOrDateTimeUnionNs\WgetQueryParams';
+        $query = static fn(string $since): mixed => $deserializer
+            ->deserialize(Request::create(uri: '/w?since=' . rawurlencode($since), method: 'GET'), $queryFqcn)
+            ->getSince();
+        $this->assertSame('2026-12-01', $query('2026-12-01')->format('Y-m-d'));
+        $this->assertSame('2026-12-01T10:00:00+00:00', $query('2026-12-01T10:00:00Z')->format(DATE_ATOM));
+    }
+
+    /**
      * A `readOnly` property does not make its class impossible to deserialize.
      *
      * OpenAPI: "If the property is marked as readOnly being true and is in the required list, the

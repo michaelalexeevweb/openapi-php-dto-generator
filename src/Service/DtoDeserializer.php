@@ -27,6 +27,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
 {
     private const string PREDECODED_BODY_ATTRIBUTE = '__opg_predecoded_body_data';
 
+    // A union whose branches are `format: date` and `format: date-time` — one getter, two wire shapes.
+    // Not an OpenAPI format: it only ever travels from resolveOpenApiFormat() to the temporal parser.
+    private const string FORMAT_DATE_OR_DATE_TIME = 'date|date-time';
+
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
     // instances and requests within the same PHP worker process).
@@ -2785,6 +2789,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
+        // date or date-time: a value in the date shape is the date branch, anything else must be a date-time.
+        if ($temporalFormat === self::FORMAT_DATE_OR_DATE_TIME) {
+            $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value);
+            if ($dt !== false && $dt->format('Y-m-d') === $value) {
+                return $dt;
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+                throw new RuntimeException(
+                    $this->finalizeParamMessage(
+                        "param \"{$paramPath}\" expects a date in Y-m-d format or a valid date-time"
+                        . " (e.g. 2026-03-10 or 2026-03-10T12:00:00+00:00), got \"{$value}\"",
+                    ),
+                );
+            }
+        }
+
         // date format: only Y-m-d
         if ($temporalFormat === 'Y-m-d') {
             $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value);
@@ -2798,12 +2819,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $dt;
         }
 
+        $expected = $temporalFormat === self::FORMAT_DATE_OR_DATE_TIME
+            ? 'a date in Y-m-d format or a valid date-time (e.g. 2026-03-10 or 2026-03-10T12:00:00+00:00)'
+            : 'a valid date-time (e.g. 2026-03-10T12:00:00+00:00)';
+
         // Reject structural mismatches before createFromFormat: it silently accepts trailing characters.
         if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1) {
             throw new RuntimeException(
-                $this->finalizeParamMessage(
-                    "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
-                ),
+                $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
             );
         }
 
@@ -2821,9 +2844,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         throw new RuntimeException(
-            $this->finalizeParamMessage(
-                "param \"{$paramPath}\" expects a valid date-time (e.g. 2026-03-10T12:00:00+00:00), got \"{$value}\"",
-            ),
+            $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
         );
     }
 
@@ -2831,6 +2852,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         return match ($temporalFormat) {
             'Y-m-d' => ' in Y-m-d format',
+            self::FORMAT_DATE_OR_DATE_TIME => ' in Y-m-d format or a valid date-time',
             default => '-time',
         };
     }
@@ -2852,6 +2874,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if ($openApiFormat === 'date-time' || $openApiFormat === 'datetime') {
             return null;
+        }
+
+        if ($openApiFormat === self::FORMAT_DATE_OR_DATE_TIME) {
+            return self::FORMAT_DATE_OR_DATE_TIME;
         }
 
         $getterName = 'get' . ucfirst($paramName);
@@ -2877,8 +2903,44 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private function resolveOpenApiFormat(?array $constraints): ?string
     {
         $format = $constraints['format'] ?? null;
+        if (is_string($format) && $format !== '') {
+            return $format;
+        }
 
-        return is_string($format) && $format !== '' ? $format : null;
+        return $this->resolveTemporalUnionFormat($constraints['oneOf'] ?? $constraints['anyOf'] ?? null);
+    }
+
+    /**
+     * The format of a `oneOf`/`anyOf` whose every non-null branch is a `format: date` or `format: date-time`
+     * string — the shape that hydrates into a single DateTimeImmutable. Any other branch means the union is
+     * not purely temporal, and the answer is null, as before.
+     */
+    private function resolveTemporalUnionFormat(mixed $branches): ?string
+    {
+        if (!is_array($branches) || $branches === []) {
+            return null;
+        }
+
+        $formats = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                return null;
+            }
+            if (($branch['type'] ?? null) === 'null') {
+                continue;
+            }
+            $branchFormat = $branch['format'] ?? null;
+            if (($branch['type'] ?? null) !== 'string' || !in_array($branchFormat, ['date', 'date-time'], true)) {
+                return null;
+            }
+            $formats[$branchFormat] = true;
+        }
+
+        if (count($formats) === 2) {
+            return self::FORMAT_DATE_OR_DATE_TIME;
+        }
+
+        return array_key_first($formats);
     }
 
     /**
