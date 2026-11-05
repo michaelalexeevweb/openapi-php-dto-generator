@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.117
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.118
 ```
 
 ---
@@ -182,16 +182,21 @@ malformed `uri-template` is refused here and accepted by both Jane and league; a
 
 ### Fast, because the checks are emitted code
 
-`bin/benchmark`, PHP 8.4, opcache off, 20 000 iterations, mean of two runs:
+`bin/benchmark`, PHP 8.4, opcache off, 20 000 iterations, mean of two runs, same schema and payload in
+every mode (round trip = bind + validate + normalize):
 
 | | bind | validate | normalize | round trip |
 |---|---:|---:|---:|---:|
-| runtime | 0.1459 ms | 0.1353 ms | 0.0123 ms | **0.2935 ms** |
-| laravel (`FormRequest`) | **0.0033 ms** | 1.4672 ms | **0.0019 ms** | 1.4724 ms |
+| runtime | 0.1082 ms | 0.0966 ms | 0.0124 ms | **0.2172 ms** |
+| symfony | 0.2343 ms | **0.0815 ms** | 0.1119 ms | 0.4279 ms |
+| laravel (`FormRequest`) | **0.0033 ms** | 1.5528 ms | **0.0020 ms** | 1.5583 ms |
+| laravel-data | 0.0922 ms | 1.7787 ms | 0.0475 ms | 1.9185 ms |
+| yii3 | 0.1307 ms | 0.2085 ms | 0.0106 ms | 0.3498 ms |
 
-The generated Laravel interpreter — the part this library actually writes — is **2.6%** of that Laravel
-validate step; the millisecond is `illuminate/validation` walking the rule array. The same ordering holds
-on seven request bodies of a production application.
+The millisecond in both Laravel modes is `illuminate/validation` walking the rule array: the generated
+interpreter — the part this library actually writes — is **2.6%** of the Laravel validate step. Runtime,
+symfony and yii3 stay within ~2× of each other, and the same ordering holds on seven request bodies of a
+production application.
 [Full numbers, and the benchmark to re-run them →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.performance.md)
 
 ---

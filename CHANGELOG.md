@@ -3,6 +3,57 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.118 — 2026-11-05
+
+- runtime bind faster
+- runtime validate faster
+- same verdicts, same messages
+- benchmark re-measured
+
+runtime mode:
+
+Profiled with a sampling profiler, then measured on eight request bodies of a production application
+(report filters with id lists, task bodies, a small create body, one query-parameter DTO), all accepted
+before timing, same normalized output in every build. Sum of the eight, minimum of four interleaved runs:
+
+| | 2.15.48 | 2.15.117 | 2.15.118 |
+|---|---:|---:|---:|
+| `deserialize()` | 0.893 ms | 0.954 ms | 0.586 ms |
+| `validate()` | 0.817 ms | 0.846 ms | 0.519 ms |
+| `toArray()` | 0.070 ms | 0.071 ms | 0.070 ms |
+
+So 39% off both steps against 2.15.117, and a third off against 2.15.48 — the correctness fixes between
+those two had cost 4–7%. The bodies built of id lists gain most (30–42%); a GET whose values arrive as
+query strings gains least (12–18%), because a string from the query still takes the full cast.
+
+What it was:
+
+- every level of every validation probed fifteen keys for a boolean subschema (`items: false`, …) that an
+  ordinary schema never holds — a fifth of `deserialize()` and of `validate()`. One `array_intersect_key()`
+  now answers it;
+- a list item whose schema says only `type` — a list of ids — went through the whole constraint walk and a
+  `sprintf()` of its path to learn "is it an integer". It takes the type test; an item that fails it, or is
+  an object, still takes the full walk, so the message is the walk's own;
+- a JSON value that already IS the declared scalar (`int`, `string`, `bool`, `float`) skips the
+  fifteen-argument cast that would hand it back unchanged — for a body field and for a list item. A null,
+  `42.0` for an int, an int for a float and every mismatch still take the cast;
+- four closures were built for every number checked against a bound; a `pattern` was re-translated to PCRE
+  for every value; `getObjectConstraints()` was rebuilt for every DTO in a list; an empty error list went
+  through `array_map()`. Static methods, a per-process cache of the document's patterns (never of a value
+  being validated), a per-class cache, an early return.
+
+Nothing about what is accepted or refused moved: the full suite, plus every id list of those eight bodies
+broken three ways (a string, a null, an array) — 122 refusal messages, byte-identical before and after.
+
+Two candidates were measured and left out. Caching `is_callable()` for the normalizer's getters moved
+nothing (±0.5%). Skipping `validate()`'s field checks for a DTO the deserializer built would remove the
+second pass, but only for code that calls both on a request DTO, and it would silently stop consulting a
+custom `DtoValidatorInterface` given to the normalizer.
+
+Upgrading: the generated DTOs are byte-identical to 2.15.117's. With `--dto-generator-directory` the
+services are COPIED into your project, so run the generator again to pick the speed-up up; without it,
+`composer update` is enough.
+
 ## 2.15.117 — 2026-11-02
 
 - date-or-date-time union accepted

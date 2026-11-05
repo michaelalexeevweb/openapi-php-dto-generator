@@ -37,6 +37,14 @@ final class DtoValidator implements DtoValidatorInterface
     ];
 
     /**
+     * Delimited schema patterns, by pattern. Only patterns the DOCUMENT wrote come through here —
+     * a finite set per process — never a value being validated, so the cache cannot grow with traffic.
+     *
+     * @var array<string, string>
+     */
+    private static array $schemaRegexCache = [];
+
+    /**
      * Delimit a schema pattern without escaping an already escaped delimiter twice, and keep the
      * ECMA-262 ASCII meaning of `\d` `\w` `\b` under the Unicode modifier.
      */
@@ -123,6 +131,11 @@ final class DtoValidator implements DtoValidatorInterface
      */
     public static function finalizeMessages(array $messages, ?string $subject = null): array
     {
+        // The ordinary verdict is "nothing wrong": no closure to build for an empty list.
+        if ($messages === []) {
+            return $messages;
+        }
+
         return array_map(
             static fn(string $message): string => self::finalizeMessage($message, $subject),
             $messages,
@@ -161,36 +174,41 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
-     * Keys whose value is a SUBSCHEMA, and may therefore be the boolean form of one.
+     * {@see delimitPattern()} for a `pattern` the document wrote, translated once per process.
+     */
+    private static function schemaRegex(string $pattern): string
+    {
+        return self::$schemaRegexCache[$pattern] ??= self::delimitPattern($pattern);
+    }
+
+    /**
+     * Keys whose value is a SUBSCHEMA, and may therefore be the boolean form of one — mapped to
+     * whether that value is ONE subschema (false) or a map or list of them (true).
      *
      * JSON Schema lets `true` and `false` stand where an object schema stands: `true` accepts every
      * value, `false` accepts none. `additionalProperties` and `unevaluated*` already read the boolean
      * directly — for them it is the ordinary spelling — so they are deliberately absent here.
+     *
+     * One map rather than three lists because it is probed on every level of every validation: a
+     * single `array_intersect_key()` against it tells an ordinary leaf schema — `type` plus a bound or
+     * two — that there is nothing to rewrite, where fifteen key probes used to.
      */
-    private const array BOOLEAN_SUBSCHEMA_KEYS = [
-        'items',
-        'contains',
-        'not',
-        'propertyNames',
-        'if',
-        'then',
-        'else',
-        'contentSchema',
-    ];
-
-    /** Keys holding a MAP of subschemas, any of which may be boolean. */
-    private const array BOOLEAN_SUBSCHEMA_MAP_KEYS = [
-        'properties',
-        'patternProperties',
-        'dependentSchemas',
-    ];
-
-    /** Keys holding a LIST of subschemas, any of which may be boolean. */
-    private const array BOOLEAN_SUBSCHEMA_LIST_KEYS = [
-        'allOf',
-        'anyOf',
-        'oneOf',
-        'prefixItems',
+    private const array SUBSCHEMA_KEYS_HOLDING_A_GROUP = [
+        'items' => false,
+        'contains' => false,
+        'not' => false,
+        'propertyNames' => false,
+        'if' => false,
+        'then' => false,
+        'else' => false,
+        'contentSchema' => false,
+        'properties' => true,
+        'patternProperties' => true,
+        'dependentSchemas' => true,
+        'allOf' => true,
+        'anyOf' => true,
+        'oneOf' => true,
+        'prefixItems' => true,
     ];
 
     /**
@@ -214,35 +232,21 @@ final class DtoValidator implements DtoValidatorInterface
      */
     private static function expandBooleanSubschemas(array $constraints): array
     {
-        foreach (self::BOOLEAN_SUBSCHEMA_KEYS as $key) {
-            $subschema = $constraints[$key] ?? null;
-            if (is_bool($subschema)) {
-                $constraints[$key] = self::booleanSchemaAsArray($subschema);
-            }
-        }
-
-        foreach (self::BOOLEAN_SUBSCHEMA_MAP_KEYS as $key) {
-            $group = $constraints[$key] ?? null;
-            if (!is_array($group)) {
-                continue;
-            }
-
-            foreach ($group as $name => $subschema) {
+        foreach (array_intersect_key($constraints, self::SUBSCHEMA_KEYS_HOLDING_A_GROUP) as $key => $subschema) {
+            if (!self::SUBSCHEMA_KEYS_HOLDING_A_GROUP[$key]) {
                 if (is_bool($subschema)) {
-                    $constraints[$key][$name] = self::booleanSchemaAsArray($subschema);
+                    $constraints[$key] = self::booleanSchemaAsArray($subschema);
                 }
-            }
-        }
-
-        foreach (self::BOOLEAN_SUBSCHEMA_LIST_KEYS as $key) {
-            $group = $constraints[$key] ?? null;
-            if (!is_array($group)) {
                 continue;
             }
 
-            foreach ($group as $index => $subschema) {
-                if (is_bool($subschema)) {
-                    $constraints[$key][$index] = self::booleanSchemaAsArray($subschema);
+            if (!is_array($subschema)) {
+                continue;
+            }
+
+            foreach ($subschema as $name => $member) {
+                if (is_bool($member)) {
+                    $constraints[$key][$name] = self::booleanSchemaAsArray($member);
                 }
             }
         }
@@ -756,32 +760,19 @@ final class DtoValidator implements DtoValidatorInterface
         $rawMaximum = $constraints['maximum'] ?? null;
         $minimum = is_int($rawMinimum) ? $rawMinimum : $this->toFloatOrNull($rawMinimum);
         $maximum = is_int($rawMaximum) ? $rawMaximum : $this->toFloatOrNull($rawMaximum);
-        $atLeast = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
-            ? $value >= $bound
-            : (float)$value >= (float)$bound;
-        $atMost = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
-            ? $value <= $bound
-            : (float)$value <= (float)$bound;
-        $above = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
-            ? $value > $bound
-            : (float)$value > (float)$bound;
-        $below = static fn(int|float $bound): bool => is_int($value) && is_int($bound)
-            ? $value < $bound
-            : (float)$value < (float)$bound;
-
         $exclusiveMinimum = $constraints['exclusiveMinimum'] ?? null;
         if (is_numeric($exclusiveMinimum)) {
             $minExclusive = is_int($exclusiveMinimum) ? $exclusiveMinimum : (float)$exclusiveMinimum;
-            if (!$above(is_int($exclusiveMinimum) ? $exclusiveMinimum : $minExclusive)) {
+            if (!self::isAbove($value, is_int($exclusiveMinimum) ? $exclusiveMinimum : $minExclusive)) {
                 $errors[] = "{$subject} must be greater than {$this->stringifyNumber($minExclusive)}";
             }
         }
         if ($minimum !== null) {
             if (($constraints['exclusiveMinimum'] ?? null) === true) {
-                if (!$above(is_int($rawMinimum) ? $rawMinimum : $minimum)) {
+                if (!self::isAbove($value, is_int($rawMinimum) ? $rawMinimum : $minimum)) {
                     $errors[] = "{$subject} must be greater than {$this->stringifyNumber($minimum)}";
                 }
-            } elseif (!$atLeast(is_int($rawMinimum) ? $rawMinimum : $minimum)) {
+            } elseif (!self::isAtLeast($value, is_int($rawMinimum) ? $rawMinimum : $minimum)) {
                 $errors[] = "{$subject} must be greater than or equal to {$this->stringifyNumber($minimum)}";
             }
         }
@@ -789,16 +780,16 @@ final class DtoValidator implements DtoValidatorInterface
         $exclusiveMaximum = $constraints['exclusiveMaximum'] ?? null;
         if (is_numeric($exclusiveMaximum)) {
             $maxExclusive = is_int($exclusiveMaximum) ? $exclusiveMaximum : (float)$exclusiveMaximum;
-            if (!$below(is_int($exclusiveMaximum) ? $exclusiveMaximum : $maxExclusive)) {
+            if (!self::isBelow($value, is_int($exclusiveMaximum) ? $exclusiveMaximum : $maxExclusive)) {
                 $errors[] = "{$subject} must be less than {$this->stringifyNumber($maxExclusive)}";
             }
         }
         if ($maximum !== null) {
             if (($constraints['exclusiveMaximum'] ?? null) === true) {
-                if (!$below(is_int($rawMaximum) ? $rawMaximum : $maximum)) {
+                if (!self::isBelow($value, is_int($rawMaximum) ? $rawMaximum : $maximum)) {
                     $errors[] = "{$subject} must be less than {$this->stringifyNumber($maximum)}";
                 }
-            } elseif (!$atMost(is_int($rawMaximum) ? $rawMaximum : $maximum)) {
+            } elseif (!self::isAtMost($value, is_int($rawMaximum) ? $rawMaximum : $maximum)) {
                 $errors[] = "{$subject} must be less than or equal to {$this->stringifyNumber($maximum)}";
             }
         }
@@ -821,6 +812,31 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return $errors;
+    }
+
+    /**
+     * Bound comparisons for `validateNumeric()`. Two integers compare as integers — through floats
+     * `9007199254740993` equals `9007199254740992` — anything else as floats. Static methods rather
+     * than closures: the closures were built four times over for every number validated.
+     */
+    private static function isAtLeast(int|float $value, int|float $bound): bool
+    {
+        return is_int($value) && is_int($bound) ? $value >= $bound : (float)$value >= (float)$bound;
+    }
+
+    private static function isAtMost(int|float $value, int|float $bound): bool
+    {
+        return is_int($value) && is_int($bound) ? $value <= $bound : (float)$value <= (float)$bound;
+    }
+
+    private static function isAbove(int|float $value, int|float $bound): bool
+    {
+        return is_int($value) && is_int($bound) ? $value > $bound : (float)$value > (float)$bound;
+    }
+
+    private static function isBelow(int|float $value, int|float $bound): bool
+    {
+        return is_int($value) && is_int($bound) ? $value < $bound : (float)$value < (float)$bound;
     }
 
     /**
@@ -896,7 +912,7 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
-            $regex = self::delimitPattern($pattern);
+            $regex = self::schemaRegex($pattern);
             // Single compile: preg_match returns false for an invalid pattern (warning
             // suppressed), 1 on match, 0 on no-match — distinguishing both error cases.
             set_error_handler(static fn(): bool => true);
@@ -1443,8 +1459,27 @@ final class DtoValidator implements DtoValidatorInterface
                 || array_key_exists('not', $itemConstraints)
                 || array_key_exists('if', $itemConstraints);
 
+            // An item schema that says nothing but `type` — a list of ids, a list of names — is the
+            // common case, and the full walk paid a dozen key probes and a `sprintf()` per element to
+            // learn "is it an integer". An element that passes the type test is done; one that fails,
+            // or is an object (a date the walk normalises before testing), still takes the full walk,
+            // so the verdict and its wording stay the walk's own.
+            $onlyItemType = count($itemConstraints) === 1
+                && is_string($itemConstraints['type'] ?? null)
+                && $depth + 1 < self::MAX_VALIDATION_DEPTH
+                    ? $itemConstraints['type']
+                    : null;
+
             foreach ($value as $index => $itemValue) {
                 if (is_int($index) && $index < $prefixCount) {
+                    continue;
+                }
+
+                if (
+                    $onlyItemType !== null
+                    && !is_object($itemValue)
+                    && $this->matchesOpenApiType(value: $itemValue, type: $onlyItemType)
+                ) {
                     continue;
                 }
 
@@ -1796,7 +1831,7 @@ final class DtoValidator implements DtoValidatorInterface
 
     private function keyMatchesPattern(string $key, string $pattern): bool
     {
-        $regex = self::delimitPattern($pattern);
+        $regex = self::schemaRegex($pattern);
         // Suppress warnings from an invalid schema pattern → treat as no match.
         set_error_handler(static fn(): bool => true);
         try {

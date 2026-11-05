@@ -69,6 +69,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     private static array $classMetaCache = [];
 
+    /**
+     * `getObjectConstraints()` is a literal array per class; asked once per DTO INSTANCE validated,
+     * a list of nested DTOs used to rebuild it for every item.
+     *
+     * @var array<class-string, array<string, mixed>>
+     */
+    private static array $objectConstraintsCache = [];
+
     public function __construct(
         ?DtoValidatorInterface $constraintValidator = null,
     ) {
@@ -805,6 +813,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
         $nonNullItemTypes = array_values(array_filter($expectedItemTypes, static fn(string $t): bool => $t !== 'null'));
 
         foreach ($value as $index => $itemValue) {
+            // The item's name only appears in a message, so it is spelled out only when there is one:
+            // a `sprintf()` per element of a list that passes was most of what this loop cost.
+            if ($this->validateValueAgainstTypes($itemValue, $nonNullItemTypes, $allowsNull, $fieldName) === null) {
+                continue;
+            }
+
             $error = $this->validateValueAgainstTypes(
                 value: $itemValue,
                 nonNullTypes: $nonNullItemTypes,
@@ -935,14 +949,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
      */
     private function resolveOpenApiObjectConstraintsByClass(string $className): array
     {
-        $method = $this->resolveMetadataMethod($className, ['getObjectConstraints']);
-        if ($method === null) {
-            return [];
+        if (array_key_exists($className, self::$objectConstraintsCache)) {
+            return self::$objectConstraintsCache[$className];
         }
 
-        $constraints = call_user_func($method);
+        $method = $this->resolveMetadataMethod($className, ['getObjectConstraints']);
+        $constraints = $method === null ? [] : call_user_func($method);
 
-        return is_array($constraints) ? $constraints : [];
+        return self::$objectConstraintsCache[$className] = is_array($constraints) ? $constraints : [];
     }
 
     /**

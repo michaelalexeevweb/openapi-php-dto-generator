@@ -2623,7 +2623,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
     ): array {
         $normalized = [];
         $errors = [];
+        $isJson = $source === 'json';
         foreach ($items as $index => $itemValue) {
+            if ($isJson && self::isJsonScalarAlready($arrayItemType, $itemValue)) {
+                $normalized[$index] = $itemValue;
+                continue;
+            }
+
             $itemPath = $paramPath . '.' . $index;
             try {
                 $normalized[$index] = $this->castArrayItemValue(
@@ -2646,6 +2652,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return $normalized;
+    }
+
+    /**
+     * Whether a decoded JSON value already IS the scalar type it is to be cast to — the one case where
+     * {@see castValue()} returns it untouched. Asked first on the two hottest paths, a body field and
+     * a list element, so the common value skips a fifteen-argument call to learn nothing. Anything
+     * else (a null, `42.0` for an int, an int for a float, a mismatch) still takes the full cast, which
+     * keeps every conversion and every message where it was.
+     */
+    private static function isJsonScalarAlready(string $typeName, mixed $value): bool
+    {
+        return match ($typeName) {
+            'int' => is_int($value),
+            'string' => is_string($value),
+            'bool' => is_bool($value),
+            'float' => is_float($value),
+            default => false,
+        };
     }
 
     private function castArrayItemValue(
@@ -3454,40 +3478,44 @@ final class DtoDeserializer implements DtoDeserializerInterface
         return function (string $name, mixed $value, array &$errors) use ($byName, $reflection): mixed {
             $paramMeta = $byName[$name];
             try {
-                $cast = count($paramMeta['typeNames']) === 1
-                    ? $this->castValue(
-                        value: $value,
-                        paramName: $name,
-                        typeName: $paramMeta['typeNames'][0],
-                        allowsNull: $paramMeta['allowsNull'],
-                        source: 'json',
-                        arrayItemType: $paramMeta['arrayItemType'],
-                        paramPath: $name,
-                        schemaAllowsNull: $paramMeta['schemaAllowsNull'],
-                        temporalFormat: $paramMeta['temporalFormat'],
-                        openApiFormat: $paramMeta['openApiFormat'],
-                        allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
-                        arrayItemsNullable: $paramMeta['arrayItemsNullable'],
-                        arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
-                        nestedArrayItemType: $paramMeta['nestedArrayItemType'],
-                        nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
-                    )
-                    : $this->castUnionValue(
-                        paramName: $name,
-                        typeNames: $paramMeta['typeNames'],
-                        rawValue: $value,
-                        rawWasProvided: true,
-                        rawSource: 'json',
-                        arrayItemType: $paramMeta['arrayItemType'],
-                        schemaAllowsNull: $paramMeta['schemaAllowsNull'],
-                        dtoReflection: $reflection,
-                        openApiFormat: $paramMeta['openApiFormat'],
-                        allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
-                        arrayItemsNullable: $paramMeta['arrayItemsNullable'],
-                        arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
-                        nestedArrayItemType: $paramMeta['nestedArrayItemType'],
-                        nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
-                    );
+                if (count($paramMeta['typeNames']) === 1 && self::isJsonScalarAlready($paramMeta['typeNames'][0], $value)) {
+                    $cast = $value;
+                } else {
+                    $cast = count($paramMeta['typeNames']) === 1
+                        ? $this->castValue(
+                            value: $value,
+                            paramName: $name,
+                            typeName: $paramMeta['typeNames'][0],
+                            allowsNull: $paramMeta['allowsNull'],
+                            source: 'json',
+                            arrayItemType: $paramMeta['arrayItemType'],
+                            paramPath: $name,
+                            schemaAllowsNull: $paramMeta['schemaAllowsNull'],
+                            temporalFormat: $paramMeta['temporalFormat'],
+                            openApiFormat: $paramMeta['openApiFormat'],
+                            allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                            arrayItemsNullable: $paramMeta['arrayItemsNullable'],
+                            arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                            nestedArrayItemType: $paramMeta['nestedArrayItemType'],
+                            nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
+                        )
+                        : $this->castUnionValue(
+                            paramName: $name,
+                            typeNames: $paramMeta['typeNames'],
+                            rawValue: $value,
+                            rawWasProvided: true,
+                            rawSource: 'json',
+                            arrayItemType: $paramMeta['arrayItemType'],
+                            schemaAllowsNull: $paramMeta['schemaAllowsNull'],
+                            dtoReflection: $reflection,
+                            openApiFormat: $paramMeta['openApiFormat'],
+                            allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                            arrayItemsNullable: $paramMeta['arrayItemsNullable'],
+                            arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
+                            nestedArrayItemType: $paramMeta['nestedArrayItemType'],
+                            nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
+                        );
+                }
             } catch (RuntimeException $e) {
                 foreach (explode("\n", $e->getMessage()) as $message) {
                     $errors[] = $message;
