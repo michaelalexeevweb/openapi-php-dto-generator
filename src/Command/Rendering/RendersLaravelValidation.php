@@ -753,6 +753,10 @@ trait RendersLaravelValidation
             $imports[] = 'InvalidArgumentException';
         }
 
+        foreach ($this->generatedClassesNamedByType($property['type']) as $nested) {
+            $this->appendImportForClass($imports, $nested, $namespace, $className);
+        }
+
         foreach ([$this->laravelEnumClass($property), $this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $referenced) {
             if ($referenced !== null) {
                 $this->appendImportForClass($imports, $referenced, $namespace, $className);

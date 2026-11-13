@@ -54,7 +54,7 @@ Parameters:
 | `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
 | `--symfony-path-params` | | | With `--attributes=symfony`: also generate `<Operation>PathParams`, a DTO of the operation's path parameters, for a value resolver of your own. See [Path parameters as a DTO](README.symfony.md#path-parameters-as-a-dto). Ignored with a warning in other modes. |
 | `--laravel-form-request` / `--no-laravel-form-request` | | | With `--attributes=laravel`: on by default. `--no-laravel-form-request` writes the DTOs without their `<Dto>FormRequest`, for a project with `illuminate/validation` but no `laravel/framework`. See [Without `laravel/framework`](README.laravel.md#without-laravelframework). Ignored with a warning in other modes. |
-| `--ref` | | | Placement for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>=<namespace>`. A directory key maps every ref'd file inside it. Repeatable. The older two-part `<refFileOrDir>=<directory>` still works and takes its namespace from `--ref-namespace`. |
+| `--ref` | | | Placement for an external `$ref` spec file, directory **or mask**: `<refFileOrDir>=<directory>=<namespace>`. A directory key maps every ref'd file inside it; a mask (`specs/*/common`) maps every directory it matches, with `{1}`, `{2}`… in the directory and namespace — see [Masks](#masks). Repeatable. The older two-part `<refFileOrDir>=<directory>` still works and takes its namespace from `--ref-namespace`. |
 | `--ref-namespace` | | | Namespace for a two-part `--ref`: `<refFileOrDir>=<namespace>`, same key. Repeatable. Not used with the three-part `--ref`. |
 
 Without `--ref`, a class from another document goes under the output directory, at the path its namespace
@@ -77,6 +77,26 @@ form spreads the same mapping over `--ref` and `--ref-namespace`, matched by key
 forms can be mixed. Mapping one key two different ways — two `--ref`s, or a three-part `--ref` plus a `--ref-namespace` —
 stops generation instead of letting one of them win. A path or namespace that itself contains `=` cannot be
 given in the three-part form.
+
+### Masks
+
+A key with `*`, `?` or `[…]` in it is a mask. It is matched one path segment at a time — `*` never crosses a
+`/` — and, like a directory key, covers everything below the segments it matched. `{1}`, `{2}`… in the
+directory and the namespace stand for the segments the 1st, 2nd… wildcard segment matched, in class-name
+case in both (`pipeline` → `Pipeline`, `user_reports` → `UserReports`), so the directory and the namespace
+segment are the same word and PSR-4 finds the class:
+
+```bash
+--ref='specs/*/common=src/Generated/{1}/Common=App\Generated\{1}\Common'
+```
+
+`specs/billing/common/money.yml` → `src/Generated/Billing/Common/Money.php`, namespace
+`App\Generated\Billing\Common`; `specs/orders/common/address.yml` → `src/Generated/Orders/Common/`.
+
+Which key wins for a file: an exact file key, then the deepest directory key, then a mask. A file that two
+masks match stops generation — map it with an exact key or narrow the masks. A `{n}` past the key's last
+wildcard segment, or on a key without one, is refused before anything is generated. Quote the value, so
+the shell leaves the `*` alone.
 
 ## The output directory belongs to the command
 

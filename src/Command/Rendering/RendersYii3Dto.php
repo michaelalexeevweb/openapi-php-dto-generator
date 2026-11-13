@@ -510,6 +510,10 @@ trait RendersYii3Dto
             }
             $this->appendImportForClass($useStatements, $referenced, $namespace, $property['name']);
         }
+        // The value class of a map of maps sits deeper than the item-type strip above reaches.
+        foreach ($this->generatedClassesNamedByType($property['type']) as $nested) {
+            $this->appendImportForClass($useStatements, $nested, $namespace, $property['name']);
+        }
 
         // `mixed` is refused by the hydrator — measured: a `mixed` property, readonly or not, is left
         // UNINITIALISED and the value is dropped, while an explicit union of the same members is

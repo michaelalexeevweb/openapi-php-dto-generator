@@ -4434,6 +4434,256 @@ final class GenerateDtoCommandTest extends TestCase
         yield 'a fourth part' => [['/some/common=/out/Common=App\Common=Extra'], [], 'Invalid --ref value'];
         yield 'an empty namespace' => [['/some/common=/out/Common='], [], 'Invalid --ref value'];
         yield 'an empty directory' => [['/some/common==App\Common'], [], 'Invalid --ref value'];
+        yield 'a placeholder on a key without a wildcard' => [
+            ['/some/common=/out/{1}=App\Common'],
+            [],
+            'wildcard segment',
+        ];
+        yield 'a placeholder past the last wildcard' => [
+            ['/some/*/common=/out/{1}=App\{2}'],
+            [],
+            'uses {2}',
+        ];
+        yield 'a two-part directory placeholder past the last wildcard' => [
+            ['/some/*/common=/out/{3}'],
+            ['/some/*/common=App\{1}'],
+            'uses {3}',
+        ];
+    }
+
+    /**
+     * Writes `<root>/specs/<module>/common/<module>.json` for each module, and `<root>/specs/root.json`
+     * referencing a schema from each; returns the root document's path.
+     *
+     * @param array<int, string> $modules
+     */
+    private function writeModuleDocuments(string $root, array $modules): string
+    {
+        $properties = [];
+        foreach ($modules as $module) {
+            mkdir($root . '/specs/' . $module . '/common', 0o755, true);
+            // `user_reports` → `UserReportsBadge`: a schema name the normalizer leaves as it is.
+            $schemaName = str_replace('_', '', ucwords($module, '_')) . 'Badge';
+            file_put_contents(
+                filename: $root . '/specs/' . $module . '/common/' . $module . '.json',
+                data: json_encode(['openapi' => '3.1.0', 'components' => ['schemas' => [
+                    $schemaName => ['type' => 'object', 'properties' => ['label' => ['type' => 'string']]],
+                ]]], JSON_THROW_ON_ERROR),
+            );
+            $properties[$module] = ['$ref' => $module . '/common/' . $module . '.json#/components/schemas/' . $schemaName];
+        }
+        file_put_contents(
+            filename: $root . '/specs/root.json',
+            data: json_encode(['openapi' => '3.1.0', 'components' => ['schemas' => [
+                'Holder' => ['type' => 'object', 'properties' => $properties],
+            ]]], JSON_THROW_ON_ERROR),
+        );
+
+        return $root . '/specs/root.json';
+    }
+
+    /**
+     * One mask maps every module's `common` directory, and `{1}` carries the module into both the
+     * directory and the namespace — in class-name case in both, so PSR-4 finds each class.
+     */
+    public function testRefMaskMapsEveryMatchingDirectoryWithItsOwnPlaceholders(): void
+    {
+        $root = sys_get_temp_dir() . '/openapi_dto_generator_' . uniqid('refmask_', true);
+        try {
+            $rootDocument = $this->writeModuleDocuments($root, ['alpha', 'beta']);
+            $this->generator->setExternalRefMappings(
+                refDirectoryPairs: [$root . '/specs/*/common=' . $root . '/out/{1}/Common=Acme\{1}\Common'],
+                refNamespacePairs: [],
+            );
+            $this->generator->generateFromFile(
+                filePath: $rootDocument,
+                outputDirectory: $root . '/out/Root',
+                namespace: 'Acme\Root',
+            );
+
+            foreach (['alpha' => 'Alpha', 'beta' => 'Beta'] as $module => $segment) {
+                $this->assertContains($segment, (array)scandir($root . '/out'), $module);
+                $this->assertContains('Common', (array)scandir($root . '/out/' . $segment), $module);
+                $this->assertContains($segment . 'Badge.php', (array)scandir($root . '/out/' . $segment . '/Common'), $module);
+                $this->assertStringContainsString(
+                    needle: 'namespace Acme\\' . $segment . '\Common;',
+                    haystack: (string)file_get_contents($root . '/out/' . $segment . '/Common/' . $segment . 'Badge.php'),
+                );
+            }
+        } finally {
+            if (is_dir($root)) {
+                $this->deleteDirectory($root);
+            }
+        }
+    }
+
+    /**
+     * An exact file beats a containing directory, the DEEPEST directory beats a shallower one — it used
+     * to be the first in option order — and a mask only applies where no plain key does.
+     */
+    public function testRefKeysResolveExactThenDeepestDirectoryThenMask(): void
+    {
+        $root = sys_get_temp_dir() . '/openapi_dto_generator_' . uniqid('refprecedence_', true);
+        try {
+            $rootDocument = $this->writeModuleDocuments($root, ['alpha', 'beta', 'gamma']);
+            $this->generator->setExternalRefMappings(
+                refDirectoryPairs: [
+                    $root . '/specs/*/common=' . $root . '/out/Masked/{1}=Acme\Masked\{1}',
+                    $root . '/specs=' . $root . '/out/Shallow=Acme\Shallow',
+                    $root . '/specs/beta/common=' . $root . '/out/Deep=Acme\Deep',
+                    $root . '/specs/gamma/common/gamma.json=' . $root . '/out/Exact=Acme\Exact',
+                ],
+                refNamespacePairs: [],
+            );
+            $this->generator->generateFromFile(
+                filePath: $rootDocument,
+                outputDirectory: $root . '/out/Root',
+                namespace: 'Acme\Root',
+            );
+
+            $this->assertContains('AlphaBadge.php', (array)scandir($root . '/out/Shallow'), 'a directory beats a mask');
+            $this->assertContains('BetaBadge.php', (array)scandir($root . '/out/Deep'), 'the deepest directory wins');
+            $this->assertContains('GammaBadge.php', (array)scandir($root . '/out/Exact'), 'an exact file wins');
+            $this->assertDirectoryDoesNotExist($root . '/out/Masked');
+        } finally {
+            if (is_dir($root)) {
+                $this->deleteDirectory($root);
+            }
+        }
+    }
+
+    /**
+     * The README example, through the command line, with a RELATIVE mask: the literal prefix
+     * (`specs`) is resolved against the working directory like any other relative --ref key, and a
+     * module name with an underscore lands as one class-name-cased segment in both places.
+     */
+    public function testRelativeRefMaskOnTheCommandLine(): void
+    {
+        $root = sys_get_temp_dir() . '/openapi_dto_generator_' . uniqid('refmaskcli_', true);
+        $workingDirectory = getcwd();
+        $this->assertIsString($workingDirectory);
+        try {
+            $this->writeModuleDocuments($root, ['billing', 'user_reports']);
+            chdir($root);
+            $exitCode = (new CommandTester($this->generator))->execute([
+                '--file' => 'specs/root.json',
+                '--directory' => 'src/Generated/Root',
+                '--namespace' => 'App\Generated\Root',
+                '--ref' => ['specs/*/common=src/Generated/{1}/Common=App\Generated\{1}\Common'],
+            ]);
+
+            $this->assertSame(0, $exitCode);
+            $this->assertContains('UserReports', (array)scandir($root . '/src/Generated'));
+            $this->assertContains('UserReportsBadge.php', (array)scandir($root . '/src/Generated/UserReports/Common'));
+            $this->assertStringContainsString(
+                needle: 'namespace App\Generated\UserReports\Common;',
+                haystack: (string)file_get_contents($root . '/src/Generated/UserReports/Common/UserReportsBadge.php'),
+            );
+            $this->assertStringContainsString(
+                needle: 'namespace App\Generated\Billing\Common;',
+                haystack: (string)file_get_contents($root . '/src/Generated/Billing/Common/BillingBadge.php'),
+            );
+        } finally {
+            chdir($workingDirectory);
+            if (is_dir($root)) {
+                $this->deleteDirectory($root);
+            }
+        }
+    }
+
+    /**
+     * The two-part form takes a mask too: the same mask key in `--ref` and `--ref-namespace`, each
+     * with its own placeholders.
+     */
+    public function testTwoPartRefMaskWithRefNamespace(): void
+    {
+        $root = sys_get_temp_dir() . '/openapi_dto_generator_' . uniqid('refmasktwo_', true);
+        try {
+            $rootDocument = $this->writeModuleDocuments($root, ['alpha']);
+            $this->generator->setExternalRefMappings(
+                refDirectoryPairs: [$root . '/specs/*/common=' . $root . '/out/{1}'],
+                refNamespacePairs: [$root . '/specs/*/common=Acme\{1}'],
+            );
+            $this->generator->generateFromFile(
+                filePath: $rootDocument,
+                outputDirectory: $root . '/out/Root',
+                namespace: 'Acme\Root',
+            );
+
+            $this->assertContains('AlphaBadge.php', (array)scandir($root . '/out/Alpha'));
+            $this->assertStringContainsString(
+                needle: 'namespace Acme\Alpha;',
+                haystack: (string)file_get_contents($root . '/out/Alpha/AlphaBadge.php'),
+            );
+        } finally {
+            if (is_dir($root)) {
+                $this->deleteDirectory($root);
+            }
+        }
+    }
+
+    /**
+     * `?` and `[…]` are wildcards as much as `*`; a mask may end in a file name; a mask that matches
+     * nothing changes nothing — the file keeps its default placement, as an unmatched key always did.
+     */
+    public function testRefMaskWildcardsFileMasksAndUnmatchedMasks(): void
+    {
+        $root = sys_get_temp_dir() . '/openapi_dto_generator_' . uniqid('refmaskforms_', true);
+        try {
+            $rootDocument = $this->writeModuleDocuments($root, ['alpha', 'beta', 'gamma']);
+            $this->generator->setExternalRefMappings(
+                refDirectoryPairs: [
+                    $root . '/specs/alph?/common=' . $root . '/out/Question/{1}=Acme\Question\{1}',
+                    $root . '/specs/[b]eta/common/*.json=' . $root . '/out/Bracket/{1}/{2}=Acme\Bracket\{1}\{2}',
+                    $root . '/specs/*/nowhere=' . $root . '/out/Never/{1}=Acme\Never\{1}',
+                ],
+                refNamespacePairs: [],
+            );
+            $this->generator->generateFromFile(
+                filePath: $rootDocument,
+                outputDirectory: $root . '/out/Root',
+                namespace: 'Acme\Root',
+            );
+
+            $this->assertContains('AlphaBadge.php', (array)scandir($root . '/out/Question/Alpha'));
+            // `{2}` is the file segment `beta.json`, class-name-cased like any other.
+            $this->assertContains('BetaJson', (array)scandir($root . '/out/Bracket/Beta'));
+            $this->assertContains('BetaBadge.php', (array)scandir($root . '/out/Bracket/Beta/BetaJson'));
+            $this->assertDirectoryDoesNotExist($root . '/out/Never');
+            // gamma matched no mask: default placement, under the output directory by its namespace.
+            $this->assertContains('GammaBadge.php', (array)scandir($root . '/out/Root/Gamma/Common'));
+        } finally {
+            if (is_dir($root)) {
+                $this->deleteDirectory($root);
+            }
+        }
+    }
+
+    public function testAFileMatchingTwoRefMasksIsRefused(): void
+    {
+        $root = sys_get_temp_dir() . '/openapi_dto_generator_' . uniqid('refmasks_', true);
+        try {
+            $rootDocument = $this->writeModuleDocuments($root, ['alpha']);
+            $this->generator->setExternalRefMappings(
+                refDirectoryPairs: [
+                    $root . '/specs/*/common=' . $root . '/out/One/{1}=Acme\One\{1}',
+                    $root . '/specs/alpha/*=' . $root . '/out/Two/{1}=Acme\Two\{1}',
+                ],
+                refNamespacePairs: [],
+            );
+
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('matches more than one --ref mask');
+            $this->generator->generateFromFile(
+                filePath: $rootDocument,
+                outputDirectory: $root . '/out/Root',
+                namespace: 'Acme\Root',
+            );
+        } finally {
+            if (is_dir($root)) {
+                $this->deleteDirectory($root);
+            }
+        }
     }
 
     public function testExternalRefMappingRequiresBothDirectoryAndNamespace(): void

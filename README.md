@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.120
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.121
 ```
 
 ---
@@ -129,6 +129,9 @@ php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:gener
   --file=specs/api/orders.yml --directory=src/Generated/Orders --namespace='App\Generated\Orders' \
   --ref='specs/shared=src/Generated/Shared=App\Generated\Shared'
 ```
+
+The key may be a mask — `--ref='specs/*/common=src/Generated/{1}/Common=App\Generated\{1}\Common'` maps
+every module's `common` directory at once.
 
 [Every CLI option, external `$ref` placement, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
 

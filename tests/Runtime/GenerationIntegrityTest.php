@@ -404,6 +404,97 @@ final class GenerationIntegrityTest extends TestCase
     }
 
     /**
+     * The value class of a container, mapped by `--ref` into a namespace of its own, is imported — at
+     * one, two and three containers, through maps, lists and their mixes.
+     *
+     * The type named it — `array<string, array<string, Tile>>` — but the import collectors read a type
+     * by splitting on `|`, so the class two maps down never reached a `use`. In the class's own namespace
+     * nothing showed; from another one the docblock named a class that does not exist there, and laravel
+     * mode's hydrator called `Tile::fromValidated()` on it — a fatal error on the first request.
+     *
+     * The check is on the file, not on one spelling: wherever `Tile` is named, it has to be imported.
+     */
+    #[DataProvider('importShapesInEveryMode')]
+    public function testAContainerValueClassFromAnotherNamespaceIsImported(string $mode, string $shape): void
+    {
+        $this->writeChainedDocuments($shape);
+        $namespace = 'Integrity' . bin2hex(random_bytes(8));
+        $generator = new GenerateDtoCommand();
+        $generator->setExternalRefMappings(
+            refDirectoryPairs: [$this->root . '/b/tiles.json=' . $this->root . '/out/Tiles=' . $namespace . '\Tiles'],
+            refNamespacePairs: [],
+        );
+        $generator->generateFromFile(
+            filePath: $this->root . '/a/page.json',
+            outputDirectory: $this->root . '/out/Root',
+            namespace: $namespace,
+            mode: $mode,
+        );
+
+        self::assertContains('Grid.php', (array)scandir($this->root . '/out/Root/B'), $mode . ' ' . $shape);
+        foreach ((array)glob($this->root . '/out/Root/B/*.php') as $file) {
+            $source = (string)file_get_contents((string)$file);
+            self::assertNotSame([], token_get_all($source, TOKEN_PARSE), basename((string)$file));
+            if (preg_match('/\bTile\b/', $source) === 1) {
+                self::assertStringContainsString(
+                    needle: 'use ' . $namespace . '\Tiles\Tile;',
+                    haystack: $source,
+                    message: $mode . ' ' . $shape . ': ' . basename((string)$file) . ' names Tile without importing it',
+                );
+            }
+        }
+        if (strlen($shape) <= 2) {
+            // Up to two containers the value is typed by its class; the third is `mixed` by design.
+            self::assertMatchesRegularExpression(
+                pattern: '/\bTile\b/',
+                string: (string)file_get_contents($this->root . '/out/Root/B/Grid.php'),
+                message: $mode . ' ' . $shape,
+            );
+        }
+        if ($mode !== 'runtime') {
+            return;
+        }
+
+        foreach (['Root/B/Units/Unit.php', 'Tiles/Tile.php', 'Root/B/Grid.php', 'Root/Page.php'] as $file) {
+            require_once $this->root . '/out/' . $file;
+        }
+        $tile = '{"size":2,"unit":"cm"}';
+        foreach (array_reverse(str_split($shape)) as $container) {
+            $tile = $container === 'm' ? '{"key":' . $tile . '}' : '[' . $tile . ']';
+        }
+        $page = (new DtoDeserializer())->deserialize(
+            request: Request::create(
+                uri: '/',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: '{"grid":{"groups":' . $tile . '}}',
+            ),
+            dtoClass: $namespace . '\Page',
+        );
+        self::assertInstanceOf($namespace . '\Page', $page);
+        if (strlen($shape) > 2) {
+            return;
+        }
+        $value = $page->getGrid()->getGroups();
+        foreach (str_split($shape) as $container) {
+            $value = $value[$container === 'm' ? 'key' : 0];
+        }
+        self::assertInstanceOf($namespace . '\Tiles\Tile', $value, $shape);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function importShapesInEveryMode(): iterable
+    {
+        foreach (GenerateDtoCommand::ATTRIBUTE_MODES as $mode) {
+            foreach (['m', 'l', 'mm', 'll', 'ml', 'lm', 'mmm', 'lll', 'mlm', 'lml'] as $shape) {
+                yield $mode . ' ' . $shape => [$mode, $shape];
+            }
+        }
+    }
+
+    /**
      * Six containers deep in every mode: each one resolves the nested reference through its own
      * renderer, so passing in runtime says nothing about the other four.
      */

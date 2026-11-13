@@ -3,6 +3,50 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.121 — 2026-11-13
+
+- --ref key accepts masks
+- deepest directory key wins
+- nested value class imported
+
+A `--ref` key may be a mask: `*`, `?` and `[…]`, matched one path segment at a time. `{1}`, `{2}`… in the
+directory and the namespace stand for the segments the wildcards matched, in class-name case in both, so
+one value maps every module's directory and PSR-4 still finds each class:
+
+```bash
+--ref='specs/*/common=src/Generated/{1}/Common=App\Generated\{1}\Common'
+```
+
+`specs/billing/common/money.yml` → `src/Generated/Billing/Common/Money.php` in `App\Generated\Billing\Common`;
+`specs/user_reports/common/…` → `src/Generated/UserReports/Common/`.
+
+- like a directory key, a mask covers everything below the segments it matched; it may also end in a file
+  name (`specs/*/common/*.yml`).
+- the two-part form takes masks too: the same mask key in `--ref` and `--ref-namespace`.
+- which key wins for a file: an exact file key, then the deepest directory key, then a mask. A file two
+  masks match stops generation. A `{n}` past the key's last wildcard, or on a key without one, is refused
+  when the options are read.
+
+Fixed: of two directory keys containing the same file — `specs` and `specs/shared` — the FIRST in option
+order won, so `specs/shared/x.yml` went wherever `specs` said if that option came first. The deepest key
+wins now.
+
+Fixed — a container's value class from another namespace was not imported (all modes):
+
+A map or list whose values are a class that `--ref` (or the default placement) puts in ANOTHER namespace
+named it by its short name — `@var array<string, array<string, Tile>>` — with no `use` for it. PHP then
+resolved `Tile` in the current namespace: the docblock pointed at a class that does not exist, and laravel
+mode's hydrator called `Tile::fromValidated()` on it, a fatal error on the first request.
+
+- the import collectors read a type by stripping `array<`/`>` and splitting on `|`, which leaves
+  `string, Tile` for a map and `string, string, Tile` for a map of maps — not a class name. A type is read
+  as identifiers now, at any depth.
+- runtime, symfony and yii3 missed every shape with a map in it, one level included (`array<string, Tile>`);
+  a list of lists was imported on another path. laravel and laravel-data missed every two-level shape —
+  map of maps, list of lists, and the mixes.
+- covered at one, two and three containers, maps, lists and their mixes, in every mode. At three the
+  type is `mixed` by design and no class is named, so nothing needs importing.
+
 ## 2.15.120 — 2026-11-13
 
 - three-part --ref option

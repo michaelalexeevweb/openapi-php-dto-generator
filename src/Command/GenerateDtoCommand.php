@@ -888,8 +888,40 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        foreach ([$directoryMap, $namespaceMap] as $map) {
+            foreach ($map as $key => $value) {
+                $this->assertRefPlaceholdersResolvable(key: $key, value: $value);
+            }
+        }
+
         $this->refOutputDirectoryMap = $directoryMap;
         $this->refNamespaceMap = $namespaceMap;
+    }
+
+    /**
+     * A `{n}` has to name a wildcard segment of its own key: on a key without one there is nothing to
+     * fill it from, and past the last one it would quietly become an empty segment.
+     */
+    private function assertRefPlaceholdersResolvable(string $key, string $value): void
+    {
+        if (preg_match_all('/\{(\d+)\}/', $value, $placeholders) === 0) {
+            return;
+        }
+
+        $wildcards = count(array_filter(
+            array: explode(DIRECTORY_SEPARATOR, $key),
+            callback: fn(string $segment): bool => $this->isRefMask($segment),
+        ));
+        foreach ($placeholders[1] as $number) {
+            if ((int)$number < 1 || (int)$number > $wildcards) {
+                throw new RuntimeException(message: sprintf(
+                    '--ref "%s" uses {%s}, but its key has %d wildcard segment(s) to fill it from.',
+                    $key,
+                    $number,
+                    $wildcards,
+                ));
+            }
+        }
     }
 
     /**
@@ -944,15 +976,44 @@ final class GenerateDtoCommand extends Command
 
     private function canonicalizeRefPath(string $path): string
     {
-        $real = realpath($path);
+        if (!$this->isRefMask($path)) {
+            $real = realpath($path);
 
-        return $real !== false ? $real : $path;
+            return $real !== false ? $real : $path;
+        }
+
+        // A mask names no file, so realpath() cannot take it whole: the literal segments before the
+        // first wildcard are resolved, the rest is kept as written.
+        $segments = explode('/', str_replace('\\', '/', $path));
+        $literal = [];
+        foreach ($segments as $segment) {
+            if ($this->isRefMask($segment)) {
+                break;
+            }
+            $literal[] = $segment;
+        }
+        $prefix = implode('/', $literal);
+        $realPrefix = $prefix === '' ? false : realpath($prefix);
+        $tail = array_slice($segments, count($literal));
+
+        return implode(DIRECTORY_SEPARATOR, [$realPrefix !== false ? $realPrefix : $prefix, ...$tail]);
     }
 
     /**
-     * Resolves an external $ref source file against a --ref map. A map key may be either a single
-     * file (exact match) or a directory (matches any file inside it, recursively). An exact file
-     * key wins over a containing-directory key.
+     * Whether a --ref key is a mask: `*`, `?` or a `[…]` class, matched one path segment at a time.
+     */
+    private function isRefMask(string $path): bool
+    {
+        return strpbrk($path, '*?[') !== false;
+    }
+
+    /**
+     * Resolves an external $ref source file against a --ref map. A map key is a single file (exact
+     * match), a directory (matches any file inside it, recursively) or a mask (a path with `*`, `?` or
+     * `[…]` in it, see `matchRefMask()`). An exact file wins, then the DEEPEST containing directory, then a mask.
+     *
+     * The deepest directory used to be the FIRST one in option order, so `specs` and `specs/shared`
+     * mapped together sent `specs/shared/x.yml` wherever the earlier option said.
      *
      * @param array<string, string> $map
      */
@@ -968,13 +1029,82 @@ final class GenerateDtoCommand extends Command
             return $map[$canonical];
         }
 
+        $deepest = null;
         foreach ($map as $key => $value) {
-            if (is_dir($key) && str_starts_with($canonical, $key . DIRECTORY_SEPARATOR)) {
-                return $value;
+            if (
+                !$this->isRefMask($key)
+                && is_dir($key)
+                && str_starts_with($canonical, $key . DIRECTORY_SEPARATOR)
+                && ($deepest === null || strlen($key) > strlen($deepest))
+            ) {
+                $deepest = $key;
+            }
+        }
+        if ($deepest !== null) {
+            return $map[$deepest];
+        }
+
+        $matched = [];
+        foreach ($map as $key => $value) {
+            $captures = $this->isRefMask($key) ? $this->matchRefMask(mask: $key, path: $canonical) : null;
+            if ($captures !== null) {
+                $matched[$key] = $this->fillRefPlaceholders(value: $value, captures: $captures);
+            }
+        }
+        if (count($matched) > 1) {
+            throw new RuntimeException(message: sprintf(
+                '"%s" matches more than one --ref mask: %s. Map it with an exact --ref, or narrow the masks.',
+                $sourceFile,
+                implode(', ', array_keys($matched)),
+            ));
+        }
+
+        return $matched === [] ? null : reset($matched);
+    }
+
+    /**
+     * Matches a mask against a file's path one segment at a time, `fnmatch()` per segment, so `*`
+     * never crosses a `/`. Like a directory key, a mask that matches the leading segments covers
+     * everything below them. Returns the segments the wildcard segments matched, in order — what
+     * `{1}`, `{2}`… stand for — or null when the mask does not match.
+     *
+     * @return array<int, string>|null
+     */
+    private function matchRefMask(string $mask, string $path): ?array
+    {
+        $maskSegments = explode(DIRECTORY_SEPARATOR, $mask);
+        $pathSegments = explode(DIRECTORY_SEPARATOR, $path);
+        if (count($pathSegments) < count($maskSegments)) {
+            return null;
+        }
+
+        $captures = [];
+        foreach ($maskSegments as $index => $maskSegment) {
+            if (!fnmatch($maskSegment, $pathSegments[$index])) {
+                return null;
+            }
+            if ($this->isRefMask($maskSegment)) {
+                $captures[] = $pathSegments[$index];
             }
         }
 
-        return null;
+        return $captures;
+    }
+
+    /**
+     * `{n}` in a mask's directory or namespace becomes the n-th wildcard segment, in class-name case —
+     * `pipeline` → `Pipeline`, `universal_report`… → `UniversalReport` — in both, so the directory and
+     * the namespace segment are the same word and PSR-4 finds the class.
+     *
+     * @param array<int, string> $captures
+     */
+    private function fillRefPlaceholders(string $value, array $captures): string
+    {
+        return (string)preg_replace_callback(
+            pattern: '/\{(\d+)\}/',
+            callback: fn(array $placeholder): string => $this->normalizeClassName($captures[(int)$placeholder[1] - 1] ?? ''),
+            subject: $value,
+        );
     }
 
     public function copyCommonServices(
@@ -6585,28 +6715,46 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The generated classes — DTOs and enums — a property type names at any depth. What a mode's import
+     * collector has to `use` beyond the property's own class and item class: the value class of a map of
+     * maps (`array<string, array<string, Tile>>`) is neither, and from another namespace it went
+     * unimported in every mode.
+     *
+     * @return array<int, string>
+     */
+    private function generatedClassesNamedByType(string $type): array
+    {
+        return array_values(array_filter(
+            array: $this->extractReferencedClassNamesFromType($type),
+            callback: fn(string $class): bool => array_key_exists($class, $this->dtoSchemas)
+                || array_key_exists($class, $this->enumSchemas),
+        ));
+    }
+
+    /**
+     * Every class a property type names, however deep: `?Tile`, `Tile|Shade`, `array<string, Tile>`,
+     * `array<string, array<string, Tile>>`, `array<array<Tile>>`.
+     *
+     * It used to strip `array<`, `>` and `?` and split on `|`, which left `string, Tile` for a map — no
+     * class at all — and `string, string, Tile` for a map of maps. A map of maps whose values are a class
+     * from ANOTHER namespace therefore got no `use`: the docblock and the hydration code named `Tile`, and
+     * PHP resolved it in the current namespace. A map of one level only escaped because the item type is
+     * imported on another path. Reading the type as identifiers covers every nesting at once.
+     *
      * @return array<int, string>
      */
     private function extractReferencedClassNamesFromType(string $type): array
     {
-        $normalized = str_replace(['array<', '>', '?'], ['', '', ''], $type);
-        $splitResult = preg_split('/\|/', $normalized);
-        $parts = $splitResult !== false ? $splitResult : [];
+        preg_match_all('/[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*/', $type, $identifiers);
         $result = [];
 
-        foreach ($parts as $part) {
-            $part = trim($part);
-            if (
-                $part === '' || in_array(
-                    $part,
-                    ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'],
-                    true,
-                )
-            ) {
+        $notGenerated = ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'];
+        foreach ($identifiers[0] as $identifier) {
+            if (in_array($identifier, $notGenerated, true)) {
                 continue;
             }
 
-            $result[] = $part;
+            $result[] = $identifier;
         }
 
         return array_values(array_unique($result));
