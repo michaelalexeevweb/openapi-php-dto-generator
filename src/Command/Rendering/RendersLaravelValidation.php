@@ -1118,7 +1118,10 @@ trait RendersLaravelValidation
             return [];
         }
 
-        $extracted = $this->extractValidationConstraints($schema);
+        $extracted = $this->withConstraintSourceOf(
+            className: $className,
+            extraction: fn(): array => $this->extractValidationConstraints($schema),
+        );
         $objectLevel = [];
         foreach (self::LARAVEL_OBJECT_LEVEL_KEYWORDS as $keyword) {
             if (array_key_exists($keyword, $extracted)) {
@@ -1893,10 +1896,13 @@ trait RendersLaravelValidation
         if (array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
             // Dotted rules cannot select a union member. Keep each branch's complete schema,
             // including its enum, required keys and closed-object constraints, in the interpreter.
-            return $this->extractValidationConstraints($this->inlineNestedContainerValidation(
-                schema: $definition,
-                belowMaterialization: true,
-            ));
+            return $this->withConstraintSourceOf(
+                className: $className,
+                extraction: fn(): array => $this->extractValidationConstraints($this->inlineNestedContainerValidation(
+                    schema: $definition,
+                    belowMaterialization: true,
+                )),
+            );
         }
 
         $properties = [];

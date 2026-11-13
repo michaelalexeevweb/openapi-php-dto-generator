@@ -1069,7 +1069,9 @@ trait RendersLaravelDto
             $rawAccess,
             $this->phpStringLiteral($propertyName),
             implode(', ', $arms),
-            $propertyName,
+            // Inside the single-quoted sprintf format: quote-escaped, and `%` doubled so a name like
+            // `rate%` stays text instead of becoming a conversion sprintf has no argument for.
+            str_replace('%', '%%', $this->escapeSingleQuoted($propertyName)),
             $rawAccess,
             $this->phpStringLiteral($propertyName),
         );

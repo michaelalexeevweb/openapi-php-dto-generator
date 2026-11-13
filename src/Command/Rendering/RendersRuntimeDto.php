@@ -1117,7 +1117,10 @@ trait RendersRuntimeDto
         // `properties` and `required` are deliberately absent: the per-property map and the required
         // flags already own them, and repeating them here would report every violation twice. What is
         // left is exactly what no per-property rule can express.
-        $extracted = $this->extractValidationConstraints($schema);
+        $extracted = $this->withConstraintSourceOf(
+            className: $className,
+            extraction: fn(): array => $this->extractValidationConstraints($schema),
+        );
         foreach (self::RUNTIME_OBJECT_LEVEL_KEYWORDS as $keyword) {
             if (array_key_exists($keyword, $extracted)) {
                 $objectConstraints[$keyword] = $extracted[$keyword];

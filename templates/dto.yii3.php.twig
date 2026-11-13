@@ -149,7 +149,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     }
 {% if param.tracksPresence %}
 
-    /** Whether the payload carried `{{ param.openApiName }}` at all. */
+    /** Whether the payload carried `{{ param.openApiName|php_doc }}` at all. */
     public function {{ param.providedGetter }}(): bool
     {
         return $this->hasProperty('{{ param.openApiName|php_string }}');

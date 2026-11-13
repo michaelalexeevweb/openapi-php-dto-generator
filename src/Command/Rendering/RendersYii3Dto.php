@@ -257,9 +257,12 @@ trait RendersYii3Dto
         // reported once.
         $interpreterConstraints = $this->yii3PruneNativelyCovered(
             $this->filterInterpreterConstraints(
-                constraints: $this->extractValidationConstraints(
-                    $this->yii3WithMapValuesInlined(
-                        $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                constraints: $this->withConstraintSourceOf(
+                    className: $className,
+                    extraction: fn(): array => $this->extractValidationConstraints(
+                        $this->yii3WithMapValuesInlined(
+                            $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                        ),
                     ),
                 ),
                 allowScalarKeywords: true,
@@ -756,12 +759,12 @@ trait RendersYii3Dto
     {
         if (($property['inPath'] ?? false) === true) {
             $sourceImports[] = 'Yiisoft\Input\Http\Attribute\Parameter\Request';
-            return '#[' . $this->yii3Lib('Request') . '(\'' . $property['openApiName'] . '\')]';
+            return '#[' . $this->yii3Lib('Request') . '(' . $this->phpStringLiteral($property['openApiName']) . ')]';
         }
 
         if (($property['inQuery'] ?? false) === true) {
             $sourceImports[] = 'Yiisoft\Input\Http\Attribute\Parameter\Query';
-            return '#[' . $this->yii3Lib('Query') . '(\'' . $property['openApiName'] . '\')]';
+            return '#[' . $this->yii3Lib('Query') . '(' . $this->phpStringLiteral($property['openApiName']) . ')]';
         }
 
         return null;
@@ -2054,7 +2057,7 @@ PHP;
                         continue;
                     }
                     $ref = $this->referenceOrSingleRefAllOf($property[$container]);
-                    if ($container === 'additionalProperties' && $ref !== null && $this->nestedObjectRefDefinition($ref) !== null) {
+                    if ($container === 'additionalProperties' && $ref !== null && $this->nestedObjectRefDefinition($ref, $this->constraintSourceFile) !== null) {
                         // Depth two: below where anything is materialized, which is what makes it
                         // inline the `$ref` itself and everything under it.
                         $property[$container] = $this->inlineNestedContainerValidation(

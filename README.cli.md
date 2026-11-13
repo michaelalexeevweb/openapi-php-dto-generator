@@ -57,6 +57,13 @@ Parameters:
 | `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
 | `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
 
+Without `--ref`, a class from another document goes under the output directory, at the path its namespace
+gives: the document's directory relative to the root one, `.` and `..` dropped, each segment in class-name
+case. `../shared/money.yml` from the root document's directory becomes `<namespace>\Shared` in
+`<directory>/Shared/`. A `common` directory follows the `Common` convention instead when the output path
+has a segment to rebase it on. To put a document's classes anywhere else — one place shared by several
+root documents, say — map its directory with `--ref` and `--ref-namespace`.
+
 ## The output directory belongs to the command
 
 `--directory` is regenerated, not merged into: anything the run did not emit is removed, so the

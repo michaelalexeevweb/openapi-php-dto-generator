@@ -3954,11 +3954,11 @@ final class GenerateDtoCommandTest extends TestCase
             $this->assertStringContainsString('private readonly string $id', $holder);
             $this->assertStringContainsString("\$constraints['id'] = ['type' => 'string', 'format' => 'uuid'];", $holder);
             // No class, and therefore no import, for the alias.
-            $this->assertFileDoesNotExist($baseDir . '/common/Uuid.php');
+            $this->assertFileDoesNotExist($outputDir . '/Common/Uuid.php');
             $this->assertStringNotContainsString('Uuid;', $holder);
 
             // The object ref beside it is untouched: class, import and property type.
-            $this->assertFileExists($baseDir . '/common/Thing.php');
+            $this->assertFileExists($outputDir . '/Common/Thing.php');
             $this->assertStringContainsString('use AliasRefNamespace\Common\Thing;', $holder);
             $this->assertStringContainsString('private readonly Thing $thing', $holder);
 
@@ -3989,7 +3989,7 @@ final class GenerateDtoCommandTest extends TestCase
 
             $this->assertGreaterThanOrEqual(2, $count);
 
-            $externalFile = $baseDir . '/common/Test.php';
+            $externalFile = $outputDir . '/Common/Test.php';
             $this->assertFileExists($externalFile);
             $externalContent = file_get_contents($externalFile);
             $this->assertStringContainsString('namespace TestNamespace\Common;', $externalContent);
@@ -4027,7 +4027,7 @@ final class GenerateDtoCommandTest extends TestCase
 
             $this->assertGreaterThanOrEqual(2, $count);
 
-            $externalFile = $baseDir . '/test/common/TestCommonResponse.php';
+            $externalFile = $outputDir . '/Test/Common/TestCommonResponse.php';
             $this->assertFileExists($externalFile);
             $externalContent = file_get_contents($externalFile);
             $this->assertStringContainsString('namespace TestNamespace\Test\Common;', $externalContent);
@@ -4066,18 +4066,18 @@ final class GenerateDtoCommandTest extends TestCase
             );
 
             // Cross-file target itself.
-            $bundleFile = $baseDir . '/common/Bundle.php';
+            $bundleFile = $outputDir . '/Common/Bundle.php';
             $this->assertFileExists($bundleFile);
             $bundleContent = (string)file_get_contents($bundleFile);
             $this->assertStringContainsString('BundleItem $item', $bundleContent);
 
             // Same-file child of the target — the previously missing class.
-            $childFile = $baseDir . '/common/BundleItem.php';
+            $childFile = $outputDir . '/Common/BundleItem.php';
             $this->assertFileExists($childFile);
             $this->assertStringContainsString('class BundleItem', (string)file_get_contents($childFile));
 
             // Selectivity preserved: an unreferenced sibling is not emitted.
-            $this->assertFileDoesNotExist($baseDir . '/common/Unused.php');
+            $this->assertFileDoesNotExist($outputDir . '/Common/Unused.php');
         } finally {
             if (is_dir($baseDir)) {
                 $this->deleteDirectory($baseDir);
@@ -4106,19 +4106,19 @@ final class GenerateDtoCommandTest extends TestCase
             );
 
             // Discriminator base (referenced by direct $ref) — already worked before the fix.
-            $this->assertFileExists($baseDir . '/common/ShapeView.php');
+            $this->assertFileExists($outputDir . '/Common/ShapeView.php');
 
             // Discriminator subtypes from `mapping` — the previously missing classes.
-            $circleFile = $baseDir . '/common/CircleShapeView.php';
+            $circleFile = $outputDir . '/Common/CircleShapeView.php';
             $this->assertFileExists($circleFile);
             $this->assertStringContainsString('class CircleShapeView', (string)file_get_contents($circleFile));
 
-            $squareFile = $baseDir . '/common/SquareShapeView.php';
+            $squareFile = $outputDir . '/Common/SquareShapeView.php';
             $this->assertFileExists($squareFile);
             $this->assertStringContainsString('class SquareShapeView', (string)file_get_contents($squareFile));
 
             // Selectivity preserved: an unreferenced sibling is not emitted.
-            $this->assertFileDoesNotExist($baseDir . '/common/UnusedShape.php');
+            $this->assertFileDoesNotExist($outputDir . '/Common/UnusedShape.php');
         } finally {
             if (is_dir($baseDir)) {
                 $this->deleteDirectory($baseDir);

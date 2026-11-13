@@ -3,6 +3,72 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.119 — 2026-11-13
+
+- document text never becomes code
+- nested map refs resolve per file
+- external classes land under namespace
+
+**Read this before upgrading if you generate from a document that references another document and pass
+no `--ref` for it.** Those classes move — see "External classes" below. With `--ref`, and for the
+`common` directory convention, nothing moves.
+
+Security — a document could put code into the generated classes (yii3 and laravel modes):
+
+Every string a document controls is pasted into PHP source — a docblock, a quoted literal, an attribute
+argument. Three pastes skipped the escaping, so a document could turn its own text into code that runs in
+the application loading the generated classes. The publish-time parse check did not catch it: a payload
+written to keep the file valid passed it. Exploiting it needs control over the document; the generator
+itself executes nothing.
+
+- yii3 mode: a path or query parameter name went unescaped into `#[Request('…')]` / `#[Query('…')]`. A
+  name could close the attribute and declare a method — `__destruct()` ran on every request to that
+  operation.
+- yii3 mode: the docblock of a presence getter quoted the property name without closing-comment
+  escaping, so a name containing `*/` ended the comment and the rest became class members.
+- laravel mode: a discriminator property name went unescaped into the `sprintf('Unknown …')` format of
+  the union factory. The injected expression ran whenever a request carried an unknown discriminator
+  value — that is, a request could trigger it. A `%` in such a name also broke the `sprintf`.
+
+All three are escaped now. A new test generates one document with a hostile payload — quotes, backslash,
+comment end, `?>`, a new open tag, interpolation, a backtick, `%`, line breaks — in every field it can
+carry, in all five modes, and checks the TOKENS: the payload may sit only inside a string literal or a
+comment. It found these three and nothing else.
+
+Nested map references into another document (all modes):
+
+- `additionalProperties: {additionalProperties: {$ref: 'cells.yml#/…/Cell'}}` in a document reached from
+  another one failed with `Referenced OpenAPI file not found: cells.yml#/…`. A value two containers down
+  is resolved where nothing is materialized, and that resolution looked the reference up next to the ROOT
+  document instead of the one that wrote it. A plain map, a list and a property always worked. Fixed at
+  every depth and through any mix of maps and lists; tested from one to six containers.
+- the same reference, once it resolved, typed the values `mixed` and validated nothing in them: below a
+  map of maps only local references were understood. It now gives `array<string, array<string, Cell>>`
+  and checks every cell, as the same component declared locally always did — including an enum the cell
+  references from a third document.
+- a renderer reading ANOTHER class's constraints (Symfony callback reachability, the runtime and laravel
+  object-level readers, the laravel and yii3 interpreters) resolved them against the class being
+  rendered. They now resolve against the document that declares the class read.
+
+External classes (all modes, without `--ref`):
+
+- a class from another document is written to `<output>/<namespace segments>`. The namespace already
+  dropped `..` from the document's relative directory; the path appended it raw. So a sibling document's
+  classes were written NEXT TO the output directory, a subdirectory's one level above it, and a document
+  two directories over two levels up — `<output>/../../b/Grid.php` for a class declared in
+  `<namespace>\B`. None of them could be autoloaded by PSR-4, and the generator wrote outside the
+  directory it was given.
+
+| Referenced document | Before | Now | Namespace (unchanged) |
+|---|---|---|---|
+| `other.yml` (same directory) | `<output>/../Shared.php` | `<output>/Shared.php` | `<ns>` |
+| `./sub/deep.yml` | `<output>/../sub/Deep.php` | `<output>/Sub/Deep.php` | `<ns>\Sub` |
+| `../b/grid.yml` | `<output>/../../b/Grid.php` | `<output>/B/Grid.php` | `<ns>\B` |
+| `common/x.yml`, no `--ref`, no rebase | `<output>/../common/X.php` | `<output>/Common/X.php` | `<ns>\Common` |
+
+Upgrading: regenerate, and delete the classes the previous version wrote outside the output directory.
+With `--ref` for every referenced directory, the generated files are byte-identical to 2.15.118's.
+
 ## 2.15.118 — 2026-11-05
 
 - runtime bind faster

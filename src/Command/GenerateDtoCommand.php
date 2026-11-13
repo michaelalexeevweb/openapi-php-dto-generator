@@ -1885,26 +1885,12 @@ final class GenerateDtoCommand extends Command
             return $sharedNamespace;
         }
 
-        $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
-        if ($relativeDirectory === '') {
-            return $this->baseNamespace;
-        }
-
-        $segments = array_values(
-            array_filter(
-                explode('/', $relativeDirectory),
-                static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
-            ),
-        );
+        $segments = $this->relativeSpecDirectorySegments($sourceFile);
         if ($segments === []) {
             return $this->baseNamespace;
         }
 
-        $namespaceSuffix = implode(
-            '\\',
-            array_map(fn(string $segment): string => $this->normalizeClassName($segment), $segments),
-        );
-        return $this->baseNamespace . '\\' . $namespaceSuffix;
+        return $this->baseNamespace . '\\' . implode('\\', $segments);
     }
 
     private function resolveOutputDirectoryForSourceFile(?string $sourceFile): string
@@ -1924,16 +1910,39 @@ final class GenerateDtoCommand extends Command
             return $sharedOutputDirectory;
         }
 
-        $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
-        if ($relativeDirectory === '') {
+        // The directory is built from the SAME segments as the namespace, so the file lands where PSR-4
+        // looks for its class. It used to append the raw relative path instead: `../b/schema.yml` wrote
+        // `<output>/../../b/ReportRow.php` — outside the output directory — for a class declared in
+        // `<namespace>\\B`, and `./sub/deep.yml` wrote `<output>/../sub/Deep.php` for `<namespace>\\Sub`.
+        // Neither file could be autoloaded, and the first is a write the output directory does not contain.
+        $segments = $this->relativeSpecDirectorySegments($sourceFile);
+        if ($segments === []) {
             return $this->baseOutputDirectory;
         }
 
-        return rtrim($this->baseOutputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . str_replace(
-            '/',
-            DIRECTORY_SEPARATOR,
-            $relativeDirectory,
+        return rtrim($this->baseOutputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . implode(DIRECTORY_SEPARATOR, $segments);
+    }
+
+    /**
+     * The namespace segments — and directory names — of a document outside the root one: its directory
+     * relative to the root document, `.`/`..` dropped, each segment normalized like a class name.
+     *
+     * @return array<int, string>
+     */
+    private function relativeSpecDirectorySegments(string $sourceFile): array
+    {
+        $relativeDirectory = $this->resolveRelativeSpecDirectory($sourceFile);
+        if ($relativeDirectory === '') {
+            return [];
+        }
+
+        $segments = array_filter(
+            explode('/', $relativeDirectory),
+            static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
         );
+
+        return array_values(array_map(fn(string $segment): string => $this->normalizeClassName($segment), $segments));
     }
 
     private function resolveRelativeSpecDirectory(string $sourceFile): string
@@ -3383,6 +3392,30 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Runs `$extraction` with references resolved against the document that declares `$className`.
+     *
+     * A renderer reads OTHER classes' constraints while one class is being rendered — Symfony's
+     * callback reachability walks every schema, the object-level and interpreter readers take any
+     * class name. Those ran in the context of the class being rendered, so a relative `$ref` written
+     * in a schema of `b/schema.yml` was looked up next to whichever document that happened to be:
+     * `Referenced OpenAPI file not found: rows.yml#/components/schemas/Cell`.
+     *
+     * @template T
+     * @param callable(): T $extraction
+     * @return T
+     */
+    private function withConstraintSourceOf(string $className, callable $extraction): mixed
+    {
+        $sourceFileBefore = $this->constraintSourceFile;
+        $this->constraintSourceFile = $this->getSchemaSourceFile($className) ?? $sourceFileBefore;
+        try {
+            return $extraction();
+        } finally {
+            $this->constraintSourceFile = $sourceFileBefore;
+        }
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
      */
@@ -3424,7 +3457,7 @@ final class GenerateDtoCommand extends Command
             // here, beside the `$ref`, they win over the referenced ones when that is inlined.
             $ref = $node['$ref'] ?? null;
             if (is_string($ref) && !array_key_exists('enum', $node) && !array_key_exists('const', $node)) {
-                $referenced = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+                $referenced = $this->nestedScalarRefDefinition($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
                 if (is_array($referenced['enum'] ?? null)) {
                     $node['enum'] = $referenced['enum'];
                 } elseif (is_array($referenced) && array_key_exists('const', $referenced)) {
@@ -3920,8 +3953,8 @@ final class GenerateDtoCommand extends Command
             }
 
             if (is_string($ref) && $refInlineBudget > 0 && ($seenRefs[$ref] ?? 0) < self::REF_REPEAT_LIMIT) {
-                $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
-                    ?? $this->nestedObjectRefDefinition($ref);
+                $definition = $this->nestedScalarRefDefinition($ref, $this->constraintSourceFile ?? $this->rootSpecFile)
+                    ?? $this->nestedObjectRefDefinition($ref, $this->constraintSourceFile);
                 if ($definition !== null) {
                     // TWO guards, because there are two ways this runs away, and neither one catches
                     // the other's shape.
@@ -3955,6 +3988,28 @@ final class GenerateDtoCommand extends Command
                     $refInlineBudget--;
                     unset($schema['$ref']);
                     $schema += $definition;
+
+                    // What was just inlined is written in ITS document: a relative `$ref` inside
+                    // `rows.yml#/…/Cell` is relative to `rows.yml`, not to the file that referred to
+                    // it. Walked in the referrer's context, `enums.yml` next to `rows.yml` was looked
+                    // up next to the referrer instead — "Referenced OpenAPI file not found".
+                    $className = $this->nestedRefClassName($ref, $this->constraintSourceFile);
+                    $definitionSource = $className === null ? null : $this->getSchemaSourceFile($className);
+                    if ($definitionSource !== null && $definitionSource !== $this->constraintSourceFile) {
+                        $sourceFileBefore = $this->constraintSourceFile;
+                        $this->constraintSourceFile = $definitionSource;
+                        try {
+                            return $this->inlineNestedContainerValidation(
+                                schema: $schema,
+                                depth: $depth,
+                                belowMaterialization: $belowMaterialization,
+                                refInlineBudget: $refInlineBudget,
+                                seenRefs: $seenRefs,
+                            );
+                        } finally {
+                            $this->constraintSourceFile = $sourceFileBefore;
+                        }
+                    }
                 }
             }
 
@@ -4149,8 +4204,8 @@ final class GenerateDtoCommand extends Command
      */
     private function reportInlineCeilingReached(string $ref): void
     {
-        $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile)
-            ?? $this->nestedObjectRefDefinition($ref);
+        $definition = $this->nestedScalarRefDefinition($ref, $this->constraintSourceFile ?? $this->rootSpecFile)
+            ?? $this->nestedObjectRefDefinition($ref, $this->constraintSourceFile);
         if ($definition === null) {
             return;
         }
@@ -4171,6 +4226,28 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The class a nested `$ref` names, without registering anything: a local pointer by its schema
+     * name, a pointer into another document resolved against `$currentSourceFile`. Null for anything
+     * that does not name a component schema.
+     *
+     * Only local pointers were understood here, so a `$ref: 'rows.yml#/components/schemas/Cell'` below
+     * a map of maps typed its values `mixed` and checked nothing in them, where the same component
+     * declared locally gave `array<string, array<string, Cell>>` and validated every cell.
+     */
+    private function nestedRefClassName(string $ref, ?string $currentSourceFile): ?string
+    {
+        $prefix = '#/components/schemas/';
+        if (str_starts_with($ref, $prefix)) {
+            return $this->schemaClassName(substr($ref, strlen($prefix)));
+        }
+
+        $resolved = $this->resolveExternalSchemaPointer($ref, $currentSourceFile ?? $this->rootSpecFile);
+        $schemaName = $resolved === null ? null : $this->externalPointerSchemaName($resolved[1]);
+
+        return $schemaName === null ? null : $this->schemaClassName($schemaName);
+    }
+
+    /**
      * The definition behind a `$ref` to an OBJECT-shaped component, for a position where no class is
      * generated for it.
      *
@@ -4188,14 +4265,14 @@ final class GenerateDtoCommand extends Command
      *
      * @return array<string, mixed>|null
      */
-    private function nestedObjectRefDefinition(string $ref): ?array
+    private function nestedObjectRefDefinition(string $ref, ?string $currentSourceFile = null): ?array
     {
-        $prefix = '#/components/schemas/';
-        if (!str_starts_with($ref, $prefix)) {
+        $className = $this->nestedRefClassName($ref, $currentSourceFile);
+        if ($className === null) {
             return null;
         }
 
-        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+        $definition = $this->dtoSchemas[$className] ?? null;
         if (!is_array($definition) || $this->isEnumSchema($definition)) {
             return null;
         }
@@ -4222,12 +4299,13 @@ final class GenerateDtoCommand extends Command
             return $alias;
         }
 
-        $prefix = '#/components/schemas/';
-        if (!str_starts_with($ref, $prefix)) {
+        // An enum component in ANOTHER document counts too: only local pointers were looked up here, so
+        // `unit: {$ref: '../d/units.yml#/components/schemas/Unit'}` inside a value two maps down was
+        // dropped from the inlined constraints and a unit outside the enum was accepted.
+        $className = $this->nestedRefClassName($ref, $currentSourceFile);
+        if ($className === null) {
             return null;
         }
-
-        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
 
         $definition = $this->dtoSchemas[$className] ?? null;
         if (
@@ -5529,7 +5607,7 @@ final class GenerateDtoCommand extends Command
         // the payload carried, measured.
         $ref = $schema['$ref'] ?? null;
         if (is_string($ref)) {
-            $definition = $this->nestedScalarRefDefinition($ref, $this->rootSpecFile);
+            $definition = $this->nestedScalarRefDefinition($ref, $currentSourceFile ?? $this->rootSpecFile);
             if ($definition !== null) {
                 return $this->nestedScalarDocType($definition['type'] ?? null);
             }
@@ -5538,7 +5616,7 @@ final class GenerateDtoCommand extends Command
             // deserializer now hydrates. Naming the class here used to be exactly the lie 2.15.4
             // removed, because the value was the `stdClass` `json_decode()` produced; it is the DTO
             // now, so the name is what is true. Deeper the hydration stops and so does the name.
-            if ($remainingDepth === self::NESTED_CONTAINER_DOC_DEPTH && $this->nestedObjectRefDefinition($ref) !== null) {
+            if ($remainingDepth === self::NESTED_CONTAINER_DOC_DEPTH && $this->nestedObjectRefDefinition($ref, $currentSourceFile) !== null) {
                 return $this->schemaRefToClassName(ref: $ref, currentSourceFile: $currentSourceFile);
             }
 

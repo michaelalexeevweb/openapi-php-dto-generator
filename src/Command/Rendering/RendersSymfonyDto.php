@@ -171,7 +171,10 @@ trait RendersSymfonyDto
         }
 
         $validationConstraints = $this->filterInterpreterConstraints(
-            constraints: $this->extractValidationConstraints($schemaDefinition),
+            constraints: $this->withConstraintSourceOf(
+                className: $className,
+                extraction: fn(): array => $this->extractValidationConstraints($schemaDefinition),
+            ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
         );
@@ -376,7 +379,10 @@ trait RendersSymfonyDto
         // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
         // properties — dropping the `false` leaves the reader to guess what is being overridden.
         return $this->filterInterpreterConstraints(
-            constraints: $this->extractValidationConstraints($schemaDefinition),
+            constraints: $this->withConstraintSourceOf(
+                className: $className,
+                extraction: fn(): array => $this->extractValidationConstraints($schemaDefinition),
+            ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
         );
