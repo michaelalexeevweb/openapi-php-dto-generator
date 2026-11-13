@@ -298,9 +298,9 @@ final class GenerationIntegrityTest extends TestCase
         foreach ($expected as $file => $namespace) {
             self::assertFileExists($this->root . '/out/' . $file);
             self::assertStringContainsString(
-                'namespace ' . $namespace . ';',
-                (string)file_get_contents($this->root . '/out/' . $file),
-                $file,
+                needle: 'namespace ' . $namespace . ';',
+                haystack: (string)file_get_contents($this->root . '/out/' . $file),
+                message: $file,
             );
         }
         // Nothing written beside the output directory: the root holds only what the test put there.
@@ -587,17 +587,17 @@ final class GenerationIntegrityTest extends TestCase
                 $openTags += $id === T_OPEN_TAG ? 1 : 0;
                 self::assertNotContains($id, [T_CLOSE_TAG, T_INLINE_HTML, T_OPEN_TAG_WITH_ECHO, T_EXIT], basename($file));
                 self::assertFalse(
-                    $id === T_VARIABLE && in_array($text, ['$hostileA', '$hostileB'], true),
-                    basename($file) . ': ' . $text . ' escaped into code.',
+                    condition: $id === T_VARIABLE && in_array($text, ['$hostileA', '$hostileB'], true),
+                    message: basename($file) . ': ' . $text . ' escaped into code.',
                 );
                 if (
                     str_contains($text, 'Hostile')
                     && !in_array($id, [T_CONSTANT_ENCAPSED_STRING, T_COMMENT, T_DOC_COMMENT], true)
                 ) {
                     self::assertMatchesRegularExpression(
-                        '/^\$?[A-Za-z0-9_\x80-\xff]+$/',
-                        $text,
-                        basename($file) . ': document text escaped into a ' . token_name($id) . ' token.',
+                        pattern: '/^\$?[A-Za-z0-9_\x80-\xff]+$/',
+                        string: $text,
+                        message: basename($file) . ': document text escaped into a ' . token_name($id) . ' token.',
                     );
                 }
             }

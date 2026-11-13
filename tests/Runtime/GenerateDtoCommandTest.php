@@ -4312,6 +4312,130 @@ final class GenerateDtoCommandTest extends TestCase
         }
     }
 
+    /**
+     * The three-part `--ref` is the whole mapping in one value: no `--ref-namespace` to line up by key.
+     */
+    public function testThreePartRefNamesDirectoryAndNamespaceTogether(): void
+    {
+        $unique = uniqid('openapi_reftriple_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/Layer/WidgetApi/Dto';
+        $commonOutputDir = $baseDir . '/Layer/Common/Dto';
+        $commonRefDir = __DIR__ . '/../fixtures/external-ref/common';
+        mkdir($outputDir, 0o755, true);
+
+        try {
+            $this->generator->setExternalRefMappings(
+                refDirectoryPairs: [$commonRefDir . '=' . $commonOutputDir . '=\Acme\Layer\Common\Dto'],
+                refNamespacePairs: [],
+            );
+            $this->generator->generateFromFile(
+                filePath: __DIR__ . '/../fixtures/external-ref/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'Acme\Layer\WidgetApi\Dto',
+            );
+
+            $this->assertStringContainsString(
+                needle: 'namespace Acme\Layer\Common\Dto;',
+                haystack: (string)file_get_contents($commonOutputDir . '/Test.php'),
+                message: 'a leading backslash on the namespace is a spelling, not part of the name',
+            );
+            $this->assertStringContainsString(
+                needle: 'use Acme\Layer\Common\Dto\Test;',
+                haystack: (string)file_get_contents($outputDir . '/LocalResponse.php'),
+            );
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    /**
+     * The two forms mix — each mapping is complete in itself — and the CLI accepts the three-part one.
+     */
+    public function testThreePartAndTwoPartRefMixOnTheCommandLine(): void
+    {
+        $unique = uniqid('openapi_refmix_', true);
+        $baseDir = sys_get_temp_dir() . '/openapi_dto_generator_' . $unique;
+        $outputDir = $baseDir . '/Layer/WidgetApi/Dto';
+        $fixtures = __DIR__ . '/../fixtures/external-ref';
+        mkdir($outputDir, 0o755, true);
+
+        try {
+            $exitCode = (new CommandTester($this->generator))->execute([
+                '--file' => $fixtures . '/root.yaml',
+                '--directory' => $outputDir,
+                '--namespace' => 'Acme\Layer\WidgetApi\Dto',
+                '--ref' => [
+                    $fixtures . '/common=' . $baseDir . '/Shared=Acme\Shared',
+                    $fixtures . '/test/common=' . $baseDir . '/Unused',
+                ],
+                '--ref-namespace' => [$fixtures . '/test/common=Acme\Unused'],
+            ]);
+
+            $this->assertSame(0, $exitCode);
+            $this->assertStringContainsString(
+                needle: 'namespace Acme\Shared;',
+                haystack: (string)file_get_contents($baseDir . '/Shared/Test.php'),
+            );
+        } finally {
+            if (is_dir($baseDir)) {
+                $this->deleteDirectory($baseDir);
+            }
+        }
+    }
+
+    /**
+     * A mapping stated twice is refused rather than one half silently winning.
+     *
+     * @param array<int, string> $refs
+     * @param array<int, string> $refNamespaces
+     */
+    #[DataProvider('conflictingRefMappings')]
+    public function testConflictingOrMalformedRefMappingsAreRefused(array $refs, array $refNamespaces, string $message): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage($message);
+
+        $this->generator->setExternalRefMappings($refs, $refNamespaces);
+    }
+
+    /**
+     * @return iterable<string, array{array<int, string>, array<int, string>, string}>
+     */
+    public static function conflictingRefMappings(): iterable
+    {
+        yield 'three-part plus --ref-namespace' => [
+            ['/some/common=/out/Common=App\Common'],
+            ['/some/common=App\Other'],
+            'already names its namespace',
+        ];
+        yield 'the same key as a pair and a triple' => [
+            ['/some/common=/out/Common', '/some/common=/out/Again=App\Again'],
+            ['/some/common=App\Common'],
+            'more than once',
+        ];
+        yield 'the same key as two triples' => [
+            ['/some/common=/out/Common=App\Common', '/some/common=/out/Again=App\Again'],
+            [],
+            'more than once',
+        ];
+        yield 'two different two-part directories' => [
+            ['/some/common=/out/Common', '/some/common=/out/Again'],
+            ['/some/common=App\Common'],
+            'more than once',
+        ];
+        yield 'two different namespaces' => [
+            ['/some/common=/out/Common'],
+            ['/some/common=App\Common', '/some/common=App\Again'],
+            'more than once',
+        ];
+        yield 'a fourth part' => [['/some/common=/out/Common=App\Common=Extra'], [], 'Invalid --ref value'];
+        yield 'an empty namespace' => [['/some/common=/out/Common='], [], 'Invalid --ref value'];
+        yield 'an empty directory' => [['/some/common==App\Common'], [], 'Invalid --ref value'];
+    }
+
     public function testExternalRefMappingRequiresBothDirectoryAndNamespace(): void
     {
         $this->expectException(RuntimeException::class);

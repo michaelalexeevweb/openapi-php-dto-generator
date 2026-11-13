@@ -54,15 +54,29 @@ Parameters:
 | `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |
 | `--symfony-path-params` | | | With `--attributes=symfony`: also generate `<Operation>PathParams`, a DTO of the operation's path parameters, for a value resolver of your own. See [Path parameters as a DTO](README.symfony.md#path-parameters-as-a-dto). Ignored with a warning in other modes. |
 | `--laravel-form-request` / `--no-laravel-form-request` | | | With `--attributes=laravel`: on by default. `--no-laravel-form-request` writes the DTOs without their `<Dto>FormRequest`, for a project with `illuminate/validation` but no `laravel/framework`. See [Without `laravel/framework`](README.laravel.md#without-laravelframework). Ignored with a warning in other modes. |
-| `--ref` | | | Explicit output directory for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>`. A directory key maps every ref'd file inside it. Repeatable. Requires a matching `--ref-namespace`. Unmatched ref files are ignored. |
-| `--ref-namespace` | | | Explicit namespace for an external `$ref` spec file **or directory**: `<refFileOrDir>=<namespace>`. Repeatable. Requires a matching `--ref`. |
+| `--ref` | | | Placement for an external `$ref` spec file **or directory**: `<refFileOrDir>=<directory>=<namespace>`. A directory key maps every ref'd file inside it. Repeatable. The older two-part `<refFileOrDir>=<directory>` still works and takes its namespace from `--ref-namespace`. |
+| `--ref-namespace` | | | Namespace for a two-part `--ref`: `<refFileOrDir>=<namespace>`, same key. Repeatable. Not used with the three-part `--ref`. |
 
 Without `--ref`, a class from another document goes under the output directory, at the path its namespace
 gives: the document's directory relative to the root one, `.` and `..` dropped, each segment in class-name
 case. `../shared/money.yml` from the root document's directory becomes `<namespace>\Shared` in
 `<directory>/Shared/`. A `common` directory follows the `Common` convention instead when the output path
 has a segment to rebase it on. To put a document's classes anywhere else — one place shared by several
-root documents, say — map its directory with `--ref` and `--ref-namespace`.
+root documents, say — map its directory with `--ref`:
+
+```bash
+php bin/console openapi:generate-dto \
+  --file=specs/api/orders.yml \
+  --directory=src/Generated/Orders \
+  --namespace='App\Generated\Orders' \
+  --ref='specs/shared=src/Generated/Shared=App\Generated\Shared'
+```
+
+One value is one mapping: the referenced file or directory, the output directory, the namespace. The two-part
+form spreads the same mapping over `--ref` and `--ref-namespace`, matched by key; it still works, and the two
+forms can be mixed. Mapping one key two different ways — two `--ref`s, or a three-part `--ref` plus a `--ref-namespace` —
+stops generation instead of letting one of them win. A path or namespace that itself contains `=` cannot be
+given in the three-part form.
 
 ## The output directory belongs to the command
 
@@ -92,7 +106,7 @@ the same output paths.
 
 Referenced schemas from different documents must have distinct generated class names. Even identical
 schema definitions in two files are separate identities: the generator reports a collision instead of
-silently reusing the first. `--ref` and `--ref-namespace` change output locations, but do not make the
+silently reusing the first. `--ref` (and `--ref-namespace`) change output locations, but do not make the
 internal class-name registry support duplicate names. Repeated references to the same canonical
 file and schema remain supported, including recursive references.
 

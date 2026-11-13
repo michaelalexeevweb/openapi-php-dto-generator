@@ -3,6 +3,31 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.120 — 2026-11-13
+
+- three-part --ref option
+- conflicting ref mappings refused
+
+`--ref` takes the whole mapping in one value: `<refFileOrDir>=<directory>=<namespace>`.
+
+```bash
+--ref='specs/shared=src/Generated/Shared=App\Generated\Shared'
+```
+
+Before, a mapping was split over two options matched by key — `--ref=<key>=<directory>` and
+`--ref-namespace=<key>=<namespace>` — so which namespace belonged to which directory had to be read off
+by lining the paths up. The two-part form still works and the two forms mix; nothing has to change.
+
+- a leading backslash on the three-part namespace is dropped (`=\App\Shared` is `App\Shared`).
+- a path or namespace containing `=` cannot be written in the three-part form; a value with a fourth part
+  is refused rather than split by guess.
+
+Refused now, where one mapping used to win silently by option order:
+
+- the same key mapped to two different directories by two `--ref`s, or to two different namespaces by
+  two `--ref-namespace`s — `--ref maps "<key>" more than once.` Repeating the SAME mapping is still fine.
+- a three-part `--ref` whose key also has a `--ref-namespace` — the namespace would be stated twice.
+
 ## 2.15.119 — 2026-11-13
 
 - document text never becomes code

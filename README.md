@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.119
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.120
 ```
 
 ---
@@ -120,7 +120,17 @@ in symfony, laravel and yii3. laravel-data needs neither — there the property'
 
 Add `--attributes=symfony|laravel|laravel-data|yii3` to get the same enforcement in your framework's own
 shape instead.
-[Every CLI option, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
+
+A document that `$ref`s schemas in other files gets their classes too. To choose where those land,
+`--ref` takes one mapping per value — `<referenced file or directory>=<output directory>=<namespace>`:
+
+```bash
+php vendor/michaelalexeevweb/openapi-php-dto-generator/bin/console openapi:generate-dto \
+  --file=specs/api/orders.yml --directory=src/Generated/Orders --namespace='App\Generated\Orders' \
+  --ref='specs/shared=src/Generated/Shared=App\Generated\Shared'
+```
+
+[Every CLI option, external `$ref` placement, and how to vendor the runtime services →](https://github.com/michaelalexeevweb/openapi-php-dto-generator/blob/master/README.cli.md)
 
 ---
 

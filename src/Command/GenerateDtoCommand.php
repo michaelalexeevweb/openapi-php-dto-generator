@@ -473,12 +473,12 @@ final class GenerateDtoCommand extends Command
         $this->addOption(
             name: 'ref',
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
-            description: 'Explicit output directory for an external $ref file or directory: "<refFileOrDir>=<directory>". A directory key maps every ref\'d file inside it. Repeatable. Requires a matching --ref-namespace.',
+            description: 'Placement for an external $ref file or directory: "<refFileOrDir>=<directory>=<namespace>". A directory key maps every ref\'d file inside it. Repeatable. The two-part form "<refFileOrDir>=<directory>" takes its namespace from a matching --ref-namespace.',
         );
         $this->addOption(
             name: 'ref-namespace',
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
-            description: 'Explicit namespace for an external $ref file or directory: "<refFileOrDir>=<namespace>". A directory key maps every ref\'d file inside it. Repeatable. Requires a matching --ref.',
+            description: 'Namespace for a two-part --ref: "<refFileOrDir>=<namespace>". Repeatable. Not needed with the three-part --ref, which names the namespace itself.',
         );
     }
 
@@ -831,18 +831,51 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Configures explicit per-external-ref placement. Each entry maps a ref spec file to an output
-     * directory (--ref) and a namespace (--ref-namespace). Both are required for a given file. Keys
-     * are canonicalised (realpath) so they match the resolved ref target regardless of how the
-     * `$ref` is written. When a ref file is not mapped, the default placement is used.
+     * Configures explicit per-external-ref placement: an output directory and a namespace for each
+     * mapped ref file or directory. Keys are canonicalised (realpath) so they match the resolved ref
+     * target regardless of how the `$ref` is written. When a ref file is not mapped, the default
+     * placement is used.
      *
-     * @param array<int, string> $refDirectoryPairs `<refFile>=<outputDirectory>` entries
-     * @param array<int, string> $refNamespacePairs `<refFile>=<namespace>` entries
+     * A `--ref` entry is either the three-part `<refFile>=<directory>=<namespace>`, which is the whole
+     * mapping, or the two-part `<refFile>=<directory>`, whose namespace comes from the
+     * `<refFile>=<namespace>` entry of `--ref-namespace` with the same key. The two-part form split one
+     * mapping across two options matched by key, so which namespace belonged to which directory was a
+     * question the reader had to answer by lining up paths; the three-part one cannot be misread that way.
+     *
+     * @param array<int, string> $refDirectoryPairs `<refFile>=<directory>=<namespace>` or `<refFile>=<directory>` entries
+     * @param array<int, string> $refNamespacePairs `<refFile>=<namespace>` entries for the two-part form
      */
     public function setExternalRefMappings(array $refDirectoryPairs, array $refNamespacePairs): void
     {
-        $directoryMap = $this->parseRefPairs($refDirectoryPairs, '--ref');
-        $namespaceMap = $this->parseRefPairs($refNamespacePairs, '--ref-namespace');
+        $twoPart = [];
+        $threePart = [];
+        foreach ($refDirectoryPairs as $entry) {
+            if (substr_count($entry, '=') >= 2) {
+                $threePart[] = $entry;
+            } else {
+                $twoPart[] = $entry;
+            }
+        }
+
+        $directoryMap = $this->parseRefPairs($twoPart, '--ref');
+        $refNamespaces = $this->parseRefPairs($refNamespacePairs, '--ref-namespace');
+        $namespaceMap = $refNamespaces;
+
+        foreach ($threePart as $entry) {
+            [$file, $directory, $namespace] = $this->parseRefTriple($entry);
+            if (array_key_exists($file, $directoryMap)) {
+                throw new RuntimeException(sprintf('--ref maps "%s" more than once.', $file));
+            }
+            if (array_key_exists($file, $refNamespaces)) {
+                throw new RuntimeException(message: sprintf(
+                    '--ref "%s" already names its namespace; drop the --ref-namespace for "%s", or use the two-part --ref.',
+                    $entry,
+                    $file,
+                ));
+            }
+            $directoryMap[$file] = $directory;
+            $namespaceMap[$file] = $namespace;
+        }
 
         foreach (array_keys($directoryMap) as $file) {
             if (!array_key_exists($file, $namespaceMap)) {
@@ -857,6 +890,25 @@ final class GenerateDtoCommand extends Command
 
         $this->refOutputDirectoryMap = $directoryMap;
         $this->refNamespaceMap = $namespaceMap;
+    }
+
+    /**
+     * `<refFile>=<directory>=<namespace>`: exactly three non-empty parts. A path or namespace holding an
+     * `=` of its own cannot be told apart from the separator, so a fourth part is refused, not guessed.
+     *
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private function parseRefTriple(string $entry): array
+    {
+        $parts = array_map('trim', explode('=', $entry));
+        if (count($parts) !== 3 || in_array('', $parts, true)) {
+            throw new RuntimeException(message: sprintf(
+                'Invalid --ref value "%s" (expected "<refFile>=<directory>=<namespace>" or "<refFile>=<directory>").',
+                $entry,
+            ));
+        }
+
+        return [$this->canonicalizeRefPath($parts[0]), $parts[1], trim($parts[2], '\\')];
     }
 
     /**
@@ -878,7 +930,13 @@ final class GenerateDtoCommand extends Command
                 throw new RuntimeException(sprintf('Invalid %s value "%s" (empty file or value).', $optionName, $pair));
             }
 
-            $map[$this->canonicalizeRefPath($file)] = $value;
+            $key = $this->canonicalizeRefPath($file);
+            // The same mapping repeated is harmless; a second, DIFFERENT one used to replace the first
+            // without a word, so which directory a ref went to depended on the order of the options.
+            if (array_key_exists($key, $map) && $map[$key] !== $value) {
+                throw new RuntimeException(sprintf('%s maps "%s" more than once.', $optionName, $file));
+            }
+            $map[$key] = $value;
         }
 
         return $map;
@@ -1938,8 +1996,8 @@ final class GenerateDtoCommand extends Command
         }
 
         $segments = array_filter(
-            explode('/', $relativeDirectory),
-            static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
+            array: explode('/', $relativeDirectory),
+            callback: static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
         );
 
         return array_values(array_map(fn(string $segment): string => $this->normalizeClassName($segment), $segments));
