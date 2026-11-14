@@ -425,7 +425,7 @@ final class GenerateDtoCommand extends Command
             name: 'file',
             shortcut: 'f',
             mode: InputOption::VALUE_REQUIRED,
-            description: 'Path to OpenAPI yaml file',
+            description: 'Path to the OpenAPI document, or a mask ("specs/*/api.yml") that generates every matching document, with {n} in --directory and --namespace standing for the n-th wildcard segment',
         );
         $this->addOption(
             name: 'directory',
@@ -480,6 +480,16 @@ final class GenerateDtoCommand extends Command
             mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
             description: 'Namespace for a two-part --ref: "<refFileOrDir>=<namespace>". Repeatable. Not needed with the three-part --ref, which names the namespace itself.',
         );
+        $this->addOption(
+            name: 'only',
+            mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+            description: 'Generate only the classes whose name matches this mask ("Pet", "Order*"), and every class they need. Repeatable.',
+        );
+        $this->addOption(
+            name: 'exclude',
+            mode: InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+            description: 'Do not generate the classes whose name matches this mask; a kept class that needs one is an error. Repeatable.',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -521,15 +531,12 @@ final class GenerateDtoCommand extends Command
             return Command::FAILURE;
         }
 
-        if (!is_file($file)) {
-            $io->error(sprintf('File not found: %s', $file));
+        try {
+            $documents = $this->resolveDocuments(file: $file, directory: $directory, namespace: $namespaceOption);
+        } catch (RuntimeException $exception) {
+            $io->error($exception->getMessage());
             return Command::FAILURE;
         }
-
-        $outputDirectory = $this->resolveOutputDirectory($directory);
-        $namespace = $namespaceOption !== ''
-            ? $this->normalizeExplicitNamespace($namespaceOption)
-            : $this->directoryToNamespace($directory);
 
         $dtoGeneratorDirectoryOption = $input->getOption('dto-generator-directory');
         $dtoGeneratorDirectory = null;
@@ -540,81 +547,99 @@ final class GenerateDtoCommand extends Command
                 ? $dtoGeneratorDirectoryOption
                 : 'Common';
             $dtoGeneratorNamespaceOption = $input->getOption('dto-generator-namespace');
-            $dtoGeneratorNamespaceOption = is_string($dtoGeneratorNamespaceOption)
+            $dtoGeneratorNamespace = is_string($dtoGeneratorNamespaceOption)
                 ? $dtoGeneratorNamespaceOption
                 : null;
-            $dtoGeneratorNamespace = $dtoGeneratorNamespaceOption;
 
             // Keep existing CLI behavior: when custom directory is provided without namespace,
             // derive namespace from directory path itself.
             if ($dtoGeneratorNamespace === null && $dtoGeneratorDirectory !== 'Common') {
                 $dtoGeneratorNamespace = $this->directoryToNamespace($dtoGeneratorDirectory);
             }
-
-            $dtoGeneratorNamespace = $this->resolveDtoGeneratorTargetNamespace(
-                namespace: $namespace,
-                dtoGeneratorDirectory: $dtoGeneratorDirectory,
-                dtoGeneratorNamespace: $dtoGeneratorNamespace,
-            );
-            $this->generatedDtoInterfaceImportFqcn = $dtoGeneratorNamespace . '\GeneratedDtoInterface';
-            $this->unsetValueImportFqcn = $dtoGeneratorNamespace . '\UnsetValue';
-        } else {
-            $this->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
-            $this->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
         }
 
-        $refOption = $input->getOption('ref');
-        $refNamespaceOption = $input->getOption('ref-namespace');
-        $refPairs = is_array($refOption) ? array_values(array_filter($refOption, 'is_string')) : [];
-        $refNamespacePairs = is_array($refNamespaceOption) ? array_values(array_filter($refNamespaceOption, 'is_string')) : [];
+        $refPairs = $this->stringListOption($input, 'ref');
+        $refNamespacePairs = $this->stringListOption($input, 'ref-namespace');
+        $filter = new GeneratedClassFilter(
+            only: $this->stringListOption($input, 'only'),
+            exclude: $this->stringListOption($input, 'exclude'),
+        );
 
         $withPsr7 = $input->getOption('with-psr7') === true;
         $this->symfonyPathParams = $input->getOption('symfony-path-params') === true;
         $this->laravelFormRequest = $input->getOption('laravel-form-request') !== false;
 
+        $files = [];
+        $ownedDirectories = [];
+        $warnings = [];
+        $count = 0;
         try {
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
 
-            $this->deferOutputPublication = true;
-            $count = $this->generateFromFile(filePath: $file, outputDirectory: $outputDirectory, namespace: $namespace, mode: $mode);
+            foreach ($documents as $document) {
+                try {
+                    $generated = $this->generateDocument(
+                        document: $document,
+                        mode: $mode,
+                        filter: $filter,
+                        dtoGeneratorDirectory: $dtoGeneratorDirectory,
+                        dtoGeneratorNamespace: $dtoGeneratorNamespace,
+                        withPsr7: $withPsr7,
+                    );
+                } catch (RuntimeException $exception) {
+                    if (!$this->isRefMask($file)) {
+                        throw $exception;
+                    }
+                    throw new RuntimeException(
+                        message: sprintf('%s: %s', $document['file'], $exception->getMessage()),
+                        previous: $exception,
+                    );
+                }
+
+                // Two documents may emit the same file — a --ref'd document both of them use, the
+                // services of a shared --dto-generator-directory — and the same bytes twice are one
+                // file. Different bytes at one path would leave whichever came last.
+                foreach ($generated['files'] as $path => $content) {
+                    if (array_key_exists($path, $files) && $files[$path] !== $content) {
+                        throw new RuntimeException(sprintf(
+                            '%s: generates %s differently from a document before it.',
+                            $document['file'],
+                            $path,
+                        ));
+                    }
+                    $files[$path] = $content;
+                }
+                $ownedDirectories = [...$ownedDirectories, ...$generated['ownedDirectories']];
+                $warnings = [...$warnings, ...$generated['warnings']];
+                $count += $generated['count'];
+            }
+            $filter->assertEveryMaskMatched();
 
             // The copied services are the runtime mode's own deserializer, normalizer and validator;
             // a DTO of any other mode never references them, so copying them there only left
             // dead code in the consumer's tree.
             if ($this->symfonyPathParams && $mode !== self::ATTRIBUTE_MODE_SYMFONY) {
-                $this->generationWarnings[] = sprintf(
+                $warnings[] = sprintf(
                     'Option --symfony-path-params is ignored with --attributes=%s: path parameters are already part of its DTO.',
                     $mode,
                 );
             }
             if (!$this->laravelFormRequest && $mode !== self::ATTRIBUTE_MODE_LARAVEL) {
-                $this->generationWarnings[] = sprintf(
+                $warnings[] = sprintf(
                     'Option --no-laravel-form-request is ignored with --attributes=%s: only laravel mode generates a FormRequest.',
                     $mode,
                 );
             }
             if ($dtoGeneratorDirectory !== null && $mode !== self::ATTRIBUTE_MODE_RUNTIME) {
-                $this->generationWarnings[] = sprintf(
+                $warnings[] = sprintf(
                     'Option --dto-generator-directory is ignored with --attributes=%s: those DTOs use no runtime services.',
                     $mode,
                 );
-            } elseif ($dtoGeneratorDirectory !== null) {
-                $this->copyCommonServices(
-                    outputDirectory: $outputDirectory,
-                    namespace: $namespace,
-                    dtoGeneratorDirectory: $dtoGeneratorDirectory,
-                    dtoGeneratorNamespace: $dtoGeneratorNamespace,
-                    withPsr7: $withPsr7,
-                );
             }
-            (new GeneratedFilePublisher())->publish($this->pendingOutputFiles, $this->ownedOutputDirectories);
+            (new GeneratedFilePublisher())->publish($files, $ownedDirectories);
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
             return Command::FAILURE;
-        } finally {
-            $this->deferOutputPublication = false;
-            $this->pendingOutputFiles = [];
-            $this->ownedOutputDirectories = [];
         }
 
         if ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME) {
@@ -624,15 +649,178 @@ final class GenerateDtoCommand extends Command
             );
         }
 
-        foreach ($this->generationWarnings as $warning) {
+        foreach (array_unique($warnings) as $warning) {
             $io->warning($warning);
         }
 
-        $io->success(
-            sprintf('Generated %d DTO class(es) in %s with namespace %s.', $count, $outputDirectory, $namespace),
-        );
+        if (!$this->isRefMask($file)) {
+            $io->success(sprintf(
+                'Generated %d DTO class(es) in %s with namespace %s.',
+                $count,
+                $this->resolveOutputDirectory($documents[0]['directory']),
+                $documents[0]['namespace'],
+            ));
+
+            return Command::SUCCESS;
+        }
+
+        $io->listing(array_map(
+            callback: fn(array $document): string => sprintf(
+                '%s → %s (%s)',
+                $document['file'],
+                $this->resolveOutputDirectory($document['directory']),
+                $document['namespace'],
+            ),
+            array: $documents,
+        ));
+        $io->success(sprintf('Generated %d DTO class(es) from %d document(s).', $count, count($documents)));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * The documents a run generates, each with its own output directory and namespace. A plain
+     * `--file` is one document. A `--file` mask is every file it matches, and `{n}` in `--directory`
+     * and `--namespace` is what its n-th wildcard segment matched, in class-name case — the file name's
+     * without its extension — the same word in both, so PSR-4 finds the class.
+     *
+     * @return list<array{file: string, directory: string, namespace: string}>
+     */
+    private function resolveDocuments(string $file, string $directory, string $namespace): array
+    {
+        $maskSegments = explode('/', str_replace('\\', '/', $file));
+        $wildcards = array_keys(array_filter(
+            array: $maskSegments,
+            callback: fn(string $segment): bool => $this->isRefMask($segment),
+        ));
+        foreach (['--directory' => $directory, '--namespace' => $namespace] as $option => $value) {
+            preg_match_all('/\{(\d+)\}/', $value, $placeholders);
+            foreach ($placeholders[1] as $number) {
+                if ((int)$number < 1 || (int)$number > count($wildcards)) {
+                    throw new RuntimeException(message: sprintf(
+                        '%s "%s" uses {%s}, but --file "%s" has %d wildcard segment(s) to fill it from.',
+                        $option,
+                        $value,
+                        $number,
+                        $file,
+                        count($wildcards),
+                    ));
+                }
+            }
+        }
+
+        if ($wildcards === []) {
+            if (!is_file($file)) {
+                throw new RuntimeException(sprintf('File not found: %s', $file));
+            }
+
+            return [[
+                'file' => $file,
+                'directory' => $directory,
+                'namespace' => $namespace !== '' ? $this->normalizeExplicitNamespace($namespace) : $this->directoryToNamespace($directory),
+            ]];
+        }
+
+        $matches = glob($file);
+        $matches = array_values(array_filter(is_array($matches) ? $matches : [], 'is_file'));
+        if ($matches === []) {
+            throw new RuntimeException(sprintf('--file "%s" matches no file.', $file));
+        }
+        sort($matches);
+
+        $lastSegment = count($maskSegments) - 1;
+        $documents = [];
+        foreach ($matches as $match) {
+            $segments = explode('/', str_replace('\\', '/', $match));
+            $captures = array_map(
+                callback: static fn(int $position): string => $position === $lastSegment
+                    ? pathinfo($segments[$position], PATHINFO_FILENAME)
+                    : $segments[$position],
+                array: $wildcards,
+            );
+            $documentDirectory = $this->fillRefPlaceholders($directory, $captures);
+            $documents[] = [
+                'file' => $match,
+                'directory' => $documentDirectory,
+                'namespace' => $namespace !== ''
+                    ? $this->normalizeExplicitNamespace($this->fillRefPlaceholders($namespace, $captures))
+                    : $this->directoryToNamespace($documentDirectory),
+            ];
+        }
+
+        return $documents;
+    }
+
+    /**
+     * One document, generated on a copy of the command: the generation state — the schema registry,
+     * the render caches, the warnings — lives on the command, and nothing of one document may reach
+     * the next, so a mask run gives exactly what one run per document would.
+     *
+     * @param array{file: string, directory: string, namespace: string} $document
+     * @return array{files: array<string, string>, ownedDirectories: list<string>, warnings: list<string>, count: int}
+     */
+    private function generateDocument(
+        array $document,
+        string $mode,
+        GeneratedClassFilter $filter,
+        ?string $dtoGeneratorDirectory,
+        ?string $dtoGeneratorNamespace,
+        bool $withPsr7,
+    ): array {
+        $worker = clone $this;
+        $worker->deferOutputPublication = true;
+        $outputDirectory = $this->resolveOutputDirectory($document['directory']);
+
+        $servicesNamespace = null;
+        if ($dtoGeneratorDirectory !== null) {
+            $servicesNamespace = $this->resolveDtoGeneratorTargetNamespace(
+                namespace: $document['namespace'],
+                dtoGeneratorDirectory: $dtoGeneratorDirectory,
+                dtoGeneratorNamespace: $dtoGeneratorNamespace,
+            );
+            $worker->generatedDtoInterfaceImportFqcn = $servicesNamespace . '\GeneratedDtoInterface';
+            $worker->unsetValueImportFqcn = $servicesNamespace . '\UnsetValue';
+        } else {
+            $worker->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
+            $worker->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
+        }
+
+        $count = $worker->generateFromFile(
+            filePath: $document['file'],
+            outputDirectory: $outputDirectory,
+            namespace: $document['namespace'],
+            mode: $mode,
+        );
+        $generatedFiles = count($worker->pendingOutputFiles);
+        $worker->pendingOutputFiles = $filter->filter($worker->pendingOutputFiles);
+        $count -= $generatedFiles - count($worker->pendingOutputFiles);
+
+        if ($dtoGeneratorDirectory !== null && $mode === self::ATTRIBUTE_MODE_RUNTIME) {
+            $worker->copyCommonServices(
+                outputDirectory: $outputDirectory,
+                namespace: $document['namespace'],
+                dtoGeneratorDirectory: $dtoGeneratorDirectory,
+                dtoGeneratorNamespace: $servicesNamespace,
+                withPsr7: $withPsr7,
+            );
+        }
+
+        return [
+            'files' => $worker->pendingOutputFiles,
+            'ownedDirectories' => $worker->ownedOutputDirectories,
+            'warnings' => array_values($worker->generationWarnings),
+            'count' => $count,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringListOption(InputInterface $input, string $name): array
+    {
+        $value = $input->getOption($name);
+
+        return is_array($value) ? array_values(array_filter($value, 'is_string')) : [];
     }
 
     public function generateFromFile(string $filePath, string $outputDirectory, string $namespace, string $mode = self::ATTRIBUTE_MODE_RUNTIME): int

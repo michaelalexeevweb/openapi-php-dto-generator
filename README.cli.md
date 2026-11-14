@@ -45,7 +45,7 @@ Parameters:
 
 | Option | Alias | Required | Description |
 |---|---|---|---|
-| `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON) |
+| `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON), or a mask (`specs/*/api.yml`) that generates every matching document in one run, with `{1}`, `{2}`… in `--directory` and `--namespace` — see [Many documents in one run](#many-documents-in-one-run). |
 | `--directory` | `-d` | ✅ | Output directory for generated DTOs |
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
 | `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. `Common` is created inside `--directory`; any other relative path is resolved from the current working directory, an absolute one is used as is. |
@@ -56,6 +56,8 @@ Parameters:
 | `--laravel-form-request` / `--no-laravel-form-request` | | | With `--attributes=laravel`: on by default. `--no-laravel-form-request` writes the DTOs without their `<Dto>FormRequest`, for a project with `illuminate/validation` but no `laravel/framework`. See [Without `laravel/framework`](README.laravel.md#without-laravelframework). Ignored with a warning in other modes. |
 | `--ref` | | | Placement for an external `$ref` spec file, directory **or mask**: `<refFileOrDir>=<directory>=<namespace>`. A directory key maps every ref'd file inside it; a mask (`specs/*/common`) maps every directory it matches, with `{1}`, `{2}`… in the directory and namespace — see [Masks](#masks). Repeatable. The older two-part `<refFileOrDir>=<directory>` still works and takes its namespace from `--ref-namespace`. |
 | `--ref-namespace` | | | Namespace for a two-part `--ref`: `<refFileOrDir>=<namespace>`, same key. Repeatable. Not used with the three-part `--ref`. |
+| `--only` | | | Generate only the classes whose name matches this mask (`Order`, `Order*`), and every class they need. Repeatable. See [Part of a document](#part-of-a-document). |
+| `--exclude` | | | Leave out the classes whose name matches this mask; a kept class that needs one stops generation. Repeatable. |
 
 Without `--ref`, a class from another document goes under the output directory, at the path its namespace
 gives: the document's directory relative to the root one, `.` and `..` dropped, each segment in class-name
@@ -97,6 +99,56 @@ Which key wins for a file: an exact file key, then the deepest directory key, th
 masks match stops generation — map it with an exact key or narrow the masks. A `{n}` past the key's last
 wildcard segment, or on a key without one, is refused before anything is generated. Quote the value, so
 the shell leaves the `*` alone.
+
+## Many documents in one run
+
+A `--file` with `*`, `?` or `[…]` in it is a mask: one run generates every file it matches. `{1}`, `{2}`… in
+`--directory` and `--namespace` stand for what the 1st, 2nd… wildcard segment matched, in class-name case in
+both — a file name without its extension — so each document gets its own directory and namespace and
+PSR-4 finds the class:
+
+```bash
+php bin/console openapi:generate-dto \
+  --file='specs/*/api.yml' \
+  --directory='src/Generated/{1}' \
+  --namespace='App\Generated\{1}' \
+  --ref='specs/shared=src/Generated/Shared=App\Generated\Shared'
+```
+
+`specs/billing/api.yml` → `src/Generated/Billing`, `App\Generated\Billing`; `specs/user_reports/api.yml` →
+`src/Generated/UserReports`. Without `--namespace` each namespace follows its filled directory.
+
+The result is what one run per document would give — every document is generated on its own, with the
+same options — in one process, published together:
+
+- a document that fails stops the run before anything is written, and the error names the document;
+- two documents may emit the same file — a `--ref`'d document both use, a shared `--dto-generator-directory`
+  — as long as the bytes are the same; different contents at one path stop the run;
+- a mask that matches no file, or a `{n}` past the mask's last wildcard segment (or with a plain `--file`),
+  is refused before anything is generated;
+- each document's `--directory` belongs to the run as described below; the directory of a document that
+  no longer matches the mask is left alone.
+
+Quote the value, so the shell leaves the `*` alone.
+
+## Part of a document
+
+`--only` and `--exclude` take a class name or a mask (`*`, `?`, `[…]`, case ignored), matched against the
+generated class's short name. Both repeat.
+
+```bash
+php bin/console openapi:generate-dto --file=specs/api.yml --directory=src/Generated \
+  --only='Order*' --exclude='OrderAudit*'
+```
+
+- `--only` picks the classes the run starts from and keeps every class they need: a property's class, a
+  list's item class, an enum, a parent, a union's interface and the members that implement it. Nothing
+  is ever left pointing at a class that was not generated.
+- `--exclude` leaves out what it matches. A kept class that still needs an excluded one stops generation,
+  naming both — exclude that class as well, or narrow the mask.
+- a Laravel `<Dto>FormRequest` goes with its DTO: `--only=Order` keeps `OrderFormRequest`.
+- a mask that matches no class anywhere in the run is refused, so a typo does not pass as a filter.
+- the output directory still belongs to the run: a class the filter leaves out is removed from it.
 
 ## The output directory belongs to the command
 

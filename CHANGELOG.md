@@ -3,6 +3,30 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.122 — 2026-11-14
+
+- --file accepts masks
+- --only and --exclude filters
+
+A `--file` mask generates every document it matches in one run. `{1}`, `{2}`… in `--directory` and
+`--namespace` stand for what the wildcard segments matched, in class-name case — a file name without its
+extension — the same as in a `--ref` mask:
+
+```bash
+--file='specs/*/api.yml' --directory='src/Generated/{1}' --namespace='App\Generated\{1}'
+```
+
+- each document is generated on its own, with the same options, so the output is what one run per
+  document gives — in one process, published together;
+- a document that fails stops the run before anything is written, and the error names it;
+- a file two documents both emit (a shared `--ref` target) must come out byte for byte the same;
+- a mask matching no file, or a `{n}` with nothing to fill it, is refused up front.
+
+`--only` and `--exclude` take a class name or mask (case ignored) and generate part of a document.
+`--only` keeps every class the selected ones need — properties, list items, enums, parents, a union's
+interface and its members, a Laravel `FormRequest` with its DTO. A kept class that needs an excluded one
+stops generation, naming both; a mask matching no class is refused.
+
 ## 2.15.121 — 2026-11-13
 
 - --ref key accepts masks
