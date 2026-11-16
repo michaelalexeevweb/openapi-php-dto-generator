@@ -95,6 +95,12 @@ segment are the same word and PSR-4 finds the class:
 `specs/billing/common/money.yml` → `src/Generated/Billing/Common/Money.php`, namespace
 `App\Generated\Billing\Common`; `specs/orders/common/address.yml` → `src/Generated/Orders/Common/`.
 
+A `**` segment matches any number of directories, none included, and takes as few as it can.
+`specs/**/common=src/Generated/{1}/Common=App\Generated\{1}\Common` maps `specs/billing/invoices/common` to
+`src/Generated/Billing/Invoices/Common` and `App\Generated\Billing\Invoices\Common` — each matched directory
+in class-name case — and `specs/common` to `src/Generated/Common`, `App\Generated\Common`: a `{n}` that
+matched nothing leaves no empty segment.
+
 Which key wins for a file: an exact file key, then the deepest directory key, then a mask. A file that two
 masks match stops generation — map it with an exact key or narrow the masks. A `{n}` past the key's last
 wildcard segment, or on a key without one, is refused before anything is generated. Quote the value, so
@@ -117,6 +123,8 @@ php bin/console openapi:generate-dto \
 
 `specs/billing/api.yml` → `src/Generated/Billing`, `App\Generated\Billing`; `specs/user_reports/api.yml` →
 `src/Generated/UserReports`. Without `--namespace` each namespace follows its filled directory.
+`**` works here as in a `--ref` mask: `--file='specs/**/api.yml'` finds every `api.yml` at any depth below
+`specs`, `specs/api.yml` itself included.
 
 The result is what one run per document would give — every document is generated on its own, with the
 same options — in one process, published together:
@@ -143,7 +151,9 @@ php bin/console openapi:generate-dto --file=specs/api.yml --directory=src/Genera
 
 - `--only` picks the classes the run starts from and keeps every class they need: a property's class, a
   list's item class, an enum, a parent, a union's interface and the members that implement it. Nothing
-  is ever left pointing at a class that was not generated.
+  is ever left pointing at a class that was not generated. What a class needs is read from the generated code: its
+  types, imports, class strings and the type in a `@var`/`@param` tag — not the description next to it, so
+  a schema description that mentions a class name does not pull that class in.
 - `--exclude` leaves out what it matches. A kept class that still needs an excluded one stops generation,
   naming both — exclude that class as well, or narrow the mask.
 - a Laravel `<Dto>FormRequest` goes with its DTO: `--only=Order` keeps `OrderFormRequest`.

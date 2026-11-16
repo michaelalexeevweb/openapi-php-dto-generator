@@ -25,6 +25,12 @@ final class GeneratedClassFilter
 {
     private const string COMPANION_SUFFIX = 'FormRequest';
 
+    /**
+     * The tags whose first word is a type. The rest — `@see`, `@deprecated` — carry text, and the text
+     * of a generated docblock is the document's own description.
+     */
+    private const string TYPE_TAG = '/^(?:(?:phpstan|psalm)-)?(?:var|param|return|throws|property(?:-read|-write)?|extends|implements|mixin|template(?:-\w+)?)$/';
+
     /** @var array<string, true> */
     private array $matchedMasks = [];
 
@@ -209,8 +215,9 @@ final class GeneratedClassFilter
     /**
      * Every generated class the source names: a qualified name (a `use` line, an inline `\Fqcn`), a
      * short name — imported or of the same namespace —, a class string, and the type in a
-     * `@var`/`@param`/… tag, which the runtime mode reads to know a list's item class. `header` is what
-     * the declaration line itself names: the parent and the implemented interfaces.
+     * `@var`/`@param`/… tag (not the description after it), which the runtime mode reads to know a
+     * list's item class. `header` is what the declaration line itself names: the parent and the
+     * implemented interfaces.
      *
      * @param array<string, array{path: string, shortName: string, interface: bool}> $classes
      * @return array{all: list<string>, header: list<string>}
@@ -251,9 +258,12 @@ final class GeneratedClassFilter
             } elseif ($token->is(T_CONSTANT_ENCAPSED_STRING)) {
                 $spelled[] = str_replace('\\\\', '\\', substr($token->text, 1, -1));
             } elseif ($token->is(T_DOC_COMMENT)) {
-                preg_match_all('/@[\w-]+[ \t]+([^\n]*)/', $token->text, $tags);
-                foreach ($tags[1] as $tag) {
-                    preg_match_all('/\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\[A-Za-z_][A-Za-z0-9_]*)*/', $tag, $words);
+                preg_match_all('/@([\w-]+)[ \t]+([^\n]*)/', $token->text, $tags, PREG_SET_ORDER);
+                foreach ($tags as [, $tagName, $tagText]) {
+                    if (preg_match(self::TYPE_TAG, $tagName) !== 1) {
+                        continue;
+                    }
+                    preg_match_all('/\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\[A-Za-z_][A-Za-z0-9_]*)*/', $this->leadingType($tagText), $words);
                     array_push($spelled, ...$words[0]);
                 }
             }
@@ -273,6 +283,29 @@ final class GeneratedClassFilter
             'all' => array_keys($names),
             'header' => $header,
         ];
+    }
+
+    /**
+     * The type a tag opens with — `array<string, list<Item>>|null` — and not the description after it:
+     * `@var string a Holder's note` names no class. The type ends at the first blank outside `<>`, `()`,
+     * `{}` and `[]`, so a generic's `, ` stays inside it.
+     */
+    private function leadingType(string $tagText): string
+    {
+        $depth = 0;
+        $length = strlen($tagText);
+        for ($index = 0; $index < $length; $index++) {
+            $character = $tagText[$index];
+            if (str_contains('<({[', $character)) {
+                $depth++;
+            } elseif (str_contains('>)}]', $character)) {
+                $depth = max(0, $depth - 1);
+            } elseif ($depth === 0 && ctype_space($character)) {
+                return substr($tagText, 0, $index);
+            }
+        }
+
+        return $tagText;
     }
 
     /**

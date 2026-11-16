@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Command;
 
 use DateTimeImmutable;
 use Exception;
+use FilesystemIterator;
 use JsonException;
 use OpenapiPhpDtoGenerator\Command\Rendering\GlobalFunctionImports;
 use OpenapiPhpDtoGenerator\Command\Rendering\NamesLibraryClasses;
@@ -18,6 +19,8 @@ use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSchemaInterpreter;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersYii3Dto;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -721,34 +724,71 @@ final class GenerateDtoCommand extends Command
             ]];
         }
 
-        $matches = glob($file);
+        $matches = in_array('**', $maskSegments, true) ? $this->filesBelow($maskSegments) : glob($file);
         $matches = array_values(array_filter(is_array($matches) ? $matches : [], 'is_file'));
-        if ($matches === []) {
-            throw new RuntimeException(sprintf('--file "%s" matches no file.', $file));
-        }
         sort($matches);
 
-        $lastSegment = count($maskSegments) - 1;
         $documents = [];
         foreach ($matches as $match) {
-            $segments = explode('/', str_replace('\\', '/', $match));
-            $captures = array_map(
-                callback: static fn(int $position): string => $position === $lastSegment
-                    ? pathinfo($segments[$position], PATHINFO_FILENAME)
-                    : $segments[$position],
-                array: $wildcards,
+            $captures = $this->matchMaskSegments(
+                mask: $maskSegments,
+                path: explode('/', str_replace('\\', '/', $match)),
+                wholePath: true,
             );
-            $documentDirectory = $this->fillRefPlaceholders($directory, $captures);
+            if ($captures === null) {
+                continue;
+            }
+            // The file name stands for itself without its extension: `specs/*.yml` gives `Billing`.
+            if ($this->isRefMask($maskSegments[count($maskSegments) - 1]) && $captures !== []) {
+                $last = array_key_last($captures);
+                $fileName = array_pop($captures[$last]);
+                $captures[$last][] = pathinfo((string)$fileName, PATHINFO_FILENAME);
+            }
+            $documentDirectory = $this->fillRefPlaceholders(value: $directory, captures: $captures, separator: '/');
             $documents[] = [
                 'file' => $match,
                 'directory' => $documentDirectory,
                 'namespace' => $namespace !== ''
-                    ? $this->normalizeExplicitNamespace($this->fillRefPlaceholders($namespace, $captures))
+                    ? $this->normalizeExplicitNamespace($this->fillRefPlaceholders(value: $namespace, captures: $captures, separator: '\\'))
                     : $this->directoryToNamespace($documentDirectory),
             ];
         }
+        if ($documents === []) {
+            throw new RuntimeException(sprintf('--file "%s" matches no file.', $file));
+        }
 
         return $documents;
+    }
+
+    /**
+     * Every file below the literal directory a `**` mask starts from, spelled the way the mask is, so
+     * its segments line up with the mask's. glob() has no `**`.
+     *
+     * @param list<string> $maskSegments
+     * @return list<string>
+     */
+    private function filesBelow(array $maskSegments): array
+    {
+        $literal = [];
+        foreach ($maskSegments as $segment) {
+            if ($this->isRefMask($segment)) {
+                break;
+            }
+            $literal[] = $segment;
+        }
+        $base = $literal === [] ? '.' : implode('/', $literal);
+        if (!is_dir($base)) {
+            return [];
+        }
+
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS));
+        foreach ($iterator as $file) {
+            $path = str_replace('\\', '/', (string)$file);
+            $files[] = $literal === [] ? substr($path, 2) : $path;
+        }
+
+        return $files;
     }
 
     /**
@@ -1204,8 +1244,9 @@ final class GenerateDtoCommand extends Command
      * mapped together sent `specs/shared/x.yml` wherever the earlier option said.
      *
      * @param array<string, string> $map
+     * @param string $separator what joins the segments a `**` matched: `/` in a directory, `\` in a namespace
      */
-    private function matchRefMapping(string $sourceFile, array $map): ?string
+    private function matchRefMapping(string $sourceFile, array $map, string $separator): ?string
     {
         if ($map === []) {
             return null;
@@ -1236,7 +1277,7 @@ final class GenerateDtoCommand extends Command
         foreach ($map as $key => $value) {
             $captures = $this->isRefMask($key) ? $this->matchRefMask(mask: $key, path: $canonical) : null;
             if ($captures !== null) {
-                $matched[$key] = $this->fillRefPlaceholders(value: $value, captures: $captures);
+                $matched[$key] = $this->fillRefPlaceholders(value: $value, captures: $captures, separator: $separator);
             }
         }
         if (count($matched) > 1) {
@@ -1253,46 +1294,83 @@ final class GenerateDtoCommand extends Command
     /**
      * Matches a mask against a file's path one segment at a time, `fnmatch()` per segment, so `*`
      * never crosses a `/`. Like a directory key, a mask that matches the leading segments covers
-     * everything below them. Returns the segments the wildcard segments matched, in order — what
-     * `{1}`, `{2}`… stand for — or null when the mask does not match.
+     * everything below them. Returns what each wildcard segment matched, in order — what `{1}`,
+     * `{2}`… stand for — or null when the mask does not match.
      *
-     * @return array<int, string>|null
+     * @return list<list<string>>|null
      */
     private function matchRefMask(string $mask, string $path): ?array
     {
-        $maskSegments = explode(DIRECTORY_SEPARATOR, $mask);
-        $pathSegments = explode(DIRECTORY_SEPARATOR, $path);
-        if (count($pathSegments) < count($maskSegments)) {
-            return null;
-        }
-
-        $captures = [];
-        foreach ($maskSegments as $index => $maskSegment) {
-            if (!fnmatch($maskSegment, $pathSegments[$index])) {
-                return null;
-            }
-            if ($this->isRefMask($maskSegment)) {
-                $captures[] = $pathSegments[$index];
-            }
-        }
-
-        return $captures;
+        return $this->matchMaskSegments(
+            mask: explode(DIRECTORY_SEPARATOR, $mask),
+            path: explode(DIRECTORY_SEPARATOR, $path),
+            wholePath: false,
+        );
     }
 
     /**
-     * `{n}` in a mask's directory or namespace becomes the n-th wildcard segment, in class-name case —
-     * `pipeline` → `Pipeline`, `universal_report`… → `UniversalReport` — in both, so the directory and
-     * the namespace segment are the same word and PSR-4 finds the class.
+     * A `**` segment matches any number of whole segments, none included, and takes as FEW as it can:
+     * a `**` between `specs` and `common`, against `specs/a/common/b/common/x.yml`, stops at the first
+     * `common`. Every other
+     * wildcard segment matches exactly one. Each capture is the list of segments its wildcard matched —
+     * one, or for `**` any number.
      *
-     * @param array<int, string> $captures
+     * @param list<string> $mask
+     * @param list<string> $path
+     * @param bool $wholePath false: the mask may stop above the path's end, as a --ref key covers what is below it
+     * @return list<list<string>>|null
      */
-    private function fillRefPlaceholders(string $value, array $captures): string
+    private function matchMaskSegments(array $mask, array $path, bool $wholePath): ?array
     {
-        return (string)preg_replace_callback(
+        if ($mask === []) {
+            return $path === [] || !$wholePath ? [] : null;
+        }
+
+        $segment = array_shift($mask);
+        if ($segment === '**') {
+            for ($taken = 0; $taken <= count($path); $taken++) {
+                $rest = $this->matchMaskSegments(mask: $mask, path: array_slice($path, $taken), wholePath: $wholePath);
+                if ($rest !== null) {
+                    return [array_slice($path, 0, $taken), ...$rest];
+                }
+            }
+
+            return null;
+        }
+
+        if ($path === [] || !fnmatch($segment, $path[0])) {
+            return null;
+        }
+        $rest = $this->matchMaskSegments(mask: $mask, path: array_slice($path, 1), wholePath: $wholePath);
+        if ($rest === null) {
+            return null;
+        }
+
+        return $this->isRefMask($segment) ? [[$path[0]], ...$rest] : $rest;
+    }
+
+    /**
+     * `{n}` in a mask's directory or namespace becomes what the n-th wildcard segment matched, in
+     * class-name case — `pipeline` → `Pipeline`, `universal_report`… → `UniversalReport` — in both, so
+     * the directory and the namespace segment are the same word and PSR-4 finds the class. A `**` that
+     * matched several segments gives each its own: `Billing/Invoices` in a directory,
+     * `Billing\Invoices` in a namespace; one that matched none leaves no empty segment behind.
+     *
+     * @param list<list<string>> $captures
+     */
+    private function fillRefPlaceholders(string $value, array $captures, string $separator): string
+    {
+        $filled = (string)preg_replace_callback(
             pattern: '/\{(\d+)\}/',
-            callback: fn(array $placeholder): string => $this->normalizeClassName($captures[(int)$placeholder[1] - 1] ?? ''),
+            callback: fn(array $placeholder): string => implode(
+                $separator,
+                array_map($this->normalizeClassName(...), $captures[(int)$placeholder[1] - 1] ?? []),
+            ),
             subject: $value,
         );
+        $quoted = preg_quote($separator, '/');
+
+        return rtrim((string)preg_replace('/(?<=.)' . $quoted . '{2,}/', $separator, $filled), $separator);
     }
 
     public function copyCommonServices(
@@ -2251,7 +2329,7 @@ final class GenerateDtoCommand extends Command
         }
 
         // Explicit --ref-namespace mapping takes highest precedence.
-        $explicit = $this->matchRefMapping($sourceFile, $this->refNamespaceMap);
+        $explicit = $this->matchRefMapping(sourceFile: $sourceFile, map: $this->refNamespaceMap, separator: '\\');
         if ($explicit !== null) {
             return $explicit;
         }
@@ -2276,7 +2354,7 @@ final class GenerateDtoCommand extends Command
         }
 
         // Explicit --ref mapping takes highest precedence.
-        $explicit = $this->matchRefMapping($sourceFile, $this->refOutputDirectoryMap);
+        $explicit = $this->matchRefMapping(sourceFile: $sourceFile, map: $this->refOutputDirectoryMap, separator: '/');
         if ($explicit !== null) {
             return $explicit;
         }

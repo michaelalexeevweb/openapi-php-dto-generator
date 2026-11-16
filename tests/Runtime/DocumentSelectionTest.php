@@ -64,6 +64,71 @@ final class DocumentSelectionTest extends TestCase
     }
 
     /**
+     * `**` matches any number of directories, none included; `{n}` of it is each matched directory in
+     * class-name case — joined by `/` in the directory and `\` in the namespace — and nothing at all
+     * when it matched none.
+     */
+    public function testDoubleStarFileMaskSpansDirectories(): void
+    {
+        $this->writeServiceDocument('specs/api.json', 'Root');
+        $this->writeServiceDocument('specs/alpha/api.json', 'Widget');
+        $this->writeServiceDocument('specs/billing/user_invoices/api.json', 'Invoice');
+        $this->writeServiceDocument('specs/alpha/other.json', 'Ignored');
+
+        $tester = $this->generate([
+            '--file' => 'specs/**/api.json',
+            '--directory' => 'out/{1}/Dto',
+            '--namespace' => 'Acme\{1}\Dto',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('from 3 document(s)', $tester->getDisplay());
+        $this->assertStringContainsString('namespace Acme\Dto;', (string)file_get_contents('out/Dto/Root.php'));
+        $this->assertStringContainsString('namespace Acme\Alpha\Dto;', (string)file_get_contents('out/Alpha/Dto/Widget.php'));
+        $this->assertContains('UserInvoices', (array)scandir('out/Billing'));
+        $this->assertStringContainsString(
+            needle: 'namespace Acme\Billing\UserInvoices\Dto;',
+            haystack: (string)file_get_contents('out/Billing/UserInvoices/Dto/Invoice.php'),
+        );
+        $this->assertFileDoesNotExist('out/Alpha/Dto/Ignored.php');
+    }
+
+    /**
+     * The same `**` in a --ref key: every `common` directory at any depth, the module path carried
+     * into both the directory and the namespace; the first `common` on the way down is the one used.
+     */
+    public function testDoubleStarRefMaskSpansDirectories(): void
+    {
+        $references = [];
+        foreach (['common' => 'Shared', 'alpha/common' => 'AlphaBadge', 'billing/user_invoices/common' => 'InvoiceBadge'] as $directory => $schemaName) {
+            $this->writeServiceDocument('specs/' . $directory . '/shapes.json', $schemaName);
+            $references[$schemaName] = ['$ref' => $directory . '/shapes.json#/components/schemas/' . $schemaName];
+        }
+        file_put_contents('specs/root.json', json_encode(['openapi' => '3.1.0', 'components' => ['schemas' => [
+            'Holder' => ['type' => 'object', 'properties' => $references],
+        ]]], JSON_THROW_ON_ERROR));
+
+        $tester = $this->generate([
+            '--file' => 'specs/root.json',
+            '--directory' => 'out/Root',
+            '--namespace' => 'Acme\Root',
+            '--ref' => ['specs/**/common=out/{1}/Common=Acme\{1}\Common'],
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('namespace Acme\Common;', (string)file_get_contents('out/Common/Shared.php'));
+        $this->assertStringContainsString(
+            needle: 'namespace Acme\Alpha\Common;',
+            haystack: (string)file_get_contents('out/Alpha/Common/AlphaBadge.php'),
+        );
+        $this->assertContains('UserInvoices', (array)scandir('out/Billing'));
+        $this->assertStringContainsString(
+            needle: 'namespace Acme\Billing\UserInvoices\Common;',
+            haystack: (string)file_get_contents('out/Billing/UserInvoices/Common/InvoiceBadge.php'),
+        );
+    }
+
+    /**
      * A wildcard in the file name stands for the name without its extension; without --namespace the
      * namespace follows the filled directory, as it does for a plain --file.
      */
@@ -339,6 +404,9 @@ final class DocumentSelectionTest extends TestCase
                     'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Item']],
                     'color' => ['$ref' => '#/components/schemas/Color'],
                     'shape' => ['$ref' => '#/components/schemas/Shape'],
+                    // The document's own words land next to the type in `@var`/`@param`; a class name
+                    // among them is not a reference, so `--exclude='Unrelated*'` must still pass.
+                    'note' => ['type' => 'string', 'description' => 'Copied from an Unrelated record'],
                 ]],
                 'Item' => ['type' => 'object', 'properties' => ['label' => ['type' => 'string']]],
                 'Color' => ['type' => 'string', 'enum' => ['crimson', 'azure']],

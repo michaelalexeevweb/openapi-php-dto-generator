@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.123 — 2026-11-16
+
+- `**` in --ref and --file masks
+- descriptions no longer pull classes
+
+A `**` segment in a `--ref` key or a `--file` mask matches any number of directories, none included, and
+takes as few as it can. Its `{n}` is every matched directory in class-name case, joined by `/` in the
+directory and `\` in the namespace; one that matched nothing leaves no empty segment:
+
+```bash
+--ref='specs/**/common=src/Generated/{1}/Common=App\Generated\{1}\Common'
+```
+
+`specs/billing/invoices/common/…` → `src/Generated/Billing/Invoices/Common`; `specs/common/…` →
+`src/Generated/Common`.
+
+Fixed — `--exclude` refused a run because of a description (2.15.122): `--only` / `--exclude` read a
+class's dependencies from its docblock tags as well, and took the whole line — the type AND the
+description the document wrote next to it. A property described as "copied from an Unrelated record"
+made its class "need" `Unrelated`, so `--exclude='Unrelated*'` stopped generation, and `--only` kept a
+class nothing uses. Only the type of a type tag counts now.
+
 ## 2.15.122 — 2026-11-14
 
 - --file accepts masks
