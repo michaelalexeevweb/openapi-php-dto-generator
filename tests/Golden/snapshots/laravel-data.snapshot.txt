@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 18606 lines
+# laravel-data mode — 80 files, 19430 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4063,8 +4063,10 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_column;
 use function array_key_exists;
 use function array_map;
+use function array_merge;
 use function array_shift;
 use function explode;
 use function filter_var;
@@ -4225,7 +4227,7 @@ final class ApiTestSerializationGetQueryParams extends Data
             'X-Codes.*' => self::withBlankStringValidation(['string']),
             'session' => self::withBlankStringValidation(['sometimes', 'string']),
             'filter' => self::withBlankStringValidation(['sometimes', 'array']),
-            'filter.since' => self::withBlankStringValidation(['date_format:Y-m-d']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -4296,6 +4298,25 @@ final class ApiTestSerializationGetQueryParams extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            ApiTestSerializationGetQueryParamsFilter::openApiNestedValidation('filter', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -4449,6 +4470,9 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer;
 
+use function array_column;
+use function array_merge;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -4565,6 +4589,42 @@ final class ApiTestSerializationGetQueryParamsFilter extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.since' => self::withBlankStringValidation(['date_format:Y-m-d']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 }
 
@@ -5065,10 +5125,12 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_shift;
 use function array_slice;
 use function count;
@@ -5289,11 +5351,9 @@ final class ApplicatorRefs extends Data
             'neverMatches' => self::withBlankStringValidation(['sometimes']),
             'closedFirstSlot' => self::withBlankStringValidation(['sometimes', 'list']),
             'poisonedKey' => self::withBlankStringValidation(['sometimes', 'array']),
-            'poisonedKey.trigger' => self::withBlankStringValidation(['string']),
             'conditional' => self::withBlankStringValidation(['sometimes', 'array']),
-            'conditional.label' => self::withBlankStringValidation(['string']),
             'keyed' => self::withBlankStringValidation(['sometimes', 'array']),
-            'keyed.trigger' => self::withBlankStringValidation(['string']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -5364,6 +5424,27 @@ final class ApplicatorRefs extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            ApplicatorRefsPoisonedKey::openApiNestedValidation('poisonedKey', [self::class]),
+            ApplicatorRefsConditional::openApiNestedValidation('conditional', [self::class]),
+            ApplicatorRefsKeyed::openApiNestedValidation('keyed', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -5637,7 +5718,9 @@ final class ApplicatorRefs extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -5652,7 +5735,8 @@ final class ApplicatorRefs extends Data
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -5910,12 +5994,15 @@ use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_column;
 use function array_key_exists;
 use function array_map;
+use function array_merge;
 use function array_slice;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_float;
 use function is_int;
@@ -6068,6 +6155,42 @@ final class ApplicatorRefsConditional extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.label' => self::withBlankStringValidation(['string']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -6242,7 +6365,9 @@ final class ApplicatorRefsConditional extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -6351,12 +6476,15 @@ use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_column;
 use function array_key_exists;
 use function array_map;
+use function array_merge;
 use function array_slice;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_float;
 use function is_int;
@@ -6506,6 +6634,42 @@ final class ApplicatorRefsKeyed extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.trigger' => self::withBlankStringValidation(['string']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -6680,7 +6844,9 @@ final class ApplicatorRefsKeyed extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -6695,7 +6861,8 @@ final class ApplicatorRefsKeyed extends Data
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -6780,11 +6947,14 @@ use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_column;
 use function array_key_exists;
 use function array_map;
+use function array_merge;
 use function array_slice;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -6919,6 +7089,42 @@ final class ApplicatorRefsPoisonedKey extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.trigger' => self::withBlankStringValidation(['string']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -7070,7 +7276,8 @@ final class ApplicatorRefsPoisonedKey extends Data
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...self::validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -7784,15 +7991,19 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_shift;
 use function array_slice;
 use function explode;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -7831,13 +8042,26 @@ final class ChainLink extends Data
         'fields' => [
             'tags' => [
                 'items' => [
-                    'required' => [
-                        'label',
-                    ],
+                    'x-openapi-recurse' => 'ChainTag@rules',
                 ],
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'ChainTag@rules' => [
+            'required' => [
+                'label',
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -7868,7 +8092,7 @@ final class ChainLink extends Data
             'code' => self::withBlankStringValidation(['present', 'string', 'min:3']),
             'tags' => self::withBlankStringValidation(['sometimes', 'list']),
             'tags.*' => self::withBlankStringValidation(['array']),
-            'tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -7939,6 +8163,65 @@ final class ChainLink extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            ChainTag::openApiNestedValidation('tags.*', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.code' => self::withBlankStringValidation(['string', 'min:3']),
+                    $prefix . '.tags' => self::withBlankStringValidation(['list']),
+                    $prefix . '.tags.*' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.tags.*',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            ChainTag::openApiNestedValidation($prefix . '.tags.*', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -8178,6 +8461,12 @@ final class ChainLink extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 
@@ -8249,10 +8538,13 @@ use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Data;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_shift;
 use function array_slice;
 use function explode;
@@ -8290,22 +8582,38 @@ final class ChainMiddle extends Data
         'fields' => [
             'links' => [
                 'items' => [
-                    'properties' => [
-                        'tags' => [
-                            'items' => [
-                                'required' => [
-                                    'label',
-                                ],
-                            ],
-                        ],
-                    ],
-                    'required' => [
-                        'code',
-                    ],
+                    'x-openapi-recurse' => 'ChainLink@rules',
                 ],
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'ChainLink@rules' => [
+            'properties' => [
+                'tags' => [
+                    'items' => [
+                        'x-openapi-recurse' => 'ChainTag@rules',
+                    ],
+                ],
+            ],
+            'required' => [
+                'code',
+            ],
+        ],
+        'ChainTag@rules' => [
+            'required' => [
+                'label',
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -8334,10 +8642,7 @@ final class ChainMiddle extends Data
         return [
             'links' => self::withBlankStringValidation(['present', 'list']),
             'links.*' => self::withBlankStringValidation(['array']),
-            'links.*.code' => self::withBlankStringValidation(['string', 'min:3']),
-            'links.*.tags' => self::withBlankStringValidation(['list']),
-            'links.*.tags.*' => self::withBlankStringValidation(['array']),
-            'links.*.tags.*.label' => self::withBlankStringValidation(['string', 'min:2']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -8411,13 +8716,31 @@ final class ChainMiddle extends Data
     }
 
     /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            ChainLink::openApiNestedValidation('links.*', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'links.*',
-        'links.*.tags.*',
     ];
 
     /**
@@ -8505,7 +8828,7 @@ final class ChainMiddle extends Data
             return;
         }
 
-        foreach (self::OPENAPI_OBJECT_PATHS as $path) {
+        foreach ([...self::OPENAPI_OBJECT_PATHS, ...self::openApiNestedParts()['objectPaths']] as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
                 // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
                 if (is_array($node) && $node !== []) {
@@ -8648,6 +8971,12 @@ final class ChainMiddle extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 
@@ -8661,7 +8990,9 @@ final class ChainMiddle extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -8728,6 +9059,9 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_column;
+use function array_merge;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -8833,6 +9167,42 @@ final class ChainTag extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.label' => self::withBlankStringValidation(['string', 'min:2']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 }
 
@@ -9271,10 +9641,13 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -9329,56 +9702,72 @@ final class Containers extends Data
         'fields' => [
             'shapes' => [
                 'items' => [
-                    'oneOf' => [
-                        [
-                            'type' => 'object',
-                            'required' => [
-                                'kind',
-                                'radius',
-                            ],
-                            'properties' => [
-                                'kind' => [
-                                    'type' => 'string',
-                                ],
-                                'radius' => [
-                                    'type' => 'integer',
-                                ],
-                            ],
-                        ],
-                        [
-                            'type' => 'object',
-                            'required' => [
-                                'kind',
-                                'side',
-                            ],
-                            'properties' => [
-                                'kind' => [
-                                    'type' => 'string',
-                                ],
-                                'side' => [
-                                    'type' => 'integer',
-                                ],
-                            ],
-                        ],
-                    ],
-                    'x-discriminator-property' => 'kind',
-                    'x-discriminator-php-property' => 'kind',
-                    'x-discriminator-map' => [
-                        'circle' => 'Circle',
-                        'square' => 'Square',
-                    ],
+                    'x-openapi-recurse' => 'Shape@rules',
                 ],
             ],
             'tagsByKey' => [
                 'additionalProperties' => [
-                    'required' => [
-                        'id',
-                        'name',
-                    ],
+                    'x-openapi-recurse' => 'Tag@rules',
                 ],
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'Shape@rules' => [
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'required' => [
+                        'kind',
+                        'radius',
+                    ],
+                    'properties' => [
+                        'kind' => [
+                            'type' => 'string',
+                        ],
+                        'radius' => [
+                            'type' => 'integer',
+                        ],
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'required' => [
+                        'kind',
+                        'side',
+                    ],
+                    'properties' => [
+                        'kind' => [
+                            'type' => 'string',
+                        ],
+                        'side' => [
+                            'type' => 'integer',
+                        ],
+                    ],
+                ],
+            ],
+            'x-discriminator-property' => 'kind',
+            'x-discriminator-php-property' => 'kind',
+            'x-discriminator-map' => [
+                'circle' => 'Circle',
+                'square' => 'Square',
+            ],
+        ],
+        'Tag@rules' => [
+            'required' => [
+                'id',
+                'name',
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -9444,8 +9833,7 @@ final class Containers extends Data
             'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
             'tagsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'tagsByKey.*' => self::withBlankStringValidation(['array']),
-            'tagsByKey.*.id' => self::withBlankStringValidation(['integer']),
-            'tagsByKey.*.name' => self::withBlankStringValidation(['string']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -9516,6 +9904,25 @@ final class Containers extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            Tag::openApiNestedValidation('tagsByKey.*', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -9758,6 +10165,12 @@ final class Containers extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
@@ -9778,7 +10191,11 @@ final class Containers extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -9864,7 +10281,9 @@ final class Containers extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -9902,9 +10321,10 @@ final class Containers extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -10946,7 +11366,7 @@ final class ItemBounds extends Data
             'scoresByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'scoresByKey.*' => self::withBlankStringValidation(['integer', 'min:5']),
             'codes' => self::withBlankStringValidation(['sometimes', 'list']),
-            'codes.*' => self::withBlankStringValidation(['string', 'min:2', 'regex:#^[a-z]+$#u']),
+            'codes.*' => self::withBlankStringValidation(['string', 'min:2', 'regex:#^[a-z]+$#uD']),
         ];
     }
 
@@ -12428,7 +12848,9 @@ final class ObjectWideRules extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -12443,7 +12865,8 @@ final class ObjectWideRules extends Data
 
         if (is_array($schema['dependentRequired'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentRequired'] as $propertyName => $deps) {
-                if (!is_string($propertyName) || !is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 foreach ($deps as $depProperty) {
@@ -13320,6 +13743,9 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_column;
+use function array_merge;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -13427,6 +13853,44 @@ final class Tag extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                    $prefix . '.id' => 'integer',
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 }
 
@@ -13574,10 +14038,13 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -13628,86 +14095,105 @@ final class Test2 extends Data
         'fields' => [
             'tags' => [
                 'items' => [
-                    'required' => [
-                        'id',
-                        'name',
-                    ],
+                    'x-openapi-recurse' => 'Tag@rules',
                 ],
             ],
             'user' => [
-                'properties' => [
-                    'pet' => [
-                        'anyOf' => [
-                            [
-                                'type' => 'object',
-                                'properties' => [
-                                    'name' => [
-                                        'type' => 'string',
-                                    ],
-                                    'meow' => [
-                                        'type' => 'string',
-                                    ],
-                                ],
-                                'required' => [
-                                    'name',
-                                    'meow',
-                                ],
-                            ],
-                            [
-                                'type' => 'object',
-                                'properties' => [
-                                    'name' => [
-                                        'type' => 'string',
-                                    ],
-                                    'bark' => [
-                                        'type' => 'string',
-                                    ],
-                                ],
-                                'required' => [
-                                    'name',
-                                    'bark',
-                                ],
-                            ],
-                            [
-                                'type' => 'object',
-                                'properties' => [
-                                    'name' => [
-                                        'type' => 'string',
-                                    ],
-                                    'bark' => [
-                                        'type' => 'string',
-                                    ],
-                                ],
-                                'required' => [
-                                    'name',
-                                    'bark',
-                                ],
-                            ],
-                            [
-                                'type' => 'object',
-                                'required' => [
-                                    'test2',
-                                ],
-                                'properties' => [
-                                    'test2' => [
-                                        'type' => 'string',
-                                    ],
-                                ],
-                            ],
-                        ],
-                        'nullable' => true,
-                    ],
-                ],
-                'required' => [
-                    'id',
-                    'name',
-                    'pet',
-                    'createdAt',
-                ],
+                'x-openapi-recurse' => 'User@rules',
                 'nullable' => true,
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'Tag@rules' => [
+            'required' => [
+                'id',
+                'name',
+            ],
+        ],
+        'User@rules' => [
+            'properties' => [
+                'pet' => [
+                    'x-openapi-recurse' => 'Animal2@rules',
+                    'nullable' => true,
+                ],
+            ],
+            'required' => [
+                'id',
+                'name',
+                'pet',
+                'createdAt',
+            ],
+        ],
+        'Animal2@rules' => [
+            'anyOf' => [
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                        'meow' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                    'required' => [
+                        'name',
+                        'meow',
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                        'bark' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                    'required' => [
+                        'name',
+                        'bark',
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                        'bark' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                    'required' => [
+                        'name',
+                        'bark',
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'required' => [
+                        'test2',
+                    ],
+                    'properties' => [
+                        'test2' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                ],
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -13766,16 +14252,10 @@ final class Test2 extends Data
             'name' => self::withBlankStringValidation(['present', 'string']),
             'tags' => self::withBlankStringValidation(['present', 'list']),
             'tags.*' => self::withBlankStringValidation(['array']),
-            'tags.*.id' => self::withBlankStringValidation(['integer']),
-            'tags.*.name' => self::withBlankStringValidation(['string']),
             'types' => self::withBlankStringValidation(['present', Rule::enum(Test2Types::class)]),
-            'user' => self::withBlankStringValidation(['sometimes']),
-            'user.id' => self::withBlankStringValidation(['integer']),
-            'user.name' => self::withBlankStringValidation(['string']),
-            'user.pet' => self::withBlankStringValidation(['nullable']),
-            'user.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'user' => self::withBlankStringValidation(['sometimes', 'array']),
             'userType' => self::withBlankStringValidation(['sometimes', 'array']),
-            'userType.region' => self::withBlankStringValidation(['string']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -13849,6 +14329,27 @@ final class Test2 extends Data
     }
 
     /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            Tag::openApiNestedValidation('tags.*', [self::class]),
+            User::openApiNestedValidation('user', [self::class]),
+            Test2UserType::openApiNestedValidation('userType', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -13856,7 +14357,6 @@ final class Test2 extends Data
     private const array OPENAPI_OBJECT_PATHS = [
         'tags.*',
         'user',
-        'user.pet',
         'userType',
     ];
 
@@ -13945,7 +14445,7 @@ final class Test2 extends Data
             return;
         }
 
-        foreach (self::OPENAPI_OBJECT_PATHS as $path) {
+        foreach ([...self::OPENAPI_OBJECT_PATHS, ...self::openApiNestedParts()['objectPaths']] as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
                 // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
                 if (is_array($node) && $node !== []) {
@@ -14088,6 +14588,12 @@ final class Test2 extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
@@ -14111,7 +14617,9 @@ final class Test2 extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -14149,7 +14657,11 @@ final class Test2 extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -14293,6 +14805,9 @@ use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_column;
+use function array_merge;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -14405,6 +14920,42 @@ final class Test2UserType extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.region' => self::withBlankStringValidation(['string']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 }
 
@@ -14626,6 +15177,7 @@ use function array_pop;
 use function array_slice;
 use function array_unique;
 use function array_values;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -14650,6 +15202,7 @@ use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
+use function strtolower;
 use function substr;
 use function trim;
 
@@ -14688,6 +15241,9 @@ final class TestPostRequest extends Data
                     ],
                 ],
             ],
+            'homepage' => [
+                'format' => 'uri',
+            ],
             'endpoint' => [
                 'format' => 'uri-template',
             ],
@@ -14721,7 +15277,7 @@ final class TestPostRequest extends Data
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'code' => self::withBlankStringValidation(['present']),
-            'homepage' => self::withBlankStringValidation(['sometimes', 'string', 'url']),
+            'homepage' => self::withBlankStringValidation(['sometimes', 'string']),
             'endpoint' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
@@ -14982,7 +15538,11 @@ final class TestPostRequest extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -15182,6 +15742,7 @@ final class TestPostRequest extends Data
     {
         return match ($format) {
             'uuid' => self::isValidOpenApiUuid($value),
+            'uri' => self::isValidOpenApiUri($value),
             'uri-template' => self::isValidOpenApiUriTemplate($value),
             default => true,
         };
@@ -15189,7 +15750,22 @@ final class TestPostRequest extends Data
 
     private static function isValidOpenApiUuid(string $value): bool
     {
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', $value) === 1;
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
+
+    private static function isValidOpenApiUri(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_URL) !== false) {
+            return true;
+        }
+
+        // The scheme-only shapes — `urn:`, `mailto:`, `tel:` — the URL filter has no notion of.
+        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/D', $value) === 1;
     }
 
     private static function isValidOpenApiUriReference(string $value): bool
@@ -15237,10 +15813,12 @@ use OverflowException;
 use Spatie\LaravelData\Data;
 use stdClass;
 
+use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -15506,6 +16084,44 @@ final class TreeNode extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.label' => self::withBlankStringValidation(['string', 'min:1']),
+                    $prefix . '.children' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.children',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -15762,7 +16378,11 @@ final class TreeNode extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -15856,7 +16476,9 @@ final class TreeNode extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -15877,9 +16499,10 @@ final class TreeNode extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -16048,10 +16671,13 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -16106,128 +16732,7 @@ final class UnionUnderContainer extends Data
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'fields' => [
             'tree' => [
-                'properties' => [
-                    'children' => [
-                        'additionalProperties' => [
-                            'oneOf' => [
-                                [
-                                    'type' => 'object',
-                                    'required' => [
-                                        'label',
-                                        'children',
-                                    ],
-                                    'properties' => [
-                                        'label' => [
-                                            'type' => 'string',
-                                            'minLength' => 1,
-                                        ],
-                                        'children' => [
-                                            'type' => 'object',
-                                            'additionalProperties' => [
-                                                'oneOf' => [
-                                                    [
-                                                        'type' => 'object',
-                                                        'required' => [
-                                                            'label',
-                                                            'children',
-                                                        ],
-                                                        'properties' => [
-                                                            'label' => [
-                                                                'type' => 'string',
-                                                                'minLength' => 1,
-                                                            ],
-                                                            'children' => [
-                                                                'type' => 'object',
-                                                                'additionalProperties' => [
-                                                                    'oneOf' => [
-                                                                        [
-                                                                            'type' => 'object',
-                                                                            'properties' => [
-                                                                                'label' => [
-                                                                                    'type' => 'string',
-                                                                                    'minLength' => 1,
-                                                                                ],
-                                                                                'children' => [
-                                                                                    'type' => 'object',
-                                                                                ],
-                                                                            ],
-                                                                            'required' => [
-                                                                                'label',
-                                                                                'children',
-                                                                            ],
-                                                                        ],
-                                                                        [
-                                                                            'type' => 'object',
-                                                                            'additionalProperties' => [
-                                                                                'type' => 'object',
-                                                                                'required' => [
-                                                                                    'id',
-                                                                                    'name',
-                                                                                ],
-                                                                                'properties' => [
-                                                                                    'id' => [
-                                                                                        'type' => 'integer',
-                                                                                    ],
-                                                                                    'name' => [
-                                                                                        'type' => 'string',
-                                                                                    ],
-                                                                                ],
-                                                                            ],
-                                                                        ],
-                                                                    ],
-                                                                ],
-                                                            ],
-                                                        ],
-                                                    ],
-                                                    [
-                                                        'type' => 'object',
-                                                        'additionalProperties' => [
-                                                            'type' => 'object',
-                                                            'required' => [
-                                                                'id',
-                                                                'name',
-                                                            ],
-                                                            'properties' => [
-                                                                'id' => [
-                                                                    'type' => 'integer',
-                                                                ],
-                                                                'name' => [
-                                                                    'type' => 'string',
-                                                                ],
-                                                            ],
-                                                        ],
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                                [
-                                    'type' => 'object',
-                                    'additionalProperties' => [
-                                        'type' => 'object',
-                                        'required' => [
-                                            'id',
-                                            'name',
-                                        ],
-                                        'properties' => [
-                                            'id' => [
-                                                'type' => 'integer',
-                                            ],
-                                            'name' => [
-                                                'type' => 'string',
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-                'required' => [
-                    'label',
-                    'children',
-                ],
+                'x-openapi-recurse' => 'TreeNode@rules',
             ],
             'chain' => [
                 'items' => [
@@ -16346,6 +16851,140 @@ final class UnionUnderContainer extends Data
         'object' => [],
     ];
 
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'TreeNode@rules' => [
+            'properties' => [
+                'children' => [
+                    'additionalProperties' => [
+                        'oneOf' => [
+                            [
+                                'type' => 'object',
+                                'required' => [
+                                    'label',
+                                    'children',
+                                ],
+                                'properties' => [
+                                    'label' => [
+                                        'type' => 'string',
+                                        'minLength' => 1,
+                                    ],
+                                    'children' => [
+                                        'type' => 'object',
+                                        'additionalProperties' => [
+                                            'oneOf' => [
+                                                [
+                                                    'type' => 'object',
+                                                    'required' => [
+                                                        'label',
+                                                        'children',
+                                                    ],
+                                                    'properties' => [
+                                                        'label' => [
+                                                            'type' => 'string',
+                                                            'minLength' => 1,
+                                                        ],
+                                                        'children' => [
+                                                            'type' => 'object',
+                                                            'additionalProperties' => [
+                                                                'oneOf' => [
+                                                                    [
+                                                                        'type' => 'object',
+                                                                        'properties' => [
+                                                                            'label' => [
+                                                                                'type' => 'string',
+                                                                                'minLength' => 1,
+                                                                            ],
+                                                                            'children' => [
+                                                                                'type' => 'object',
+                                                                            ],
+                                                                        ],
+                                                                        'required' => [
+                                                                            'label',
+                                                                            'children',
+                                                                        ],
+                                                                    ],
+                                                                    [
+                                                                        'type' => 'object',
+                                                                        'additionalProperties' => [
+                                                                            'type' => 'object',
+                                                                            'required' => [
+                                                                                'id',
+                                                                                'name',
+                                                                            ],
+                                                                            'properties' => [
+                                                                                'id' => [
+                                                                                    'type' => 'integer',
+                                                                                ],
+                                                                                'name' => [
+                                                                                    'type' => 'string',
+                                                                                ],
+                                                                            ],
+                                                                        ],
+                                                                    ],
+                                                                ],
+                                                            ],
+                                                        ],
+                                                    ],
+                                                ],
+                                                [
+                                                    'type' => 'object',
+                                                    'additionalProperties' => [
+                                                        'type' => 'object',
+                                                        'required' => [
+                                                            'id',
+                                                            'name',
+                                                        ],
+                                                        'properties' => [
+                                                            'id' => [
+                                                                'type' => 'integer',
+                                                            ],
+                                                            'name' => [
+                                                                'type' => 'string',
+                                                            ],
+                                                        ],
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'type' => 'object',
+                                'additionalProperties' => [
+                                    'type' => 'object',
+                                    'required' => [
+                                        'id',
+                                        'name',
+                                    ],
+                                    'properties' => [
+                                        'id' => [
+                                            'type' => 'integer',
+                                        ],
+                                        'name' => [
+                                            'type' => 'string',
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'required' => [
+                'label',
+                'children',
+            ],
+        ],
+    ];
+
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     public readonly array|Optional $chain;
@@ -16381,12 +17020,11 @@ final class UnionUnderContainer extends Data
     public static function rules(): array
     {
         return [
-            'tree' => self::withBlankStringValidation(['present']),
-            'tree.label' => self::withBlankStringValidation(['string', 'min:1']),
-            'tree.children' => self::withBlankStringValidation(['array']),
+            'tree' => self::withBlankStringValidation(['present', 'array']),
             'chain' => self::withBlankStringValidation(['sometimes', 'list']),
             'chainAllOf' => self::withBlankStringValidation(['sometimes', 'list']),
             'listOfUnions' => self::withBlankStringValidation(['sometimes', 'list']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -16460,13 +17098,31 @@ final class UnionUnderContainer extends Data
     }
 
     /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            TreeNode::openApiNestedValidation('tree', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'tree',
-        'tree.children',
     ];
 
     /**
@@ -16554,7 +17210,7 @@ final class UnionUnderContainer extends Data
             return;
         }
 
-        foreach (self::OPENAPI_OBJECT_PATHS as $path) {
+        foreach ([...self::OPENAPI_OBJECT_PATHS, ...self::openApiNestedParts()['objectPaths']] as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
                 // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
                 if (is_array($node) && $node !== []) {
@@ -16697,6 +17353,12 @@ final class UnionUnderContainer extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
@@ -16717,7 +17379,11 @@ final class UnionUnderContainer extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -16813,7 +17479,9 @@ final class UnionUnderContainer extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -16862,7 +17530,11 @@ final class UnionUnderContainer extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -16888,9 +17560,10 @@ final class UnionUnderContainer extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -17454,9 +18127,12 @@ use Spatie\LaravelData\Casts\DateTimeInterfaceCast;
 use Spatie\LaravelData\Data;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
+use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -17500,68 +18176,81 @@ final class User extends Data
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'fields' => [
             'pet' => [
-                'anyOf' => [
-                    [
-                        'type' => 'object',
-                        'properties' => [
-                            'name' => [
-                                'type' => 'string',
-                            ],
-                            'meow' => [
-                                'type' => 'string',
-                            ],
-                        ],
-                        'required' => [
-                            'name',
-                            'meow',
-                        ],
-                    ],
-                    [
-                        'type' => 'object',
-                        'properties' => [
-                            'name' => [
-                                'type' => 'string',
-                            ],
-                            'bark' => [
-                                'type' => 'string',
-                            ],
-                        ],
-                        'required' => [
-                            'name',
-                            'bark',
-                        ],
-                    ],
-                    [
-                        'type' => 'object',
-                        'properties' => [
-                            'name' => [
-                                'type' => 'string',
-                            ],
-                            'bark' => [
-                                'type' => 'string',
-                            ],
-                        ],
-                        'required' => [
-                            'name',
-                            'bark',
-                        ],
-                    ],
-                    [
-                        'type' => 'object',
-                        'required' => [
-                            'test2',
-                        ],
-                        'properties' => [
-                            'test2' => [
-                                'type' => 'string',
-                            ],
-                        ],
-                    ],
-                ],
+                'x-openapi-recurse' => 'Animal2@rules',
                 'nullable' => true,
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'Animal2@rules' => [
+            'anyOf' => [
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                        'meow' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                    'required' => [
+                        'name',
+                        'meow',
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                        'bark' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                    'required' => [
+                        'name',
+                        'bark',
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                        ],
+                        'bark' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                    'required' => [
+                        'name',
+                        'bark',
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'required' => [
+                        'test2',
+                    ],
+                    'properties' => [
+                        'test2' => [
+                            'type' => 'string',
+                        ],
+                    ],
+                ],
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -17590,7 +18279,7 @@ final class User extends Data
         return [
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
-            'pet' => self::withBlankStringValidation(['present', 'nullable']),
+            'pet' => self::withBlankStringValidation(['present', 'nullable', 'array']),
             'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
         ];
     }
@@ -17662,6 +18351,47 @@ final class User extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.pet' => self::withBlankStringValidation(['nullable', 'array']),
+                    $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.pet',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.id' => 'integer',
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -17901,6 +18631,12 @@ final class User extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
@@ -17924,7 +18660,9 @@ final class User extends Data
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -17945,7 +18683,11 @@ final class User extends Data
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -18079,8 +18821,11 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer;
 use stdClass;
 
+use function array_column;
+use function array_diff_key;
 use function array_key_exists;
 use function array_map;
+use function array_merge;
 use function array_shift;
 use function array_slice;
 use function explode;
@@ -18129,18 +18874,31 @@ final class User2 extends Data
                         ],
                     ],
                 ],
-                'required' => [
-                    'name',
-                    'meow',
-                    'name',
-                    'bark',
-                    'test',
-                    'test',
-                ],
+                'x-openapi-recurse' => 'User2Pet@rules',
                 'nullable' => true,
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'User2Pet@rules' => [
+            'required' => [
+                'name',
+                'meow',
+                'name',
+                'bark',
+                'test',
+                'test',
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -18170,12 +18928,9 @@ final class User2 extends Data
         return [
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
-            'pet' => self::withBlankStringValidation(['present', 'nullable']),
-            'pet.name' => self::withBlankStringValidation(['string']),
-            'pet.meow' => self::withBlankStringValidation(['string']),
-            'pet.bark' => self::withBlankStringValidation(['string']),
-            'pet.test' => self::withBlankStringValidation(['string']),
+            'pet' => self::withBlankStringValidation(['present', 'nullable', 'array']),
             'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d']),
+            ...self::openApiNestedParts()['rules'],
         ];
     }
 
@@ -18246,6 +19001,25 @@ final class User2 extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+            User2Pet::openApiNestedValidation('pet', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 
     /**
@@ -18485,6 +19259,12 @@ final class User2 extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 
@@ -18543,6 +19323,9 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_column;
+use function array_merge;
+use function in_array;
 use function is_string;
 use function trim;
 
@@ -18655,6 +19438,47 @@ final class User2Pet extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.meow' => self::withBlankStringValidation(['string']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.bark' => self::withBlankStringValidation(['string']),
+                    $prefix . '.test' => self::withBlankStringValidation(['string']),
+                    $prefix . '.test' => self::withBlankStringValidation(['string']),
+                ],
+                'objectPaths' => [
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
     }
 }
 

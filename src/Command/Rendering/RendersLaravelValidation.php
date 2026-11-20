@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use RuntimeException;
 
 /**
  * Laravel validation rules for a schema: the `rules()` array, the nested and item rules, and the
@@ -48,6 +49,31 @@ trait RendersLaravelValidation
      *    sweep showed Laravel reporting one mistake twice at depths 8 and 9.
      */
     private const int LARAVEL_MAX_DOTTED_RULE_HOP = 9;
+
+    /**
+     * The most nested-DTO rule paths one property may expand to. A nested DTO's rules are inlined per
+     * PATH, so a DTO two paths reach is written twice, and a chain of schemas each naming the two before
+     * it grows like Fibonacci: twenty of them ended in a PHP out-of-memory fatal after eight seconds.
+     */
+    private const int LARAVEL_NESTED_RULE_LIMIT = 20_000;
+
+    private int $laravelNestedRuleBudget = 0;
+
+    private int $laravelNestedRuleDepth = 0;
+
+    /**
+     * The classes a property hands its validation to, see `laravelComposedTargets()`; null until asked,
+     * reset with every generation.
+     *
+     * @var array<string, true>|null
+     */
+    private ?array $laravelComposedTargetCache = null;
+
+    /** @var array<string, bool> */
+    private array $laravelNestedPathsCache = [];
+
+    /** @var array<string, array<string, true>> */
+    private array $laravelReachableCache = [];
 
     /**
      * Keywords JSON Schema applies to an array instance and to nothing else.
@@ -323,10 +349,39 @@ trait RendersLaravelValidation
             // when the application composes its rules().
             return [];
         }
+        if ($this->laravelNestedRuleDepth === 0) {
+            $this->laravelNestedRuleBudget = self::LARAVEL_NESTED_RULE_LIMIT;
+        }
         $visitedClasses[] = $nestedClass;
+        $this->laravelNestedRuleDepth++;
+        try {
+            return $this->laravelNestedRulesBelow(
+                property: $property,
+                nestedClass: $nestedClass,
+                prefix: $prefix,
+                visitedClasses: $visitedClasses,
+            );
+        } finally {
+            $this->laravelNestedRuleDepth--;
+        }
+    }
 
+    /**
+     * @param SchemaProperty $property
+     * @param array<int, string> $visitedClasses
+     * @return array<string, array<int, string>>
+     */
+    private function laravelNestedRulesBelow(array $property, string $nestedClass, string $prefix, array $visitedClasses): array
+    {
         $rules = [];
         foreach ($this->getSchemaProperties($nestedClass) as $nestedProperty) {
+            if (--$this->laravelNestedRuleBudget < 0) {
+                throw new RuntimeException(sprintf(
+                    'Laravel rules for property "%s" expand to more than %d nested paths: the nested DTOs reach one another along too many paths to inline. Use --attributes=runtime or symfony for this document, or flatten the schema chain.',
+                    $property['openApiName'],
+                    self::LARAVEL_NESTED_RULE_LIMIT,
+                ));
+            }
             $path = $prefix . '.' . $this->laravelPathSegment($nestedProperty['openApiName']);
             $nestedRules = $this->laravelRulesForProperty($nestedProperty);
 
@@ -413,6 +468,10 @@ trait RendersLaravelValidation
             // JSON object is `array` only — the object-vs-list distinction is the interpreter's job.
             'array' => "'list'",
             'object' => "'array'",
+            // A `$ref` to a generated DTO carries no `type` of its own, and without one `"x"` passed
+            // `rules()` and then broke `fromValidated()` with a TypeError — a 500 for a bad request.
+            // An enum or a date is a scalar on the wire and is left alone.
+            null => $this->laravelIsNestedDtoType($phpType) ? "'array'" : null,
             default => null,
         };
         if ($typeRule !== null) {
@@ -672,7 +731,8 @@ trait RendersLaravelValidation
         return match ($format) {
             'email', 'idn-email' => "'email'",
             'uuid' => "'uuid'",
-            'uri', 'url' => "'url'",
+            // `uri` is the interpreter's: Laravel's `url` knows web schemes only, and refused `urn:…`.
+            'url' => "'url'",
             'ipv4' => "'ipv4'",
             'ipv6' => "'ipv6'",
             'date' => "'date_format:Y-m-d'",
@@ -800,7 +860,8 @@ trait RendersLaravelValidation
         $ruleSets = [
             $this->laravelRulesForProperty($property),
             ...array_values($this->laravelItemRulesForProperty($property)),
-            ...array_values($this->laravelNestedRules($property)),
+            // A nested class that writes its own rules imports its own facade.
+            ...($this->laravelComposedChild($property) === null ? array_values($this->laravelNestedRules($property)) : []),
         ];
 
         foreach ($ruleSets as $ruleSet) {
@@ -966,6 +1027,13 @@ trait RendersLaravelValidation
         $namespace = $this->enumNamespaces[$short] ?? $this->baseNamespace;
 
         return ltrim($namespace . '\\' . $short, '\\');
+    }
+
+    private function laravelIsNestedDtoType(string $phpType): bool
+    {
+        $base = $this->laravelBaseTypeName($phpType);
+
+        return $base !== null && array_key_exists($base, $this->dtoSchemas) && !$this->laravelIsEnumClass($base);
     }
 
     private function laravelLooksLikeClassType(string $phpType): bool
@@ -1724,6 +1792,28 @@ trait RendersLaravelValidation
                 : [...$schema, $this->laravelContainerValueKey($property) => ['x-openapi-recurse' => $target]];
         }
 
+        $shared = $this->laravelSharedFold(
+            target: $target,
+            visitedClasses: $visitedClasses,
+            insideRecursiveFold: $insideRecursiveFold,
+            local: $nestedClass !== null ? $schema : (is_array($schema[$this->laravelContainerValueKey($property)] ?? null) ? $schema[$this->laravelContainerValueKey($property)] : []),
+        );
+        if ($shared !== null) {
+            if ($shared['fold'] === []) {
+                return $schema;
+            }
+            if ($nestedClass !== null) {
+                return $this->laravelWithNullableNestedMarker($schema, $property, $shared['key']);
+            }
+            $containerKey = $this->laravelContainerValueKey($property);
+            $schema[$containerKey] = [
+                ...(is_array($schema[$containerKey] ?? null) ? $schema[$containerKey] : []),
+                'x-openapi-recurse' => $shared['key'],
+            ];
+
+            return $schema;
+        }
+
         $nested = $this->laravelInterpreterSchemaForClass($target, [...$visitedClasses, $target], $insideRecursiveFold);
         if ($nested === []) {
             return $schema;
@@ -2011,7 +2101,7 @@ trait RendersLaravelValidation
      * @param array<int, string> $visitedClasses guards a self-referential schema
      * @return array<int, string>
      */
-    private function laravelObjectShapePaths(array $property, string $prefix, array $visitedClasses = []): array
+    private function laravelObjectShapePaths(array $property, string $prefix, array $visitedClasses = [], bool $recurse = true): array
     {
         $segment = $this->laravelPathSegment($property['openApiName']);
         $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
@@ -2037,7 +2127,7 @@ trait RendersLaravelValidation
         }
 
         $recurseClass = $nestedClass ?? $itemDtoClass;
-        if ($recurseClass === null || in_array($recurseClass, $visitedClasses, true)) {
+        if (!$recurse || $recurseClass === null || in_array($recurseClass, $visitedClasses, true)) {
             return $paths;
         }
 
@@ -2069,5 +2159,377 @@ trait RendersLaravelValidation
         }
 
         return $type === 'object';
+    }
+
+    /**
+     * Every path whose schema is `integer`, `number` or `boolean` — at the property, inside nested DTOs and
+     * in container items (`score`, `author.age`, `scores.*`) — with that type.
+     *
+     * Laravel's own rules for those types are lenient: `integer` passes `"5"`, `boolean` passes `0`, `1`,
+     * `"0"` and `"1"`. Over a query string that is right, everything there is a string; over a JSON body it
+     * accepts a value the schema refuses and every other mode rejects. The strict rule variants are no
+     * answer: they arrived in Laravel 12.22, above this mode's floor, and `integer:strict` also refuses
+     * `42.0`, which JSON Schema counts as an integer. So these paths are checked against the raw body
+     * instead, where a string is still a string, from `withValidator()`.
+     *
+     * @param SchemaProperty $property
+     * @param array<int, string> $visitedClasses guards a self-referential schema
+     * @return array<string, string>
+     */
+    private function laravelScalarTypePaths(array $property, string $prefix, array $visitedClasses = [], bool $recurse = true): array
+    {
+        $segment = $this->laravelPathSegment($property['openApiName']);
+        $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
+        $paths = $this->laravelScalarTypePathsIn($this->laravelConstraintsFor($property), $path, 1);
+
+        $nestedClass = $this->laravelDtoClass($property);
+        $itemClass = $this->laravelDtoItemClass($property);
+
+        // An int-backed enum is an integer on the wire, and `Rule::enum()` lets `"2"` through as 2.
+        $enumClass = $this->laravelEnumClass($property);
+        if ($enumClass !== null && $this->laravelIsIntBackedEnum($enumClass)) {
+            $paths[$path] = 'integer';
+        } elseif ($itemClass !== null && $this->laravelIsEnumClass($itemClass) && $this->laravelIsIntBackedEnum($itemClass)) {
+            $paths[$path . '.*'] = 'integer';
+        }
+        $recurseClass = $nestedClass ?? ($itemClass !== null && !$this->laravelIsEnumClass($itemClass) ? $itemClass : null);
+        if (!$recurse || $recurseClass === null || in_array($recurseClass, $visitedClasses, true)) {
+            return $paths;
+        }
+
+        $visitedClasses[] = $recurseClass;
+        $childPrefix = $nestedClass !== null ? $path : $path . '.*';
+        foreach ($this->getSchemaProperties($recurseClass) as $childProperty) {
+            foreach ($this->laravelScalarTypePaths($childProperty, $childPrefix, $visitedClasses) as $childPath => $childType) {
+                $paths[$childPath] = $childType;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, string>
+     */
+    private function laravelScalarTypePathsIn(array $schema, string $path, int $hop): array
+    {
+        $type = $schema['type'] ?? null;
+        $type = is_array($type) ? $this->laravelSoleNonNullType($type) : $type;
+        if (in_array($type, ['integer', 'number', 'boolean'], true)) {
+            return [$path => $type];
+        }
+
+        // As deep as the dotted rules go, and no deeper: past that hop nothing is validated by a rule.
+        $paths = [];
+        if ($hop < self::LARAVEL_MAX_DOTTED_RULE_HOP) {
+            foreach (['items', 'additionalProperties'] as $key) {
+                if (is_array($schema[$key] ?? null)) {
+                    $paths = [...$paths, ...$this->laravelScalarTypePathsIn($schema[$key], $path . '.*', $hop + 1)];
+                }
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * Whether a nested DTO adds its own rules and wire-shape paths, through
+     * `openApiNestedValidation()`, instead of having them written out under the property's path.
+     *
+     * Written out per path, a class two properties reach was written twice, and so was everything below
+     * it: twenty schemas each naming the two before them grew like Fibonacci, into a 15 MB class and an
+     * out-of-memory fatal. Asked of the nested class, each class is written once. A class this mode emits
+     * as an INTERFACE — a union, an allOf discriminator base — cannot carry the method, and is still
+     * written out.
+     */
+    private function laravelComposesNested(string $className): bool
+    {
+        $schema = $this->dtoSchemas[$className] ?? null;
+
+        return is_array($schema)
+            && !array_key_exists('oneOf', $schema)
+            && !array_key_exists('anyOf', $schema)
+            && !$this->laravelIsAllOfDiscriminatorBase($className);
+    }
+
+    /**
+     * The nested class a property hands its validation to, and the path below the property it applies
+     * at: the property itself for a nested DTO, `<property>.*` for a list or map of them.
+     *
+     * @param SchemaProperty $property
+     * @return array{class: string, suffix: string}|null
+     */
+    private function laravelComposedChild(array $property): ?array
+    {
+        $segment = $this->laravelPathSegment($property['openApiName']);
+        $nestedClass = $this->laravelDtoClass($property);
+        $itemClass = $this->laravelDtoItemClass($property);
+        if ($nestedClass !== null) {
+            $child = ['class' => $nestedClass, 'suffix' => $segment];
+        } elseif ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
+            $child = ['class' => $itemClass, 'suffix' => $segment . '.*'];
+        } else {
+            return null;
+        }
+
+        return $this->laravelComposesNested($child['class']) ? $child : null;
+    }
+
+    /**
+     * The classes some property hands its validation to; each of them carries `openApiNestedValidation()`.
+     *
+     * @return array<string, true>
+     */
+    private function laravelComposedTargets(): array
+    {
+        if ($this->laravelComposedTargetCache !== null) {
+            return $this->laravelComposedTargetCache;
+        }
+
+        $targets = [];
+        foreach (array_keys($this->dtoSchemas) as $owner) {
+            foreach ($this->getSchemaProperties($owner) as $property) {
+                $child = $this->laravelComposedChild($property);
+                if ($child !== null) {
+                    $targets[$child['class']] = true;
+                }
+            }
+        }
+
+        return $this->laravelComposedTargetCache = $targets;
+    }
+
+    /**
+     * What `openApiNestedValidation()` of a class writes: each property's rules with presence left out —
+     * no rule can say "required only if the parent has a value", the interpreter owns it — its item
+     * rules, its object and scalar paths, and the nested classes asked for the rest. A nested class that
+     * cannot be asked is written out here, as before.
+     *
+     * @return array{rules: list<array{suffix: string, rules: string}>, objectPaths: list<string>, scalarPaths: array<string, string>, children: list<array{class: string, suffix: string}>}
+     */
+    private function laravelNestedValidationPlan(string $className): array
+    {
+        $rules = [];
+        $objectPaths = [];
+        $scalarPaths = [];
+        $children = [];
+        foreach ($this->getSchemaProperties($className) as $property) {
+            $segment = $this->laravelPathSegment($property['openApiName']);
+            $ownRules = array_values(array_filter(
+                $this->laravelRulesForProperty($property),
+                static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
+            ));
+            if ($ownRules !== []) {
+                $rules[] = ['suffix' => $segment, 'rules' => $this->laravelRulesLiteral($ownRules)];
+            }
+            foreach ($this->laravelItemRulesForProperty($property) as $itemPath => $itemRules) {
+                $rules[] = ['suffix' => $itemPath, 'rules' => $this->laravelRulesLiteral($itemRules)];
+            }
+
+            $child = $this->laravelComposedChild($property);
+            if ($child !== null) {
+                $children[] = $child;
+            } else {
+                foreach ($this->laravelNestedRules($property, [$className]) as $nestedPath => $nestedRules) {
+                    $rules[] = ['suffix' => $nestedPath, 'rules' => $this->laravelRulesLiteral($nestedRules)];
+                }
+            }
+            foreach ($this->laravelObjectShapePaths($property, '', [$className], recurse: $child === null) as $objectPath) {
+                $objectPaths[] = $objectPath;
+            }
+            foreach ($this->laravelScalarTypePaths($property, '', [$className], recurse: $child === null) as $scalarPath => $scalarType) {
+                $scalarPaths[$scalarPath] = $scalarType;
+            }
+        }
+
+        return [
+            'rules' => $rules,
+            'objectPaths' => array_values(array_unique($objectPaths)),
+            'scalarPaths' => $scalarPaths,
+            'children' => $children,
+        ];
+    }
+
+    /**
+     * Whether anything below a class contributes a path of the given kind (`objectPaths` or
+     * `scalarPaths`), so a parent emits the check only where there is something to check.
+     *
+     * @param array<int, string> $visited
+     */
+    private function laravelNestedHasPaths(string $className, string $kind, array $visited = []): bool
+    {
+        $key = $kind . ':' . $className;
+        if (array_key_exists($key, $this->laravelNestedPathsCache)) {
+            return $this->laravelNestedPathsCache[$key];
+        }
+        if (in_array($className, $visited, true)) {
+            return false;
+        }
+
+        $plan = $this->laravelNestedValidationPlan($className);
+        $has = $kind === 'escapedDots'
+            ? array_filter([...$plan['objectPaths'], ...array_keys($plan['scalarPaths'])], static fn(string $path): bool => str_contains($path, '\.')) !== []
+            : $plan[$kind] !== [];
+        foreach ($plan['children'] as $child) {
+            $has = $has || $this->laravelNestedHasPaths($child['class'], $kind, [...$visited, $className]);
+        }
+
+        return $this->laravelNestedPathsCache[$key] = $has;
+    }
+
+    /**
+     * A class reference for emitted code: fully qualified, which the import pass turns into a `use`.
+     */
+    private function laravelDtoClassRef(string $className): string
+    {
+        $short = $this->shortClassName($className);
+
+        return '\\' . ltrim(($this->schemaNamespaces[$short] ?? $this->baseNamespace) . '\\' . $short, '\\');
+    }
+
+    /**
+     * The template variables of nested composition: the calls `openApiNestedParts()` makes, this class's
+     * own `openApiNestedValidation()` when another class holds it, and where the wire-shape checks read
+     * their paths from — this class's constant, the nested classes' answers, or both.
+     *
+     * @param list<array{class: string, suffix: string}> $nestedChildren
+     * @param list<string> $objectPaths this class's own object paths
+     * @param array<string, string> $scalarPaths this class's own scalar paths
+     * @return array{
+     *   nestedChildren: list<array{ref: string, suffix: string}>,
+     *   nestedValidation: array<string, mixed>|null,
+     *   checksObjectPaths: bool,
+     *   checksScalarPaths: bool,
+     *   objectPathsExpression: string,
+     *   scalarPathsExpression: string,
+     *   nestedPathsEscapeDots: bool,
+     * }
+     */
+    private function laravelNestedTemplateVars(
+        string $className,
+        array $nestedChildren,
+        array $objectPaths,
+        array $scalarPaths,
+        bool $readsRawBody,
+    ): array {
+        $childObjectPaths = false;
+        $childScalarPaths = false;
+        $childEscapedDots = false;
+        foreach ($nestedChildren as $child) {
+            $childObjectPaths = $childObjectPaths || $this->laravelNestedHasPaths($child['class'], 'objectPaths', [$className]);
+            $childScalarPaths = $childScalarPaths || ($readsRawBody && $this->laravelNestedHasPaths($child['class'], 'scalarPaths', [$className]));
+            $childEscapedDots = $childEscapedDots || $this->laravelNestedHasPaths($child['class'], 'escapedDots', [$className]);
+        }
+
+        $nestedValidation = null;
+        if (array_key_exists($className, $this->laravelComposedTargets())) {
+            $plan = $this->laravelNestedValidationPlan($className);
+            $nestedValidation = [
+                'rules' => $plan['rules'],
+                'objectPaths' => $plan['objectPaths'],
+                'scalarPaths' => $plan['scalarPaths'],
+                'children' => array_map(
+                    fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
+                    $plan['children'],
+                ),
+            ];
+        }
+
+        $paths = static fn(string $own, bool $hasOwn, bool $hasNested, string $kind): string => match (true) {
+            $hasOwn && $hasNested => sprintf("[...%s, ...self::openApiNestedParts()['%s']]", $own, $kind),
+            $hasNested => sprintf("self::openApiNestedParts()['%s']", $kind),
+            default => $own,
+        };
+
+        return [
+            'nestedChildren' => array_map(
+                fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
+                $nestedChildren,
+            ),
+            'nestedValidation' => $nestedValidation,
+            'checksObjectPaths' => $objectPaths !== [] || $childObjectPaths,
+            'checksScalarPaths' => $scalarPaths !== [] || $childScalarPaths,
+            'objectPathsExpression' => $paths('self::OPENAPI_OBJECT_PATHS', $objectPaths !== [], $childObjectPaths, 'objectPaths'),
+            'scalarPathsExpression' => $paths('self::OPENAPI_SCALAR_PATHS', $scalarPaths !== [], $childScalarPaths, 'scalarPaths'),
+            'nestedPathsEscapeDots' => $childEscapedDots,
+        ];
+    }
+
+    /**
+     * A nested class's fold, stored once in `OPENAPI_RECURSIVE_SCHEMAS` and pointed at, where written
+     * out it was repeated under every path that reaches the class — exponentially, for classes that
+     * reach one another along several paths. The pointer is the one cycles already use.
+     *
+     * Only where the fold cannot depend on the path: a class that reaches back to one ABOVE it folds
+     * that one into a cycle marker, and a fold computed elsewhere would expand it instead. And only where
+     * the marker means the same: its local keywords win over the stored ones, a written-out fold won over
+     * the local ones, so a keyword in both keeps the written-out form.
+     *
+     * @param array<int, string> $visitedClasses
+     * @param array<string, mixed> $local the keywords the marker sits beside
+     * @return array{key: string, fold: array<string, mixed>}|null
+     */
+    private function laravelSharedFold(string $target, array $visitedClasses, bool $insideRecursiveFold, array $local): ?array
+    {
+        if (array_intersect_key(array_flip($visitedClasses), $this->laravelReachableClasses($target)) !== []) {
+            return null;
+        }
+
+        // Inside a recursive fold nothing is pruned, which is what a cycle's own fold is: the same entry.
+        $key = $insideRecursiveFold ? $target : $target . '@rules';
+        if (!array_key_exists($key, $this->laravelRecursiveFolds)) {
+            $this->laravelRecursiveFolds[$key] = [];
+            $this->laravelRecursiveFolds[$key] = $this->laravelInterpreterSchemaForClass(
+                className: $target,
+                visitedClasses: [$target],
+                insideRecursiveFold: $insideRecursiveFold,
+            );
+        }
+        $fold = $this->laravelRecursiveFolds[$key];
+        if (array_intersect_key($fold, $local) !== []) {
+            return null;
+        }
+
+        return ['key' => $key, 'fold' => $fold];
+    }
+
+    /**
+     * Every class a class's fold can reach — through its properties, list items and map values, and an
+     * allOf base's variants — itself excluded unless a cycle leads back to it.
+     *
+     * @return array<string, true>
+     */
+    private function laravelReachableClasses(string $className): array
+    {
+        if (array_key_exists($className, $this->laravelReachableCache)) {
+            return $this->laravelReachableCache[$className];
+        }
+
+        $reached = [];
+        $queue = [$className];
+        while ($queue !== []) {
+            $current = array_pop($queue);
+            $next = [];
+            if ($this->laravelIsAllOfDiscriminatorBase($current)) {
+                foreach ($this->discriminatorSchemas[$current]['mapping'] as $variant) {
+                    $next[] = $variant;
+                }
+            }
+            foreach ($this->getSchemaProperties($current) as $property) {
+                $target = $this->laravelDtoClass($property) ?? $this->laravelDtoItemClass($property);
+                if ($target !== null && !$this->laravelIsEnumClass($target)) {
+                    $next[] = $target;
+                }
+            }
+            foreach ($next as $class) {
+                if (!array_key_exists($class, $reached)) {
+                    $reached[$class] = true;
+                    $queue[] = $class;
+                }
+            }
+        }
+
+        return $this->laravelReachableCache[$className] = $reached;
     }
 }

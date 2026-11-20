@@ -46,9 +46,9 @@ Parameters:
 | Option | Alias | Required | Description |
 |---|---|---|---|
 | `--file` | `-f` | ✅ | Path to OpenAPI spec file (YAML or JSON), or a mask (`specs/*/api.yml`) that generates every matching document in one run, with `{1}`, `{2}`… in `--directory` and `--namespace` — see [Many documents in one run](#many-documents-in-one-run). |
-| `--directory` | `-d` | ✅ | Output directory for generated DTOs |
+| `--directory` | `-d` | ✅ | Output directory for generated DTOs. It is regenerated whole — what is not generated is deleted — so it must hold nothing else: the working directory or one above it, a project root (`.git`, `composer.json`) and a directory holding the document are refused. |
 | `--namespace` | | | Explicit DTO namespace (derived from `--directory` if omitted) |
-| `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. `Common` is created inside `--directory`; any other relative path is resolved from the current working directory, an absolute one is used as is. |
+| `--dto-generator-directory` | | | **Omit** to use the runtime services from `vendor/` (no copy — the default). Pass it to copy them into the given directory instead; the flag without a value defaults to `Common`. `Common` is created inside `--directory` and regenerated with it; any other relative path is resolved from the current working directory, an absolute one is used as is, and there only the service files are written — the directory's other files are left alone. |
 | `--dto-generator-namespace` | | | Namespace for the copied runtime services. Only has effect together with `--dto-generator-directory`. |
 | `--attributes` | | | Generation mode: `runtime` (default — DTOs use this library's runtime), `symfony` (DTOs decorated with Symfony Validator/Serializer attributes), `laravel` (a plain DTO plus a `FormRequest` with `rules()`), `laravel-data` (one `spatie/laravel-data` class per schema) or `yii3` (a `yiisoft/input-http` class per schema). See [Five modes](README.md#five-modes). |
 | `--with-psr7` | | | Also copy the PSR-7 deserializer (`DtoDeserializerPsr7`) when vendoring the runtime via `--dto-generator-directory`. Requires `symfony/psr-http-message-bridge` in the consuming project. |

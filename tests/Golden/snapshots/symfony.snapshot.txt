@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12692 lines
+# symfony mode — 77 files, 12784 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2000,7 +2000,9 @@ final class ApiTestSerializationGetQueryParams
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -2044,9 +2046,10 @@ final class ApiTestSerializationGetQueryParams
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -3370,7 +3373,9 @@ final class ApplicatorRefs
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -3388,7 +3393,8 @@ final class ApplicatorRefs
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -3910,7 +3916,9 @@ final class ApplicatorRefsConditional
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -4274,7 +4282,9 @@ final class ApplicatorRefsKeyed
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -4292,7 +4302,8 @@ final class ApplicatorRefsKeyed
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -4431,7 +4442,6 @@ use function array_key_exists;
 use function get_object_vars;
 use function is_array;
 use function is_object;
-use function is_string;
 use function method_exists;
 use function sprintf;
 use function str_ends_with;
@@ -4590,7 +4600,8 @@ final class ApplicatorRefsPoisonedKey
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -5549,7 +5560,9 @@ final class ContainerAliases
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -5593,9 +5606,10 @@ final class ContainerAliases
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -5762,6 +5776,7 @@ use function array_keys;
 use function array_map;
 use function get_object_vars;
 use function is_array;
+use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
@@ -6143,7 +6158,9 @@ final class Containers
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -6187,9 +6204,10 @@ final class Containers
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -6334,7 +6352,7 @@ final class Containers
 
     private function isValidOpenApiDateFormat(string $value): bool
     {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
@@ -6375,6 +6393,7 @@ use OverflowException;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
+use function array_is_list;
 use function array_key_exists;
 use function floor;
 use function get_object_vars;
@@ -6512,9 +6531,10 @@ final class CountMap
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -7337,7 +7357,9 @@ final class ItemBounds
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -7381,9 +7403,10 @@ final class ItemBounds
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -7552,6 +7575,23 @@ final class ItemBounds
                     continue;
                 }
             }
+            // ECMA-262 `[^]` is any character and `[]` none; PCRE reads the `]` as a member and the
+            // class never closes, so every value failed as "invalid regex".
+            if (!$inClass && $character === '[' && substr($pattern, $i, 3) === '[^]') {
+                $delimited .= '[\\s\\S]';
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ']') {
+                $delimited .= '(?!)';
+                $i++;
+                continue;
+            }
+            // ECMA-262 `.` stops at every line terminator; PCRE's stops at `\\n` alone.
+            if (!$inClass && $character === '.') {
+                $delimited .= $unicode ? '[^\\n\\r\\x{2028}\\x{2029}]' : '[^\\n\\r]';
+                continue;
+            }
             if (!$inClass && $character === '[') {
                 $inClass = true;
                 $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
@@ -7562,7 +7602,9 @@ final class ItemBounds
             $delimited .= $character === '#' ? '\\#' : $character;
         }
 
-        return $delimited . ($unicode ? '#u' : '#');
+        // `D`: ECMA-262 `$` is the very end. PCRE's also matches before a final `\\n`, and
+        // `^[a-z]+$` let "abc\\n" through to a log line or a header.
+        return $delimited . ($unicode ? '#uD' : '#D');
     }
 
     private function toIntConstraint(mixed $value): ?int
@@ -8195,7 +8237,9 @@ final class NestedContainers
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -8239,9 +8283,10 @@ final class NestedContainers
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -8427,7 +8472,7 @@ final class NestedContainers
 
     private function isValidOpenApiDateFormat(string $value): bool
     {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
@@ -8791,7 +8836,9 @@ final class NullableContainerValues
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -8835,9 +8882,10 @@ final class NullableContainerValues
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -9293,7 +9341,9 @@ final class ObjectWideRules
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -9311,7 +9361,8 @@ final class ObjectWideRules
 
         if (is_array($schema['dependentRequired'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentRequired'] as $propertyName => $deps) {
-                if (!is_string($propertyName) || !is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 foreach ($deps as $depProperty) {
@@ -10254,6 +10305,7 @@ use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 /**
@@ -10508,7 +10560,11 @@ final class TestPostRequest
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -10600,7 +10656,9 @@ final class TestPostRequest
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -10786,7 +10844,7 @@ final class TestPostRequest
     {
         return match ($format) {
             'uuid' => $this->isValidOpenApiUuid($value),
-            'uri' => filter_var($value, FILTER_VALIDATE_URL) !== false,
+            'uri' => $this->isValidOpenApiUri($value),
             'uri-template' => $this->isValidOpenApiUriTemplate($value),
             default => true,
         };
@@ -10794,7 +10852,22 @@ final class TestPostRequest
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', $value) === 1;
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
+
+    private function isValidOpenApiUri(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_URL) !== false) {
+            return true;
+        }
+
+        // The scheme-only shapes — `urn:`, `mailto:`, `tel:` — the URL filter has no notion of.
+        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/D', $value) === 1;
     }
 
     private function isValidOpenApiUriReference(string $value): bool
@@ -11115,7 +11188,11 @@ final class TreeNode
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -11209,7 +11286,9 @@ final class TreeNode
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -11233,9 +11312,10 @@ final class TreeNode
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -11837,7 +11917,11 @@ final class UnionUnderContainer
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -11930,7 +12014,9 @@ final class UnionUnderContainer
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -11984,7 +12070,11 @@ final class UnionUnderContainer
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -12389,7 +12479,9 @@ final class UniqueScalars
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {

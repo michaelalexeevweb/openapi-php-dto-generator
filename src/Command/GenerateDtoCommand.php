@@ -28,6 +28,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
@@ -45,6 +46,7 @@ use Twig\TwigFilter;
  *   description: string|null,
  *   example: string|null,
  *   temporalFormat?: string|null,
+ *   unionTemporalFormats?: list<string>,
  *   itemsTemporalFormat?: string|null,
  *   inPath?: bool,
  *   inQuery?: bool,
@@ -117,6 +119,9 @@ final class GenerateDtoCommand extends Command
 
     /** Generation mode backed by this library's runtime (DtoValidator/Normalizer/Deserializer). */
     public const string ATTRIBUTE_MODE_RUNTIME = 'runtime';
+
+    /** The most array nodes a parsed YAML document may hold — see `fitsNodeBudget()`. */
+    private const int MAX_DOCUMENT_NODES = 5_000_000;
 
     /** Generation mode emitting Symfony Validator/Serializer attributes (no library runtime). */
     public const string ATTRIBUTE_MODE_SYMFONY = 'symfony';
@@ -639,13 +644,20 @@ final class GenerateDtoCommand extends Command
                     $mode,
                 );
             }
-            (new GeneratedFilePublisher())->publish($files, $ownedDirectories);
+            (new GeneratedFilePublisher())->publish(
+                files: $files,
+                ownedDirectories: $ownedDirectories,
+                inputFiles: array_column($documents, 'file'),
+            );
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
             return Command::FAILURE;
         }
 
-        if ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME) {
+        if ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME && $dtoGeneratorDirectory === null) {
+            // Nothing is copied without a directory to copy into; the note said "copied" all the same.
+            $io->warning('Option --with-psr7 is ignored without --dto-generator-directory: the runtime services are used from vendor/, where DtoDeserializerPsr7 already is.');
+        } elseif ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME) {
             $io->note(
                 'PSR-7 deserializer copied. Install the bridge in your project: '
                 . 'composer require symfony/psr-http-message-bridge',
@@ -902,8 +914,12 @@ final class GenerateDtoCommand extends Command
      * Parses an OpenAPI document from disk. A `.json` spec is decoded with json_decode
      * for strict, fast parsing and clear JSON error messages; every other extension is
      * parsed as YAML (which also accepts JSON, so unknown extensions still work).
+     *
+     * A REFERENCED file is named by the document, not by the user, so a failure to parse it reports
+     * where, never what: a `$ref` at a file that is no OpenAPI document printed its offending line
+     * into the CI log.
      */
-    private function parseSpecFile(string $filePath): mixed
+    private function parseSpecFile(string $filePath, bool $referenced = false): mixed
     {
         // Strip common env/sample suffixes so `openapi.json.dist` still takes the JSON path.
         $effectivePath = preg_replace('/\.(dist|example|local|sample)$/i', '', $filePath) ?? $filePath;
@@ -926,7 +942,49 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        return Yaml::parseFile($filePath);
+        try {
+            $parsed = Yaml::parseFile($filePath);
+        } catch (ParseException $e) {
+            if (!$referenced) {
+                throw $e;
+            }
+            throw new RuntimeException(sprintf('Invalid YAML in referenced file %s at line %d.', $filePath, $e->getParsedLine()));
+        }
+
+        $budget = self::MAX_DOCUMENT_NODES;
+        if (!$this->fitsNodeBudget(node: $parsed, budget: $budget)) {
+            throw new RuntimeException(sprintf(
+                '%s expands to more than %d nodes — YAML aliases nested into one another? Nothing was generated.',
+                $filePath,
+                self::MAX_DOCUMENT_NODES,
+            ));
+        }
+
+        return $parsed;
+    }
+
+    /**
+     * YAML aliases share one parsed array between every place that names it, so a few hundred bytes
+     * of anchors nested ten deep stand for 10^10 nodes — and every pass that rebuilds the document
+     * (`rewriteDefsRefs()` first) materialises them, until memory runs out. Counting stops at the
+     * budget, so the check itself stays cheap.
+     */
+    private function fitsNodeBudget(mixed $node, int &$budget): bool
+    {
+        if (!is_array($node)) {
+            return true;
+        }
+        $budget -= count($node);
+        if ($budget < 0) {
+            return false;
+        }
+        foreach ($node as $child) {
+            if (is_array($child) && !$this->fitsNodeBudget(node: $child, budget: $budget)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1459,13 +1517,24 @@ final class GenerateDtoCommand extends Command
             $fileName = basename($relativePath);
             $pendingFiles[$commonDir . '/' . $fileName] = $content;
         }
-        $this->publishGeneratedFiles($pendingFiles, [$commonDir]);
+        // The default `<output>/Common` is the generator's own and is regenerated whole. A directory
+        // the user names is shared, not owned: it may hold the consumer's own classes, or be the
+        // project itself (`--dto-generator-directory=.`), so each service file replaces only itself,
+        // and a service a later run no longer copies stays behind.
+        $this->publishGeneratedFiles(
+            files: $pendingFiles,
+            ownedDirectories: $dtoGeneratorDirectory === 'Common' ? [$commonDir] : [],
+        );
     }
 
     private function initializeGeneration(string $outputDirectory, string $namespace, ?string $rootSpecFile): void
     {
         $this->pendingOutputFiles = [];
         $this->ownedOutputDirectories = [];
+        $this->interpreterPropertyTypes = [];
+        $this->laravelComposedTargetCache = null;
+        $this->laravelNestedPathsCache = [];
+        $this->laravelReachableCache = [];
         $this->dtoSchemas = [];
         $this->enumSchemas = [];
         $this->localSchemaReferences = [];
@@ -2643,6 +2712,13 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
+        // A document names the files it reads, so it may name only documents: a `$ref` at any
+        // other local file would have the generator read it into its output or its error message.
+        $effectivePart = preg_replace('/\.(dist|example|local|sample)$/i', '', $filePart) ?? $filePart;
+        if (!in_array(strtolower(pathinfo($effectivePart, PATHINFO_EXTENSION)), ['yaml', 'yml', 'json'], true)) {
+            throw new RuntimeException(sprintf('Referenced file must be a .yaml, .yml or .json document: %s', $ref));
+        }
+
         $absoluteFile = realpath(dirname($currentSourceFile) . DIRECTORY_SEPARATOR . $filePart);
         if ($absoluteFile === false) {
             throw new RuntimeException(sprintf('Referenced OpenAPI file not found: %s', $ref));
@@ -2676,7 +2752,7 @@ final class GenerateDtoCommand extends Command
             return $this->externalDocSchemas[$filePath];
         }
 
-        $data = $this->parseSpecFile($filePath);
+        $data = $this->parseSpecFile(filePath: $filePath, referenced: true);
         if (!is_array($data)) {
             throw new RuntimeException(sprintf('OpenAPI root must be an object/array in %s.', $filePath));
         }
@@ -3432,7 +3508,48 @@ final class GenerateDtoCommand extends Command
         $schemas = $openApi['components']['schemas'] ?? [];
         $this->assertDocumentNodeIsAnObject($schemas, 'components.schemas');
 
-        return is_array($schemas) ? $schemas : [];
+        return is_array($schemas) ? array_map($this->normalizeEnumSpelling(...), $schemas) : [];
+    }
+
+    /**
+     * One spelling for a component enum: the 3.0 one, `type: string` plus `nullable: true`, which is
+     * the one that becomes a backed enum. OpenAPI 3.1's `type: [string, 'null']`, and an enum with no
+     * `type` at all, were taken for an object and generated as an EMPTY DTO — every value, null
+     * included, then failed with "Cannot deserialize nested DTO … from non-array value".
+     */
+    private function normalizeEnumSpelling(mixed $schema): mixed
+    {
+        if (!is_array($schema) || !is_array($schema['enum'] ?? null) || $schema['enum'] === []) {
+            return $schema;
+        }
+        $members = array_values(array_filter($schema['enum'], static fn(mixed $member): bool => $member !== null));
+        $nullable = count($members) !== count($schema['enum']);
+
+        $type = $schema['type'] ?? null;
+        if (is_string($type)) {
+            return $schema;
+        }
+        if (is_array($type)) {
+            $nonNullTypes = array_values(array_filter($type, static fn(mixed $name): bool => $name !== 'null'));
+            if (count($nonNullTypes) !== 1 || !in_array($nonNullTypes[0], ['string', 'integer'], true)) {
+                return $schema;
+            }
+            $nullable = $nullable || in_array('null', $type, true);
+            $type = $nonNullTypes[0];
+        } elseif ($members !== [] && array_filter($members, 'is_string') === $members) {
+            $type = 'string';
+        } elseif ($members !== [] && array_filter($members, 'is_int') === $members) {
+            $type = 'integer';
+        } else {
+            return $schema;
+        }
+
+        $schema['type'] = $type;
+        if ($nullable) {
+            $schema['nullable'] = true;
+        }
+
+        return $schema;
     }
 
     /**
@@ -3606,6 +3723,14 @@ final class GenerateDtoCommand extends Command
                 ));
             }
             $normalizedName = $this->disambiguateCaseInsensitiveName($normalizedName, $openApiPropertyName, $normalizedToOpenApiName);
+            $normalizedName = $this->avoidGeneratedMemberName(
+                name: $normalizedName,
+                reserved: $this->generatedMemberNames(array_map(
+                    $this->normalizePropertyName(...),
+                    array_map('strval', array_keys($properties)),
+                )),
+                taken: array_keys($normalizedToOpenApiName),
+            );
             $normalizedToOpenApiName[$normalizedName] = $openApiPropertyName;
 
             $result[] = [
@@ -3619,6 +3744,7 @@ final class GenerateDtoCommand extends Command
                 'description' => $description,
                 'example' => $example,
                 'temporalFormat' => $temporalFormat,
+                'unionTemporalFormats' => $this->unionTemporalFormats($propertySchema),
                 'itemsTemporalFormat' => $itemsTemporalFormat,
                 'inPath' => $isInPath,
                 'inQuery' => $isInQuery,
@@ -4776,9 +4902,11 @@ final class GenerateDtoCommand extends Command
         if (
             $enum !== null
             && $enum['values'] !== []
-            && in_array($enum['type'], ['string', 'integer', 'number', 'boolean'], true)
+            && in_array($enum['type'], ['string', 'int', 'integer', 'number', 'boolean'], true)
         ) {
-            return ['type' => $enum['type'], 'enum' => $enum['values']];
+            // A registered enum carries its PHP backing type: `int`, not the schema's `integer`. Only
+            // `string` was recognised, so an integer enum two containers down was validated by nothing.
+            return ['type' => $enum['type'] === 'int' ? 'integer' : $enum['type'], 'enum' => $enum['values']];
         }
 
         return null;
@@ -6186,6 +6314,31 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The temporal formats of a `oneOf` / `anyOf`'s branches — `[date]`, `[date-time]` or both — which
+     * decide how the union's `DateTimeImmutable` goes back out. A union has no `format` of its own, so
+     * the value left as the PHP object, and `toJson()` wrote `{"date": …, "timezone": …}`.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return list<string>
+     */
+    private function unionTemporalFormats(array $propertySchema): array
+    {
+        $branches = $propertySchema['oneOf'] ?? $propertySchema['anyOf'] ?? null;
+        if (!is_array($branches)) {
+            return [];
+        }
+        $formats = [];
+        foreach ($branches as $branch) {
+            $format = is_array($branch) ? $branch['format'] ?? null : null;
+            if (in_array($format, ['date', 'date-time'], true)) {
+                $formats[$format] = true;
+            }
+        }
+
+        return array_keys($formats);
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      */
     private function resolveTemporalPhpDocFormat(array $propertySchema): ?string
@@ -7399,12 +7552,66 @@ final class GenerateDtoCommand extends Command
             }
 
             $name = $this->disambiguateCaseInsensitiveName($property['name'], $openApiName, $assigned);
+            $name = $this->avoidGeneratedMemberName(
+                name: $name,
+                reserved: $this->generatedMemberNames(array_column($properties, 'name')),
+                taken: array_keys($assigned),
+            );
             $assigned[$name] = $openApiName;
             $namesByOpenApiName[$openApiName] = $name;
             $properties[$index]['name'] = $name;
         }
 
         return $properties;
+    }
+
+    /**
+     * The names the emitted class takes for itself beside the document's properties: `$this`, which
+     * no parameter may be called; runtime's bag of undeclared keys; Laravel's presence bookkeeping;
+     * Symfony's `<property>Provided` flag for each property. A document property spelled like one of them generated a class PHP refused
+     * to compile — "Cannot redeclare", "Cannot use $this as parameter".
+     *
+     * @param list<string> $propertyNames the PHP names of the class's properties
+     * @return array<string, true> lower-cased
+     */
+    private function generatedMemberNames(array $propertyNames): array
+    {
+        $reserved = ['this' => true];
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
+            $reserved['undeclaredproperties'] = true;
+        }
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
+            $reserved['providedopenapikeys'] = true;
+            $reserved['omitsunsetnulls'] = true;
+        }
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
+            foreach ($propertyNames as $propertyName) {
+                $reserved[strtolower($propertyName . 'Provided')] = true;
+            }
+        }
+
+        return $reserved;
+    }
+
+    /**
+     * A property named like a generated member gets a numeric suffix, as a case-only collision does:
+     * only the PHP name changes, the wire name stays the document's.
+     *
+     * @param array<string, true> $reserved
+     * @param list<string> $taken
+     */
+    private function avoidGeneratedMemberName(string $name, array $reserved, array $taken): string
+    {
+        if (!array_key_exists(strtolower($name), $reserved)) {
+            return $name;
+        }
+        $takenLower = array_flip(array_map('strtolower', $taken));
+        $suffix = 2;
+        while (array_key_exists(strtolower($name . $suffix), $reserved) || array_key_exists(strtolower($name . $suffix), $takenLower)) {
+            $suffix++;
+        }
+
+        return $name . $suffix;
     }
 
     /**

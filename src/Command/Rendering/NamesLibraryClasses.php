@@ -48,18 +48,12 @@ trait NamesLibraryClasses
      */
     private function namespaceDeclaresClass(string $shortName, string $namespace): bool
     {
-        foreach ($this->dtoSchemas as $generatedClass => $ignored) {
-            if ($generatedClass === $shortName && ($this->schemaNamespaces[$generatedClass] ?? $this->baseNamespace) === $namespace) {
-                return true;
-            }
+        // Keyed by short name: a lookup, not a scan of every class per reference.
+        if (array_key_exists($shortName, $this->dtoSchemas) && ($this->schemaNamespaces[$shortName] ?? $this->baseNamespace) === $namespace) {
+            return true;
         }
 
-        foreach ($this->enumSchemas as $generatedEnum => $ignored) {
-            if ($generatedEnum === $shortName && ($this->enumNamespaces[$generatedEnum] ?? $this->baseNamespace) === $namespace) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_key_exists($shortName, $this->enumSchemas)
+            && ($this->enumNamespaces[$shortName] ?? $this->baseNamespace) === $namespace;
     }
 }

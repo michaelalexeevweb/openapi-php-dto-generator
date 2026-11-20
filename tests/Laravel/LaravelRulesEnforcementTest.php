@@ -710,6 +710,56 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * Twenty schemas each naming the two before them: written out per path, the rules and the
+     * interpreter schema of the last one grew like Fibonacci — a 15 MB class and an out-of-memory fatal.
+     * Each nested class now writes its own part once and the parent asks for it, so the class stays
+     * small, and a mistake four levels down is still refused.
+     */
+    public function testAChainOfSchemasReachingEachOtherTwiceStaysSmallAndValidated(): void
+    {
+        $chain = ['Link0' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer', 'minimum' => 1]]]];
+        $chain['Link1'] = ['type' => 'object', 'properties' => ['id' => ['type' => 'integer'], 'left' => ['$ref' => '#/components/schemas/Link0']]];
+        for ($index = 2; $index <= 20; $index++) {
+            $chain['Link' . $index] = ['type' => 'object', 'properties' => [
+                'id' => ['type' => 'integer'],
+                'left' => ['$ref' => '#/components/schemas/Link' . ($index - 1)],
+                'right' => ['$ref' => '#/components/schemas/Link' . ($index - 2)],
+            ]];
+        }
+
+        $fqcn = $this->generateProbe('chain reaching each other twice', ['$ref' => '#/components/schemas/Link20'], $chain);
+
+        $file = (new ReflectionClass($fqcn))->getFileName();
+        $this->assertIsString($file);
+        $this->assertLessThan(60_000, filesize(dirname($file) . '/Link20.php'));
+
+        $rules = call_user_func([$fqcn, 'rules']);
+        $this->assertTrue($this->validatorFactory()->make(['f' => ['left' => ['left' => ['right' => ['id' => 5]]]]], $rules)->passes());
+        $this->assertTrue($this->validatorFactory()->make(['f' => ['left' => ['left' => ['right' => ['id' => 'x']]]]], $rules)->fails());
+    }
+
+    /**
+     * A `$ref` to a generated DTO has no `type` of its own, and without an `array` rule a string or a
+     * null passed `rules()` and then broke `fromValidated()` with a TypeError — a 500 for a bad request.
+     */
+    public function testANestedDtoReferenceRefusesAScalarAndNull(): void
+    {
+        $fqcn = $this->generateProbe(
+            'nested dto reference refuses a scalar',
+            ['$ref' => '#/components/schemas/Hen'],
+            ['Hen' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]],
+        );
+
+        foreach (['x', 5, null] as $invalid) {
+            $validator = $this->validatorFactory()->make(['f' => $invalid], call_user_func([$fqcn, 'rules']));
+            $this->assertTrue($validator->fails(), sprintf('%s must be refused', json_encode($invalid)));
+        }
+        $validator = $this->validatorFactory()->make(['f' => ['name' => 'Clucky']], call_user_func([$fqcn, 'rules']));
+        $this->assertFalse($validator->fails());
+        $this->assertNotNull(call_user_func([$fqcn, 'fromValidated'], $validator->validated())->getF());
+    }
+
+    /**
      * A REQUIRED nested object sent as `{}` — the validator says yes and the DTO has to be buildable.
      *
      * `validated()` builds its result out of the leaves it could extract, and an empty object has

@@ -7,13 +7,16 @@ namespace OpenapiPhpDtoGenerator\Service;
 use BackedEnum;
 use Closure;
 use DateTimeImmutable;
+use DateTimeZone;
 use Error;
 use JsonException;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use PhpToken;
 use ReflectionClass;
 use ReflectionException;
+use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionUnionType;
@@ -22,6 +25,71 @@ use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use UnitEnum;
+
+use function array_filter;
+use function array_is_list;
+use function array_key_exists;
+use function array_key_first;
+use function array_key_last;
+use function array_keys;
+use function array_map;
+use function array_unique;
+use function array_values;
+use function call_user_func;
+use function class_exists;
+use function count;
+use function ctype_space;
+use function end;
+use function enum_exists;
+use function explode;
+use function file_get_contents;
+use function floor;
+use function gettype;
+use function implode;
+use function in_array;
+use function is_a;
+use function is_array;
+use function is_bool;
+use function is_callable;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_numeric;
+use function is_object;
+use function is_scalar;
+use function is_string;
+use function json_decode;
+use function json_last_error;
+use function json_last_error_msg;
+use function lcfirst;
+use function ltrim;
+use function max;
+use function method_exists;
+use function ord;
+use function parse_str;
+use function preg_match;
+use function preg_match_all;
+use function preg_replace_callback;
+use function preg_split;
+use function rawurldecode;
+use function restore_error_handler;
+use function rtrim;
+use function set_error_handler;
+use function sprintf;
+use function str_contains;
+use function str_ends_with;
+use function str_replace;
+use function str_starts_with;
+use function strcmp;
+use function strlen;
+use function strpos;
+use function strrpos;
+use function strtolower;
+use function strtoupper;
+use function substr;
+use function trim;
+use function ucfirst;
+use function urldecode;
 
 final class DtoDeserializer implements DtoDeserializerInterface
 {
@@ -422,7 +490,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // was there. Only body keys are compared: query, header and cookie carry their own keys by
         // definition, and the document does not close those.
         $closingConstraints = $this->resolveOpenApiObjectConstraints($reflection);
-        if (($closingConstraints['additionalProperties'] ?? null) === false) {
+        $undeclared = [];
+        $extraPropertySchema = $closingConstraints['additionalProperties'] ?? null;
+        if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
             $declared = [];
             foreach ($classMeta['params'] as $declaredParam) {
                 $declared[$declaredParam['requestFieldName']] = true;
@@ -453,6 +523,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
 
                 if ($this->bodyKeyMatchesPattern($bodyKey, $patterns)) {
+                    continue;
+                }
+
+                // A schema rather than `false`: the undeclared key is allowed, its value must match,
+                // and the DTO keeps it — see `withUndeclaredProperties()`.
+                if (is_array($extraPropertySchema)) {
+                    foreach ($this->constraintValidator->validate('param "' . $bodyKey . '"', $bodyData[$bodyKey], $extraPropertySchema) as $extraError) {
+                        $errors[] = $extraError;
+                    }
+                    $undeclared[$bodyKey] = $bodyData[$bodyKey];
                     continue;
                 }
 
@@ -494,7 +574,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $fast = $this->resolveFastHydrator($reflection, $classMeta, $request, $bodyData);
             if ($fast !== null) {
                 try {
-                    return $fast($errors);
+                    return $this->withUndeclaredProperties(dto: $fast($errors), undeclared: $undeclared);
                 } catch (RuntimeException $e) {
                     throw $this->withUnreadableBodyHint($e, $request, $bodyData, $queryData, $formData);
                 }
@@ -867,7 +947,25 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        return $dto;
+        return $this->withUndeclaredProperties(dto: $dto, undeclared: $undeclared);
+    }
+
+    /**
+     * The keys `additionalProperties: {schema}` admitted beside the declared ones, handed to a DTO
+     * generated to keep them. A class generated before it, or one without such a schema, has no
+     * `withUndeclaredProperties()` and keeps nothing, as before.
+     *
+     * @param array<array-key, mixed> $undeclared
+     */
+    private function withUndeclaredProperties(object $dto, array $undeclared): object
+    {
+        if ($undeclared === [] || !method_exists($dto, 'withUndeclaredProperties')) {
+            return $dto;
+        }
+
+        $kept = $dto->withUndeclaredProperties($undeclared);
+
+        return is_object($kept) ? $kept : $dto;
     }
 
     /**
@@ -2293,9 +2391,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'mixed' => 'mixed',
             DateTimeImmutable::class => 'datetime',
             UploadedFile::class => 'file',
+            // A DTO is a class of the application, never one of PHP's own. A type name is read from
+            // the DTO's source, and a built-in class named there would be constructed with values
+            // straight from the request.
             default => enum_exists($typeName)
                 ? 'enum'
-                : (class_exists($typeName) ? 'dto' : 'unknown'),
+                : (class_exists($typeName) && !(new ReflectionClass($typeName))->isInternal() ? 'dto' : 'unknown'),
         };
     }
 
@@ -2373,6 +2474,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if (!is_float($value) && !is_int($value)) {
                     throw new RuntimeException(
                         $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
+                    );
+                }
+                // `1e400` decodes to INF, which toJson() cannot write back: a bad request, not a 500.
+                if (is_float($value) && !is_finite($value)) {
+                    throw new RuntimeException(
+                        $this->finalizeParamMessage("param \"{$paramPath}\" must be a finite number"),
                     );
                 }
                 return (float)$value;
@@ -2462,6 +2569,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($typeName === 'float') {
+            if ((is_float($value) || is_string($value)) && is_numeric($value) && !is_finite((float)$value)) {
+                throw new RuntimeException(
+                    $this->finalizeParamMessage("param \"{$paramPath}\" must be a finite number"),
+                );
+            }
             if (!$this->isStrictFloatValue($value)) {
                 throw new RuntimeException(
                     $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
@@ -2667,7 +2779,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'int' => is_int($value),
             'string' => is_string($value),
             'bool' => is_bool($value),
-            'float' => is_float($value),
+            // INF is a float, and not one the wire can carry back: it goes to the full cast to be refused.
+            'float' => is_float($value) && is_finite($value),
             default => false,
         };
     }
@@ -2815,12 +2928,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         // date or date-time: a value in the date shape is the date branch, anything else must be a date-time.
         if ($temporalFormat === self::FORMAT_DATE_OR_DATE_TIME) {
-            $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value);
+            // In UTC: the union goes back out as a date-time, and a date read in the server's zone came
+            // back as a different instant on every server — `+09:00` under Asia/Tokyo.
+            $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value, new DateTimeZone('UTC'));
             if ($dt !== false && $dt->format('Y-m-d') === $value) {
                 return $dt;
             }
 
-            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) === 1) {
                 throw new RuntimeException(
                     $this->finalizeParamMessage(
                         "param \"{$paramPath}\" expects a date in Y-m-d format or a valid date-time"
@@ -2848,7 +2963,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             : 'a valid date-time (e.g. 2026-03-10T12:00:00+00:00)';
 
         // Reject structural mismatches before createFromFormat: it silently accepts trailing characters.
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/D', $value) !== 1) {
             throw new RuntimeException(
                 $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
             );
@@ -2914,11 +3029,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        if (preg_match('/Expected format:\s*(.+)/i', $docComment, $matches) === 1) {
-            return trim($matches[1]);
+        // The last line wins: the generator writes it after the getter's description, which may say
+        // "Expected format:" itself.
+        if (preg_match_all('/^[ \t]*\*[ \t]*Expected format:[ \t]*(\S.*)$/miD', $docComment, $matches) < 1) {
+            return null;
         }
 
-        return null;
+        return trim((string)end($matches[1]));
     }
 
     /**
@@ -2953,9 +3070,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if (($branch['type'] ?? null) === 'null') {
                 continue;
             }
+            // A branch of another kind — `integer`, `boolean` — is tried by the union cast on its own;
+            // it used to make the whole union "not temporal", and a date was then parsed as date-time.
             $branchFormat = $branch['format'] ?? null;
-            if (($branch['type'] ?? null) !== 'string' || !in_array($branchFormat, ['date', 'date-time'], true)) {
-                return null;
+            if (($branch['type'] ?? 'string') !== 'string' || !in_array($branchFormat, ['date', 'date-time'], true)) {
+                continue;
             }
             $formats[$branchFormat] = true;
         }
@@ -3040,7 +3159,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        $rawType = $this->itemTypeFromDocComment($docComment);
+        $varType = $this->docVarType($docComment);
+        $rawType = $varType === null ? null : $this->itemTypeFromDocComment($varType);
         if ($rawType === null) {
             return null;
         }
@@ -3077,13 +3197,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        $itemType = $this->genericValuePart($docComment);
+        $varType = $this->docVarType($docComment);
+        $itemType = $varType === null ? null : $this->genericValuePart($varType);
         if ($itemType === null || preg_match('/^\??(?:array|list)</i', $itemType) !== 1) {
             return null;
         }
 
         $nested = $this->genericValuePart($itemType);
-        if ($nested === null || preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/', $nested, $matches) !== 1) {
+        if ($nested === null || preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/D', $nested, $matches) !== 1) {
             return null;
         }
 
@@ -3180,6 +3301,36 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * The type of a docblock's `@var` tag — `?array<Gear>` — and nothing of the text around it. The
+     * docblock opens with the document's own description, and a description that happened to say
+     * `array<Plain>` used to decide what the items were. The last tag wins: the generator writes it
+     * after the description, so a description line that begins with `@var` comes before it. The type
+     * ends at the first blank outside `<>`, `()`, `{}` and `[]`.
+     */
+    private function docVarType(string $docComment): ?string
+    {
+        if (preg_match_all('~^[ \t]*(?:/\*\*|\*)?[ \t]*@var[ \t]+(\S.*)$~mD', $docComment, $matches) < 1) {
+            return null;
+        }
+        $tag = (string)end($matches[1]);
+
+        $depth = 0;
+        $length = strlen($tag);
+        for ($index = 0; $index < $length; $index++) {
+            $character = $tag[$index];
+            if (str_contains('<({[', $character)) {
+                $depth++;
+            } elseif (str_contains('>)}]', $character)) {
+                $depth = max(0, $depth - 1);
+            } elseif ($depth === 0 && ctype_space($character)) {
+                return substr($tag, 0, $index);
+            }
+        }
+
+        return rtrim($tag, " \t*/");
+    }
+
+    /**
      * The item type a doc comment declares, as a name the cast can use: a nested generic collapses to
      * the SHAPE it is, a plain name comes back as itself.
      */
@@ -3198,7 +3349,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $this->nestedContainerItemTypeName($inner);
         }
 
-        return preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/', $inner, $matches) === 1
+        return preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/D', $inner, $matches) === 1
             ? $matches[1]
             : null;
     }
@@ -3726,6 +3877,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
+        // The class must declare the discriminator itself. A union MEMBER inherits its parent's, and a
+        // property typed with the member — `cat: $ref Cat` — refused every `kind` but the mapped ones,
+        // and a mapped `dog` with "Dog must extend or implement Cat".
+        if ((new ReflectionMethod($baseClass, 'getDiscriminatorMapping'))->getDeclaringClass()->getName() !== ltrim($baseClass, '\\')) {
+            return null;
+        }
+
         $discriminatorProperty = $baseClass::getDiscriminatorPropertyName();
         $mapping = $baseClass::getDiscriminatorMapping();
 
@@ -3852,7 +4010,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return false;
         }
 
-        if (preg_match('/^[+-]?\d+$/', $value) !== 1) {
+        if (preg_match('/^[+-]?\d+$/D', $value) !== 1) {
             return false;
         }
 
@@ -3880,15 +4038,22 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     private function isStrictFloatValue(mixed $value): bool
     {
-        if (is_float($value) || is_int($value)) {
+        if (is_int($value)) {
             return true;
+        }
+
+        // `1e400` overflows to INF: accepted, it came back out of toJson() as "Inf and NaN cannot be
+        // JSON encoded" — a 500 for what is a bad request.
+        if (is_float($value)) {
+            return is_finite($value);
         }
 
         if (!is_string($value)) {
             return false;
         }
 
-        return preg_match('/^[+-]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][+-]?\d+)?$/', $value) === 1;
+        return preg_match('/^[+-]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][+-]?\d+)?$/D', $value) === 1
+            && is_finite((float)$value);
     }
 
     /**
@@ -3916,29 +4081,72 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return self::$fileImportsCache[$filename] = [];
         }
 
-        $result = preg_match_all(
-            '/^use\s+([\w\\\]+)(?:\s+as\s+(\w+))?;/m',
-            $content,
-            $matches,
-            PREG_SET_ORDER,
-        );
-        if ($result === false || $result === 0) {
-            return self::$fileImportsCache[$filename] = [];
-        }
-
+        // Read as PHP tokens, not as lines: a string literal of the DTO holds document text — a
+        // default, a pattern — and a line of it reading `use Other as Gear;` was taken for an
+        // import, so the request's items were constructed as `Other`. Only the class imports before
+        // the class itself count; `use function` / `use const` name no class.
         $imports = [];
-        foreach ($matches as $match) {
-            $fqcn = $match[1];
-            $alias = $match[2] ?? '';
-            $backslashPos = strrpos($fqcn, '\\');
-            // No namespace separator → the FQCN is already the short name. (Guard against
-            // strrpos() returning false, which (int)-casts to 0 and would drop the first char.)
-            $shortName = $alias !== ''
-                ? $alias
-                : ($backslashPos === false ? $fqcn : substr($fqcn, $backslashPos + 1));
-            $imports[$shortName] = $fqcn;
+        $tokens = PhpToken::tokenize($content);
+        $count = count($tokens);
+        for ($index = 0; $index < $count; $index++) {
+            $token = $tokens[$index];
+            if ($token->is([T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM])) {
+                break;
+            }
+            if (!$token->is(T_USE)) {
+                continue;
+            }
+            $statement = [];
+            for ($index++; $index < $count && $tokens[$index]->text !== ';'; $index++) {
+                if (!$tokens[$index]->isIgnorable()) {
+                    $statement[] = $tokens[$index];
+                }
+            }
+            if ($statement === [] || $statement[0]->is([T_FUNCTION, T_CONST])) {
+                continue;
+            }
+            foreach ($this->importClauses($statement) as $alias => $fqcn) {
+                $imports[$alias] = $fqcn;
+            }
         }
 
         return self::$fileImportsCache[$filename] = $imports;
+    }
+
+    /**
+     * The clauses of one `use` statement — `A\B`, `A\B as C`, several separated by commas — as
+     * alias → FQCN.
+     *
+     * @param list<PhpToken> $statement
+     * @return array<string, string>
+     */
+    private function importClauses(array $statement): array
+    {
+        $imports = [];
+        $name = null;
+        $alias = null;
+        $expectAlias = false;
+        foreach ([...$statement, new PhpToken(ord(','), ',')] as $token) {
+            if ($token->text === ',') {
+                if ($name !== null) {
+                    $fqcn = ltrim($name, '\\');
+                    $backslashPos = strrpos($fqcn, '\\');
+                    $imports[$alias ?? ($backslashPos === false ? $fqcn : substr($fqcn, $backslashPos + 1))] = $fqcn;
+                }
+                $name = null;
+                $alias = null;
+                $expectAlias = false;
+            } elseif ($token->is(T_AS)) {
+                $expectAlias = true;
+            } elseif ($token->is([T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED])) {
+                if ($expectAlias) {
+                    $alias = $token->text;
+                } else {
+                    $name = $token->text;
+                }
+            }
+        }
+
+        return $imports;
     }
 }

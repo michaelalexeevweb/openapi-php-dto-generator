@@ -117,7 +117,7 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertStringContainsString("'title' => self::withBlankStringValidation(['present', 'string', 'min:3', 'max:80'])", $article);
         // Optional: `sometimes` is what makes PATCH work. NO `nullable` — the schema never said so,
         // and optionality is about the key being absent, not about null being a legal value.
-        $this->assertStringContainsString("'slug' => self::withBlankStringValidation(['sometimes', 'string', 'regex:#^[a-z|0-9-]+\$#u'])", $article);
+        $this->assertStringContainsString("'slug' => self::withBlankStringValidation(['sometimes', 'string', 'regex:#^[a-z|0-9-]+\$#uD'])", $article);
         // One rule per enum, pinning backing type and members together.
         $this->assertStringContainsString("'status' => self::withBlankStringValidation(['present', Rule::enum(Status::class)])", $article);
         $this->assertStringContainsString('use Illuminate\Validation\Rule;', $article);
@@ -137,10 +137,13 @@ final class GenerateLaravelDtoTest extends TestCase
     {
         $target = $this->generateArticle('LvNested');
         $article = (string)file_get_contents($target . '/Article.php');
+        $tag = (string)file_get_contents($target . '/Tag.php');
 
         // A nested property's presence belongs to the interpreter — no rule expresses "required only
-        // if the parent has a value" — so only the value rules are emitted for the dotted path.
-        $this->assertStringContainsString("'tags.*.name' => self::withBlankStringValidation(['string', 'min:2'])", $article);
+        // if the parent has a value" — so only the value rules are emitted for the dotted path. The
+        // nested class writes them once, below whatever path a parent holds it at.
+        $this->assertStringContainsString("Tag::openApiNestedValidation('tags.*', [self::class])", $article);
+        $this->assertStringContainsString("\$prefix . '.name' => self::withBlankStringValidation(['string', 'min:2'])", $tag);
         $this->assertStringContainsString("'scores.*' => self::withBlankStringValidation(['integer', 'min:0'])", $article);
     }
 
@@ -742,9 +745,10 @@ final class GenerateLaravelDtoTest extends TestCase
     }
 
     /**
-     * `Rule::enum(...)` can come from the NESTED expansion (`child.kind`) while the outer property's own
+     * `Rule::enum(...)` can come from the NESTED rules (`child.kind`) while the outer property's own
      * rules need no facade at all. The import decision missed that, so the first call to `rules()` died
-     * with `Class "…\Rule" not found` — found by running the demo controller, not by a unit test.
+     * with `Class "…\Rule" not found` — found by running the demo controller, not by a unit test. The
+     * nested class writes those rules itself now, so it is the one that imports the facade.
      */
     public function testTheRuleFacadeIsImportedWhenOnlyANestedRuleNeedsIt(): void
     {
@@ -771,11 +775,12 @@ final class GenerateLaravelDtoTest extends TestCase
             ],
         ], $target, 'LvNestedEnum', 'laravel');
 
-        $holder = (string)file_get_contents($target . '/Holder.php');
+        $child = (string)file_get_contents($target . '/Child.php');
 
-        $this->assertStringContainsString('Rule::enum(Kind::class)', $holder);
-        $this->assertStringContainsString('use Illuminate\Validation\Rule;', $holder);
+        $this->assertStringContainsString("\$prefix . '.kind' => self::withBlankStringValidation([Rule::enum(Kind::class)])", $child);
+        $this->assertStringContainsString('use Illuminate\Validation\Rule;', $child);
         // The enum lives in the same namespace, so it needs no import — only the facade does.
+        $this->assertNull($this->lintError($target . '/Child.php'));
         $this->assertNull($this->lintError($target . '/Holder.php'));
     }
 }

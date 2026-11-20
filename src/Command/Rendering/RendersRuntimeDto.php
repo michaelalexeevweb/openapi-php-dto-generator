@@ -342,6 +342,9 @@ trait RendersRuntimeDto
             'discriminator' => $discriminatorData,
             'extends' => $extends,
             'parentHasObjectConstraints' => $parentHasObjectConstraints,
+            // `additionalProperties: {schema}`: the keys it admits are kept and written back. Only the
+            // class that states it does; a subclass keeps its parent's through `parent::toArray()`.
+            'keepsUndeclared' => is_array($objectConstraints['additionalProperties'] ?? null),
             'constraintAssignments' => $constraintAssignments,
             'objectConstraints' => array_map(
                 fn(string $name, mixed $value): array => [
@@ -707,6 +710,10 @@ trait RendersRuntimeDto
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
             $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
+        } elseif ($phpType === 'DateTimeImmutable' && ($property['unionTemporalFormats'] ?? []) !== []) {
+            // A `oneOf` / `anyOf` of temporal branches: the getter keeps the object, the wire form is
+            // the branch's string — see `temporalUnionOutput` below.
+            $returnKind = 'temporalUnion';
         } elseif ($isTemporalArray) {
             $returnKind = 'temporalArray';
             $expectedFormat = $itemsTemporalFormat;
@@ -759,6 +766,9 @@ trait RendersRuntimeDto
             'docReturnType' => $docReturnType,
             'expectedFormat' => $expectedFormat,
             'returnKind' => $returnKind,
+            'temporalUnionOutput' => $returnKind === 'temporalUnion'
+                ? $this->temporalUnionOutput(getter: $methodName, formats: $property['unionTemporalFormats'])
+                : null,
             'phpDateFormat' => $phpDateFormat,
             'isNullableTemporal' => $isNullableTemporal,
             // A temporal ARRAY getter maps over the items, so it needs to know whether the array
@@ -779,6 +789,9 @@ trait RendersRuntimeDto
             // A LIST of maps must keep its items objects too, otherwise an empty item encodes as
             // [] while the very same map at property level encodes as {}.
             'itemsAreMaps' => $this->describesListOfMaps($docReturnType ?? $property['type']),
+            // A map of maps keeps its VALUES objects too: cast at the outer level only, `{"a":{}}`
+            // went out as `{"a":[]}` and the deserializer refused its own output.
+            'valuesAreMaps' => ($property['isMap'] ?? false) === true && $this->describesMapOfMaps($docReturnType ?? $property['type']),
             // A LIST is reindexed on the way out. `type: array` says the wire form is a JSON ARRAY, and
             // its keys are not part of that contract — but PHP's are: hand the constructor the result of
             // `array_filter()` and the property holds [0 => …, 2 => …], which `json_encode()` writes as
@@ -1127,6 +1140,12 @@ trait RendersRuntimeDto
             }
         }
 
+        // A SCHEMA for the keys the class does not declare: each such value must match it. Not
+        // emitted, an `{"a":1,"b":2}` against `additionalProperties: {type: string}` was accepted.
+        if (!$closed && is_array($schema['additionalProperties'] ?? null) && is_array($extracted['additionalProperties'] ?? null)) {
+            $objectConstraints['additionalProperties'] = $extracted['additionalProperties'];
+        }
+
         return $objectConstraints;
     }
     /**
@@ -1365,6 +1384,56 @@ trait RendersRuntimeDto
         }
 
         return implode(', ', $parts);
+    }
+
+    /**
+     * The wire form of a temporal union's value: a date-only union writes `Y-m-d`, a date-time-only one
+     * RFC 3339, and `[date, date-time]` writes a UTC midnight — what the date branch reads a date as —
+     * back as the date it was.
+     *
+     * @param list<string> $formats
+     */
+    private function temporalUnionOutput(string $getter, array $formats): string
+    {
+        $value = sprintf('$this->%s()', $getter);
+        if (!in_array('date-time', $formats, true)) {
+            return sprintf("%s?->format('Y-m-d')", $value);
+        }
+        // Sub-seconds only when there are some, as `DtoNormalizer` writes a date-time.
+        $dateTime = "(\$temporal->format('u') === '000000' ? \$temporal->format('Y-m-d\\TH:i:sP') : \$temporal->format('Y-m-d\\TH:i:s.uP'))";
+        if (!in_array('date', $formats, true)) {
+            return sprintf('($temporal = %s) === null ? null : %s', $value, $dateTime);
+        }
+
+        return sprintf(
+            "(\$temporal = %s) === null ? null : (\$temporal->format('H:i:s.u') === '00:00:00.000000' && \$temporal->getOffset() === 0 ? \$temporal->format('Y-m-d') : %s)",
+            $value,
+            $dateTime,
+        );
+    }
+
+    /** `array<string, array<string, V>>`: a map whose values are maps themselves. */
+    private function describesMapOfMaps(?string $docType): bool
+    {
+        if ($docType === null || preg_match('/^\??array<(.*)>$/is', trim($docType), $matches) !== 1) {
+            return false;
+        }
+
+        $inner = trim($matches[1]);
+        $depth = 0;
+        $length = strlen($inner);
+        for ($i = 0; $i < $length; $i++) {
+            $character = $inner[$i];
+            if ($character === '<') {
+                $depth++;
+            } elseif ($character === '>') {
+                $depth--;
+            } elseif ($character === ',' && $depth === 0) {
+                return preg_match('/^\??array<[^<>]*,/is', trim(substr($inner, $i + 1))) === 1;
+            }
+        }
+
+        return false;
     }
 
     /**

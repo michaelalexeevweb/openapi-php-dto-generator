@@ -173,7 +173,7 @@ trait RendersSymfonyDto
         $validationConstraints = $this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($schemaDefinition),
+                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged($schemaDefinition)),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
@@ -381,7 +381,7 @@ trait RendersSymfonyDto
         return $this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($schemaDefinition),
+                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged($schemaDefinition)),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,

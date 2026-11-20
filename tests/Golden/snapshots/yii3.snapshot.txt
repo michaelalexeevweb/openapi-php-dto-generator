@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 35444 lines
+# yii3 mode — 80 files, 35893 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -413,7 +413,9 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -804,7 +806,9 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -1229,7 +1233,9 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -1643,7 +1649,9 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -2073,7 +2081,9 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -2498,7 +2508,9 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -2628,7 +2640,6 @@ use Yiisoft\Validator\Rule\GreaterThanOrEqual;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\LessThanOrEqual;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -2646,12 +2657,14 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -2685,7 +2698,9 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
             'actionId',
         ],
         'properties' => [
-            'id' => [],
+            'id' => [
+                'format' => 'uuid',
+            ],
             'actionId' => [],
             'page' => [
                 'type' => 'integer',
@@ -2700,7 +2715,6 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
 
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Uuid(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
@@ -3005,6 +3019,12 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
             }
         }
 
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
@@ -3015,7 +3035,9 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -3116,6 +3138,38 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
     }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
 }
 
 ===== ApiTestCatsActionsPostQueryParams.php =====
@@ -3145,7 +3199,6 @@ use Yiisoft\Validator\Rule\GreaterThanOrEqual;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\LessThanOrEqual;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -3163,12 +3216,14 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -3202,7 +3257,9 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
             'actionId',
         ],
         'properties' => [
-            'id' => [],
+            'id' => [
+                'format' => 'uuid',
+            ],
             'actionId' => [],
             'page' => [
                 'type' => 'integer',
@@ -3217,7 +3274,6 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
 
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Uuid(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
@@ -3522,6 +3578,12 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
             }
         }
 
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
@@ -3532,7 +3594,9 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -3633,6 +3697,38 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
     }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
 }
 
 ===== ApiTestDogsTagsGetQueryParams.php =====
@@ -3662,7 +3758,6 @@ use Yiisoft\Validator\Rule\GreaterThanOrEqual;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\LessThanOrEqual;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -3680,12 +3775,14 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -3719,7 +3816,9 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
             'tagId',
         ],
         'properties' => [
-            'id' => [],
+            'id' => [
+                'format' => 'uuid',
+            ],
             'tagId' => [],
             'page' => [
                 'type' => 'integer',
@@ -3734,7 +3833,6 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
 
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Uuid(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
@@ -4039,6 +4137,12 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
             }
         }
 
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
@@ -4049,7 +4153,9 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -4150,6 +4256,38 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
     }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
 }
 
 ===== ApiTestDogsTagsPatchQueryParams.php =====
@@ -4179,7 +4317,6 @@ use Yiisoft\Validator\Rule\GreaterThanOrEqual;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\LessThanOrEqual;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -4197,12 +4334,14 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -4236,7 +4375,9 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
             'tagId',
         ],
         'properties' => [
-            'id' => [],
+            'id' => [
+                'format' => 'uuid',
+            ],
             'tagId' => [],
             'page' => [
                 'type' => 'integer',
@@ -4251,7 +4392,6 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
 
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Uuid(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
@@ -4556,6 +4696,12 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
             }
         }
 
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
@@ -4566,7 +4712,9 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -4667,6 +4815,38 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
     }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
 }
 
 ===== ApiTestFileDeleteQueryParams.php =====
@@ -4692,7 +4872,6 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -4705,12 +4884,14 @@ use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -4740,7 +4921,9 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
             'id',
         ],
         'properties' => [
-            'id' => [],
+            'id' => [
+                'format' => 'uuid',
+            ],
         ],
     ];
 
@@ -4748,7 +4931,6 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
 
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Uuid(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
@@ -4956,6 +5138,12 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
             }
         }
 
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
@@ -4966,7 +5154,9 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -5066,6 +5256,38 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
     }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
 }
 
 ===== ApiTestFilePatchQueryParams.php =====
@@ -5091,7 +5313,6 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Uuid;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -5104,12 +5325,14 @@ use function is_array;
 use function is_object;
 use function is_string;
 use function method_exists;
+use function preg_match;
 use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -5139,7 +5362,9 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
             'id',
         ],
         'properties' => [
-            'id' => [],
+            'id' => [
+                'format' => 'uuid',
+            ],
         ],
     ];
 
@@ -5147,7 +5372,6 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
 
     #[Request('id')]
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Uuid(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $id;
 
@@ -5355,6 +5579,12 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
             }
         }
 
+        if (is_string($normalizedValue) && $this->schemaHasAnyOpenApiKey($schema, ['format'])) {
+            if (is_string($format = $schema['format'] ?? null) && !$this->isValidOpenApiStringFormat($normalizedValue, $format)) {
+                $errors[] = sprintf('%s must match format %s', $path, $format);
+            }
+        }
+
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
                 if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
@@ -5365,7 +5595,9 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -5464,6 +5696,38 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
         return $path === 'payload'
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isValidOpenApiStringFormat(string $value, string $format): bool
+    {
+        return match ($format) {
+            'uuid' => $this->isValidOpenApiUuid($value),
+            default => true,
+        };
+    }
+
+    private function isValidOpenApiUuid(string $value): bool
+    {
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -6120,7 +6384,9 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -6513,7 +6779,9 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -6906,7 +7174,9 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -7301,7 +7571,9 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -7696,7 +7968,9 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -8132,7 +8406,9 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -8530,7 +8806,9 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -8923,7 +9201,9 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -9316,7 +9596,9 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -9711,7 +9993,9 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -10106,7 +10390,9 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -10501,7 +10787,9 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -10706,7 +10994,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
     /** @return array<int> */
     public function getMatrixIds(): array
     {
-        return array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->matrixIds);
+        return array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/D', $item) === 1 ? (int)$item : $item, $this->matrixIds);
     }
 
     /** @return array<string> */
@@ -10873,7 +11161,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
     {
         $payload = [];
         if ($this->hasProperty('matrixIds')) {
-            $payload['matrixIds'] = array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->matrixIds);
+            $payload['matrixIds'] = array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/D', $item) === 1 ? (int)$item : $item, $this->matrixIds);
         }
         if ($this->hasProperty('labelIds')) {
             $payload['labelIds'] = $this->labelIds;
@@ -10934,7 +11222,9 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -11258,7 +11548,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     /** @return ?array<int> */
     public function getExploded(): ?array
     {
-        return $this->hasProperty('exploded') ? ($this->exploded === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->exploded)) : null;
+        return $this->hasProperty('exploded') ? ($this->exploded === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/D', $item) === 1 ? (int)$item : $item, $this->exploded)) : null;
     }
 
     /** Whether the payload carried `exploded` at all. */
@@ -11282,7 +11572,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     /** @return ?array<int> */
     public function getSpaced(): ?array
     {
-        return $this->hasProperty('spaced') ? ($this->spaced === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->spaced)) : null;
+        return $this->hasProperty('spaced') ? ($this->spaced === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/D', $item) === 1 ? (int)$item : $item, $this->spaced)) : null;
     }
 
     /** Whether the payload carried `spaced` at all. */
@@ -11617,13 +11907,13 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     {
         $payload = [];
         if ($this->hasProperty('exploded')) {
-            $payload['exploded'] = ($this->exploded === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->exploded));
+            $payload['exploded'] = ($this->exploded === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/D', $item) === 1 ? (int)$item : $item, $this->exploded));
         }
         if ($this->hasProperty('joined')) {
             $payload['joined'] = $this->joined;
         }
         if ($this->hasProperty('spaced')) {
-            $payload['spaced'] = ($this->spaced === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/', $item) === 1 ? (int)$item : $item, $this->spaced));
+            $payload['spaced'] = ($this->spaced === null ? null : array_map(static fn(mixed $item): mixed => is_string($item) && preg_match('/^-?\d+$/D', $item) === 1 ? (int)$item : $item, $this->spaced));
         }
         if ($this->hasProperty('piped')) {
             $payload['piped'] = $this->piped;
@@ -11714,7 +12004,9 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -11758,9 +12050,10 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -11908,7 +12201,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
     private function isValidOpenApiDateFormat(string $value): bool
     {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
@@ -12253,7 +12546,9 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -12709,7 +13004,9 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -13197,7 +13494,9 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -13715,7 +14014,9 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -14607,7 +14908,9 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -14625,7 +14928,8 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -15288,7 +15592,9 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -15792,7 +16098,9 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -15810,7 +16118,8 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -16258,7 +16567,9 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -16276,7 +16587,8 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -16804,7 +17116,9 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -17201,7 +17515,9 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -17596,7 +17912,9 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -18004,7 +18322,9 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -18468,7 +18788,9 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -18872,7 +19194,9 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -19266,7 +19590,9 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -19675,7 +20001,9 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -20242,7 +20570,9 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -20286,9 +20616,10 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -21033,7 +21364,9 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -21087,9 +21420,10 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -21272,7 +21606,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
     private function isValidOpenApiDateFormat(string $value): bool
     {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
@@ -21323,6 +21657,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -21569,9 +21904,10 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -22081,7 +22417,9 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -22567,7 +22905,9 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -23018,7 +23358,9 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -23426,7 +23768,9 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -23853,7 +24197,9 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -24404,7 +24750,9 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -24448,9 +24796,10 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -24621,6 +24970,23 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
                     continue;
                 }
             }
+            // ECMA-262 `[^]` is any character and `[]` none; PCRE reads the `]` as a member and the
+            // class never closes, so every value failed as "invalid regex".
+            if (!$inClass && $character === '[' && substr($pattern, $i, 3) === '[^]') {
+                $delimited .= '[\\s\\S]';
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ']') {
+                $delimited .= '(?!)';
+                $i++;
+                continue;
+            }
+            // ECMA-262 `.` stops at every line terminator; PCRE's stops at `\\n` alone.
+            if (!$inClass && $character === '.') {
+                $delimited .= $unicode ? '[^\\n\\r\\x{2028}\\x{2029}]' : '[^\\n\\r]';
+                continue;
+            }
             if (!$inClass && $character === '[') {
                 $inClass = true;
                 $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
@@ -24631,7 +24997,9 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
             $delimited .= $character === '#' ? '\\#' : $character;
         }
 
-        return $delimited . ($unicode ? '#u' : '#');
+        // `D`: ECMA-262 `$` is the very end. PCRE's also matches before a final `\\n`, and
+        // `^[a-z]+$` let "abc\\n" through to a log line or a header.
+        return $delimited . ($unicode ? '#uD' : '#D');
     }
 
     private function toIntConstraint(mixed $value): ?int
@@ -25298,7 +25666,9 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -25342,9 +25712,10 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -25530,7 +25901,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
     private function isValidOpenApiDateFormat(string $value): bool
     {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
@@ -25996,7 +26367,9 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -26040,9 +26413,10 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -26640,7 +27014,9 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -26658,7 +27034,8 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
 
         if (is_array($schema['dependentRequired'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentRequired'] as $propertyName => $deps) {
-                if (!is_string($propertyName) || !is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 foreach ($deps as $depProperty) {
@@ -27093,7 +27470,9 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -27622,7 +28001,9 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -28034,7 +28415,9 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -28478,7 +28861,9 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -28887,7 +29272,9 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -29278,7 +29665,9 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -29837,7 +30226,9 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -30307,7 +30698,9 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -30736,7 +31129,9 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -30861,7 +31256,6 @@ use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
-use Yiisoft\Validator\Rule\Url;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -30874,6 +31268,7 @@ use function array_pop;
 use function array_unique;
 use function array_values;
 use function ctype_digit;
+use function filter_var;
 use function floor;
 use function get_object_vars;
 use function implode;
@@ -30898,6 +31293,7 @@ use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -30948,6 +31344,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
             ],
             'homepage' => [
                 'type' => 'string',
+                'format' => 'uri',
             ],
             'endpoint' => [
                 'type' => 'string',
@@ -30969,7 +31366,6 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     public readonly int|string $code;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
-    #[Url(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $homepage;
 
@@ -31277,7 +31673,11 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -31377,7 +31777,9 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -31564,6 +31966,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     {
         return match ($format) {
             'uuid' => $this->isValidOpenApiUuid($value),
+            'uri' => $this->isValidOpenApiUri($value),
             'uri-template' => $this->isValidOpenApiUriTemplate($value),
             default => true,
         };
@@ -31571,7 +31974,22 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', $value) === 1;
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
+
+    private function isValidOpenApiUri(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_URL) !== false) {
+            return true;
+        }
+
+        // The scheme-only shapes — `urn:`, `mailto:`, `tel:` — the URL filter has no notion of.
+        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/D', $value) === 1;
     }
 
     private function isValidOpenApiUriReference(string $value): bool
@@ -32003,7 +32421,11 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -32097,7 +32519,9 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 $definedProperties[$propertyName] = true;
@@ -32121,9 +32545,10 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema === false) {
                         $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
                         continue;
@@ -32843,7 +33268,11 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -32936,7 +33365,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -32990,7 +33421,11 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -33531,7 +33966,9 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -34162,7 +34599,9 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -34186,7 +34625,11 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
                     continue;
                 }
 
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -34726,7 +35169,9 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -35189,7 +35634,9 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {
@@ -35584,7 +36031,9 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
 
         if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['properties'] as $propertyName => $propertySchema) {
-                if (!is_string($propertyName) || !is_array($propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
                     continue;
                 }
                 if (!array_key_exists($propertyName, $structuredValue)) {

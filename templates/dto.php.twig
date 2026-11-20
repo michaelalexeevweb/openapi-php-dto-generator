@@ -376,6 +376,35 @@ interface {{ className }}
     }
 {% endif %}
 
+{% if keepsUndeclared %}
+    /**
+     * The keys `additionalProperties` admits beside the declared properties, as the request sent
+     * them. `toArray()` writes them back after the declared ones.
+     *
+     * @var array<array-key, mixed>
+     */
+    private array $undeclaredProperties = [];
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function undeclaredProperties(): array
+    {
+        return $this->undeclaredProperties;
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    public function withUndeclaredProperties(array $values): static
+    {
+        $copy = clone $this;
+        $copy->undeclaredProperties = $values;
+
+        return $copy;
+    }
+
+{% endif %}
 {% set serializableProperties = methodProperties|filter(property => not property.writeOnly and not property.isParameter) %}
     /**
      * @return array<string, mixed>
@@ -384,9 +413,9 @@ interface {{ className }}
     {
 {% if serializableProperties is empty %}
 {% if extends is not null %}
-        return parent::toArray();
+        return parent::toArray(){% if keepsUndeclared %} + $this->undeclaredProperties{% endif %};
 {% else %}
-        return [];
+        return {% if keepsUndeclared %}$this->undeclaredProperties{% else %}[]{% endif %};
 {% endif %}
 {% else %}
 {% if extends is not null %}
@@ -402,8 +431,12 @@ interface {{ className }}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.methodName }}()) : null;
 {% elseif property.returnKind == 'temporalArray' %}
         $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.methodName }}());
+{% elseif property.returnKind == 'temporalUnion' %}
+        $result['{{ property.openApiName|php_string }}'] = {{ property.temporalUnionOutput }};
 {% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
+{% elseif property.isMap and property.valuesAreMaps %}
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% elseif property.isMap %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
@@ -423,8 +456,12 @@ interface {{ className }}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.methodName }}()) : null;
 {% elseif property.returnKind == 'temporalArray' %}
             $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.methodName }}());
+{% elseif property.returnKind == 'temporalUnion' %}
+            $result['{{ property.openApiName|php_string }}'] = {{ property.temporalUnionOutput }};
 {% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
+{% elseif property.isMap and property.valuesAreMaps %}
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
 {% elseif property.isMap %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.name }};
 {% elseif property.itemsAreMaps %}
@@ -439,6 +476,9 @@ interface {{ className }}
         }
 {% endif %}
 {% endfor %}
+{% if keepsUndeclared %}
+        $result += $this->undeclaredProperties;
+{% endif %}
 
         return $result;
 {% endif %}

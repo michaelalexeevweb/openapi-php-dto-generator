@@ -61,8 +61,11 @@ final class GeneratedClassFilter
 
         /** @var array<string, array{path: string, shortName: string, interface: bool}> $classes fqcn => declaration */
         $classes = [];
+        // Tokenized once per file: the declaration and the references are read from the same tokens.
+        $tokensByPath = [];
         foreach ($files as $path => $content) {
-            $declared = $this->declaredClass($content);
+            $tokensByPath[$path] = PhpToken::tokenize($content);
+            $declared = $this->declaredClass($tokensByPath[$path]);
             if ($declared !== null) {
                 $classes[$declared['fqcn']] = ['path' => $path, 'shortName' => $declared['shortName'], 'interface' => $declared['interface']];
             }
@@ -73,7 +76,7 @@ final class GeneratedClassFilter
         $needs = [];
         $implementers = [];
         foreach ($classes as $fqcn => $class) {
-            ['all' => $needs[$fqcn], 'header' => $header] = $this->referencedClasses(content: $files[$class['path']], classes: $classes);
+            ['all' => $needs[$fqcn], 'header' => $header] = $this->referencedClasses(tokens: $tokensByPath[$class['path']], classes: $classes);
             foreach ($header as $parent) {
                 if ($parent !== $fqcn && $classes[$parent]['interface']) {
                     $implementers[$parent][] = $fqcn;
@@ -178,33 +181,33 @@ final class GeneratedClassFilter
     }
 
     /**
+     * @param array<int, PhpToken> $tokens
      * @return array{fqcn: string, shortName: string, interface: bool}|null
      */
-    private function declaredClass(string $content): ?array
+    private function declaredClass(array $tokens): ?array
     {
-        $tokens = PhpToken::tokenize($content);
         $namespace = '';
         foreach ($tokens as $index => $token) {
-            if ($token->is(T_NAMESPACE)) {
+            if ($token->id === T_NAMESPACE) {
                 $name = $this->nextSignificant(tokens: $tokens, index: $index);
-                if ($name !== null && $name->is([T_NAME_QUALIFIED, T_STRING])) {
+                if ($name !== null && in_array($name->id, [T_NAME_QUALIFIED, T_STRING], true)) {
                     $namespace = $name->text;
                 }
                 continue;
             }
-            if (!$token->is([T_CLASS, T_INTERFACE, T_ENUM, T_TRAIT])) {
+            if (!in_array($token->id, [T_CLASS, T_INTERFACE, T_ENUM, T_TRAIT], true)) {
                 continue;
             }
             $previous = $this->previousSignificant(tokens: $tokens, index: $index);
-            if ($previous !== null && $previous->is([T_DOUBLE_COLON, T_NEW])) {
+            if ($previous !== null && in_array($previous->id, [T_DOUBLE_COLON, T_NEW], true)) {
                 continue;
             }
             $name = $this->nextSignificant(tokens: $tokens, index: $index);
-            if ($name !== null && $name->is(T_STRING)) {
+            if ($name !== null && $name->id === T_STRING) {
                 return [
                     'fqcn' => ltrim($namespace . '\\' . $name->text, '\\'),
                     'shortName' => $name->text,
-                    'interface' => $token->is(T_INTERFACE),
+                    'interface' => $token->id === T_INTERFACE,
                 ];
             }
         }
@@ -219,10 +222,11 @@ final class GeneratedClassFilter
      * list's item class. `header` is what the declaration line itself names: the parent and the
      * implemented interfaces.
      *
+     * @param array<int, PhpToken> $tokens
      * @param array<string, array{path: string, shortName: string, interface: bool}> $classes
      * @return array{all: list<string>, header: list<string>}
      */
-    private function referencedClasses(string $content, array $classes): array
+    private function referencedClasses(array $tokens, array $classes): array
     {
         $namespace = '';
         $imports = [];
@@ -230,34 +234,33 @@ final class GeneratedClassFilter
         $header = [];
         $inHeader = false;
         $headerSeen = false;
-        $tokens = PhpToken::tokenize($content);
         foreach ($tokens as $index => $token) {
-            if ($token->is(T_NAMESPACE)) {
+            if ($token->id === T_NAMESPACE) {
                 $name = $this->nextSignificant(tokens: $tokens, index: $index);
                 $namespace = $name !== null ? $name->text : '';
                 continue;
             }
-            if ($token->is(T_USE)) {
+            if ($token->id === T_USE) {
                 $imported = $this->nextSignificant(tokens: $tokens, index: $index);
-                if ($imported !== null && $imported->is([T_NAME_QUALIFIED, T_STRING])) {
+                if ($imported !== null && in_array($imported->id, [T_NAME_QUALIFIED, T_STRING], true)) {
                     $segments = explode('\\', $imported->text);
                     $imports[end($segments)] = $imported->text;
                 }
             }
-            if (!$headerSeen && $token->is([T_CLASS, T_INTERFACE, T_ENUM])) {
+            if (!$headerSeen && in_array($token->id, [T_CLASS, T_INTERFACE, T_ENUM], true)) {
                 $previous = $this->previousSignificant(tokens: $tokens, index: $index);
-                $inHeader = $previous === null || !$previous->is([T_DOUBLE_COLON, T_NEW]);
+                $inHeader = $previous === null || !in_array($previous->id, [T_DOUBLE_COLON, T_NEW], true);
                 $headerSeen = $inHeader;
             } elseif ($inHeader && $token->text === '{') {
                 $inHeader = false;
             }
 
             $spelled = [];
-            if ($token->is([T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED])) {
+            if (in_array($token->id, [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
                 $spelled[] = $token->text;
-            } elseif ($token->is(T_CONSTANT_ENCAPSED_STRING)) {
+            } elseif ($token->id === T_CONSTANT_ENCAPSED_STRING) {
                 $spelled[] = str_replace('\\\\', '\\', substr($token->text, 1, -1));
-            } elseif ($token->is(T_DOC_COMMENT)) {
+            } elseif ($token->id === T_DOC_COMMENT) {
                 preg_match_all('/@([\w-]+)[ \t]+([^\n]*)/', $token->text, $tags, PREG_SET_ORDER);
                 foreach ($tags as [, $tagName, $tagText]) {
                     if (preg_match(self::TYPE_TAG, $tagName) !== 1) {

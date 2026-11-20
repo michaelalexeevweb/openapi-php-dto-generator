@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command;
 
+use Closure;
 use ParseError;
 use RuntimeException;
 use Throwable;
@@ -11,6 +12,18 @@ use Throwable;
 /** Stages every output before replacing any existing generation. */
 final class GeneratedFilePublisher
 {
+    /** The note every generated DTO and enum carries; a file without it was written by hand. */
+    private const string GENERATED_NOTE = 'auto-generated from an OpenAPI schema';
+
+    /**
+     * @param (Closure(string, string): bool)|null $rename the one filesystem move every step goes
+     *        through; a test passes one that fails where the filesystem would, to reach the rollback
+     */
+    public function __construct(
+        private readonly ?Closure $rename = null,
+    ) {
+    }
+
     /**
      * Owned directories get entirely new CONTENTS; the directory itself stays — its inode, its
      * permissions, a mount point — and its parent need not be writable, because the staging and the
@@ -19,8 +32,9 @@ final class GeneratedFilePublisher
      *
      * @param array<string, string> $files
      * @param list<string> $ownedDirectories
+     * @param list<string> $inputFiles the documents being read: an owned directory must not hold one
      */
-    public function publish(array $files, array $ownedDirectories): void
+    public function publish(array $files, array $ownedDirectories, array $inputFiles = []): void
     {
         $this->assertGeneratedPhpParses($files);
 
@@ -35,6 +49,7 @@ final class GeneratedFilePublisher
             if (dirname($root) === $root || is_link($root) || (file_exists($root) && !is_dir($root))) {
                 throw new RuntimeException(sprintf('Output must be a real directory, not a file or symlink: %s', $root));
             }
+            $this->assertNotForeignDirectory(root: $root, inputFiles: $inputFiles);
             if ($this->containingRoot($root, $owned) === null) {
                 $owned[] = $root;
             }
@@ -73,6 +88,7 @@ final class GeneratedFilePublisher
                     if (is_link(dirname($path)) || (is_dir($path) && !is_link($path))) {
                         throw new RuntimeException(sprintf('Invalid output file destination: %s', $path));
                     }
+                    $this->assertNotHandWritten(path: $path, content: $content);
                     $this->ensureDirectory(dirname($path), $createdDirectories);
                     $stage = $this->temporaryPath($path);
                     $operations[$path] = ['stage' => $stage, 'backup' => null, 'installed' => false];
@@ -169,6 +185,75 @@ final class GeneratedFilePublisher
     }
 
     /**
+     * An owned directory loses everything in it, so it must be one that holds nothing but generated
+     * code. `--directory=.` once took a whole project with it and reported success. Refused: the
+     * working directory or a directory above it, a project root (`.git`, `composer.json`), and a
+     * directory that holds the document being read.
+     *
+     * @param list<string> $inputFiles
+     */
+    private function assertNotForeignDirectory(string $root, array $inputFiles): void
+    {
+        $resolved = realpath($root);
+        if ($resolved === false) {
+            return; // not there yet: nothing in it to lose
+        }
+        $cwd = getcwd();
+        if ($cwd !== false && $this->isWithin(path: $cwd, directory: $resolved)) {
+            throw new RuntimeException(sprintf(
+                'Output directory %s contains the working directory; regenerating it would delete everything in it. Give the generated code a directory of its own.',
+                $root,
+            ));
+        }
+        foreach (['.git', 'composer.json'] as $marker) {
+            if (file_exists($resolved . DIRECTORY_SEPARATOR . $marker)) {
+                throw new RuntimeException(sprintf(
+                    'Output directory %s looks like a project root (it has %s); regenerating it would delete everything in it. Give the generated code a directory of its own.',
+                    $root,
+                    $marker,
+                ));
+            }
+        }
+        foreach ($inputFiles as $inputFile) {
+            $resolvedInput = realpath($inputFile);
+            if ($resolvedInput !== false && $this->isWithin(path: $resolvedInput, directory: $resolved)) {
+                throw new RuntimeException(sprintf(
+                    'Output directory %s contains the input document %s; regenerating it would delete it. Give the generated code a directory of its own.',
+                    $root,
+                    $inputFile,
+                ));
+            }
+        }
+    }
+
+    /**
+     * A file outside every owned directory — the `common` convention, a `--ref` mapping — replaces
+     * only itself, and the document picks its name: a schema `Kernel` once replaced a hand-written
+     * `Common/Kernel.php` without a word. A generated class may replace an earlier generated one,
+     * never a file that lacks the generator's note.
+     */
+    private function assertNotHandWritten(string $path, string $content): void
+    {
+        if (!str_contains($content, self::GENERATED_NOTE) || is_link($path) || !is_file($path)) {
+            return;
+        }
+        $existing = file_get_contents($path);
+        if ($existing === false || $existing === $content || str_contains($existing, self::GENERATED_NOTE)) {
+            return;
+        }
+        throw new RuntimeException(sprintf(
+            'Refusing to replace %s: it was not generated (it lacks the "%s" note). Move it, or map the referenced document elsewhere with --ref.',
+            $path,
+            self::GENERATED_NOTE,
+        ));
+    }
+
+    private function isWithin(string $path, string $directory): bool
+    {
+        return $path === $directory || str_starts_with($path, rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+    }
+
+    /**
      * Every generated PHP file must parse before anything on disk changes.
      *
      * The same check as `php -l`, in process: `TOKEN_PARSE` runs the real parser and throws the real
@@ -226,7 +311,7 @@ final class GeneratedFilePublisher
 
     private function move(string $source, string $target): void
     {
-        if (!@rename($source, $target)) {
+        if (!($this->rename !== null ? ($this->rename)($source, $target) : @rename($source, $target))) {
             throw new RuntimeException(sprintf('Cannot move generated output from %s to %s.', $source, $target));
         }
     }

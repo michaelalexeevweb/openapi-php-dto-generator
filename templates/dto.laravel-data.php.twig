@@ -320,6 +320,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% for rule in rules %}
             '{{ rule.path|php_string }}' => {{ rule.rules|raw }},
 {% endfor %}
+{% if nestedChildren is not empty %}
+            ...self::openApiNestedParts()['rules'],
+{% endif %}
         ];
     }
 {% if rules is not empty %}
@@ -327,6 +330,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% include 'laravel.blank-strings.php.twig' %}
 
 {% endif %}
+{% include 'laravel.nested-validation.php.twig' %}
 {% if objectShapePaths is not empty %}
 
     /**
@@ -340,14 +344,14 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endfor %}
     ];
 {% endif %}
-{% if interpreterMethodsBlock is not empty or objectShapePaths is not empty or rootIsObject|default(false) %}
+{% if interpreterMethodsBlock is not empty or checksObjectPaths or rootIsObject|default(false) %}
 
     /**
 {% if interpreterMethodsBlock is not empty %}
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
-{% elseif objectShapePaths is not empty %}
+{% elseif checksObjectPaths %}
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
 {% else %}
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
@@ -355,7 +359,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
      * own `withValidator()` run, which is why every check above is flattened to a path from the root.
-{% if objectShapePaths is not empty %}
+{% if checksObjectPaths %}
      *
      * One check needs the UNDECODED body, because `type: object` versus `type: array` is a property of
      * the wire shape that PHP loses — a JSON object keyed 0..n-1 and a JSON array decode to the same
@@ -403,12 +407,12 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             }
 {% endif %}
 {% endif %}
-{% if objectShapePaths is not empty or rootIsObject|default(false) %}
+{% if checksObjectPaths or rootIsObject|default(false) %}
 {% if interpreterMethodsBlock is not empty %}
 
 {% endif %}
             $rawJson = self::rawRequestBody($validator);
-{% if objectShapePaths is not empty %}
+{% if checksObjectPaths %}
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
@@ -428,7 +432,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         });
     }
 {% endif %}
-{% if objectShapePaths is not empty or rootIsObject|default(false) %}
+{% if checksObjectPaths or rootIsObject|default(false) %}
 
     /**
      * The undecoded request body — or null when there is no request, or when what the validator holds is
@@ -467,7 +471,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         return $content;
     }
 {% endif %}
-{% if objectShapePaths is not empty %}
+{% if checksObjectPaths %}
 
     /**
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
@@ -481,7 +485,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             return;
         }
 
-        foreach (self::OPENAPI_OBJECT_PATHS as $path) {
+        foreach ({{ objectPathsExpression }} as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
                 // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
                 if (is_array($node) && $node !== []) {

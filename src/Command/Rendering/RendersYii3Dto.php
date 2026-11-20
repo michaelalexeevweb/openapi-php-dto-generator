@@ -48,14 +48,13 @@ trait RendersYii3Dto
      *
      * Everything absent from here is left to the interpreter — an unknown `format` is an annotation
      * rather than an assertion, and a format the validator has no rule for must not be silently
-     * dropped.
+     * dropped. `uri` and `uuid` are the interpreter's on purpose: yiisoft's `Url` knows web schemes only,
+     * and its `Uuid` pattern let a value with a trailing newline through.
      *
      * @var array<string, string>
      */
     private const array YII3_FORMAT_RULES = [
         'email' => 'Email',
-        'uuid' => 'Uuid',
-        'uri' => 'Url',
         'url' => 'Url',
         'ipv4' => 'Ip',
         'ipv6' => 'Ip',
@@ -2362,7 +2361,7 @@ PHP;
 
         $nullableItem = str_starts_with($item, '?');
         $cast = match (ltrim($item, '?')) {
-            'int' => "is_string(\$item) && preg_match('/^-?\\d+$/', \$item) === 1 ? (int)\$item : \$item",
+            'int' => "is_string(\$item) && preg_match('/^-?\\d+$/D', \$item) === 1 ? (int)\$item : \$item",
             'float' => 'is_string($item) && is_numeric($item) ? (float)$item : $item',
             'bool' => "match (\$item) { 'true', '1' => true, 'false', '0' => false, default => \$item }",
             default => null,

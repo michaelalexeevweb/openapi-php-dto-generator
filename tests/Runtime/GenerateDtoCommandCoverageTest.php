@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use RuntimeException;
@@ -1646,6 +1647,74 @@ final class GenerateDtoCommandCoverageTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('symfony/psr-http-message-bridge', $tester->getDisplay());
+        $this->assertFileExists($this->outputDirectory . '/cli-psr7/Common/DtoDeserializerPsr7.php');
+    }
+
+    public function testExecuteWithPsr7WithoutAServicesDirectoryWarnsInsteadOfClaimingACopy(): void
+    {
+        $tester = $this->buildTester();
+        $exitCode = $tester->execute([
+            '--file' => __DIR__ . '/../fixtures/additional-properties.yaml',
+            '--directory' => $this->outputDirectory . '/cli-psr7-vendor',
+            '--with-psr7' => true,
+        ]);
+
+        $display = (string)preg_replace('/\s+/', ' ', $tester->getDisplay());
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('--with-psr7 is ignored without --dto-generator-directory', $display);
+        $this->assertStringNotContainsString('PSR-7 deserializer copied', $display);
+        $this->assertFileDoesNotExist($this->outputDirectory . '/cli-psr7-vendor/Common/DtoDeserializerPsr7.php');
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    #[DataProvider('ignoredOptionProvider')]
+    public function testAnOptionTheModeIgnoresIsReported(array $options, string $warning): void
+    {
+        $tester = $this->buildTester();
+        $exitCode = $tester->execute([
+            '--file' => __DIR__ . '/../fixtures/additional-properties.yaml',
+            '--directory' => $this->outputDirectory . '/cli-ignored',
+            ...$options,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString($warning, (string)preg_replace('/\s+/', ' ', $tester->getDisplay()));
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: string}>
+     */
+    public static function ignoredOptionProvider(): iterable
+    {
+        yield 'symfony path params in runtime mode' => [['--symfony-path-params' => true], 'Option --symfony-path-params is ignored with --attributes=runtime'];
+        yield 'no form request in symfony mode' => [['--attributes' => 'symfony', '--no-laravel-form-request' => true], 'Option --no-laravel-form-request is ignored with --attributes=symfony'];
+        yield 'services directory in symfony mode' => [['--attributes' => 'symfony', '--dto-generator-directory' => null], 'Option --dto-generator-directory is ignored with --attributes=symfony'];
+    }
+
+    #[DataProvider('wrongKindNodeProvider')]
+    public function testANodeOfTheWrongKindStopsGeneration(string $yaml, string $path): void
+    {
+        $tester = $this->buildTester();
+        $exitCode = $tester->execute([
+            '--file' => $this->writeSpec("openapi: 3.0.3\ninfo: {title: t, version: '1'}\n" . $yaml),
+            '--directory' => $this->outputDirectory . '/cli-wrong-kind',
+        ]);
+
+        $display = (string)preg_replace('/\s+/', ' ', $tester->getDisplay());
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString(sprintf('declares `%s` as', $path), $display);
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function wrongKindNodeProvider(): iterable
+    {
+        yield 'components.schemas' => ["components:\n  schemas: widgets\n", 'components.schemas'];
+        yield 'paths' => ["paths: widgets\n", 'paths'];
+        yield 'properties' => ["components:\n  schemas:\n    Widget:\n      type: object\n      properties: colors\n", 'Widget.properties'];
     }
 
     public function testExecuteExtractsInlineResponseRequestAndParameterSchemas(): void

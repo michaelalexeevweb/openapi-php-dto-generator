@@ -1,0 +1,72 @@
+{% if nestedChildren is not empty %}
+    /**
+     * What the nested DTOs below this class's properties add to its validation — their dotted rules and
+     * the paths whose wire shape is checked — asked of each nested class rather than written out here.
+     *
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiNestedParts(): array
+    {
+        $parts = [
+{% for child in nestedChildren %}
+            {{ child.ref }}::openApiNestedValidation('{{ child.suffix|php_string }}', [self::class]),
+{% endfor %}
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+{% endif %}
+{% if nestedValidation is not null %}
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+{% for rule in nestedValidation.rules %}
+                    $prefix . '.{{ rule.suffix|php_string }}' => {{ rule.rules|raw }},
+{% endfor %}
+                ],
+                'objectPaths' => [
+{% for objectPath in nestedValidation.objectPaths %}
+                    $prefix . '.{{ objectPath|php_string }}',
+{% endfor %}
+                ],
+                'scalarPaths' => [
+{% for scalarPath, scalarType in nestedValidation.scalarPaths %}
+                    $prefix . '.{{ scalarPath|php_string }}' => '{{ scalarType }}',
+{% endfor %}
+                ],
+            ],
+{% for child in nestedValidation.children %}
+            {{ child.ref }}::openApiNestedValidation($prefix . '.{{ child.suffix|php_string }}', $visited),
+{% endfor %}
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+{% endif %}

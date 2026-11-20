@@ -88,6 +88,7 @@ trait RendersLaravelDataDto
         $params = [];
         $rules = [];
         $objectShapePaths = [];
+        $nestedChildren = [];
         $parentArguments = [];
         $inputAliases = [];
 
@@ -109,10 +110,15 @@ trait RendersLaravelDataDto
             foreach ($this->laravelItemRulesForProperty($property) as $path => $itemRules) {
                 $rules[] = ['path' => $path, 'rules' => $this->laravelRulesLiteral($itemRules)];
             }
-            foreach ($this->laravelNestedRules($property, [$className]) as $path => $nestedRules) {
-                $rules[] = ['path' => $path, 'rules' => $this->laravelRulesLiteral($nestedRules)];
+            $child = $this->laravelComposedChild($property);
+            if ($child !== null) {
+                $nestedChildren[] = $child;
+            } else {
+                foreach ($this->laravelNestedRules($property, [$className]) as $path => $nestedRules) {
+                    $rules[] = ['path' => $path, 'rules' => $this->laravelRulesLiteral($nestedRules)];
+                }
             }
-            foreach ($this->laravelObjectShapePaths($property, '', [$className]) as $objectPath) {
+            foreach ($this->laravelObjectShapePaths($property, '', [$className], recurse: $child === null) as $objectPath) {
                 $objectShapePaths[] = $objectPath;
             }
 
@@ -132,6 +138,14 @@ trait RendersLaravelDataDto
         }
 
         $objectShapePaths = array_values(array_unique($objectShapePaths));
+        // laravel-data checks no scalar path: its casts already refuse what Laravel's rules let through.
+        $nestedVars = $this->laravelNestedTemplateVars(
+            className: $className,
+            nestedChildren: $nestedChildren,
+            objectPaths: $objectShapePaths,
+            scalarPaths: [],
+            readsRawBody: false,
+        );
 
         // A wire name PHP reads as an integer key — `2` — loses itself on the way out: laravel-data
         // `array_merge()`s the transformed array with the additional data, which renumbers integer keys,
@@ -188,7 +202,7 @@ trait RendersLaravelDataDto
         // A request body is an object, and only the raw body still says whether `[]` was sent for it.
         $rootIsObject = array_key_exists($className, $this->requestPayloadClasses)
             && !array_key_exists($className, $this->parameterPayloadClasses);
-        $hasWithValidator = $interpreter['methods'] !== '' || $objectShapePaths !== [] || $rootIsObject;
+        $hasWithValidator = $interpreter['methods'] !== '' || $nestedVars['checksObjectPaths'] || $rootIsObject;
         foreach ($interpreter['imports'] as $interpreterImport) {
             $useStatements[] = $interpreterImport;
         }
@@ -199,11 +213,11 @@ trait RendersLaravelDataDto
         $containerRef = null;
         $requestRef = null;
         $stdClassRef = null;
-        if ($objectShapePaths !== [] || $rootIsObject) {
+        if ($nestedVars['checksObjectPaths'] || $rootIsObject) {
             $containerRef = $this->libraryClassRef('Illuminate\Container\Container', $namespace, $useStatements);
             $requestRef = $this->libraryClassRef('Illuminate\Http\Request', $namespace, $useStatements);
         }
-        if ($objectShapePaths !== []) {
+        if ($nestedVars['checksObjectPaths']) {
             $stdClassRef = $this->libraryClassRef('stdClass', $namespace, $useStatements);
         }
 
@@ -254,6 +268,7 @@ trait RendersLaravelDataDto
             'params' => $params,
             'rules' => $rules,
             'objectShapePaths' => $objectShapePaths,
+            ...$nestedVars,
             'rootIsObject' => $rootIsObject,
             'unionMembers' => null,
             'interfaceExtends' => [],
@@ -410,6 +425,9 @@ trait RendersLaravelDataDto
             'params' => [],
             'rules' => [],
             'objectShapePaths' => [],
+            'nestedChildren' => [],
+            'nestedValidation' => null,
+            'checksObjectPaths' => false,
             'unionMembers' => null,
             'interfaceExtends' => [],
             'discriminatorProperty' => $propertyName,
@@ -526,6 +544,9 @@ trait RendersLaravelDataDto
             'params' => [],
             'rules' => [],
             'objectShapePaths' => [],
+            'nestedChildren' => [],
+            'nestedValidation' => null,
+            'checksObjectPaths' => false,
             'unionMembers' => $unionTypes,
             'interfaceExtends' => $interfaceExtends,
             'discriminatorProperty' => is_array($discriminator) && is_string($discriminator['propertyName'] ?? null)

@@ -39,6 +39,13 @@ use OpenapiPhpDtoGenerator\Service\DtoValidator;
 trait RendersSchemaInterpreter
 {
     /**
+     * The property types of each class, for `interpreterValueKinds()`; reset with every generation.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $interpreterPropertyTypes = [];
+
+    /**
      * Every `format` the emitted interpreter can actually check, as the match arm that checks it and
      * the helpers that arm needs. A format absent from this map — or present with a `true` arm — is
      * one no mode enforces, which is what `openApiInterpreterChecksFormat()` reports.
@@ -51,12 +58,14 @@ trait RendersSchemaInterpreter
         'datetime' => ['$this->isValidOpenApiDateTimeFormat($value)', ['date-time']],
         'time' => ['$this->isValidOpenApiTimeFormat($value)', ['time']],
         'email' => ['filter_var($value, FILTER_VALIDATE_EMAIL) !== false', []],
-        'idn-email' => ['filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false', []],
+        // The filter validates the domain as ASCII, so `a@пример.рф` — what idn-email is for — failed.
+        'idn-email' => ['$this->isValidOpenApiIdnEmail($value)', ['idn-email', 'idn-hostname']],
         'uuid' => ['$this->isValidOpenApiUuid($value)', ['uuid']],
         // `uri` and `iri` are ABSOLUTE — only the `*-reference` forms allow a relative value, and the
         // runtime validator has always drawn that line. Mapping all four to the reference check made the
         // emitted interpreter accept `/rel/path` for `format: uri` in both framework modes.
-        'uri' => ['filter_var($value, FILTER_VALIDATE_URL) !== false', []],
+        // The URL filter knows authority URIs only; `urn:isbn:0451450523` is a URI as well.
+        'uri' => ['$this->isValidOpenApiUri($value)', ['uri']],
         'iri' => ['$this->isValidOpenApiIri($value)', ['iri']],
         'uri-reference' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
         'iri-reference' => ['$this->isValidOpenApiUriReference($value)', ['uri-reference']],
@@ -479,7 +488,11 @@ PHP;
             // instead of contributing a misleading "must be of type ..." reason.
             $oneOfTypeGate = $needsTypeMatcher
                 ? <<<'PHP'
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
 
@@ -718,8 +731,16 @@ PHP;
                 }
             } elseif ($multipleOf !== null && $multipleOf > 0.0 && !$this->isDecimalOpenApiMultiple($normalizedValue, $multipleOf)) {
                 // A float computed in PHP is off by an ulp: a whole, NON-ZERO ratio within 1e-9 counts.
+                // Only for a value that looks computed (16+ significant digits): a JSON number is
+                // spelled as sent, and `1.0000000001` is no multiple of 1.
                 $ratio = $normalizedValue / $multipleOf;
-                if (round($ratio) === 0.0 || abs($ratio - round($ratio)) > 1e-9) {
+                $mantissa = (string)preg_replace('/[eE].*$/', '', ltrim(var_export((float)$normalizedValue, true), '-'));
+                if (
+                    round($ratio) === 0.0
+                    || abs($ratio - round($ratio)) > 1e-9
+                    || abs($ratio) >= 2 ** 53
+                    || strlen(rtrim(ltrim(str_replace('.', '', $mantissa), '0'), '0')) < 16
+                ) {
                     $errors[] = sprintf('%s must be a multiple of %s', $path, $this->stringifyOpenApiNumber($multipleOf));
                 }
             }
@@ -920,7 +941,9 @@ PHP;
             $sections[] = <<<PHP
         if (is_array(\$schema['properties'] ?? null) && is_array(\$structuredValue)) {
             foreach (\$schema['properties'] as \$propertyName => \$propertySchema) {
-                if (!is_string(\$propertyName) || !is_array(\$propertySchema)) {
+                // A property named by digits arrives as an int key; it is still a name.
+                \$propertyName = (string)\$propertyName;
+                if (!is_array(\$propertySchema)) {
                     continue;
                 }
 {$trackDefined}                if (!array_key_exists(\$propertyName, \$structuredValue)) {
@@ -947,8 +970,13 @@ PHP;
                 }
                 \$regex = \$this->delimitOpenApiPattern(\$pattern);
                 foreach (\$structuredValue as \$propertyName => \$propertyValue) {
+                    // A JSON key "42" is the PHP int 42. Only a LIST's int keys are indexes, not names.
+                    if (is_int(\$propertyName) && array_is_list(\$structuredValue)) {
+                        continue;
+                    }
+                    \$propertyName = (string)\$propertyName;
                     // `@`: a pattern PCRE cannot compile matches no key rather than raising a warning.
-                    if (!is_string(\$propertyName) || @preg_match(\$regex, \$propertyName) !== 1) {
+                    if (@preg_match(\$regex, \$propertyName) !== 1) {
                         continue;
                     }
 {$trackPatternMatched}                    \$errors = [
@@ -965,9 +993,11 @@ PHP;
             $sections[] = <<<'PHP'
         if (is_array($schema['propertyNames'] ?? null) && is_array($structuredValue)) {
             foreach (array_keys($structuredValue) as $propertyName) {
-                if (!is_string($propertyName)) {
+                // A JSON key "42" is the PHP int 42. Only a LIST's int keys are indexes, not names.
+                if (is_int($propertyName) && array_is_list($structuredValue)) {
                     continue;
                 }
+                $propertyName = (string)$propertyName;
                 $errors = [
                     ...$errors,
                     ...$this->validateOpenApiNode($propertyName, $schema['propertyNames'], sprintf('%s key "%s"', $path, $propertyName), $depth + 1),
@@ -981,7 +1011,8 @@ PHP;
             $sections[] = <<<'PHP'
         if (is_array($schema['dependentRequired'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentRequired'] as $propertyName => $deps) {
-                if (!is_string($propertyName) || !is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($deps) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 foreach ($deps as $depProperty) {
@@ -998,7 +1029,8 @@ PHP;
             $sections[] = <<<'PHP'
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
-                if (!is_string($propertyName) || !is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
+                $propertyName = (string)$propertyName;
+                if (!is_array($depSchema) || !array_key_exists($propertyName, $structuredValue)) {
                     continue;
                 }
                 $errors = [...$errors, ...$this->validateOpenApiNode($structuredValue, $depSchema, $path, $depth + 1)];
@@ -1155,7 +1187,11 @@ PHP;
             // one matching branch is enough.
             $anyOfTypeGate = $needsTypeMatcher
                 ? <<<'PHP'
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
                     continue;
                 }
 
@@ -1246,9 +1282,10 @@ PHP;
                 $sections[] = <<<PHP
             if (\$extraPropertySchema === false || is_array(\$extraPropertySchema)) {
                 foreach (\$structuredValue as \$propertyName => \$propertyValue) {
-                    if (!is_string(\$propertyName) || array_key_exists(\$propertyName, \$evaluatedProperties)) {
+                    if ((is_int(\$propertyName) && array_is_list(\$structuredValue)) || array_key_exists(\$propertyName, \$evaluatedProperties)) {
                         continue;
                     }
+                    \$propertyName = (string)\$propertyName;
                     if (\$extraPropertySchema === false) {
                         \$errors[] = sprintf('%s has additional property "%s" which is not allowed', \$path, \$propertyName);
                         continue;
@@ -1270,18 +1307,20 @@ PHP;
                     <<<'PHP'
             if ($unevaluatedProperties === false) {
                 foreach ($structuredValue as $propertyName => $_propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
                     if ($extraPropertySchema !== false) {
                         $errors[] = sprintf('%%s has unevaluated property "%%s" which is not allowed', $path, $propertyName);
                     }
                 }
             } elseif (is_array($unevaluatedProperties)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if (!is_string($propertyName) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
+                    $propertyName = (string)$propertyName;
 %s                    $errors = [
                         ...$errors,
                         ...$this->validateOpenApiNode($propertyValue, $unevaluatedProperties, $path . '.' . $propertyName, $depth + 1),
@@ -1729,6 +1768,23 @@ PHP;
                     continue;
                 }
             }
+            // ECMA-262 `[^]` is any character and `[]` none; PCRE reads the `]` as a member and the
+            // class never closes, so every value failed as "invalid regex".
+            if (!$inClass && $character === '[' && substr($pattern, $i, 3) === '[^]') {
+                $delimited .= '[\\s\\S]';
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ']') {
+                $delimited .= '(?!)';
+                $i++;
+                continue;
+            }
+            // ECMA-262 `.` stops at every line terminator; PCRE's stops at `\\n` alone.
+            if (!$inClass && $character === '.') {
+                $delimited .= $unicode ? '[^\\n\\r\\x{2028}\\x{2029}]' : '[^\\n\\r]';
+                continue;
+            }
             if (!$inClass && $character === '[') {
                 $inClass = true;
                 $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
@@ -1739,7 +1795,9 @@ PHP;
             $delimited .= $character === '#' ? '\\#' : $character;
         }
 
-        return $delimited . ($unicode ? '#u' : '#');
+        // `D`: ECMA-262 `$` is the very end. PCRE's also matches before a final `\\n`, and
+        // `^[a-z]+$` let "abc\\n" through to a log line or a header.
+        return $delimited . ($unicode ? '#uD' : '#D');
     }
 PHP;
         }
@@ -2300,8 +2358,11 @@ PHP;
                     continue;
                 }
                 $visited[$short] = true;
-                foreach ($this->getSchemaProperties($short) as $nestedProperty) {
-                    $queue[] = $nestedProperty['type'];
+                // Cached: every class walks everything it reaches, and building a class's properties
+                // is not cheap — 600 schemas took 39 s in symfony mode, 80% of it right here.
+                $this->interpreterPropertyTypes[$short] ??= array_column($this->getSchemaProperties($short), 'type');
+                foreach ($this->interpreterPropertyTypes[$short] as $nestedType) {
+                    $queue[] = $nestedType;
                 }
             }
             if ($kinds['enum'] && $kinds['temporal']) {
@@ -2325,7 +2386,7 @@ PHP;
 
     private function isValidOpenApiDateFormat(string $value): bool
     {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
@@ -2360,14 +2421,50 @@ PHP,
 
     private function isValidOpenApiTimeFormat(string $value): bool
     {
-        return preg_match('/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/', $value) === 1;
+        return preg_match('/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/D', $value) === 1;
     }
 PHP,
             'uuid' => <<<'PHP'
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', $value) === 1;
+        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
+        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
+            return true;
+        }
+
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+    }
+PHP,
+            'uri' => <<<'PHP'
+
+    private function isValidOpenApiUri(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_URL) !== false) {
+            return true;
+        }
+
+        // The scheme-only shapes — `urn:`, `mailto:`, `tel:` — the URL filter has no notion of.
+        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/D', $value) === 1;
+    }
+PHP,
+            'idn-email' => <<<'PHP'
+
+    private function isValidOpenApiIdnEmail(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false) {
+            return true;
+        }
+
+        // The filter checks the domain as ASCII: the local part is re-checked against a placeholder
+        // domain, and the domain goes to the internationalized hostname check.
+        $at = strrpos($value, '@');
+        if ($at === false || $at === 0 || $at === strlen($value) - 1) {
+            return false;
+        }
+
+        return filter_var(substr($value, 0, $at) . '@example.com', FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false
+            && $this->isValidOpenApiIdnHostname(substr($value, $at + 1));
     }
 PHP,
             'uri-reference' => <<<'PHP'
@@ -2417,21 +2514,21 @@ PHP,
 
     private function isValidOpenApiDuration(string $value): bool
     {
-        return preg_match('/^P(?:\d+W|(?=\d|T)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?)$/', $value) === 1;
+        return preg_match('/^P(?:\d+W|(?=\d|T)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?)$/D', $value) === 1;
     }
 PHP,
             'json-pointer' => <<<'PHP'
 
     private function isValidOpenApiJsonPointer(string $value): bool
     {
-        return preg_match('#^(/(?:[^/~]|~[01])*)*$#u', $value) === 1;
+        return preg_match('#^(/(?:[^/~]|~[01])*)*$#uD', $value) === 1;
     }
 PHP,
             'relative-json-pointer' => <<<'PHP'
 
     private function isValidOpenApiRelativeJsonPointer(string $value): bool
     {
-        return preg_match('!^(0|[1-9][0-9]*)(?:#|(?:/(?:[^/~]|~[01])*)*)$!u', $value) === 1;
+        return preg_match('!^(0|[1-9][0-9]*)(?:#|(?:/(?:[^/~]|~[01])*)*)$!uD', $value) === 1;
     }
 PHP,
             'regex' => <<<'PHP'

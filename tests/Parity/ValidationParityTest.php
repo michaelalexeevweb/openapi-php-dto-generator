@@ -139,6 +139,21 @@ final class ValidationParityTest extends TestCase
             // allowed." while validating, so yii3 mode refused every payload until it left it alone.
             'negative minLength' => [['type' => 'string', 'minLength' => -1, 'maxLength' => 2], '{"f":"ab"}', '{"f":"abc"}'],
             'pattern' => [['type' => 'string', 'pattern' => '^a'], '{"f":"ab"}', '{"f":"ba"}'],
+            // ECMA-262 `$` is the very end; PCRE's also matched before a final newline, so an
+            // allow-list pattern let "abc\n" through in every mode.
+            // An `allOf` class: Symfony mode read its constraints from the raw schema, where every
+            // property sits inside a branch, and emitted no callback — the uuid was checked by nothing.
+            'allOf object keeps its property formats' => [['allOf' => [['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'format' => 'uuid'], 'tags' => ['type' => 'array', 'uniqueItems' => true, 'items' => ['type' => 'string']]]]]], '{"f":{"code":"7f8d4c22-3d1f-4b6e-9c5a-2b1d3e4f5a6b","tags":["a","b"]}}', '{"f":{"code":"nope","tags":["a","a"]}}'],
+            'pattern end before a trailing newline' => [['type' => 'string', 'pattern' => '^[a-z]+$'], '{"f":"abc"}', '{"f":"abc\n"}'],
+            // ECMA-262 `[^]` is any character; PCRE read it as an unclosed class and every value failed.
+            'pattern any-character class' => [['type' => 'string', 'pattern' => '^[^]$'], '{"f":"x"}', '{"f":"xy"}'],
+            // ECMA-262 `.` stops at every line terminator, `\r` included.
+            'pattern dot stops at a carriage return' => [['type' => 'string', 'pattern' => '^a.b$'], '{"f":"axb"}', '{"f":"a\rb"}'],
+            'format uuid before a trailing newline' => [['type' => 'string', 'format' => 'uuid'], '{"f":"7f8d4c22-3d1f-4b6e-9c5a-2b1d3e4f5a6b"}', '{"f":"7f8d4c22-3d1f-4b6e-9c5a-2b1d3e4f5a6b\n"}'],
+            // RFC 9562's nil and max UUIDs have no version nibble; runtime accepted them, the interpreter did not.
+            'format uuid nil' => [['type' => 'string', 'format' => 'uuid'], '{"f":"00000000-0000-0000-0000-000000000000"}', '{"f":"00000000-0000-0000-0000-00000000000"}'],
+            'format uuid max' => [['type' => 'string', 'format' => 'uuid'], '{"f":"ffffffff-ffff-ffff-ffff-ffffffffffff"}', '{"f":"ffffffff-ffff-ffff-ffff-fffffffffffg"}'],
+            'format time before a trailing newline' => [['type' => 'string', 'format' => 'time'], '{"f":"10:00:00Z"}', '{"f":"10:00:00Z\n"}'],
             // A numeric format alone: laravel and laravel-data called a string-format checker they had
             // not emitted, so a wrong-typed value was "Call to undefined method", a 500.
             'int64 given a string' => [['type' => 'integer', 'format' => 'int64'], '{"f":5}', '{"f":"abc"}'],
@@ -405,6 +420,16 @@ final class ValidationParityTest extends TestCase
             // `uri` and `iri` are ABSOLUTE; only the `*-reference` forms take a relative value. The
             // emitted interpreter used to map all four to the reference check and accept `/rel/path`.
             'format uri' => [['type' => 'string', 'format' => 'uri'], '{"f":"https://a.example/x"}', '{"f":"/rel/path"}'],
+            // The URL filter knows authority URIs only: framework modes refused a URN.
+            'format uri as a URN' => [['type' => 'string', 'format' => 'uri'], '{"f":"urn:isbn:0451450523"}', '{"f":"urn: spaced"}'],
+            // The filter checks an email's domain as ASCII; an internationalized one is what idn-email is for.
+            'format idn-email with an internationalized domain' => [['type' => 'string', 'format' => 'idn-email'], '{"f":"cat@пример.рф"}', '{"f":"cat@@пример.рф"}'],
+            'multipleOf rejects a near multiple' => [['type' => 'number', 'multipleOf' => 1], '{"f":3}', '{"f":1.0000000001}'],
+            'multipleOf rejects a long decimal' => [['type' => 'number', 'multipleOf' => 0.1], '{"f":0.3}', '{"f":0.30000000001}'],
+            // A key of digits arrives as a PHP int and is still a name.
+            'propertyNames with a numeric key' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer'], 'propertyNames' => ['maxLength' => 2]], '{"f":{"12":1}}', '{"f":{"12345":1}}'],
+            'patternProperties with a numeric key' => [['type' => 'object', 'patternProperties' => ['^[0-9]+$' => ['minimum' => 5]]], '{"f":{"7":9}}', '{"f":{"7":1}}'],
+            'additionalProperties false with a numeric key' => [['type' => 'object', 'patternProperties' => ['^x-' => []], 'additionalProperties' => false], '{"f":{"x-a":1}}', '{"f":{"42":1}}'],
             'format iri' => [
                 ['type' => 'string', 'format' => 'iri'],
                 '{"f":"https://пример.example/путь"}',
@@ -448,6 +473,29 @@ final class ValidationParityTest extends TestCase
         }
 
         return $provided;
+    }
+
+    /**
+     * OpenAPI 3.0 `nullable: true` inside a union branch: the branch's `type` alone kept null out, so
+     * the null the document allows was refused as "does not match any oneOf branch".
+     */
+    public function testNullableUnionBranchAcceptsNull(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $spec = self::probeSpec([$keyword => [['type' => 'string', 'nullable' => true], ['type' => 'integer']]]);
+            $spec['openapi'] = '3.0.3';
+
+            $this->assertEveryModeYields(
+                ['valid' => true, 'invalid' => false],
+                fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable ' . $keyword, '{"f":null}', '{"f":[1]}'),
+                [],
+                context: 'nullable ' . $keyword,
+            );
+        }
     }
 
     /**

@@ -3,6 +3,122 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.124 — 2026-11-20
+
+- document text never picks a class
+- shared services directory kept intact
+- output never swallows the project
+- referenced files must be documents
+- patterns follow ECMA-262 anchors
+- union, enum and map fixes
+- symfony allOf keeps its checks
+- laravel nested rules written once
+- faster symfony and yii3 generation
+
+**Runtime mode with `--dto-generator-directory`: regenerate after upgrading.** The fix is in the
+deserializer and normalizer, and the copies the generator vendored into your tree keep the old code until
+the next run.
+
+**laravel and laravel-data: expect a large diff on regeneration.** A class held by another one now writes
+its nested rules itself — see "Nested DTOs, written once" below. Validation is the same; the code that
+expresses it moved.
+
+Security — a document could make the runtime deserializer construct any class (runtime mode):
+
+The deserializer learns an item's class from the generated DTO's source, and it read that source as
+lines of text. The source also carries the document's own text — defaults, patterns, descriptions:
+
+- a string default or pattern with a line break could hold a line that reads as a `use` import. It was
+  taken for one, so the items of a list were constructed as another class — PHP's own included — with
+  constructor arguments from the request;
+- a list's item type was taken from the first `array<…>` anywhere in the property's docblock, the
+  description included. A description naming another class reached the same constructor; an innocent
+  one — "not an array<Gear> of gears" — made every valid payload fail with `expects object, got string`.
+
+Imports are now read as PHP tokens, before the class only; the item type is read from the `@var` tag
+alone, the `@return` and `Expected format:` the services read likewise from the tag. PHP's own classes
+are never hydrated as a DTO. Exploiting it needed control over the document and a request to the
+endpoint, the same threat model as 2.15.119.
+
+Fixed — a run could delete files that were never the generator's (all modes):
+
+- `--dto-generator-directory` was regenerated as a whole, like `--directory`: everything else in it was
+  deleted, and `--dto-generator-directory=.` deleted the project — `composer.json`, `src/`, the
+  document — then reported `[OK]`. A directory you name now gets the service files and nothing else
+  changes; the default `<--directory>/Common` is still the generator's own and is regenerated whole.
+- `--directory` is refused, with nothing written, when it is the working directory or above it, a project
+  root (it holds `.git` or `composer.json`), or holds the document being generated.
+
+Hardened — what a document may make the generator read and write (all modes):
+
+- a `$ref` may name a `.yaml`, `.yml` or `.json` document only; any other local file is refused. A
+  referenced document that fails to parse is reported by file and line, without its content;
+- a class generated outside every output directory — the `common` convention, a `--ref` mapping — no
+  longer replaces a file the generator did not write (one without its "auto-generated" note);
+- YAML anchors nested into one another stop with an error once the document expands past 5 000 000 nodes;
+  a few hundred bytes of them used to exhaust memory.
+
+Fixed — validation (all modes unless named):
+
+- `pattern`: `$` matched before a trailing newline, so `^[a-z]+$` accepted `"abc\n"`. Every emitted and
+  runtime regex now ends at the very end (`D`), the built-in format checks (uuid, time, duration,
+  json-pointer, uri) included. ECMA-262 `[^]` (any character) and `[]` (none) compile, and `.` stops at
+  `\r` as well as `\n`;
+- `multipleOf`: the float tolerance accepted `1.0000000001` as a multiple of 1. It now applies only to a
+  value that looks computed in PHP;
+- OpenAPI 3.0 `nullable: true` inside a `oneOf` / `anyOf` branch refused null;
+- symfony, laravel, laravel-data, yii3: an object key made of digits (`"42"`) skipped `propertyNames`,
+  `patternProperties` and `additionalProperties: false`;
+- `format: uri` refused a URN (`urn:isbn:…`) and `format: idn-email` an internationalized domain outside
+  runtime mode; yii3 left `uri` and `uuid` to yiisoft's `Url` and `Uuid`, which refused a URN and let a
+  uuid with a trailing newline through — the interpreter checks both now;
+- symfony, yii3: the nil and max UUIDs (`00000000-…`, `ffffffff-…`) were refused, as they are not by
+  runtime;
+- symfony: a class written as `allOf` carried no `#[Assert\Callback]` at all — its formats, `const` and
+  `uniqueItems` were checked by nothing;
+- laravel, laravel-data: a property that `$ref`s a DTO had no `array` rule, so `"x"` or null passed
+  `rules()` and then failed hydration with a TypeError.
+
+Fixed — runtime mode:
+
+- a component enum written `type: [string, 'null']`, or with no `type`, was generated as an empty DTO and
+  refused every value;
+- `oneOf: [{format: date}, {type: 'null'}]` refused every date; `[date, integer]` parsed the date as a
+  date-time; `[date, date-time]` read a date in the server's timezone, now in UTC;
+- a temporal union went out of the DTO's own `toJson()` as the PHP object —
+  `{"date": "…", "timezone": "…"}` — and a date as a date-time. Each value now goes out as the branch it
+  came in by: a date as `Y-m-d`, a date-time as RFC 3339;
+- a list of lists of an integer enum was validated by nothing;
+- a map of maps went out with its inner maps as JSON lists (`{}` as `[]`), and was refused on the way
+  back in;
+- `additionalProperties: {schema}` beside named properties: the extra keys were neither validated nor
+  kept. They are validated, kept — `undeclaredProperties()` — and written back by `toArray()` and
+  `toJson()` after the declared ones;
+- a union member typed directly (`cat: $ref Cat`) took its parent's discriminator and refused its own
+  values;
+- a number that overflows (`1e400`) became INF and broke `toJson()`; it is now a validation error.
+
+Fixed — generation:
+
+- a property named like a generated member — `this`, laravel's `providedOpenApiKeys` /
+  `omitsUnsetNulls`, symfony's `<property>Provided`, runtime's new `undeclaredProperties` — produced a
+  class PHP refused to compile. It gets a
+  numeric suffix, as a case-only clash does;
+- symfony, yii3: about four times faster on large documents (each class's reachable property types are
+  computed once). The runtime services import the built-in functions they call.
+
+Nested DTOs, written once (laravel, laravel-data):
+
+A nested DTO's dotted rules, its wire-shape paths and its interpreter schema were written out in the
+parent under every path that reaches it. A class two properties reach was written twice, and everything
+below it: twenty schemas each naming the two before them grew like Fibonacci, into a 15 MB class and an
+out-of-memory fatal. Now each class held by another one carries `openApiNestedValidation($prefix,
+$visited)`, which the parent's `rules()` and `withValidator()` ask; the interpreter schema of a nested
+class is stored once in `OPENAPI_RECURSIVE_SCHEMAS` and pointed at, as a cycle already was. The rules a
+request is validated against are the same — compared rule for rule on the demo corpus. A union or allOf
+base, emitted as an interface, cannot carry the method and is still written out; past 20 000 nested paths
+that stops with an error instead of exhausting memory.
+
 ## 2.15.123 — 2026-11-16
 
 - `**` in --ref and --file masks

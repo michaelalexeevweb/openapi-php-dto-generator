@@ -14,6 +14,73 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use stdClass;
 use Symfony\Component\HttpFoundation\File\File;
 
+use function abs;
+use function array_filter;
+use function array_intersect_key;
+use function array_is_list;
+use function array_key_exists;
+use function array_keys;
+use function array_map;
+use function array_pop;
+use function array_push;
+use function array_unique;
+use function array_values;
+use function base64_decode;
+use function bin2hex;
+use function count;
+use function ctype_xdigit;
+use function explode;
+use function filter_var;
+use function floor;
+use function fmod;
+use function function_exists;
+use function get_object_vars;
+use function gettype;
+use function hex2bin;
+use function idn_to_ascii;
+use function implode;
+use function in_array;
+use function is_array;
+use function is_bool;
+use function is_finite;
+use function is_float;
+use function is_infinite;
+use function is_int;
+use function is_nan;
+use function is_numeric;
+use function is_object;
+use function is_string;
+use function json_decode;
+use function json_encode;
+use function ksort;
+use function ltrim;
+use function mb_strlen;
+use function pack;
+use function preg_last_error;
+use function preg_match;
+use function preg_replace;
+use function quoted_printable_decode;
+use function restore_error_handler;
+use function round;
+use function rtrim;
+use function serialize;
+use function set_error_handler;
+use function sprintf;
+use function str_contains;
+use function str_ends_with;
+use function str_repeat;
+use function str_replace;
+use function str_split;
+use function str_starts_with;
+use function strlen;
+use function strpos;
+use function strrpos;
+use function strtolower;
+use function substr;
+use function trim;
+use function ucfirst;
+use function var_export;
+
 final class DtoValidator implements DtoValidatorInterface
 {
     private const int MAX_VALIDATION_DEPTH = 256;
@@ -85,6 +152,23 @@ final class DtoValidator implements DtoValidatorInterface
                     continue;
                 }
             }
+            // ECMA-262 `[^]` is any character and `[]` none; PCRE reads the `]` as a member and the
+            // class never closes, so every value failed as "invalid regex".
+            if (!$inClass && $character === '[' && substr($pattern, $i, 3) === '[^]') {
+                $delimited .= '[\s\S]';
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ']') {
+                $delimited .= '(?!)';
+                $i++;
+                continue;
+            }
+            // ECMA-262 `.` stops at every line terminator; PCRE's stops at `\n` alone.
+            if (!$inClass && $character === '.') {
+                $delimited .= $unicode ? '[^\n\r\x{2028}\x{2029}]' : '[^\n\r]';
+                continue;
+            }
             if (!$inClass && $character === '[') {
                 $inClass = true;
                 $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
@@ -95,7 +179,9 @@ final class DtoValidator implements DtoValidatorInterface
             $delimited .= $character === '#' ? '\#' : $character;
         }
 
-        return $delimited . ($unicode ? '#u' : '#');
+        // `D`: ECMA-262 `$` is the very end. PCRE's also matches before a final `\n`, and
+        // `^[a-z]+$` let "abc\n" through to a log line or a header.
+        return $delimited . ($unicode ? '#uD' : '#D');
     }
 
     /**
@@ -569,7 +655,18 @@ final class DtoValidator implements DtoValidatorInterface
 
         $format = $constraints['format'] ?? null;
         if (!is_string($format)) {
-            return $value->format(DateTimeInterface::ATOM);
+            // A union carries the format on its branches. A date written as ATOM matched no `date`
+            // branch, so `oneOf: [{format: date}, {type: 'null'}]` refused every date.
+            $branchFormats = [];
+            foreach ([...(is_array($constraints['oneOf'] ?? null) ? $constraints['oneOf'] : []), ...(is_array($constraints['anyOf'] ?? null) ? $constraints['anyOf'] : [])] as $branch) {
+                if (is_array($branch) && is_string($branch['format'] ?? null)) {
+                    $branchFormats[$branch['format']] = true;
+                }
+            }
+
+            return array_key_exists('date', $branchFormats) && !array_key_exists('date-time', $branchFormats)
+                ? $value->format('Y-m-d')
+                : $value->format(DateTimeInterface::ATOM);
         }
 
         return match ($format) {
@@ -594,7 +691,9 @@ final class DtoValidator implements DtoValidatorInterface
 
             // Type-gate: a branch whose declared type can't match the value would fail its
             // own type check anyway, so skip it. Branches without a type are always evaluated.
-            if (!$this->matchesOpenApiType(value: $value, type: $branch['type'] ?? null)) {
+            // OpenAPI 3.0 `nullable: true` lets null into a branch its `type` alone would keep it out of.
+            $nullAllowed = $value === null && ($branch['nullable'] ?? false) === true;
+            if (!$nullAllowed && !$this->matchesOpenApiType(value: $value, type: $branch['type'] ?? null)) {
                 continue;
             }
 
@@ -805,8 +904,16 @@ final class DtoValidator implements DtoValidatorInterface
             // Not a decimal multiple — but a float COMPUTED in PHP (`3 * 1e-8`) is off by one ulp,
             // so a whole ratio within 1e-9 still counts. Only a NON-ZERO one: a tolerance around zero
             // is what said `1e-12` is a multiple of `0.1`.
+            // Only a value that LOOKS computed: 16 or more significant digits in its shortest spelling
+            // (`3.0000000000000004E-8`). A JSON number is spelled the way it was sent, and the
+            // tolerance accepted `1.0000000001` as a multiple of 1; past 2^53 every ratio is whole.
             $ratio = $value / $multipleOf;
-            if (round($ratio) === 0.0 || abs($ratio - round($ratio)) > 1e-9) {
+            if (
+                round($ratio) === 0.0
+                || abs($ratio - round($ratio)) > 1e-9
+                || abs($ratio) >= 2 ** 53
+                || self::significantDigits((float)$value) < 16
+            ) {
                 $errors[] = "{$subject} must be a multiple of {$this->stringifyNumber($multipleOf)}";
             }
         }
@@ -989,6 +1096,14 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return [];
+    }
+
+    /** How many significant digits the shortest round-trip spelling of a float has. */
+    private static function significantDigits(float $value): int
+    {
+        $mantissa = (string)preg_replace('/[eE].*$/', '', ltrim(var_export($value, true), '-'));
+
+        return strlen(rtrim(ltrim(str_replace('.', '', $mantissa), '0'), '0'));
     }
 
     /**
@@ -1861,14 +1976,14 @@ final class DtoValidator implements DtoValidatorInterface
         // authority-based URI is exactly what the URL filter above already judged, and letting it in
         // here would accept `http://[` — a malformed host — as valid. This branch is for the
         // scheme-only shapes: `urn:`, `mailto:`, `tel:`.
-        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/', $value) === 1;
+        return preg_match('/^[A-Za-z][A-Za-z0-9+.\-]*:(?!\/\/)[^\s]+$/D', $value) === 1;
     }
 
     private function isValidTimeFormat(string $value): bool
     {
         // RFC 3339 full-time: HH:MM:SS[.frac] with required Z or numeric offset.
         return preg_match(
-            pattern: '/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/',
+            pattern: '/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/D',
             subject: $value,
         ) === 1;
     }
@@ -1892,7 +2007,7 @@ final class DtoValidator implements DtoValidatorInterface
         // Y/M/D/T components, so it is a separate alternative; otherwise at least one date
         // or time component is required, and a "T" must be followed by a time component.
         return preg_match(
-            pattern: '/^P(?:\d+W|(?=\d|T)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?)$/',
+            pattern: '/^P(?:\d+W|(?=\d|T)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?)$/D',
             subject: $value,
         ) === 1;
     }
@@ -1901,14 +2016,14 @@ final class DtoValidator implements DtoValidatorInterface
     {
         // RFC 6901: the empty string (whole document) or one-or-more "/"-prefixed tokens.
         // Inside a token "~" is an escape and must be followed by "0" or "1".
-        return preg_match('#^(/(?:[^/~]|~[01])*)*$#u', $value) === 1;
+        return preg_match('#^(/(?:[^/~]|~[01])*)*$#uD', $value) === 1;
     }
 
     private function isValidRelativeJsonPointer(string $value): bool
     {
         // RFC draft: a non-negative integer (no leading zeros) optionally followed by either
         // "#" (the key/index) or a JSON Pointer. Examples: "0", "1/foo", "2#".
-        return preg_match('!^(0|[1-9][0-9]*)(?:#|(?:/(?:[^/~]|~[01])*)*)$!u', $value) === 1;
+        return preg_match('!^(0|[1-9][0-9]*)(?:#|(?:/(?:[^/~]|~[01])*)*)$!uD', $value) === 1;
     }
 
     private function isValidUriReference(string $value): bool
@@ -1994,7 +2109,7 @@ final class DtoValidator implements DtoValidatorInterface
 
         foreach (explode('.', $value) as $label) {
             if (
-                preg_match('/^(?!-)[\p{L}\p{N}\p{M}-]{1,63}(?<!-)$/u', $label) !== 1
+                preg_match('/^(?!-)[\p{L}\p{N}\p{M}-]{1,63}(?<!-)$/uD', $label) !== 1
             ) {
                 return false;
             }
@@ -2034,7 +2149,7 @@ final class DtoValidator implements DtoValidatorInterface
         // (c/d), not only the strict RFC 4122 10xx variant ([89ab]). This is intentional:
         // real-world payloads from .NET/Windows carry variant-2 GUIDs and must not be rejected.
         return preg_match(
-            pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
+            pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D',
             subject: $value,
         ) === 1;
     }
@@ -2061,7 +2176,7 @@ final class DtoValidator implements DtoValidatorInterface
 
         // Reject structural mismatches (trailing garbage, wrong separator) before createFromFormat.
         // createFromFormat silently accepts trailing characters, so a pre-check is required.
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/', $value) !== 1) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/D', $value) !== 1) {
             return false;
         }
 

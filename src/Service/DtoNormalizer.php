@@ -21,6 +21,48 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Throwable;
 use UnitEnum;
 
+use function array_filter;
+use function array_key_exists;
+use function array_map;
+use function array_push;
+use function array_unique;
+use function array_values;
+use function call_user_func;
+use function class_exists;
+use function ctype_alnum;
+use function end;
+use function enum_exists;
+use function explode;
+use function get_class;
+use function get_class_methods;
+use function get_debug_type;
+use function gettype;
+use function implode;
+use function in_array;
+use function interface_exists;
+use function is_array;
+use function is_bool;
+use function is_callable;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function json_encode;
+use function lcfirst;
+use function ltrim;
+use function method_exists;
+use function preg_match_all;
+use function spl_object_id;
+use function sprintf;
+use function str_contains;
+use function str_starts_with;
+use function strlen;
+use function strpos;
+use function strrpos;
+use function strtolower;
+use function substr;
+use function trim;
+
 final class DtoNormalizer implements DtoNormalizerInterface
 {
     /** @var array<string, bool> */
@@ -525,7 +567,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 // A map field must serialize as a JSON object; a plain array would become a JSON
                 // list when its keys are dense integers.
                 if ($getterMeta['isMap'] && is_array($normalized)) {
-                    $normalized = (object)$normalized;
+                    $normalized = $this->mapAsObject(
+                        value: $normalized,
+                        schema: $meta['constraintsByField'][$getterMeta['propertyName']] ?? [],
+                    );
                 }
                 $result[$getterMeta['outputName']] = $normalized;
             } catch (Throwable $e) {
@@ -536,7 +581,39 @@ final class DtoNormalizer implements DtoNormalizerInterface
             }
         }
 
+        // The keys `additionalProperties` admitted beside the declared ones, after them.
+        if (method_exists($dto, 'undeclaredProperties')) {
+            $undeclared = $dto->undeclaredProperties();
+            if (is_array($undeclared)) {
+                $result += $this->normalizeArrayPayload($undeclared, $visited);
+            }
+        }
+
         return $result;
+    }
+
+    /**
+     * A map as a JSON object at every level its schema says is a map. Only the outer level was cast,
+     * so the inner maps of `additionalProperties: {additionalProperties: …}` went out as lists — `{}`
+     * as `[]`, `{"0":1}` as `[1]` — and the deserializer refused its own output.
+     *
+     * @param array<array-key, mixed> $value
+     * @param array<string, mixed> $schema
+     */
+    private function mapAsObject(array $value, array $schema): object
+    {
+        $valueSchema = is_array($schema['additionalProperties'] ?? null) ? $schema['additionalProperties'] : [];
+        $isMap = is_array($valueSchema['additionalProperties'] ?? null) || ($valueSchema['type'] ?? null) === 'object'
+            && !is_array($valueSchema['properties'] ?? null);
+        if ($isMap) {
+            foreach ($value as $key => $item) {
+                if (is_array($item)) {
+                    $value[$key] = $this->mapAsObject(value: $item, schema: $valueSchema);
+                }
+            }
+        }
+
+        return (object)$value;
     }
 
     /**
@@ -1235,11 +1312,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return [];
         }
 
-        if (preg_match('/@return\s+([^\n\r*]+)/', $docComment, $matches) !== 1) {
+        // The tag itself, the last one: the getter's docblock opens with the document's description,
+        // and a "@return" in that text is not the type.
+        if (preg_match_all('~^[ \t]*(?:/\*\*|\*)?[ \t]*@return[ \t]+([^\n\r*]+)~m', $docComment, $matches) < 1) {
             return [];
         }
 
-        return $this->extractArrayItemTypeNames($className, trim($matches[1]));
+        return $this->extractArrayItemTypeNames($className, trim((string)end($matches[1])));
     }
 
     /**

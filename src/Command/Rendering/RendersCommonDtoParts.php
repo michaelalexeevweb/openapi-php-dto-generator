@@ -394,4 +394,51 @@ trait RendersCommonDtoParts
 
         return $values;
     }
+
+    /**
+     * A class schema written as `allOf`, with its INLINE branches merged into it — the object the
+     * emitted class carries. Symfony mode extracted its constraints from the raw schema, where every
+     * property sits inside a branch, so an `allOf` class got no `#[Assert\Callback]` at all: a uuid,
+     * a `const`, `uniqueItems` were checked by nothing. A `$ref` branch is the parent the class
+     * extends, and the parent enforces its own rules.
+     *
+     * @param array<mixed> $schemaDefinition
+     * @return array<mixed>
+     */
+    private function classSchemaWithInlineAllOfMerged(array $schemaDefinition): array
+    {
+        $allOf = $schemaDefinition['allOf'] ?? null;
+        if (!is_array($allOf) || $allOf === []) {
+            return $schemaDefinition;
+        }
+
+        $merged = [];
+        foreach ($schemaDefinition as $keyword => $value) {
+            if ($keyword !== 'allOf') {
+                $merged[$keyword] = $value;
+            }
+        }
+        foreach ($allOf as $branch) {
+            if (!is_array($branch) || array_key_exists('$ref', $branch)) {
+                continue;
+            }
+            $required = [
+                ...(is_array($merged['required'] ?? null) ? $merged['required'] : []),
+                ...(is_array($branch['required'] ?? null) ? $branch['required'] : []),
+            ];
+            $properties = [
+                ...(is_array($merged['properties'] ?? null) ? $merged['properties'] : []),
+                ...(is_array($branch['properties'] ?? null) ? $branch['properties'] : []),
+            ];
+            $merged = [...$merged, ...$branch];
+            if ($required !== []) {
+                $merged['required'] = array_values(array_unique($required));
+            }
+            if ($properties !== []) {
+                $merged['properties'] = $properties;
+            }
+        }
+
+        return $merged;
+    }
 }
