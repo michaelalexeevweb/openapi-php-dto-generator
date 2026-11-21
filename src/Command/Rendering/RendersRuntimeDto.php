@@ -1158,7 +1158,8 @@ trait RendersRuntimeDto
             // levels of a component that holds itself, and accepted a wrong value below that.
             $extraClass = $this->extraPropertiesDtoClass(className: $className, schema: $schema['additionalProperties']);
             if ($extraClass !== null) {
-                $objectConstraints['additionalProperties'] = ['x-php-dto' => $extraClass];
+                $objectConstraints['additionalProperties'] = ['x-php-dto' => $extraClass['class']]
+                    + ($extraClass['nullable'] ? ['nullable' => true] : []);
 
                 return $objectConstraints;
             }
@@ -1177,17 +1178,26 @@ trait RendersRuntimeDto
         return $objectConstraints;
     }
     /**
-     * The fully qualified generated class a bare `{$ref: X}` names, when X is an object DTO the
-     * deserializer can hydrate — not an enum, not a union interface, not a scalar alias.
+     * The fully qualified generated class a `{$ref: X}` names, when X is an object DTO the deserializer
+     * can hydrate — not an enum, not a union interface, not a scalar alias — and whether null is
+     * allowed instead: X is nullable, or the reference says so. Annotations beside the reference
+     * (`description`, `title`, …) do not change what it points at.
      *
      * @param array<mixed> $schema
+     * @return array{class: string, nullable: bool}|null
      */
-    private function extraPropertiesDtoClass(string $className, array $schema): ?string
+    private function extraPropertiesDtoClass(string $className, array $schema): ?array
     {
-        if (count($schema) !== 1 || !is_string($schema['$ref'] ?? null)) {
+        $ref = $schema['$ref'] ?? null;
+        if (!is_string($ref)) {
             return null;
         }
-        $refClass = $this->nestedRefClassName($schema['$ref'], $this->getSchemaSourceFile($className));
+        foreach (array_keys($schema) as $keyword) {
+            if ($keyword !== '$ref' && !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)) {
+                return null;
+            }
+        }
+        $refClass = $this->nestedRefClassName($ref, $this->getSchemaSourceFile($className));
         $refSchema = $refClass === null ? null : $this->dtoSchemas[$refClass] ?? null;
         if (
             $refClass === null
@@ -1195,12 +1205,15 @@ trait RendersRuntimeDto
             || array_key_exists($refClass, $this->enumSchemas)
             || array_key_exists('oneOf', $refSchema)
             || array_key_exists('anyOf', $refSchema)
-            || !(($refSchema['type'] ?? null) === 'object' || array_key_exists('properties', $refSchema) || array_key_exists('allOf', $refSchema))
+            || !($this->soleTypeBesidesNull($refSchema['type'] ?? null) === 'object' || array_key_exists('properties', $refSchema) || array_key_exists('allOf', $refSchema))
         ) {
             return null;
         }
 
-        return ltrim(($this->schemaNamespaces[$refClass] ?? $this->baseNamespace) . '\\' . $refClass, '\\');
+        return [
+            'class' => ltrim(($this->schemaNamespaces[$refClass] ?? $this->baseNamespace) . '\\' . $refClass, '\\'),
+            'nullable' => ($schema['nullable'] ?? null) === true || $this->schemaAllowsNull($refSchema),
+        ];
     }
 
     /**

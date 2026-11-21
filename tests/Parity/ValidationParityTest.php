@@ -512,9 +512,8 @@ final class ValidationParityTest extends TestCase
         $spec['openapi'] = '3.0.3';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable twice', '{"f":null}', '{"f":[1]}'),
-            [],
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable twice', '{"f":null}', '{"f":[1]}'),
             context: 'nullable twice',
         );
     }
@@ -532,15 +531,14 @@ final class ValidationParityTest extends TestCase
         $spec = self::probeSpec(['type' => 'array', 'items' => ['type' => 'string', 'format' => 'uuid']]);
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict(
-                $mode,
-                $spec,
-                'uuid shape',
-                '{"f":["3f2504e0-4f89-41d3-da0c-0305e82c3301","3f2504e0-4f89-01d3-9a0c-0305e82c3301"]}',
-                '{"f":["3f2504e0-4f89-41d3-da0c-0305e82c330"]}',
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: 'uuid shape',
+                validJson: '{"f":["3f2504e0-4f89-41d3-da0c-0305e82c3301","3f2504e0-4f89-01d3-9a0c-0305e82c3301"]}',
+                invalidJson: '{"f":["3f2504e0-4f89-41d3-da0c-0305e82c330"]}',
             ),
-            [],
             context: 'uuid shape',
         );
     }
@@ -567,14 +565,13 @@ final class ValidationParityTest extends TestCase
             ]],
         ];
 
-        $this->assertSame(
-            ['valid' => true, 'invalid' => false],
-            $this->verdict(GenerationMode::Symfony, $spec, 'closed branch beside a parent', '{"id":"a","f":"b"}', '{"f":1}'),
-        );
-        $this->assertSame(
-            ['valid' => true, 'invalid' => false],
-            $this->verdict(GenerationMode::Runtime, $spec, 'closed branch beside a parent', '{"id":"a","f":"b"}', '{"f":1}'),
-        );
+        foreach ([GenerationMode::Symfony, GenerationMode::Runtime] as $mode) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $spec, 'closed branch beside a parent', '{"id":"a","f":"b"}', '{"f":1}'),
+                message: $mode->value,
+            );
+        }
     }
 
     /**
@@ -607,9 +604,9 @@ final class ValidationParityTest extends TestCase
 
         foreach ([GenerationMode::Symfony, GenerationMode::Runtime] as $mode) {
             $this->assertSame(
-                ['valid' => true, 'invalid' => false],
-                $this->verdict($mode, $spec, $key, '{"id":5,"name":"n"}', '{"id":"x","name":"n"}'),
-                $mode->value . ' ' . $key,
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $spec, $key, '{"id":5,"name":"n"}', '{"id":"x","name":"n"}'),
+                message: $mode->value . ' ' . $key,
             );
         }
     }
@@ -627,6 +624,64 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * Symfony writes an `allOf` child as one flat class holding the parent's properties, and the
+     * parent's rules for them — a format, a `const`, `uniqueItems` — were checked by nothing there.
+     * Open or closed, the child refuses what the parent refuses.
+     *
+     * @param array<string, mixed> $closing
+     */
+    #[DataProvider('inheritedRuleCases')]
+    public function testAnAllOfChildChecksTheRulesOfItsParentsProperties(string $key, array $closing, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Base' => ['type' => 'object', 'required' => ['id'], 'properties' => [
+                    'id' => ['type' => 'integer'],
+                    'u' => ['type' => 'string', 'format' => 'uuid'],
+                    'k' => ['const' => 'x'],
+                    't' => ['type' => 'array', 'items' => ['type' => 'string'], 'uniqueItems' => true],
+                ]],
+                'Probe' => [...$closing, 'allOf' => [
+                    ['$ref' => '#/components/schemas/Base'],
+                    ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+                ]],
+            ]],
+        ];
+
+        foreach ([GenerationMode::Symfony, GenerationMode::Runtime] as $mode) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict(
+                    mode: $mode,
+                    spec: $spec,
+                    key: $key,
+                    validJson: '{"id":1,"u":"3f2504e0-4f89-41d3-9a0c-0305e82c3301","k":"x","t":["a","b"],"name":"n"}',
+                    invalidJson: $invalidJson,
+                ),
+                message: $mode->value . ' ' . $key,
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>, string}>
+     */
+    public static function inheritedRuleCases(): iterable
+    {
+        foreach (['open' => [], 'closed' => ['additionalProperties' => false]] as $shape => $closing) {
+            yield $shape . ' format' => ['inherited format ' . $shape, $closing, '{"id":1,"u":"nope"}'];
+            yield $shape . ' const' => ['inherited const ' . $shape, $closing, '{"id":1,"k":"y"}'];
+            yield $shape . ' uniqueItems' => ['inherited unique ' . $shape, $closing, '{"id":1,"t":["a","a"]}'];
+        }
+    }
+
+    /**
      * A uuid in a property-level `anyOf` branch is checked for its shape, like one in a `oneOf` branch:
      * Symfony turned it into `Assert\Uuid`, which pins version and variant.
      */
@@ -640,9 +695,14 @@ final class ValidationParityTest extends TestCase
             $spec = self::probeSpec([$keyword => [['type' => 'string', 'format' => 'uuid'], ['type' => 'integer']]]);
 
             $this->assertEveryModeYields(
-                ['valid' => true, 'invalid' => false],
-                fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'uuid branch ' . $keyword, '{"f":"12345678-1234-0234-c234-123456789012"}', '{"f":"nope"}'),
-                [],
+                expected: ['valid' => true, 'invalid' => false],
+                observe: fn(GenerationMode $mode): array => $this->verdict(
+                    mode: $mode,
+                    spec: $spec,
+                    key: 'uuid branch ' . $keyword,
+                    validJson: '{"f":"12345678-1234-0234-c234-123456789012"}',
+                    invalidJson: '{"f":"nope"}',
+                ),
                 context: 'uuid branch ' . $keyword,
             );
         }

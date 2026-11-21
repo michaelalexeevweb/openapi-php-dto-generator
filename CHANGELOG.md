@@ -3,6 +3,48 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.127 — 2026-11-21
+
+- nullable extras admit null
+- annotated extra refs fully checked
+- nested extra objects stay objects
+- union refs report once
+- null-branch unions admit null
+- renames see parent names
+- case renames avoid members
+- symfony allOf checks parent rules
+
+A review of the 2.15.126 changes, each fix pinned by a test that failed before it.
+
+**Runtime mode with `--dto-generator-directory`: regenerate after upgrading.** The deserializer changed.
+
+**symfony: an `allOf` child now checks its parent's rules.** Symfony writes the child as one flat class,
+and a format, `const` or `uniqueItems` the parent sets on a property it brings was checked by nothing
+there; runtime mode always refused those values. Payloads that broke such a rule are now refused.
+
+Runtime mode:
+
+- an extra value under `additionalProperties: {$ref: X}` may be null when `X` admits null (`nullable: true`,
+  `type: [object, null]`); 2.15.126 refused it;
+- annotations beside the reference (`description`, `title`, …) no longer send it back to the depth-limited
+  check: a self-referencing component is checked by itself at every depth either way;
+- the objects inside such a value go out as objects when the payload was a PHP array that spelled them `[]`.
+
+laravel and laravel-data:
+
+- a `$ref` to a union of objects reports a scalar once — the `array` rule 2.15.126 restored said it a second
+  time beside the union's own message. A union with a scalar branch keeps the rule; the union's message is
+  then left out;
+- a union component with a `{type: 'null'}` branch admits null like one written with `nullable: true`: the
+  property is nullable and the rules let null through. A 500 before 2.15.126, a 422 in it.
+
+All modes:
+
+- renames see what a `$ref` branch of `allOf` emits — through its own `allOf`, or after renaming its own
+  `this` to `this2` — so a real `this2` beside it is no longer merged into the same property;
+- a case-only rename (`NAme` beside `name` becomes `nAme2`) avoids the members its new name brings, like
+  `$nAme2InPath` (runtime) and `$nAme2Provided` (symfony).
+
 ## 2.15.126 — 2026-11-21
 
 - laravel keeps array rule

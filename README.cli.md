@@ -85,7 +85,7 @@ given in the three-part form.
 A key with `*`, `?` or `[…]` in it is a mask. It is matched one path segment at a time — `*` never crosses a
 `/` — and, like a directory key, covers everything below the segments it matched. `{1}`, `{2}`… in the
 directory and the namespace stand for the segments the 1st, 2nd… wildcard segment matched, in class-name
-case in both (`pipeline` → `Pipeline`, `user_reports` → `UserReports`), so the directory and the namespace
+case in both (`catalog` → `Catalog`, `user_reports` → `UserReports`), so the directory and the namespace
 segment are the same word and PSR-4 finds the class:
 
 ```bash

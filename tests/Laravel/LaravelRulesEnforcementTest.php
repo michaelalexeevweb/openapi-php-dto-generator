@@ -2234,15 +2234,20 @@ final class LaravelRulesEnforcementTest extends TestCase
     {
         $namespace = 'LvRuleCycleCache';
         $target = $this->outputDirectory . '/' . $namespace;
-        (new GenerateDtoCommand())->generateFromArray([
-            'openapi' => '3.1.0',
-            'info' => ['title' => 'T', 'version' => '1.0.0'],
-            'components' => ['schemas' => [
-                'Alpha' => ['type' => 'object', 'properties' => ['n' => ['type' => 'integer'], 'beta' => ['$ref' => '#/components/schemas/Beta']]],
-                'Beta' => ['type' => 'object', 'properties' => ['alpha' => ['$ref' => '#/components/schemas/Alpha']]],
-                'Widget' => ['type' => 'object', 'properties' => ['beta' => ['$ref' => '#/components/schemas/Beta']]],
-            ]],
-        ], $target, $namespace, 'laravel');
+        (new GenerateDtoCommand())->generateFromArray(
+            openApi: [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => [
+                    'Alpha' => ['type' => 'object', 'properties' => ['n' => ['type' => 'integer'], 'beta' => ['$ref' => '#/components/schemas/Beta']]],
+                    'Beta' => ['type' => 'object', 'properties' => ['alpha' => ['$ref' => '#/components/schemas/Alpha']]],
+                    'Widget' => ['type' => 'object', 'properties' => ['beta' => ['$ref' => '#/components/schemas/Beta']]],
+                ]],
+            ],
+            outputDirectory: $target,
+            namespace: $namespace,
+            mode: 'laravel',
+        );
         spl_autoload_register(static function (string $class) use ($target, $namespace): void {
             $file = $target . '/' . substr($class, strlen($namespace) + 1) . '.php';
             if (str_starts_with($class, $namespace . '\\') && is_file($file)) {
@@ -2272,21 +2277,17 @@ final class LaravelRulesEnforcementTest extends TestCase
     public function testAReferenceToAClassWithAnyOfStillRefusesAScalar(): void
     {
         $fqcn = $this->generateProbe(
-            'reference to a class with anyOf refuses a scalar',
-            ['$ref' => '#/components/schemas/Choice'],
-            [
+            key: 'reference to a class with anyOf refuses a scalar',
+            propertySchema: ['$ref' => '#/components/schemas/Choice'],
+            extraSchemas: [
                 'Leaf' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
                 'Choice' => ['oneOf' => [['$ref' => '#/components/schemas/Leaf'], ['type' => 'string']]],
-                'Shape' => [
-                    'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
-                    'anyOf' => [['required' => ['a']], ['required' => ['b']]],
-                ],
             ],
         );
         $shapeFqcn = $this->generateProbe(
-            'reference to a concrete class with anyOf refuses a scalar',
-            ['$ref' => '#/components/schemas/Shape'],
-            ['Shape' => [
+            key: 'reference to a concrete class with anyOf refuses a scalar',
+            propertySchema: ['$ref' => '#/components/schemas/Shape'],
+            extraSchemas: ['Shape' => [
                 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
                 'anyOf' => [['required' => ['a']], ['required' => ['b']]],
             ]],
@@ -2301,5 +2302,85 @@ final class LaravelRulesEnforcementTest extends TestCase
         $validator = $this->validatorFactory()->make(['f' => ['a' => 'x']], call_user_func([$shapeFqcn, 'rules']));
         $this->assertFalse($validator->fails());
         $this->assertNotNull(call_user_func([$shapeFqcn, 'fromValidated'], $validator->validated())->getF());
+    }
+
+    /**
+     * A `$ref` to a union of objects: the union's own check refuses a scalar with one sentence, and an
+     * `array` rule beside it said the same thing a second time. A union with a scalar branch needs the
+     * rule — there the union accepts the scalar and the DTO cannot hold it — and says it once too.
+     */
+    public function testAReferenceToAUnionReportsAScalarOnce(): void
+    {
+        $leaves = [
+            'Em' => ['type' => 'object', 'required' => ['type', 'e'], 'properties' => ['type' => ['type' => 'string'], 'e' => ['type' => 'string']]],
+            'Ph' => ['type' => 'object', 'required' => ['type', 'p'], 'properties' => ['type' => ['type' => 'string'], 'p' => ['type' => 'string']]],
+        ];
+        $objectsOnly = $this->generateProbe(
+            key: 'reference to a union of objects reports a scalar once',
+            propertySchema: ['$ref' => '#/components/schemas/Contact'],
+            extraSchemas: [...$leaves, 'Contact' => [
+                'oneOf' => [['$ref' => '#/components/schemas/Em'], ['$ref' => '#/components/schemas/Ph']],
+                'discriminator' => ['propertyName' => 'type', 'mapping' => ['em' => '#/components/schemas/Em', 'ph' => '#/components/schemas/Ph']],
+            ]],
+        );
+        $withScalar = $this->generateProbe(
+            key: 'reference to a union with a scalar branch reports a scalar once',
+            propertySchema: ['$ref' => '#/components/schemas/Contact'],
+            extraSchemas: [...$leaves, 'Contact' => ['oneOf' => [['$ref' => '#/components/schemas/Em'], ['type' => 'string']]]],
+        );
+
+        foreach ([$objectsOnly, $withScalar] as $fqcn) {
+            foreach (['"x"', '5', 'null'] as $invalid) {
+                $errors = $this->rawBodyErrors(fqcn: $fqcn, json: '{"f":' . $invalid . '}');
+                $this->assertCount(1, $errors['f'] ?? [], sprintf('%s %s: %s', $fqcn, $invalid, json_encode($errors)));
+            }
+        }
+        $valid = '{"f":{"type":"em","e":"a"}}';
+        $this->assertSame([], $this->rawBodyErrors(fqcn: $objectsOnly, json: $valid));
+        $this->assertNotNull(call_user_func([$objectsOnly, 'fromValidated'], json_decode($valid, true))->getF());
+    }
+
+    /**
+     * A union whose null branch is spelled the 3.1 way, `{type: 'null'}`, admits null like one written
+     * with `nullable: true`: the rules let it through and the DTO holds it.
+     */
+    public function testAReferenceToAUnionWithANullBranchAdmitsNull(): void
+    {
+        $leaves = [
+            'Em' => ['type' => 'object', 'required' => ['type', 'e'], 'properties' => ['type' => ['type' => 'string'], 'e' => ['type' => 'string']]],
+            'Ph' => ['type' => 'object', 'required' => ['type', 'p'], 'properties' => ['type' => ['type' => 'string'], 'p' => ['type' => 'string']]],
+        ];
+        $discriminator = ['propertyName' => 'type', 'mapping' => ['em' => '#/components/schemas/Em', 'ph' => '#/components/schemas/Ph']];
+        $spellings = [
+            'null branch' => ['oneOf' => [['$ref' => '#/components/schemas/Em'], ['$ref' => '#/components/schemas/Ph'], ['type' => 'null']], 'discriminator' => $discriminator],
+            'nullable keyword' => ['oneOf' => [['$ref' => '#/components/schemas/Em'], ['$ref' => '#/components/schemas/Ph']], 'nullable' => true, 'discriminator' => $discriminator],
+        ];
+
+        foreach ($spellings as $spelling => $union) {
+            $fqcn = $this->generateProbe(
+                key: 'reference to a union admits null: ' . $spelling,
+                propertySchema: ['$ref' => '#/components/schemas/Contact'],
+                extraSchemas: [...$leaves, 'Contact' => $union],
+            );
+
+            $this->assertSame([], $this->rawBodyErrors(fqcn: $fqcn, json: '{"f":null}'), $spelling);
+            $this->assertNull(call_user_func([$fqcn, 'fromValidated'], ['f' => null])->getF(), $spelling);
+            $this->assertNotSame([], $this->rawBodyErrors(fqcn: $fqcn, json: '{"f":"x"}'), $spelling);
+        }
+    }
+
+    /**
+     * The errors `rules()` and `withValidator()` report together for a raw JSON body.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function rawBodyErrors(string $fqcn, string $json): array
+    {
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $validator = $this->validatorFactory()->make((array)json_decode($json, true), $rules);
+        call_user_func([$fqcn, 'withValidator'], $validator, $json);
+
+        return $validator->errors()->toArray();
     }
 }

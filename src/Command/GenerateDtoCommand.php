@@ -382,6 +382,9 @@ final class GenerateDtoCommand extends Command
     /** Set once the registered schemas went through `inlineNullSchemaReferences()`. */
     private bool $referencesNormalized = false;
 
+    /** @var array<string, true> classes whose `allOf` properties are being collected, see `allOfBranchProperties()` */
+    private array $allOfPropertiesInProgress = [];
+
     /**
      * How many `extractValidationConstraints()` frames are on the stack — see the note there. Zero
      * means the next call is the outermost one and owns the `$ref` inlining.
@@ -1414,7 +1417,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * `{n}` in a mask's directory or namespace becomes what the n-th wildcard segment matched, in
-     * class-name case — `pipeline` → `Pipeline`, `universal_report`… → `UniversalReport` — in both, so
+     * class-name case — `catalog` → `Catalog`, `order_history`… → `OrderHistory` — in both, so
      * the directory and the namespace segment are the same word and PSR-4 finds the class. A `**` that
      * matched several segments gives each its own: `Billing/Invoices` in a directory,
      * `Billing\Invoices` in a namespace; one that matched none leaves no empty segment behind.
@@ -1623,10 +1626,12 @@ final class GenerateDtoCommand extends Command
             $ref = $propertySchema['$ref'] ?? null;
             // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
             // component does; the flag lived on the target, where the property never looked.
+            // A union component with a null branch, `oneOf: [A, B, {type: 'null'}]`, is the 3.1 way of
+            // writing the same thing.
             if (
                 is_string($ref)
                 && !array_key_exists('nullable', $propertySchema)
-                && ($this->localComponentDefinition($ref)['nullable'] ?? null) === true
+                && $this->componentAdmitsNull($this->localComponentDefinition($ref) ?? [])
             ) {
                 $propertySchema['nullable'] = true;
             }
@@ -3372,7 +3377,7 @@ final class GenerateDtoCommand extends Command
                     $this->extractProperties(
                         schemaDefinition: $allOfItem,
                         ownerClassName: $className,
-                        siblingPropertyNames: $this->allOfBranchPropertyNames($schemaDefinition, $className),
+                        siblingProperties: $this->allOfBranchProperties($schemaDefinition, $className),
                     ) as $property
                 ) {
                     $allProperties[] = $property;
@@ -3608,10 +3613,10 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param array<string, mixed> $schemaDefinition
-     * @param list<string> $siblingPropertyNames the PHP names the other `allOf` branches of the class declare
+     * @param array<string, string> $siblingProperties PHP name => wire name of what the `allOf` branches of the class declare
      * @return array<int, SchemaProperty>
      */
-    private function extractProperties(array $schemaDefinition, string $ownerClassName, array $siblingPropertyNames = []): array
+    private function extractProperties(array $schemaDefinition, string $ownerClassName, array $siblingProperties = []): array
     {
         $properties = $schemaDefinition['properties'] ?? [];
         $required = $schemaDefinition['required'] ?? [];
@@ -3734,20 +3739,29 @@ final class GenerateDtoCommand extends Command
                     $normalizedName,
                 ));
             }
-            $normalizedName = $this->disambiguateCaseInsensitiveName($normalizedName, $openApiPropertyName, $normalizedToOpenApiName);
+            $caseName = $this->disambiguateCaseInsensitiveName($normalizedName, $openApiPropertyName, $normalizedToOpenApiName);
             $classPropertyNames = [
                 ...array_map(
-                    $this->normalizePropertyName(...),
-                    array_map('strval', array_keys($properties)),
+                    callback: $this->normalizePropertyName(...),
+                    array: array_map('strval', array_keys($properties)),
                 ),
-                ...$siblingPropertyNames,
+                ...array_map('strval', array_keys($siblingProperties)),
             ];
+            $reserved = $this->generatedMemberNames($classPropertyNames);
+            // Another `allOf` branch emits this PHP name for a DIFFERENT wire key — its own rename of
+            // `this`, say — so the two must not merge as an override; the same wire key is one.
+            $siblingWireName = $siblingProperties[$caseName] ?? null;
+            if ($siblingWireName !== null && $siblingWireName !== $openApiPropertyName) {
+                $reserved[strtolower($caseName)] = true;
+            }
             // The suffixed name must miss the properties still to come as well: `this` renamed to
-            // `this2` beside a real `this2` later in the list was a collision the order decided.
+            // `this2` beside a real `this2` later in the list was a collision the order decided. A
+            // case-only rename (`NAme` to `nAme2`) is a new name too, with members of its own.
             $normalizedName = $this->avoidGeneratedMemberName(
-                name: $normalizedName,
-                reserved: $this->generatedMemberNames($classPropertyNames),
+                name: $caseName,
+                reserved: $reserved,
                 taken: [...array_keys($normalizedToOpenApiName), ...$classPropertyNames],
+                renamed: $caseName !== $normalizedName,
             );
             $normalizedToOpenApiName[$normalizedName] = $openApiPropertyName;
 
@@ -7423,7 +7437,7 @@ final class GenerateDtoCommand extends Command
                     $this->extractProperties(
                         schemaDefinition: $allOfItem,
                         ownerClassName: $className,
-                        siblingPropertyNames: $this->allOfBranchPropertyNames($schemaDefinition, $className),
+                        siblingProperties: $this->allOfBranchProperties($schemaDefinition, $className),
                     ) as $property
                 ) {
                     $allProperties[] = $property;
@@ -7585,16 +7599,17 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * The PHP names of every property the `allOf` branches of a class declare directly — inline or on a
-     * referenced component. Each branch is read on its own, so a rename in one (`this` to `this2`)
-     * could not see a real `this2` in another, and the two were merged into one property.
+     * Every property the `allOf` branches of a class declare — inline, or on a referenced component
+     * with whatever it composes and renames itself — as PHP name => wire name. Each branch is read on
+     * its own, so a rename in one (`this` to `this2`) could not see a real `this2` in another, and
+     * the two were merged into one property.
      *
      * @param array<mixed> $schemaDefinition
-     * @return list<string>
+     * @return array<string, string>
      */
-    private function allOfBranchPropertyNames(array $schemaDefinition, string $className): array
+    private function allOfBranchProperties(array $schemaDefinition, string $className): array
     {
-        $names = [];
+        $properties = [];
         foreach (is_array($schemaDefinition['allOf'] ?? null) ? $schemaDefinition['allOf'] : [] as $branch) {
             if (!is_array($branch)) {
                 continue;
@@ -7604,14 +7619,27 @@ final class GenerateDtoCommand extends Command
                     ref: $branch['$ref'],
                     currentSourceFile: $this->getSchemaSourceFile($className),
                 );
-                $branch = $this->dtoSchemas[$refClassName] ?? [];
+                // A cycle through `allOf` is reported where the class is built; here its raw names do.
+                if (array_key_exists($refClassName, $this->allOfPropertiesInProgress)) {
+                    $branch = $this->dtoSchemas[$refClassName] ?? [];
+                } else {
+                    $this->allOfPropertiesInProgress[$refClassName] = true;
+                    try {
+                        foreach ($this->getSchemaProperties($refClassName) as $property) {
+                            $properties[$property['name']] = $property['openApiName'];
+                        }
+                    } finally {
+                        unset($this->allOfPropertiesInProgress[$refClassName]);
+                    }
+                    continue;
+                }
             }
             foreach (array_keys(is_array($branch['properties'] ?? null) ? $branch['properties'] : []) as $propertyName) {
-                $names[] = $this->normalizePropertyName((string)$propertyName);
+                $properties[$this->normalizePropertyName((string)$propertyName)] ??= (string)$propertyName;
             }
         }
 
-        return $names;
+        return $properties;
     }
 
     /**
@@ -7653,8 +7681,8 @@ final class GenerateDtoCommand extends Command
     {
         return match ($this->attributeMode) {
             self::ATTRIBUTE_MODE_RUNTIME => array_map(
-                fn(string $source): string => strtolower($this->normalizeTrackingFlagName($propertyName, $source)),
-                ['InRequest', 'InPath', 'InQuery', 'InHeader', 'InCookie'],
+                callback: fn(string $source): string => strtolower($this->normalizeTrackingFlagName($propertyName, $source)),
+                array: ['InRequest', 'InPath', 'InQuery', 'InHeader', 'InCookie'],
             ),
             self::ATTRIBUTE_MODE_SYMFONY => [strtolower($propertyName . 'Provided')],
             default => [],
@@ -7667,13 +7695,17 @@ final class GenerateDtoCommand extends Command
      *
      * @param array<string, true> $reserved
      * @param list<string> $taken
+     * @param bool $renamed the name is already a rename, so its own generated members are new as well
      */
-    private function avoidGeneratedMemberName(string $name, array $reserved, array $taken): string
+    private function avoidGeneratedMemberName(string $name, array $reserved, array $taken, bool $renamed = false): string
     {
-        if (!array_key_exists(strtolower($name), $reserved)) {
+        $takenLower = array_flip(array_map('strtolower', $taken));
+        if (
+            !array_key_exists(strtolower($name), $reserved)
+            && !($renamed && $this->renamedMemberCollides(candidate: $name, reserved: [], takenLower: $takenLower))
+        ) {
             return $name;
         }
-        $takenLower = array_flip(array_map('strtolower', $taken));
         $suffix = 2;
         while ($this->renamedMemberCollides(candidate: $name . $suffix, reserved: $reserved, takenLower: $takenLower)) {
             $suffix++;
@@ -7962,6 +7994,28 @@ final class GenerateDtoCommand extends Command
         $type = $schema['type'] ?? null;
 
         return $type === 'null' || (is_array($type) && in_array('null', $type, true));
+    }
+
+    /**
+     * A component admits null as a whole: `nullable: true` on it, or a `oneOf`/`anyOf` with a branch
+     * that is the null schema and nothing else.
+     *
+     * @param array<mixed> $definition
+     */
+    private function componentAdmitsNull(array $definition): bool
+    {
+        if (($definition['nullable'] ?? null) === true) {
+            return true;
+        }
+        foreach (['oneOf', 'anyOf'] as $unionKey) {
+            foreach (is_array($definition[$unionKey] ?? null) ? $definition[$unionKey] : [] as $branch) {
+                if (is_array($branch) && in_array($branch['type'] ?? null, ['null', ['null']], true) && count($branch) === 1) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

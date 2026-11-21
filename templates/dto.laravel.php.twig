@@ -622,12 +622,12 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',

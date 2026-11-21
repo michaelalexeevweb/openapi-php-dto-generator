@@ -301,6 +301,89 @@ final class RuntimeShapeFixesTest extends TestCase
         $this->assertSame('{"extra":{"name":"a","g":{}},"inline":{"h":{}}}', (new DtoNormalizer())->toJson($dto));
     }
 
+    /**
+     * An extra value of a component that admits null — `nullable: true`, or `type: [object, null]` —
+     * may be null; one of a component that does not is refused.
+     */
+    public function testExtraValueOfANullableComponentMayBeNull(): void
+    {
+        foreach (['3.0.3' => ['type' => 'object', 'nullable' => true], '3.1.0' => ['type' => ['object', 'null']]] as $openapi => $shape) {
+            $class = $this->generate(
+                components: [
+                    'Gear' => [...$shape, 'properties' => ['size' => ['type' => 'integer']]],
+                    'Cog' => ['type' => 'object', 'properties' => ['size' => ['type' => 'integer']]],
+                ],
+                properties: [
+                    'gears' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['$ref' => '#/components/schemas/Gear']],
+                    'cogs' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['$ref' => '#/components/schemas/Cog']],
+                ],
+                openapi: $openapi,
+            );
+
+            $body = '{"gears":{"name":"a","g":null,"h":{"size":1}}}';
+            $this->assertSame($body, $this->deserialize(class: $class, body: $body)->toJson(), $openapi);
+            $this->assertRejected(class: $class, body: '{"gears":{"g":{"size":"big"}}}', message: 'size');
+            $this->assertRejected(class: $class, body: '{"cogs":{"c":null}}', message: 'c');
+        }
+    }
+
+    /**
+     * `{$ref: Node, description: …}` is the same reference: annotations beside it do not change what
+     * it points at, so it is checked by `Node` at every depth like a bare one.
+     */
+    public function testAnnotatedSelfReferenceInAdditionalPropertiesIsValidatedAtEveryDepth(): void
+    {
+        $class = $this->generate(
+            components: ['Node' => [
+                'type' => 'object',
+                'properties' => ['v' => ['type' => 'integer']],
+                'additionalProperties' => ['$ref' => '#/components/schemas/Node', 'description' => 'child node', 'title' => 'Child'],
+            ]],
+            properties: ['root' => ['$ref' => '#/components/schemas/Node']],
+            openapi: '3.1.0',
+        );
+
+        foreach ([1, 6] as $depth) {
+            $valid = '{"v":1}';
+            $invalid = '{"v":"bad"}';
+            for ($i = 0; $i < $depth; $i++) {
+                $valid = '{"v":1,"k":' . $valid . '}';
+                $invalid = '{"v":1,"k":' . $invalid . '}';
+            }
+            $this->assertSame('{"root":' . $valid . '}', $this->deserialize(class: $class, body: '{"root":' . $valid . '}')->toJson(), (string)$depth);
+            $this->assertRejected(class: $class, body: '{"root":' . $invalid . '}', message: 'root');
+        }
+    }
+
+    /**
+     * The objects inside a kept extra value go out as objects too, at any depth, when the payload was a
+     * PHP array that spelled them `[]`.
+     */
+    public function testEmptyObjectsInsideAnExtraFromAnArrayGoOutAsObjects(): void
+    {
+        $class = $this->generate(
+            components: [
+                'Sub' => ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+                'Gear' => ['type' => 'object', 'properties' => [
+                    'sub' => ['$ref' => '#/components/schemas/Sub'],
+                    'meta' => ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+                    'tags' => ['type' => 'array', 'items' => ['type' => 'string']],
+                ]],
+            ],
+            properties: [
+                'extra' => ['type' => 'object', 'properties' => ['gear' => ['$ref' => '#/components/schemas/Gear']], 'additionalProperties' => ['$ref' => '#/components/schemas/Gear']],
+            ],
+        );
+
+        $dto = (new DtoDeserializer())->deserializeValue(
+            data: ['extra' => ['gear' => ['sub' => [], 'meta' => [], 'tags' => []], 'g' => ['sub' => [], 'meta' => [], 'tags' => []]]],
+            type: $class,
+        );
+        $expected = '{"extra":{"gear":{"sub":{},"meta":{},"tags":[]},"g":{"sub":{},"meta":{},"tags":[]}}}';
+        $this->assertSame($expected, $dto->toJson());
+        $this->assertSame($expected, (new DtoNormalizer())->toJson($dto));
+    }
+
     public function testMapComponentOfAnotherComponentRoundTrips(): void
     {
         $class = $this->generate(
@@ -370,6 +453,81 @@ final class RuntimeShapeFixesTest extends TestCase
     }
 
     /**
+     * Names a `$ref` branch brings — through its own `allOf`, or renamed by it — are seen by the inline
+     * branch beside it: `this` and a real `this2` stay two properties with their own wire keys.
+     */
+    public function testRenamesSeeTheNamesAReferencedBranchEmits(): void
+    {
+        $cases = [
+            'parent composed through allOf' => [
+                'Base' => ['allOf' => [['type' => 'object', 'properties' => ['this2' => ['type' => 'integer']]]]],
+                'Other' => ['type' => 'object', 'properties' => ['alpha' => ['type' => 'string']]],
+                'Pair' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['$ref' => '#/components/schemas/Other'], ['type' => 'object', 'properties' => ['this' => ['type' => 'string']]]]],
+            ],
+            'parent renamed its own property' => [
+                'Base' => ['type' => 'object', 'properties' => ['this' => ['type' => 'string']]],
+                'Other' => ['type' => 'object', 'properties' => ['alpha' => ['type' => 'string']]],
+                'Pair' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['$ref' => '#/components/schemas/Other'], ['type' => 'object', 'properties' => ['this2' => ['type' => 'integer']]]]],
+            ],
+        ];
+
+        foreach ($cases as $case => $components) {
+            $class = $this->generate(components: $components, properties: ['pair' => ['$ref' => '#/components/schemas/Pair']]);
+            $this->assertGeneratedClassCompiles(substr($class, 0, -strlen('Probe')) . 'Pair');
+
+            // The parent's properties come first, so the key order is the class's, not the body's.
+            $body = '{"pair":{"this":"a","this2":2}}';
+            $this->assertJsonStringEqualsJsonString($body, $this->deserialize(class: $class, body: $body)->toJson(), $case);
+        }
+    }
+
+    /**
+     * A property a child redeclares — same wire name as the parent's — is an override, not a second
+     * property: the renames must leave it alone.
+     */
+    public function testRedeclaredParentPropertyStaysOneProperty(): void
+    {
+        $class = $this->generate(
+            components: [
+                'Base' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'this' => ['type' => 'string']]],
+                'Child' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['id' => ['type' => 'string', 'maxLength' => 3], 'this' => ['type' => 'string']]]]],
+            ],
+            properties: ['child' => ['$ref' => '#/components/schemas/Child']],
+        );
+
+        $body = '{"child":{"id":"abc","this":"t"}}';
+        $this->assertSame($body, $this->deserialize(class: $class, body: $body)->toJson());
+        $this->assertRejected(class: $class, body: '{"child":{"id":"abcd"}}', message: 'id');
+    }
+
+    /**
+     * A case-only rename (`NAme` beside `name` becomes `nAme2`) brings its own generated members too.
+     */
+    public function testCaseOnlyRenameAvoidsTheGeneratedMembersOfAnotherProperty(): void
+    {
+        foreach (['runtime' => 'nAme2InPath', 'symfony' => 'nAme2Provided'] as $mode => $clash) {
+            $directory = $this->root . '/CaseNames' . ucfirst($mode);
+            (new GenerateDtoCommand())->generateFromArray(
+                openApi: [
+                    'openapi' => '3.0.3',
+                    'info' => ['title' => 'Names', 'version' => '1.0.0'],
+                    'paths' => [],
+                    'components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => [
+                        'name' => ['type' => 'string'],
+                        'NAme' => ['type' => 'string'],
+                        $clash => ['type' => 'string'],
+                    ]]]],
+                ],
+                outputDirectory: $directory,
+                namespace: 'CaseNames' . ucfirst($mode),
+                mode: $mode,
+            );
+
+            $this->assertFileCompiles($directory . '/Probe.php');
+        }
+    }
+
+    /**
      * Symfony declares `<property>Provided` for each property; `this` renamed to `this2` declared
      * `$this2Provided` beside a real `this2Provided` property.
      */
@@ -377,7 +535,7 @@ final class RuntimeShapeFixesTest extends TestCase
     {
         $directory = $this->root . '/SymfonyNames';
         (new GenerateDtoCommand())->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.0.3',
                 'info' => ['title' => 'Names', 'version' => '1.0.0'],
                 'paths' => [],
@@ -386,9 +544,9 @@ final class RuntimeShapeFixesTest extends TestCase
                     'this2Provided' => ['type' => 'string'],
                 ]]]],
             ],
-            $directory,
-            'SymfonyNames',
-            'symfony',
+            outputDirectory: $directory,
+            namespace: 'SymfonyNames',
+            mode: 'symfony',
         );
 
         $this->assertFileCompiles($directory . '/Probe.php');
@@ -417,14 +575,14 @@ final class RuntimeShapeFixesTest extends TestCase
         $namespace = 'Shapes' . bin2hex(random_bytes(8));
         $directory = $this->root . '/' . $namespace;
         (new GenerateDtoCommand())->generateFromArray(
-            [
+            openApi: [
                 'openapi' => $openapi,
                 'info' => ['title' => 'Shapes', 'version' => '1.0.0'],
                 'paths' => [],
                 'components' => ['schemas' => [...$components, 'Probe' => ['type' => 'object', 'properties' => $properties]]],
             ],
-            $directory,
-            $namespace,
+            outputDirectory: $directory,
+            namespace: $namespace,
         );
         spl_autoload_register(static function (string $class) use ($namespace, $directory): void {
             $file = $directory . '/' . substr($class, strlen($namespace) + 1) . '.php';

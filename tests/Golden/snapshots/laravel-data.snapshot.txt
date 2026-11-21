@@ -5633,12 +5633,12 @@ final class ApplicatorRefs extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -6280,12 +6280,12 @@ final class ApplicatorRefsConditional extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -6759,12 +6759,12 @@ final class ApplicatorRefsKeyed extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -7217,12 +7217,12 @@ final class ApplicatorRefsPoisonedKey extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -8407,12 +8407,12 @@ final class ChainLink extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -8917,12 +8917,12 @@ final class ChainMiddle extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -10111,12 +10111,12 @@ final class Containers extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -11992,12 +11992,12 @@ final class NestedContainers extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -12727,12 +12727,12 @@ final class ObjectWideRules extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -13331,12 +13331,12 @@ final class ReadOnlyFields extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -14540,12 +14540,12 @@ final class Test2 extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -15469,12 +15469,12 @@ final class TestPostRequest extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -16311,12 +16311,12 @@ final class TreeNode extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -17312,12 +17312,12 @@ final class UnionUnderContainer extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -17941,12 +17941,12 @@ final class UniqueScalars extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -18298,7 +18298,7 @@ final class User extends Data
         return [
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
-            'pet' => self::withBlankStringValidation(['present', 'nullable', 'array']),
+            'pet' => self::withBlankStringValidation(['present', 'nullable']),
             'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
         ];
     }
@@ -18394,7 +18394,7 @@ final class User extends Data
                 'rules' => [
                     $prefix . '.id' => self::withBlankStringValidation(['integer']),
                     $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.pet' => self::withBlankStringValidation(['nullable', 'array']),
+                    $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
                     $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
                 ],
                 'objectPaths' => [
@@ -18596,12 +18596,12 @@ final class User extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -19224,12 +19224,12 @@ final class User2 extends Data
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',

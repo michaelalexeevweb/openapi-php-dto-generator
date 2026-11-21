@@ -10,6 +10,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Error;
 use JsonException;
+use JsonSerializable;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
@@ -59,6 +60,7 @@ use function is_object;
 use function is_scalar;
 use function is_string;
 use function json_decode;
+use function json_encode;
 use function json_last_error;
 use function json_last_error_msg;
 use function lcfirst;
@@ -530,16 +532,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // and the DTO keeps it — see `withUndeclaredProperties()`.
                 if (is_array($extraPropertySchema)) {
                     $extraDtoClass = $extraPropertySchema['x-php-dto'] ?? null;
-                    if (is_string($extraDtoClass) && class_exists($extraDtoClass)) {
+                    if (is_string($extraDtoClass) && $bodyData[$bodyKey] === null && ($extraPropertySchema['nullable'] ?? null) === true) {
+                        // The component admits null: nothing to hydrate.
+                    } elseif (is_string($extraDtoClass) && class_exists($extraDtoClass)) {
                         // A generated class checks the value itself, at every depth it holds itself.
                         try {
-                            $this->castArrayItemValue(
+                            $hydrated = $this->castArrayItemValue(
                                 itemValue: $bodyData[$bodyKey],
                                 arrayItemType: $extraDtoClass,
                                 // A digit key arrives as an int, whatever the array is typed as.
                                 itemPath: "{$bodyKey}",
                                 source: 'json',
                             );
+                            // A PHP array spells every empty object `[]`, at any depth: kept as given,
+                            // the inner ones went out as JSON lists. The class writes them as it reads them.
+                            if (is_array($bodyData[$bodyKey]) && $hydrated instanceof JsonSerializable) {
+                                $extraValue = json_decode(json_encode($hydrated, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION), flags: JSON_THROW_ON_ERROR);
+                            }
                         } catch (RuntimeException $extraException) {
                             $errors[] = $extraException->getMessage();
                         }
@@ -548,7 +557,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             $errors[] = $extraError;
                         }
                     }
-                    $undeclared[$bodyKey] = $this->keptExtraValue(value: $bodyData[$bodyKey], schema: $extraPropertySchema);
+                    $undeclared[$bodyKey] = $this->keptExtraValue(value: $extraValue ?? $bodyData[$bodyKey], schema: $extraPropertySchema);
+                    $extraValue = null;
                     continue;
                 }
 

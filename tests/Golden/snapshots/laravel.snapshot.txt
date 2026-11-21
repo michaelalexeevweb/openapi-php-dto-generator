@@ -10435,12 +10435,12 @@ final class ApplicatorRefs implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -11267,12 +11267,12 @@ final class ApplicatorRefsConditional implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -11835,12 +11835,12 @@ final class ApplicatorRefsKeyed implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -12382,12 +12382,12 @@ final class ApplicatorRefsPoisonedKey implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -14086,12 +14086,12 @@ final class ChainLink implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -14614,12 +14614,12 @@ final class ChainMiddle implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -16357,12 +16357,12 @@ final class Containers implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -19238,12 +19238,12 @@ final class NestedContainers implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -20306,12 +20306,12 @@ final class ObjectWideRules implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -21188,12 +21188,12 @@ final class ReadOnlyFields implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -23230,12 +23230,12 @@ final class Test2 implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -24668,12 +24668,12 @@ final class TestPostRequest implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -25635,12 +25635,12 @@ final class TreeNode implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -26725,12 +26725,12 @@ final class UnionUnderContainer implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -27449,12 +27449,12 @@ final class UniqueScalars implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -27827,7 +27827,7 @@ final class User implements JsonSerializable
         return [
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
-            'pet' => self::withBlankStringValidation(['present', 'nullable', 'array']),
+            'pet' => self::withBlankStringValidation(['present', 'nullable']),
             'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
         ];
     }
@@ -27923,7 +27923,7 @@ final class User implements JsonSerializable
                 'rules' => [
                     $prefix . '.id' => self::withBlankStringValidation(['integer']),
                     $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.pet' => self::withBlankStringValidation(['nullable', 'array']),
+                    $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
                     $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
                 ],
                 'objectPaths' => [
@@ -28170,12 +28170,12 @@ final class User implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -28892,12 +28892,12 @@ final class User2 implements JsonSerializable
         }
 
         $path = implode('.', [$property, ...$segments]);
-        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()` —
-        // is one mistake, reported once.
-        if ($segments !== [] && $validator->errors()->has($path)) {
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
-        $claim = $match[2];
 
         $rule = match ($claim) {
             'is required' => 'present',

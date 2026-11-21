@@ -471,9 +471,10 @@ trait RendersLaravelValidation
             // A `$ref` to a generated DTO carries no `type` of its own, and without one `"x"` passed
             // `rules()` and then broke `fromValidated()` with a TypeError — a 500 for a bad request.
             // An enum or a date is a scalar on the wire and is left alone.
-            // A union interface too, scalar branch or not: the property is typed as the interface, and
-            // only an object can be hydrated into it — a scalar let through here broke `fromValidated()`.
-            null => $this->laravelIsNestedDtoType($phpType) ? "'array'" : null,
+            // A union interface with a scalar branch too: the union accepts the scalar, the property is
+            // typed as the interface, and a scalar let through broke `fromValidated()`. A union of
+            // objects alone refuses a scalar itself, and the rule beside it said so a second time.
+            null => $this->laravelIsNestedDtoType($phpType) && !$this->laravelIsUnionOfObjects($phpType) ? "'array'" : null,
             default => null,
         };
         if ($typeRule !== null) {
@@ -1036,6 +1037,34 @@ trait RendersLaravelValidation
         $base = $this->laravelBaseTypeName($phpType);
 
         return $base !== null && array_key_exists($base, $this->dtoSchemas) && !$this->laravelIsEnumClass($base);
+    }
+
+    /**
+     * A `oneOf`/`anyOf` component whose branches are all objects (or the null schema): the union's own
+     * check already refuses a scalar.
+     */
+    private function laravelIsUnionOfObjects(string $phpType): bool
+    {
+        $schema = $this->dtoSchemas[$this->laravelBaseTypeName($phpType) ?? ''] ?? [];
+        $branches = $schema['oneOf'] ?? $schema['anyOf'] ?? null;
+        if (!is_array($branches) || $branches === [] || array_key_exists('properties', $schema)) {
+            return false;
+        }
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                return false;
+            }
+            $ref = $branch['$ref'] ?? null;
+            $type = $branch['type'] ?? null;
+            $isObject = is_string($ref)
+                ? $this->laravelIsNestedDtoType($this->shortClassName($this->schemaRefToClassName(ref: $ref, currentSourceFile: null)))
+                : $type === 'object' || in_array($type, ['null', ['null']], true);
+            if (!$isObject) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function laravelLooksLikeClassType(string $phpType): bool

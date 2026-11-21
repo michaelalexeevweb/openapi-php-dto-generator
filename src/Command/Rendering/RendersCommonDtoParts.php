@@ -396,27 +396,28 @@ trait RendersCommonDtoParts
     }
 
     /**
-     * A class schema written as `allOf`, with its INLINE branches merged into it — the object the
-     * emitted class carries. Symfony mode extracted its constraints from the raw schema, where every
-     * property sits inside a branch, so an `allOf` class got no `#[Assert\Callback]` at all: a uuid,
-     * a `const`, `uniqueItems` were checked by nothing. A `$ref` branch is the parent the class
-     * extends, and the parent enforces its own rules.
+     * A class schema written as `allOf`, with its branches merged into it — the object the emitted
+     * class carries. Symfony mode extracted its constraints from the raw schema, where every property
+     * sits inside a branch, so an `allOf` class got no `#[Assert\Callback]` at all: a uuid, a `const`,
+     * `uniqueItems` were checked by nothing.
      *
-     * Its properties are still the class's own, though: where `additionalProperties` or
-     * `unevaluatedProperties` speaks about the keys the class does NOT declare — on the class itself or
-     * on an inline branch — each inherited key is listed as evaluated (`true`, no rule of its own).
-     * Without it every property the parent brought was refused as an extra, or checked against the
-     * schema meant for extras.
+     * A `$ref` branch counts too. Symfony writes the child as one flat class holding the parent's
+     * properties, and nothing else checks the parent's rules for them there; listed as merely
+     * evaluated, a uuid the parent pinned went through the child unchecked. The child's own schema for
+     * a property it redeclares wins. With the parent's keys in `properties`, an `additionalProperties`
+     * or `unevaluatedProperties` on the class or a branch no longer counts them as extra.
      *
      * @param array<mixed> $schemaDefinition
+     * @param array<string, true> $visiting
      * @return array<mixed>
      */
-    private function classSchemaWithInlineAllOfMerged(array $schemaDefinition, string $className): array
+    private function classSchemaWithInlineAllOfMerged(array $schemaDefinition, string $className, array $visiting = []): array
     {
         $allOf = $schemaDefinition['allOf'] ?? null;
         if (!is_array($allOf) || $allOf === []) {
             return $schemaDefinition;
         }
+        $visiting[$className] = true;
 
         $merged = [];
         foreach ($schemaDefinition as $keyword => $value) {
@@ -434,8 +435,14 @@ trait RendersCommonDtoParts
                     ref: $branch['$ref'],
                     currentSourceFile: $this->getSchemaSourceFile($className),
                 );
-                foreach ($this->getSchemaProperties($parentClass) as $property) {
-                    $inherited[] = $property['openApiName'];
+                $parentSchema = $this->dtoSchemas[$parentClass] ?? null;
+                if (is_array($parentSchema) && !array_key_exists($parentClass, $visiting)) {
+                    $parentMerged = $this->classSchemaWithInlineAllOfMerged(
+                        schemaDefinition: $parentSchema,
+                        className: $parentClass,
+                        visiting: $visiting,
+                    );
+                    $inherited = [...$inherited, ...(is_array($parentMerged['properties'] ?? null) ? $parentMerged['properties'] : [])];
                 }
                 continue;
             }
@@ -459,14 +466,8 @@ trait RendersCommonDtoParts
             }
         }
 
-        if (array_key_exists('additionalProperties', $merged) || array_key_exists('unevaluatedProperties', $merged)) {
-            $properties = is_array($merged['properties'] ?? null) ? $merged['properties'] : [];
-            foreach ($inherited as $name) {
-                if (!array_key_exists($name, $properties)) {
-                    $properties[$name] = true;
-                }
-            }
-            $merged['properties'] = $properties;
+        if ($inherited !== []) {
+            $merged['properties'] = [...$inherited, ...(is_array($merged['properties'] ?? null) ? $merged['properties'] : [])];
         }
 
         return $merged;
